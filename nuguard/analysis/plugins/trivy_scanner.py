@@ -315,10 +315,13 @@ def _parse_trivy_output(data: dict[str, Any], scan_target: str) -> list[dict[str
                 str(vuln.get("Severity", "UNKNOWN")).upper(), "LOW"
             )
             cve_ids: list[str] = [vuln_id] if vuln_id.startswith("CVE-") else []
+            desc = vuln.get("Description") or vuln.get("Title") or vuln_id
+            if fixed:
+                desc += f"  Fixed in: {fixed}."
             findings.append({
                 "rule_id":          vuln_id,
                 "title":            vuln.get("Title") or vuln_id,
-                "description":      vuln.get("Description") or vuln.get("Title") or vuln_id,
+                "description":      desc,
                 "severity":         severity,
                 "dep_name":         pkg_name,
                 "dep_version":      pkg_ver,
@@ -328,6 +331,12 @@ def _parse_trivy_output(data: dict[str, Any], scan_target: str) -> list[dict[str
                 "url":              vuln.get("PrimaryURL") or "",
                 "source":           "trivy",
                 "scan_target":      scan_target,
+                "fixed_version":    fixed or None,
+                "remediation": (
+                    f"Upgrade {pkg_name} to a version outside the affected range"
+                    + (f" (fix available: {fixed})" if fixed else "")
+                    + f". See {vuln.get('PrimaryURL') or 'https://trivy.dev'} for details."
+                ),
             })
 
         # Misconfigurations

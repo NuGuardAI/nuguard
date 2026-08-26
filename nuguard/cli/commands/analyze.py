@@ -206,6 +206,15 @@ def analyze(
         else:
             source = _cfg_source
 
+    # Local source root for manifest line-number lookups in remediation text
+    # (best-effort; None for remote URLs, since the clone dir is removed
+    # before rendering — see the `finally` block below).
+    _manifest_source_root: Path | None = None
+    if source and not source.startswith(("http://", "https://", "git://", "git+")):
+        _candidate = Path(source)
+        if _candidate.is_dir():
+            _manifest_source_root = _candidate
+
     # supply-chain: CLI wins; fall back to analyze: section in nuguard.yaml
     sc_profile = supply_chain_profile or cfg.analyze_supply_chain_profile
     sc_verify = supply_chain_verify or cfg.analyze_supply_chain_verify
@@ -352,7 +361,16 @@ def analyze(
             )
         if fmt == "sarif":
             return _render_sarif(visible, sbom_path, tool_status)
-        return _render_markdown(visible, sbom_path, min_severity, tool_status, nga_audit, sc_audit)
+        return _render_markdown(
+            visible,
+            sbom_path,
+            min_severity,
+            tool_status,
+            nga_audit,
+            sc_audit,
+            sbom_deps=doc.deps,
+            source_root=_manifest_source_root,
+        )
 
     extension_map = {
         "markdown": ".md",
@@ -390,17 +408,37 @@ def analyze(
 # ---------------------------------------------------------------------------
 
 
+# PURL types for OS/distro packages, where the namespace segment is the distro
+# name (e.g. "alpine", "debian") rather than part of the package identity.
+# Grype/Syft emit these with a namespace + qualifiers (?arch=...&distro=...);
+# trivy emits a bare "name@version" for the same package. Stripping the
+# namespace and qualifiers here lets both forms normalise to the same label.
+_OS_PURL_TYPES = {"apk", "deb", "rpm", "alpm"}
+
+
 def _component_label(f: Finding) -> str:
     """Return a normalised display label for a finding's component.
 
     PURLs (pkg:npm/next@15.2.4) are simplified to ``name@version`` so that
     findings from different scanners for the same package are grouped together.
+    OS-package PURLs (pkg:apk/alpine/curl@8.5.0-r0?arch=...&distro=...) have
+    their distro namespace and qualifiers stripped so they match the bare
+    "name@version" label trivy produces for the same package.
     """
     raw = f.affected_component or f.finding_id.rsplit("-", 1)[0]
-    # Normalise PURL: pkg:npm/next@15.2.4 → next@15.2.4
     if raw.startswith("pkg:"):
-        # strip scheme+type prefix  e.g. "pkg:npm/" or "pkg:pypi/"
-        raw = raw.split("/", 1)[-1]
+        # pkg:<type>/<namespace>/<name>@<version>?<qualifiers>#<subpath>
+        body = raw[len("pkg:"):].split("#", 1)[0].split("?", 1)[0]
+        parts = body.split("/")
+        pkg_type, rest = parts[0], parts[1:]
+        if pkg_type in _OS_PURL_TYPES and len(rest) > 1:
+            # drop the distro namespace segment, keep only name@version
+            rest = rest[1:]
+        raw = "/".join(rest)
+    else:
+        # non-PURL component labels (e.g. trivy's bare "name@version") may
+        # still carry qualifiers if a source ever appends them
+        raw = raw.split("?", 1)[0]
     return raw
 
 
@@ -415,6 +453,39 @@ def _source_tool(f: Finding) -> str:
     if prefix in ("trivy", "osv", "grype", "nga", "checkov", "semgrep", "atlas"):
         return prefix
     return prefix
+
+
+# Internal tool identifiers → user-facing display names for the report.
+# NGA is nuguard's own deterministic rule engine, not a third-party scanner —
+# "nga" reads as an unexplained acronym to end users.
+_TOOL_DISPLAY_NAMES = {
+    "nga": "NuGuard Best Practices",
+    "nga-rules": "NuGuard Best Practices",
+}
+
+
+def _display_tool_name(tool: str) -> str:
+    return _TOOL_DISPLAY_NAMES.get(tool.lower(), tool)
+
+
+_HEX8_SUFFIX_RE = re.compile(r"-[0-9a-f]{8}$", re.IGNORECASE)
+
+
+def _display_rule_id(f: Finding) -> str:
+    """Human-friendly rule identifier for structural findings.
+
+    ``finding_id`` is internal — ``"<tool>-<rule_id>-<8-hex-dedup-suffix>"``
+    (e.g. ``nga-NGA-006-aacb1fe0``) — where the dedup suffix exists only to
+    keep ``finding_id`` unique across repeated runs and the tool prefix
+    duplicates information already carried by the rule_id itself (``NGA-006``
+    already says "NGA rule"). Strip both so the report shows just ``NGA-006``.
+    """
+    raw = f.finding_id
+    source = _source_tool(f)
+    if source and raw.lower().startswith(source + "-"):
+        raw = raw[len(source) + 1:]
+    raw = _HEX8_SUFFIX_RE.sub("", raw)
+    return raw or f.finding_id
 
 
 _CVE_RE = re.compile(r'\bCVE-\d{4}-\d+\b', re.IGNORECASE)
@@ -475,6 +546,12 @@ def _dedup_component_findings(
         # Prefer OSV as canonical — it carries osv.dev links and remediation guidance
         osv_findings = [f for f in group if _source_tool(f) == "osv"]
         canonical = osv_findings[0] if osv_findings else group[0]
+        # Severity should reflect the worst-case rating across all sources
+        # reporting this CVE, not whichever source happened to be canonical —
+        # scanners can disagree on severity for the same vulnerability.
+        worst = min(group, key=lambda f: _SEV_ORDER.get(f.severity.value, 99))
+        if worst.severity != canonical.severity:
+            canonical = canonical.model_copy(update={"severity": worst.severity})
         result.append((canonical, sources))
 
     for f in no_key:
@@ -482,6 +559,104 @@ def _dedup_component_findings(
 
     result.sort(key=lambda x: _SEV_ORDER.get(x[0].severity.value, 99))
     return result
+
+
+_FIX_VERSION_RE = re.compile(r"fix available:\s*([^)]+)\)")
+
+
+def _fixed_version_for_finding(f: Finding) -> str | None:
+    """Extract the scanner-reported fixed version from a finding's remediation text."""
+    if not f.remediation:
+        return None
+    m = _FIX_VERSION_RE.search(f.remediation)
+    return m.group(1).strip() if m else None
+
+
+def _numeric_version_key(v: str) -> tuple[int, ...] | None:
+    m = re.match(r"^(\d+(?:\.\d+)*)", v)
+    return tuple(int(x) for x in m.group(1).split(".")) if m else None
+
+
+def _best_fix_version(candidates: list[str]) -> tuple[str, list[str]]:
+    """Pick the highest-looking fixed version from a set of candidates.
+
+    Returns ``(recommended, all_unique_candidates)``. Falls back to a
+    lexicographic pick when versions can't be parsed numerically (e.g. mixed
+    distro/semver formats) rather than guessing wrong silently.
+    """
+    uniq = list(dict.fromkeys(candidates))
+    if len(uniq) == 1:
+        return uniq[0], uniq
+    parseable = [(v, k) for v in uniq if (k := _numeric_version_key(v)) is not None]
+    best = max(parseable, key=lambda vk: vk[1])[0] if parseable else sorted(uniq)[-1]
+    return best, uniq
+
+
+def _manifest_line_number(source_root: Path | None, source_file: str, dep_name: str) -> int | None:
+    """Best-effort line number of ``dep_name``'s declaration in a manifest file."""
+    if not source_root or not source_file:
+        return None
+    try:
+        text = (source_root / source_file).read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    pattern = re.compile(re.escape(dep_name), re.IGNORECASE)
+    for i, line in enumerate(text.splitlines(), start=1):
+        if pattern.search(line):
+            return i
+    return None
+
+
+def _component_remediation_lines(
+    comp: str,
+    findings: list[Finding],
+    deps_by_name: dict[str, Any],
+    source_root: Path | None,
+) -> list[str]:
+    """Build a one-block, actionable remediation for a component's finding group.
+
+    Points at the exact manifest file (+ line, when it can be found on disk)
+    and the version bump needed for language-ecosystem dependencies; falls
+    back to image-rebuild guidance for OS packages that aren't declared in
+    any project manifest (grype/trivy scan the container image directly).
+    """
+    name, _, version = comp.rpartition("@")
+    if not name:
+        name = comp
+    fix_candidates = [v for v in (_fixed_version_for_finding(f) for f in findings) if v]
+    dep = deps_by_name.get(name.lower())
+
+    if not fix_candidates:
+        return [
+            f"**Remediation:** No fixed version has been published yet for `{name}` — "
+            f"track the upstream advisory and re-scan once a patch ships.  ",
+            "",
+        ]
+
+    best, all_candidates = _best_fix_version(fix_candidates)
+    candidates_note = (
+        f" (advisory fix versions seen: {', '.join(all_candidates)})"
+        if len(all_candidates) > 1 else ""
+    )
+
+    if dep is not None:
+        line_no = _manifest_line_number(source_root, dep.source_file, name)
+        loc = f"`{dep.source_file}`" + (f" (line {line_no})" if line_no else "")
+        current = dep.version_spec or version or "?"
+        return [
+            f"**Remediation:** In {loc}, bump `{name}` from `{current}` to `>={best}`."
+            f"{candidates_note}  ",
+            "",
+        ]
+
+    return [
+        f"**Remediation:** `{name}` is an OS-level package baked into the container "
+        f"image (not declared in a project manifest) — rebuild the image after "
+        f"upgrading it to `{best}` or newer, e.g. `apk upgrade {name}` / "
+        f"`apt-get install --only-upgrade {name}` in the Dockerfile, or bump the "
+        f"base image tag once a patched image is published.{candidates_note}  ",
+        "",
+    ]
 
 
 def _group_by_component(findings: list[Finding]) -> list[tuple[str, list[Finding]]]:
@@ -582,9 +757,12 @@ def _render_markdown(
     tool_status: dict[str, Any] | None = None,
     nga_audit: list[dict[str, Any]] | None = None,
     sc_audit: list[dict[str, Any]] | None = None,
+    sbom_deps: list[Any] | None = None,
+    source_root: Path | None = None,
 ) -> str:
     # Pre-compute deduplicated view used throughout the report.
     # Dedup is per-component (same CVE from trivy+osv → one entry, OSV canonical).
+    deps_by_name: dict[str, Any] = {dep.name.lower(): dep for dep in (sbom_deps or [])}
     grouped_raw = _group_by_component(findings)
     grouped_deduped = [
         (comp, _dedup_component_findings(flist))
@@ -649,7 +827,7 @@ def _render_markdown(
             count = info.get("findings", "—")
             reason = info.get("reason", "")
             note = f" ({reason})" if reason and st in ("skipped", "error") else ""
-            lines.append(f"| {tool} | {icon} {st}{note} | {count} |")
+            lines.append(f"| {_display_tool_name(tool)} | {icon} {st}{note} | {count} |")
         lines.append("")
 
     if not deduped_all:
@@ -670,8 +848,13 @@ def _render_markdown(
             dep_entries = [(f, s) for f, s in entries if _canonical_vuln_id(f) is not None]
             struct_entries = [(f, s) for f, s in entries if _canonical_vuln_id(f) is None]
 
-            # CVE/GHSA dependency findings → compact table (one row per finding)
+            # CVE/GHSA dependency findings → one remediation block (which file/line
+            # to change and the exact version bump), then a compact table listing
+            # every CVE it resolves.
             if dep_entries:
+                lines += _component_remediation_lines(
+                    comp, [f for f, _ in dep_entries], deps_by_name, source_root
+                )
                 lines += [
                     "| Severity | ID | Title | Sources |",
                     "|----------|----|-------|---------|",
@@ -681,7 +864,7 @@ def _render_markdown(
                     sev_label = f.severity.value.upper()
                     vuln_id = _canonical_vuln_id(f)  # not None by construction
                     safe_title = f.title.replace("|", "\\|")
-                    sources_str = ", ".join(sources)
+                    sources_str = ", ".join(_display_tool_name(s) for s in sources)
                     lines.append(
                         f"| {sev_emoji} {sev_label} | `{vuln_id}` | {safe_title} | {sources_str} |"
                     )
@@ -690,8 +873,8 @@ def _render_markdown(
             # Structural findings (NGA, ATLAS) → full detail blocks
             for f, sources in struct_entries:
                 sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
-                sources_str = ", ".join(f"`{s}`" for s in sources)
-                lines += [f"#### {sev_emoji} {f.finding_id}  {f.title}", ""]
+                sources_str = ", ".join(f"`{_display_tool_name(s)}`" for s in sources)
+                lines += [f"#### {sev_emoji} {_display_rule_id(f)} — {f.title}", ""]
                 lines += [f"**Sources:** {sources_str}  ", ""]
                 lines += [f.description or "", ""]
                 if f.affected_component:
