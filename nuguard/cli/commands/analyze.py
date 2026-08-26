@@ -106,7 +106,7 @@ def analyze(
         "--format",
         "-f",
         help=(
-            "Output format(s): markdown | sarif | json. "
+            "Output format(s): markdown | sarif | json | csv. "
             "Repeat --format or pass comma-separated values."
         ),
     ),
@@ -267,7 +267,7 @@ def analyze(
         formats = parse_output_formats(
             format,
             default_format="markdown",
-            allowed_formats={"markdown", "json", "sarif"},
+            allowed_formats={"markdown", "json", "sarif", "csv"},
         )
     except ValueError as exc:
         typer.echo(f"error: {exc}", err=True)
@@ -362,6 +362,8 @@ def analyze(
             )
         if fmt == "sarif":
             return _render_sarif(visible, sbom_path, tool_status)
+        if fmt == "csv":
+            return _render_csv(visible, sbom_deps=doc.deps, source_root=_manifest_source_root)
         return _render_markdown(
             visible,
             sbom_path,
@@ -377,6 +379,7 @@ def analyze(
         "markdown": ".md",
         "json": ".json",
         "sarif": ".sarif",
+        "csv": ".csv",
     }
     tool_status = result.tool_status
     nga_audit = result.nga_audit
@@ -868,6 +871,23 @@ def _render_rule_audit_section(
     return lines
 
 
+def _compute_component_groups(
+    findings: list[Finding],
+) -> list[_ComponentGroup]:
+    """Build the deduplicated, component-grouped view shared by every renderer:
+    per-component CVE dedup, then a final cross-component pass that folds
+    sibling components (curl/libcurl, libssl3/libcrypto3, ...) whose CVE sets
+    subset/fully overlap into one group instead of listing the same
+    vulnerability twice under different component names.
+    """
+    grouped_raw = _group_by_component(findings)
+    grouped_deduped = [
+        (comp, _dedup_component_findings(flist))
+        for comp, flist in grouped_raw
+    ]
+    return _merge_overlapping_components(grouped_deduped)
+
+
 def _render_markdown(
     findings: list[Finding],
     sbom_path: Path,
@@ -878,18 +898,8 @@ def _render_markdown(
     sbom_deps: list[Any] | None = None,
     source_root: Path | None = None,
 ) -> str:
-    # Pre-compute the deduplicated, component-grouped view used throughout the
-    # report: per-component CVE dedup, then a final cross-component pass that
-    # folds sibling components (curl/libcurl, libssl3/libcrypto3, ...) whose
-    # CVE sets subset/fully overlap into one group instead of listing the same
-    # vulnerability twice under different component names.
     deps_by_name: dict[str, Any] = {dep.name.lower(): dep for dep in (sbom_deps or [])}
-    grouped_raw = _group_by_component(findings)
-    grouped_deduped = [
-        (comp, _dedup_component_findings(flist))
-        for comp, flist in grouped_raw
-    ]
-    component_groups = _merge_overlapping_components(grouped_deduped)
+    component_groups = _compute_component_groups(findings)
     # Flat list of canonical findings (one per unique finding, post cross-component merge)
     deduped_all: list[Finding] = [f for g in component_groups for f, _ in g.entries]
 
@@ -1062,6 +1072,80 @@ def _render_markdown(
         )
 
     return "\n".join(lines)
+
+
+# Slug-safe stripping for synthesizing a stable id from a component label
+# (e.g. "libssl3@3.5.6-r0" -> "libssl3").
+_CSV_ID_STRIP_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _csv_group_id(component: str) -> str:
+    base = component.rpartition("@")[0] or component
+    return _CSV_ID_STRIP_RE.sub("-", base).strip("-").lower()
+
+
+def _render_csv(
+    findings: list[Finding],
+    sbom_deps: list[Any] | None = None,
+    source_root: Path | None = None,
+) -> str:
+    """Render findings as CSV: one row per component group (matching the
+    markdown report's grouping), with a common column set — finding id,
+    title, summary, remediation, affected components, source, framework
+    mappings. Multi-value fields are semicolon-separated within a cell.
+    """
+    import csv
+    import io
+
+    deps_by_name: dict[str, Any] = {dep.name.lower(): dep for dep in (sbom_deps or [])}
+    component_groups = _compute_component_groups(findings)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "finding_id", "severity", "title", "summary", "remediation",
+        "affected_components", "source", "framework_mappings",
+    ])
+
+    for g in component_groups:
+        top_sev = g.entries[0][0].severity.value
+        dep_entries = [(f, s) for f, s in g.entries if _canonical_vuln_id(f) is not None]
+        struct_entries = [(f, s) for f, s in g.entries if _canonical_vuln_id(f) is None]
+        affected = "; ".join(g.components)
+
+        if dep_entries:
+            n = len(dep_entries)
+            names = [c.rpartition("@")[0] or c for c in g.components]
+            title = f"{n} known vulnerabilit{'y' if n == 1 else 'ies'} in {', '.join(names)}"
+            vuln_ids = "; ".join(_canonical_vuln_id(f) or "" for f, _ in dep_entries)
+            summary = f"{title}: {vuln_ids}."
+            remediation = _component_remediation_text(
+                g.components, [f for f, _ in dep_entries], deps_by_name, source_root
+            )
+            all_sources = sorted({s for _, sources in dep_entries for s in sources})
+            sources_str = "; ".join(_display_tool_name(s) for s in all_sources)
+            supply_chain = owasp_refs_for_rule("NGA-008")
+            framework = _framework_mapping_text(
+                "; ".join(supply_chain.owasp_llm),
+                "; ".join(supply_chain.owasp_agentic),
+                None,
+            )
+            writer.writerow([
+                f"grp-{_csv_group_id(g.components[0])}", top_sev, title, summary,
+                remediation, affected, sources_str, framework,
+            ])
+
+        for f, sources in struct_entries:
+            sources_str = "; ".join(_display_tool_name(s) for s in sources)
+            framework = _framework_mapping_text(
+                f.owasp_llm_ref, f.owasp_asi_ref, f.mitre_atlas_technique
+            )
+            writer.writerow([
+                f.finding_id, f.severity.value, f.title, f.description or f.title,
+                f.remediation or "", affected, sources_str, framework,
+            ])
+
+    return buf.getvalue()
 
 
 def _render_json(
