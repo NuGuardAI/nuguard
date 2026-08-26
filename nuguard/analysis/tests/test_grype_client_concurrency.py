@@ -42,3 +42,25 @@ def test_query_grype_images_collects_all_images_concurrently() -> None:
 def test_query_grype_images_returns_empty_when_no_image_refs() -> None:
     with patch.object(grype_client, "_grype_path", return_value="/usr/bin/grype"):
         assert grype_client.query_grype_images([], timeout=5.0, max_retries=1) == []
+
+
+def test_query_grype_images_findings_carry_image_ref_and_locations() -> None:
+    node = {
+        "component_type": "CONTAINER_IMAGE",
+        "metadata": {"image_name": "python", "image_tag": "3.11-slim"},
+        "evidence": [{"kind": "dockerfile", "location": {"path": "Dockerfile", "line": 1}}],
+    }
+
+    def _fake_run_grype(target: str, timeout: float, max_retries: int):
+        return [{
+            "vulnerability": {"id": "CVE-2024-1", "severity": "high"},
+            "artifact": {"name": "libssl3", "version": "3.5.6", "purl": "pkg:apk/alpine/libssl3@3.5.6"},
+        }]
+
+    with patch.object(grype_client, "_grype_path", return_value="/usr/bin/grype"), \
+         patch.object(grype_client, "_run_grype", side_effect=_fake_run_grype):
+        findings = grype_client.query_grype_images([node], timeout=5.0, max_retries=1)
+
+    assert len(findings) == 1
+    assert findings[0]["image_ref"] == "python:3.11-slim"
+    assert findings[0]["image_locations"] == ["Dockerfile:1"]

@@ -22,6 +22,11 @@ class Finding(BaseModel):
     affected_component: str | None = None
     remediation: str | None = None
     references: list[str] = Field(default_factory=list)
+    # Set only for OS-package findings from a container-image scan (grype/trivy
+    # scanning a CONTAINER_IMAGE node) — the image ref and, when the SBOM has
+    # Dockerfile evidence for it, where that image is declared in the repo.
+    container_image: str | None = None
+    container_image_locations: list[str] = Field(default_factory=list)
     # Redteam-specific fields
     goal_type: str | None = None
     scenario_type: str | None = None

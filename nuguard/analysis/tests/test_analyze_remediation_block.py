@@ -21,13 +21,21 @@ from nuguard.models.finding import Finding, Severity
 from nuguard.sbom.deps import PackageDep
 
 
-def _finding(finding_id: str, *, remediation: str | None = None) -> Finding:
+def _finding(
+    finding_id: str,
+    *,
+    remediation: str | None = None,
+    container_image: str | None = None,
+    container_image_locations: list[str] | None = None,
+) -> Finding:
     return Finding(
         finding_id=finding_id,
         title="t",
         severity=Severity.HIGH,
         description="d",
         remediation=remediation,
+        container_image=container_image,
+        container_image_locations=container_image_locations or [],
     )
 
 
@@ -118,3 +126,55 @@ def test_component_remediation_notes_when_no_fix_published() -> None:
     findings = [_finding("grype-CVE-9999-1", remediation="Upgrade to a patched version.")]
     text = _component_remediation_text(["foo@1.0.0"], findings, {}, None)
     assert "No fixed version" in text
+
+
+def test_component_remediation_names_image_and_location_when_known() -> None:
+    findings = [
+        _finding(
+            "grype-CVE-2024-1",
+            remediation="Upgrade libssl3 to a version outside the affected range "
+            "(fix available: 3.5.8-r0). See https://x for details.",
+            container_image="python:3.11-slim",
+            container_image_locations=["Dockerfile:1"],
+        )
+    ]
+    text = _component_remediation_text(["libssl3@3.5.6-r0"], findings, {}, None)
+    assert "python:3.11-slim" in text
+    assert "Dockerfile:1" in text
+    assert "3.5.8-r0" in text
+
+
+def test_component_remediation_caps_displayed_locations_at_three() -> None:
+    findings = [
+        _finding(
+            "grype-CVE-2024-1",
+            remediation="Upgrade libssl3 to a version outside the affected range "
+            "(fix available: 3.5.8-r0). See https://x for details.",
+            container_image="python:3.11-slim",
+            container_image_locations=[
+                "src/a/Dockerfile:1", "src/b/Dockerfile:1",
+                "src/c/Dockerfile:1", "src/d/Dockerfile:1", "src/e/Dockerfile:1",
+            ],
+        )
+    ]
+    text = _component_remediation_text(["libssl3@3.5.6-r0"], findings, {}, None)
+    assert "src/a/Dockerfile:1" in text
+    assert "src/b/Dockerfile:1" in text
+    assert "src/c/Dockerfile:1" in text
+    assert "src/d/Dockerfile:1" not in text
+    assert "+2 more" in text
+
+
+def test_component_remediation_names_image_without_location_when_unresolved() -> None:
+    findings = [
+        _finding(
+            "grype-CVE-2024-1",
+            remediation="Upgrade curl to a version outside the affected range "
+            "(fix available: 8.9.0). See https://x for details.",
+            container_image="curl:8.5.0-r0",
+            container_image_locations=[],
+        )
+    ]
+    text = _component_remediation_text(["curl@8.5.0-r0"], findings, {}, None)
+    assert "curl:8.5.0-r0" in text
+    assert "declared in" not in text

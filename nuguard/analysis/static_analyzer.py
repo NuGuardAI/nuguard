@@ -117,6 +117,8 @@ def _raw_to_finding(raw: dict[str, Any], source: str) -> Finding:
         owasp_asi_ref=owasp_asi_ref,
         mitre_atlas_technique=mitre_atlas,
         evidence=raw.get("evidence"),
+        container_image=raw.get("container_image"),
+        container_image_locations=list(raw.get("container_image_locations") or []),
     )
 
 

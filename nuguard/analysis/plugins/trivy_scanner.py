@@ -84,7 +84,8 @@ class TrivyScannerPlugin(AnalysisPlugin):
                 message="trivy not installed — scan skipped",
             )
 
-        image_refs = _collect_image_refs(sbom)
+        locations_by_ref = _collect_image_locations(sbom)
+        image_refs = set(locations_by_ref)
         fs_paths   = _collect_fs_paths(sbom, config)
 
         timeout = float(config.get("trivy_timeout", 120.0))
@@ -106,7 +107,9 @@ class TrivyScannerPlugin(AnalysisPlugin):
         else:
             for ref in sorted(image_refs):
                 _log.info("trivy: scanning image %s", ref)
-                all_findings.extend(_run_trivy(binary, ref, "image", timeout))
+                all_findings.extend(
+                    _run_trivy(binary, ref, "image", timeout, locations_by_ref[ref])
+                )
 
             for path in sorted(fs_paths):
                 _log.info("trivy: scanning path %s", path)
@@ -141,23 +144,15 @@ class TrivyScannerPlugin(AnalysisPlugin):
         )
 
 
-def _collect_image_refs(sbom: dict[str, Any]) -> set[str]:
-    """Collect container image references from SBOM CONTAINER_IMAGE nodes."""
-    refs: set[str] = set()
-    for node in sbom.get("nodes") or []:
-        if (node.get("component_type") or "").upper() != "CONTAINER_IMAGE":
-            continue
-        meta = node.get("metadata") or {}
-        extras = meta.get("extras") or {}
-        ref = meta.get("base_image") or extras.get("base_image")
-        if not ref:
-            name = meta.get("image_name") or extras.get("image_name") or ""
-            tag  = meta.get("image_tag") or extras.get("image_tag") or "latest"
-            if name:
-                ref = f"{name}:{tag}"
-        if ref:
-            refs.add(str(ref))
-    return refs
+def _collect_image_locations(sbom: dict[str, Any]) -> dict[str, list[str]]:
+    """Map each SBOM CONTAINER_IMAGE node's image ref to its Dockerfile location(s)."""
+    from nuguard.analysis.container_images import resolve_container_images  # noqa: PLC0415
+
+    container_nodes = [
+        n for n in (sbom.get("nodes") or [])
+        if (n.get("component_type") or "").upper() == "CONTAINER_IMAGE"
+    ]
+    return resolve_container_images(container_nodes)
 
 
 def _collect_fs_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:
@@ -256,6 +251,7 @@ def _run_trivy(
     target: str,
     scan_type: str,
     timeout: float,
+    image_locations: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Run ``trivy <scan_type> --format json <target>`` and parse output."""
     cmd = [
@@ -295,11 +291,20 @@ def _run_trivy(
         _log.warning("trivy output parse error for %s: %s", target, exc)
         return []
 
-    return _parse_trivy_output(data, target)
+    return _parse_trivy_output(data, target, image_locations=image_locations)
 
 
-def _parse_trivy_output(data: dict[str, Any], scan_target: str) -> list[dict[str, Any]]:
-    """Parse Trivy JSON output into nuguard finding dicts."""
+def _parse_trivy_output(
+    data: dict[str, Any],
+    scan_target: str,
+    image_locations: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Parse Trivy JSON output into nuguard finding dicts.
+
+    *image_locations* is set only for container-image scans (not fs/sbom
+    scans) — the Dockerfile path(s) where ``scan_target`` (the image ref) is
+    declared, when that evidence exists (see ``container_images.py``).
+    """
     findings: list[dict[str, Any]] = []
 
     for result in (data.get("Results") or []):
@@ -318,7 +323,7 @@ def _parse_trivy_output(data: dict[str, Any], scan_target: str) -> list[dict[str
             desc = vuln.get("Description") or vuln.get("Title") or vuln_id
             if fixed:
                 desc += f"  Fixed in: {fixed}."
-            findings.append({
+            finding = {
                 "rule_id":          vuln_id,
                 "title":            vuln.get("Title") or vuln_id,
                 "description":      desc,
@@ -337,7 +342,11 @@ def _parse_trivy_output(data: dict[str, Any], scan_target: str) -> list[dict[str
                     + (f" (fix available: {fixed})" if fixed else "")
                     + f". See {vuln.get('PrimaryURL') or 'https://trivy.dev'} for details."
                 ),
-            })
+            }
+            if image_locations is not None:
+                finding["container_image"] = scan_target
+                finding["container_image_locations"] = image_locations
+            findings.append(finding)
 
         # Misconfigurations
         for misco in (result.get("Misconfigurations") or []):

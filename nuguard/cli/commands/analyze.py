@@ -656,13 +656,46 @@ def _component_remediation_text(
 
     is_are, pkg_noun = ("is", "an OS-level package") if len(names) == 1 else ("are", "OS-level packages")
     upgrade_cmd = " ".join(names)
+    image_note = _image_location_note(findings)
+    image_phrase = (
+        f"in the container image {image_note}" if image_note
+        else "baked into the container image (not declared in a project manifest)"
+    )
     return (
-        f"{names_str} {is_are} {pkg_noun} baked into the container "
-        f"image (not declared in a project manifest) — rebuild the image after "
+        f"{names_str} {is_are} {pkg_noun} {image_phrase} — rebuild the image after "
         f"upgrading to `{best}` or newer, e.g. `apk upgrade {upgrade_cmd}` / "
         f"`apt-get install --only-upgrade {upgrade_cmd}` in the Dockerfile, or bump "
         f"the base image tag once a patched image is published.{candidates_note}"
     )
+
+
+def _image_location_note(findings: list[Finding]) -> str:
+    """Describe the container image(s) + Dockerfile location(s) a group of
+    OS-package findings came from, e.g. '`python:3.11-slim` (declared in
+    `src/api/Dockerfile:1`, `src/worker/Dockerfile:1` +3 more)'.
+
+    Returns "" when none of the findings carry image data (grype/trivy only
+    populate this for container-image scans, and only when the SBOM has
+    Dockerfile evidence for that image).
+    """
+    images: dict[str, list[str]] = {}
+    for f in findings:
+        if not f.container_image:
+            continue
+        locs = images.setdefault(f.container_image, [])
+        for loc in f.container_image_locations:
+            if loc not in locs:
+                locs.append(loc)
+
+    parts: list[str] = []
+    for image, locs in images.items():
+        if locs:
+            shown = ", ".join(f"`{loc}`" for loc in locs[:3])
+            more = f" +{len(locs) - 3} more" if len(locs) > 3 else ""
+            parts.append(f"`{image}` (declared in {shown}{more})")
+        else:
+            parts.append(f"`{image}`")
+    return ", ".join(parts)
 
 
 def _framework_mapping_text(

@@ -2263,7 +2263,7 @@ def _grype_to_finding(grype: dict[str, Any]) -> dict[str, Any]:
         else _extract_fixed_version(affected_versions)
     )
     fixed_note = f"  Fixed in: {fixed_version}." if fixed_version else ""
-    return {
+    result = {
         "rule_id": adv_id,
         "severity": grype.get("severity", "UNKNOWN"),
         "title": title,
@@ -2284,6 +2284,10 @@ def _grype_to_finding(grype: dict[str, Any]) -> dict[str, Any]:
         "cve_ids": cve_ids,
         "fixed_version": fixed_version,
     }
+    if grype.get("image_ref"):
+        result["container_image"] = grype["image_ref"]
+        result["container_image_locations"] = grype.get("image_locations") or []
+    return result
 
 
 # ── Infrastructure rule N/A detection ────────────────────────────────────────

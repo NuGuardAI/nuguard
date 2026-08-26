@@ -120,8 +120,17 @@ def _run_grype(
     return []  # unreachable but satisfies type checker
 
 
-def _match_to_finding(match: dict[str, Any], scan_target: str) -> dict[str, Any]:
-    """Convert a single Grype match dict to the standard nuguard finding shape."""
+def _match_to_finding(
+    match: dict[str, Any],
+    scan_target: str,
+    image_locations: list[str] | None = None,
+) -> dict[str, Any]:
+    """Convert a single Grype match dict to the standard nuguard finding shape.
+
+    *image_locations* is set only for container-image scans (not the SBOM
+    dependency scan) — the Dockerfile path(s) where ``scan_target`` (the image
+    ref) is declared, when that evidence exists (see ``container_images.py``).
+    """
     vuln     = match.get("vulnerability") or {}
     artifact = match.get("artifact") or {}
 
@@ -158,7 +167,7 @@ def _match_to_finding(match: dict[str, Any], scan_target: str) -> dict[str, Any]
         None,
     ) or advisory_id
 
-    return {
+    result = {
         "dep_name":         dep_name,
         "dep_version":      dep_version,
         "purl":             purl,
@@ -171,6 +180,10 @@ def _match_to_finding(match: dict[str, Any], scan_target: str) -> dict[str, Any]
         "source":           "grype",
         "scan_target":      scan_target,
     }
+    if image_locations is not None:
+        result["image_ref"] = scan_target
+        result["image_locations"] = image_locations
+    return result
 
 
 def query_grype_sbom(
@@ -233,34 +246,14 @@ def query_grype_images(
     if _grype_path() is None:
         return []
 
-    image_refs: set[str] = set()
-    for node in container_nodes:
-        meta = node.get("metadata") or {}
-        ref  = (
-            meta.get("base_image")
-            or meta.get("extras", {}).get("base_image")
-        )
-        if not ref:
-            name = (
-                meta.get("image_name")
-                or meta.get("extras", {}).get("image_name")
-                or ""
-            )
-            tag = (
-                meta.get("image_tag")
-                or meta.get("extras", {}).get("image_tag")
-                or "latest"
-            )
-            if name:
-                ref = f"{name}:{tag}"
-        if ref:
-            image_refs.add(ref)
+    from nuguard.analysis.container_images import resolve_container_images  # noqa: PLC0415
+    locations_by_ref = resolve_container_images(container_nodes)
 
-    if not image_refs:
+    if not locations_by_ref:
         _log.debug("grype: no CONTAINER_IMAGE refs found in SBOM nodes")
         return []
 
-    sorted_refs = sorted(image_refs)
+    sorted_refs = sorted(locations_by_ref)
     all_findings: list[dict[str, Any]] = []
     # Each image scan is an independent, blocking `grype <ref>` subprocess —
     # run them concurrently instead of one at a time.
@@ -272,8 +265,9 @@ def query_grype_images(
         for future in as_completed(future_to_ref):
             ref = future_to_ref[future]
             matches = future.result()
-            all_findings.extend(_match_to_finding(m, ref) for m in matches)
+            locations = locations_by_ref[ref]
+            all_findings.extend(_match_to_finding(m, ref, locations) for m in matches)
 
     _log.info("grype image scan(s): %d total finding(s) across %d image(s)",
-              len(all_findings), len(image_refs))
+              len(all_findings), len(locations_by_ref))
     return all_findings
