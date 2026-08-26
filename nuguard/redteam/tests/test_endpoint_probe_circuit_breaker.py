@@ -46,12 +46,18 @@ from nuguard.sbom.models import AiSbomDocument
 
 class _MixedClient:
     """Fake TargetAppClient: chat ``send()`` always succeeds; ``invoke_endpoint()``
-    always fails with a connection-level error, mirroring the real client's
-    separate consecutive-error counters and ``TargetUnavailableError`` sources.
+    fails (or recovers, see ``recover_after``) with a connection-level error,
+    mirroring the real client's separate consecutive-error counters and
+    ``TargetUnavailableError`` sources.
+
+    ``recover_after``: number of consecutive probe failures before the probe
+    starts succeeding (simulating a target that blips and recovers).  ``None``
+    (default) means the endpoint stays broken forever.
     """
 
-    def __init__(self, threshold: int = 3) -> None:
+    def __init__(self, threshold: int = 3, recover_after: int | None = None) -> None:
         self.threshold = threshold
+        self.recover_after = recover_after
         self._consecutive_errors = 0
         self._consecutive_endpoint_errors = 0
         self.reset_count = 0
@@ -85,6 +91,12 @@ class _MixedClient:
         strip_auth: bool = False,
     ) -> tuple[int, str, dict]:
         self.endpoint_probes += 1
+        if self.recover_after is not None and self.endpoint_probes > self.recover_after:
+            # Outside the failure window — the endpoint recovered: every probe
+            # succeeds and (mirroring _record_endpoint_success) resets the
+            # consecutive-error counter.
+            self._consecutive_endpoint_errors = 0
+            return 200, '{"ok": true}', {"ok": True}
         self._consecutive_endpoint_errors += 1
         if self._consecutive_endpoint_errors >= self.threshold:
             raise TargetUnavailableError(
@@ -203,30 +215,46 @@ async def test_direct_http_failures_do_not_block_chat_scenarios() -> None:
 
     # The general (chat) circuit breaker was never tripped.
     assert orch._circuit_open is False
-    # The endpoint-probe breaker was tripped and latched for future passes.
-    assert orch._endpoint_circuit_open is True
     assert len(executed) == len(scenarios)
     assert not findings
 
 
 @pytest.mark.asyncio
-async def test_endpoint_circuit_latches_across_passes_without_blocking_chat() -> None:
-    """A second _run_scenarios pass (e.g. the escalation pass) skips remaining
-    direct-HTTP-only scenarios immediately once the endpoint breaker is latched,
-    but still executes chat-routed scenarios normally."""
+async def test_endpoint_circuit_rearms_across_passes_without_blocking_chat() -> None:
+    """A second _run_scenarios pass (e.g. the escalation pass) RE-ARMS the
+    isolated endpoint breaker, but still executes chat-routed scenarios
+    normally.
+
+    Regression: the endpoint-probe breaker used to latch ``_endpoint_circuit_open``
+    across passes, so after a direct-HTTP probe blip tripped it in the main
+    pass, the escalation pass skipped every direct-HTTP-only scenario up front
+    (``chain_status="target_unreachable"`` with zero probe requests) even
+    after the endpoint recovered.  With the fix, the breaker is scoped to the
+    pass that tripped it: a fresh counter + abort event per ``_run_scenarios``
+    call, mirroring the chat breaker's per-pass ``consecutive_unavailable``
+    counter.  Chat-routed scenarios are unaffected either way.
+    """
     orch = _tiny_orchestrator()
-    # threshold=1: every invoke_endpoint() call raises immediately, so 3
-    # direct-HTTP scenarios in the first pass suffice to reach the
-    # orchestrator's own 3-strike endpoint-probe threshold within one pass.
-    client = _MixedClient(threshold=1)
+    # The endpoint blips and recovers after 5 failed probes: the main pass
+    # (5 direct-HTTP scenarios) lives entirely inside the failure window, and
+    # the escalation pass's first probe (the 6th) succeeds again.
+    client = _MixedClient(threshold=3, recover_after=5)
     executor = AttackExecutor(client=cast(Any, client))
 
-    # First pass trips the endpoint breaker.
-    first_pass = [_scenario(_direct_http_chain(f"d{i}")) for i in range(1, 4)]
+    # First pass trips the endpoint breaker: d1-d2 below threshold (aborted),
+    # d3 raises (target_unreachable), d4-d5 skipped for the rest of the pass.
+    first_pass = [_scenario(_direct_http_chain(f"d{i}")) for i in range(1, 6)]
     await orch._run_scenarios(first_pass, executor, None)
-    assert orch._endpoint_circuit_open is True
 
-    probes_before = client.endpoint_probes
+    probes_after_pass1 = client.endpoint_probes
+    # At least the 3 trip probes were attempted; a not-yet-dispatched scenario
+    # can race through the semaphore mid-trip and probe once more, so only the
+    # minimum is bounded.
+    assert probes_after_pass1 >= 3, probes_after_pass1
+
+    # Second pass: the endpoint breaker re-arms — the direct-HTTP scenario is
+    # probed again (not short-circuited by a stale cross-pass latch) and still
+    # fails normally below threshold, so the chain completes.
     second_pass = [
         _scenario(_direct_http_chain("d-esc")),
         _scenario(_chat_chain("c-esc")),
@@ -234,7 +262,7 @@ async def test_endpoint_circuit_latches_across_passes_without_blocking_chat() ->
     _findings, _executed, records = await orch._run_scenarios(second_pass, executor, None)
 
     by_title = {r.title: r for r in records}
-    assert by_title["scenario d-esc"].chain_status == "target_unreachable"
+    assert by_title["scenario d-esc"].chain_status == "completed"
     assert by_title["scenario c-esc"].chain_status == "completed"
-    # The direct-HTTP scenario in the second pass never sent a single probe.
-    assert client.endpoint_probes == probes_before
+    # The second pass actually probed the endpoint again.
+    assert client.endpoint_probes == probes_after_pass1 + 1
