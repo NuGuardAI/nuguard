@@ -1,6 +1,6 @@
 # Red-Team Scenario Catalog
 
-Reference for the attack vectors NuGuard's red-team engine can generate. See [red-teaming-guide.md](red-teaming-guide.md) for how to configure a scan and [redteam-design.md](redteam-design.md) for the engine's internal architecture.
+Reference for the attack vectors NuGuard's red-team engine can generate. See [redteam-guide.md](redteam-guide.md) for how to configure a scan and [redteam-design.md](redteam-design.md) for the engine's internal architecture.
 
 The built-in catalog ships **125 scenario specs** across **18 attack categories**. Each spec is SBOM-grounded: the `ScenarioGenerator` only instantiates a scenario against components that actually exist in the scanned application (e.g. an `R`-category RAG attack is only built if the SBOM has a vector store / retrieval component), and only if the SBOM exposes the `required_capabilities` that scenario needs.
 
@@ -11,7 +11,7 @@ The built-in catalog ships **125 scenario specs** across **18 attack categories*
 Every catalog entry carries:
 
 - **`goal_type`** — one of 9 high-level attack goals (see [GoalType taxonomy](#goaltype-taxonomy)). This is what `redteam.scenarios` / `--scenarios` filters on.
-- **`base_impact`** (0–10) — a pre-score used by `redteam.profile` / `--profile` to decide whether the scenario is worth running (see [Profile filtering](red-teaming-guide.md#redteam-profile-ci-vs-full)).
+- **`base_impact`** (0–10) — a pre-score used by `redteam.profile` / `--profile` to decide whether the scenario is worth running (see [Profile filtering](redteam-guide.md#redteam-profile-ci-vs-full)).
 - **`required_capabilities`** — SBOM signals (e.g. `rag`, `multi_session`, `sensitive_context`) that must be present for the scenario to apply.
 - **`safe_execution`** — the containment strategy used so the attack can run against a real target without causing real-world harm (see [Safe execution modes](#safe-execution-modes)).
 - **`priority_rules`** — tie-breakers used when trimming the plan to `max_scenarios` or a profile budget.

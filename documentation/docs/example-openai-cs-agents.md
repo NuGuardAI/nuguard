@@ -489,5 +489,5 @@ The behavior scan and the red-team scan answer different questions: behavior tel
 - [Policy Engine Guide](./policy-engine-guide.md)
 - [Behavior Guide](./behavior-guide.md)
 - [Behavior Scenario Catalog](./behavior-scenario-catalog.md)
-- [Red-Teaming Guide](./red-teaming-guide.md)
+- [Red-Team Guide](./redteam-guide.md)
 - [Red-Team Scenario Catalog](./redteam-scenario-catalog.md)

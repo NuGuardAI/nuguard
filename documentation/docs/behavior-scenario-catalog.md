@@ -1,6 +1,6 @@
 # Behavior Scenario Catalog
 
-Reference for how `nuguard behavior` builds its test plan and scores responses. See [behavior-guide.md](behavior-guide.md) for how to configure a run and [red-teaming-guide.md](red-teaming-guide.md) / [redteam-scenario-catalog.md](redteam-scenario-catalog.md) for the adversarial counterpart — behavior testing is deliberately **non-adversarial**; boundary-bypass and jailbreak attempts are redteam's domain.
+Reference for how `nuguard behavior` builds its test plan and scores responses. See [behavior-guide.md](behavior-guide.md) for how to configure a run and [redteam-guide.md](redteam-guide.md) / [redteam-scenario-catalog.md](redteam-scenario-catalog.md) for the adversarial counterpart — behavior testing is deliberately **non-adversarial**; boundary-bypass and jailbreak attempts are redteam's domain.
 
 Behavior testing runs two independent passes:
 
@@ -78,5 +78,5 @@ Fast-path regex checks (`_fast_verdict`) skip the LLM judge call entirely for ob
 ## Related docs
 
 - [Behavior Guide](behavior-guide.md) — configuration (target, auth, workflows) and quick start
-- [Red-Teaming Guide](red-teaming-guide.md) / [Red-Team Scenario Catalog](redteam-scenario-catalog.md) — the adversarial counterpart
+- [Red-Team Guide](redteam-guide.md) / [Red-Team Scenario Catalog](redteam-scenario-catalog.md) — the adversarial counterpart
 - [Example: OpenAI CS Agents Demo](example-openai-cs-agents.md) — a full worked run of both engines

@@ -38,7 +38,7 @@ target:
 
 ### Auth
 
-`target.auth` is inherited from the shared block (see [Auth in the red-teaming guide](red-teaming-guide.md#auth) for the full `type` table: `bearer`, `api_key`, `basic`, `login_flow`, `none`). The demo app runs locally with no auth in front of it:
+`target.auth` is inherited from the shared block (see [Auth in the redteam guide](redteam-guide.md#auth) for the full `type` table: `bearer`, `api_key`, `basic`, `login_flow`, `none`). The demo app runs locally with no auth in front of it:
 
 ```yaml
 target:

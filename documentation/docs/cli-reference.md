@@ -529,7 +529,7 @@ nuguard behavior --mode static+dynamic --fail-on critical --compare-to ./last-ru
 
 Dynamic adversarial testing against a live AI application. Reads the AI-SBOM to derive an attack surface, generates and executes scenarios, and produces structured findings with OWASP/MITRE mappings.
 
-See [red-teaming-guide.md](./red-teaming-guide.md) for a complete description of how the engine works.
+See [redteam-guide.md](./redteam-guide.md) for a complete description of how the engine works.
 
 ### Subcommands
 
@@ -617,7 +617,7 @@ Common edits after exporting:
 - Lower `base_impact` below the profile threshold (e.g. `< 5.0` for `--profile ci`) to exclude it from fast scans without disabling it globally.
 - Edit `expected_control` or `success_signal` to match your application's specific behavior.
 
-See [Customizing the Catalog](./red-teaming-guide.md#customizing-the-catalog) in the red-teaming guide for a full walkthrough.
+See [Customizing the Catalog](./redteam-guide.md#customizing-the-catalog) in the redteam guide for a full walkthrough.
 
 > 🎯 **Target URL resolution order:** `--target` flag → `redteam.target` in `nuguard.yaml` → SBOM-discovered URLs (local → staging → production) → error.
 
