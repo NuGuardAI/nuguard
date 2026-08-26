@@ -143,13 +143,22 @@ def _match_to_finding(match: dict[str, Any], scan_target: str) -> dict[str, Any]
     adv_url = (vuln.get("dataSource") or
                f"https://osv.dev/vulnerability/{advisory_id}")
 
+    # grype's top-level vulnerability.description is frequently null; the
+    # richer NVD/vendor text usually lives on a relatedVulnerabilities entry
+    # instead (matched by GHSA/OSV data sources during vuln matching).
+    description = vuln.get("description") or next(
+        (rv.get("description") for rv in (match.get("relatedVulnerabilities") or [])
+         if rv.get("description")),
+        None,
+    ) or advisory_id
+
     return {
         "dep_name":         dep_name,
         "dep_version":      dep_version,
         "purl":             purl,
         "advisory_id":      advisory_id,
         "cve_ids":          cve_ids,
-        "summary":          vuln.get("description", advisory_id),
+        "summary":          description,
         "severity":         severity,
         "affected_versions": affected,
         "url":              adv_url,
