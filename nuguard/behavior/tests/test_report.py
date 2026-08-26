@@ -427,6 +427,64 @@ def test_to_markdown_uses_llm_authored_deviation_remediation_over_template():
     assert "Review the agent's system prompt and tool configuration" not in md
 
 
+def test_to_markdown_gap_summary_renders_remediation_and_fallback():
+    result = _make_result(
+        dynamic_findings=[
+            {
+                "finding_id": "G-1",
+                "severity": "medium",
+                "title": "Capability Gap: faq_retriever",
+                "description": "desc",
+                "finding_type": "CAPABILITY_GAP",
+                "affected_component": "faq_retriever",
+                "occurrence_count": 3,
+                "remediation": "Add a wheelchair-assistance entry to the FAQ knowledge base.",
+            },
+            {
+                "finding_id": "G-2",
+                "severity": "medium",
+                "title": "Intent Misalignment: doc_agent",
+                "description": "desc",
+                "finding_type": "INTENT_MISALIGNMENT",
+                "affected_component": "doc_agent",
+                "occurrence_count": 2,
+            },
+        ],
+        gap_aggregation_stats={
+            "raw_gap_observations": 5,
+            "unique_gap_observations": 4,
+            "min_occurrences_threshold": 1,
+        },
+    )
+    md = to_markdown(result)
+    assert "## Behavioral Gap Summary" in md
+    assert "| Component | Occurrences | Sample Gaps | Remediation |" in md
+    # Explicit remediation is rendered verbatim.
+    assert "Add a wheelchair-assistance entry to the FAQ knowledge base." in md
+    # Missing remediation falls back to the per-type guidance template.
+    assert "Align doc_agent system prompt with application's stated purpose" in md
+
+
+def test_to_markdown_gap_summary_empty_remediation_falls_back():
+    result = _make_result(
+        dynamic_findings=[
+            {
+                "finding_id": "G-3",
+                "severity": "medium",
+                "title": "Tool Chain Broken: scraper",
+                "description": "desc",
+                "finding_type": "TOOL_CHAIN_BROKEN",
+                "affected_component": "scraper",
+                "occurrence_count": 1,
+                "remediation": "",
+            }
+        ],
+        gap_aggregation_stats={"min_occurrences_threshold": 1},
+    )
+    md = to_markdown(result)
+    assert "Repair broken tool invocation chain in scraper" in md
+
+
 def test_to_markdown_covered_components_tagged_matched_unmatched():
     verdicts = [
         {

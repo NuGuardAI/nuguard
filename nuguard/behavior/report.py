@@ -34,6 +34,38 @@ _MAX_DIAG_SNIPPET_CHARS = 800
 # excluded from the Dynamic Analysis Findings section.
 _GAP_FINDING_TYPES = frozenset({"CAPABILITY_GAP", "INTENT_MISALIGNMENT", "TOOL_CHAIN_BROKEN"})
 
+# Per-type fallback remediation used when a promoted gap finding carries no
+# remediation text (e.g. gap aggregation records predate remediation backfill).
+_GAP_FALLBACK_REMEDIATION = {
+    "CAPABILITY_GAP": "Verify {component} is correctly wired and returns expected output",
+    "INTENT_MISALIGNMENT": "Align {component} system prompt with application's stated purpose",
+    "TOOL_CHAIN_BROKEN": "Repair broken tool invocation chain in {component}",
+}
+
+
+def _gap_remediation_text(finding: dict[str, Any]) -> str:
+    """Return the remediation text for a promoted gap finding.
+
+    Prefers an explicit ``remediation`` value; falls back to the per-type
+    guidance template keyed off the finding type when it is missing.
+
+    Args:
+        finding: A gap-aggregated dynamic finding.
+
+    Returns:
+        Remediation text, or an empty string when neither the finding nor the
+        type template provides one.
+    """
+    remediation = (finding.get("remediation") or "").strip()
+    if remediation:
+        return remediation
+    ftype = finding.get("finding_type", "")
+    template = _GAP_FALLBACK_REMEDIATION.get(ftype, "")
+    if not template:
+        return ""
+    comp = finding.get("affected_component", "unknown")
+    return template.format(component=comp)
+
 
 def to_json(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) -> str:
     """Generate JSON report string.
@@ -675,15 +707,16 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             label = ftype.replace("_", " ").title()
             lines.append(f"### {label}")
             lines.append("")
-            lines.append("| Component | Occurrences | Sample Gaps |")
-            lines.append("|---|---|---|")
+            lines.append("| Component | Occurrences | Sample Gaps | Remediation |")
+            lines.append("|---|---|---|---|")
             for gf in type_findings:
                 comp = gf.get("affected_component", "unknown")
                 fid = gf.get("finding_id", "")
                 count = gf.get("occurrence_count", 1)
                 sample = "; ".join(str(g)[:120] for g in (gf.get("gap_texts") or [gf.get("description", "")])[:3])
+                remediation = _gap_remediation_text(gf)
                 comp_display = f"{comp} ({fid})" if fid else comp
-                lines.append(f"| {comp_display} | {count} | {sample} |")
+                lines.append(f"| {comp_display} | {count} | {sample} | {remediation} |")
             lines.append("")
 
     # Dynamic Analysis Findings (policy violations, canary hits — not gap aggregates)
