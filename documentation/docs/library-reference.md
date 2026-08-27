@@ -259,6 +259,27 @@ Module: `nuguard.common.target_verify_public_api`
 
 These APIs handle endpoint selection (config/SBOM/probe/default), auth bootstrapping, and target health checks before scans.
 
+For targets that obtain a token through a login request, set `auth_type="login_flow"` and pass the nested `LoginFlowConfig` model. Its `endpoint`, `payload`, `token_response_key`, `token_header`, and `refresh_on_401` fields configure the complete login flow. No-login callers can omit both fields; `auth_type` defaults to `"none"`.
+
+```python
+from nuguard.common.auth import LoginFlowConfig
+from nuguard.common.target_verify_public_api import TargetVerifyRequest, verify_target
+
+request = TargetVerifyRequest(
+    target_url="https://example-app",
+    chat_path="/chat",
+    auth_type="login_flow",
+    login_flow=LoginFlowConfig(
+        endpoint="/api/auth/login",
+        payload={"username": "${APP_USERNAME}", "password": "${APP_PASSWORD}"},
+        token_response_key="access_token",
+        token_header="Authorization: Bearer",
+        refresh_on_401=True,
+    ),
+)
+result = await verify_target(request)
+```
+
 ## Output report/export APIs
 
 Module: `nuguard.output.public_api`

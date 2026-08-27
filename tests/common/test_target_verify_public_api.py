@@ -3,11 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
+from pydantic import ValidationError
 
+from nuguard.common.auth import AuthConfig, LoginFlowConfig
 from nuguard.common.discovery import DiscoveredProfile, DiscoveryOutcome
 from nuguard.common.target_verify_public_api import (
     TargetSessionResolveRequest,
     TargetVerifyRequest,
+    _build_auth_config,
     resolve_target_session_public,
     verify_target,
 )
@@ -26,6 +29,109 @@ class _FakeAuthSession:
 @dataclass
 class _FakeBootstrapper:
     session: _FakeAuthSession
+
+
+@pytest.mark.parametrize(
+    "request_type",
+    [TargetVerifyRequest, TargetSessionResolveRequest],
+)
+def test_public_target_requests_build_login_flow_auth_config(request_type) -> None:
+    login_flow = LoginFlowConfig(
+        endpoint="/api/auth/login",
+        payload={"email": "alice@example.com", "password": "super-secret"},
+        token_response_key="data.access_token",
+        token_header="X-Session-Token",
+        refresh_on_401=False,
+    )
+
+    auth_config = _build_auth_config(
+        request_type(
+            target_url="http://target",
+            auth_type="login_flow",
+            login_flow=login_flow,
+        )
+    )
+
+    assert auth_config.type == "login_flow"
+    assert auth_config.login_flow == login_flow
+
+
+@pytest.mark.parametrize(
+    "request_type",
+    [TargetVerifyRequest, TargetSessionResolveRequest],
+)
+def test_public_target_requests_require_login_flow_config(request_type) -> None:
+    with pytest.raises(ValidationError, match="requires login_flow configuration"):
+        request_type(target_url="http://target", auth_type="login_flow")
+
+
+@pytest.mark.asyncio
+async def test_verify_target_passes_login_flow_to_auth_bootstrap(monkeypatch) -> None:
+    login_flow = LoginFlowConfig(
+        endpoint="/api/auth/login",
+        payload={"email": "alice@example.com", "password": "super-secret"},
+    )
+    captured_auth_configs = []
+
+    async def _fake_bootstrap_auth_runtime(**kwargs):
+        captured_auth_configs.append(kwargs["auth_config"])
+        report = TargetHealthReport(
+            target_url="http://target",
+            endpoint="/chat",
+            run_id="r-login-flow",
+            checks=[
+                CredentialCheckResult(
+                    identity="default",
+                    auth_type="login_flow",
+                    endpoint="http://target/chat",
+                    status="auth_failed",
+                    http_status_code=401,
+                )
+            ],
+        )
+        return _FakeBootstrapper(session=_FakeAuthSession()), report
+
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.bootstrap_auth_runtime", _fake_bootstrap_auth_runtime)
+
+    await verify_target(
+        TargetVerifyRequest(
+            target_url="http://target",
+            auth_type="login_flow",
+            login_flow=login_flow,
+        )
+    )
+
+    assert captured_auth_configs == [AuthConfig(type="login_flow", login_flow=login_flow)]
+
+
+@pytest.mark.asyncio
+async def test_resolve_target_session_passes_login_flow_to_auth_bootstrap(monkeypatch) -> None:
+    login_flow = LoginFlowConfig(endpoint="/api/auth/login", payload={"api_key": "super-secret"})
+    captured_auth_configs = []
+
+    async def _fake_bootstrap_auth_runtime(**kwargs):
+        captured_auth_configs.append(kwargs["auth_config"])
+        return (
+            _FakeBootstrapper(session=_FakeAuthSession()),
+            TargetHealthReport(
+                target_url="http://target",
+                endpoint="/chat",
+                run_id="r-login-flow",
+                checks=[],
+            ),
+        )
+
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.bootstrap_auth_runtime", _fake_bootstrap_auth_runtime)
+
+    await resolve_target_session_public(
+        TargetSessionResolveRequest(
+            target_url="http://target",
+            auth_type="login_flow",
+            login_flow=login_flow,
+        )
+    )
+
+    assert captured_auth_configs == [AuthConfig(type="login_flow", login_flow=login_flow)]
 
 
 @pytest.mark.asyncio
