@@ -236,7 +236,7 @@ need to inspect, and right now it's invisible.
     pre-existing generic hit still present for whatever didn't match the
     structural adapter's heuristics.
 
-### Phase 7 — Go agent/orchestration framework adapters (Python parity)
+### Phase 7 — Go agent/orchestration framework adapters (Python parity) — 13/14 done, 15/16 deferred
 Even after phases 1-6, Go's adapter roster stays far short of Python's 22
 and TypeScript's 14: Python has structural adapters for LangGraph,
 CrewAI, AutoGen, Agno, Azure AI Agents, Bedrock AgentCore, Google ADK,
@@ -248,29 +248,72 @@ investigation). This phase is about closing that parity gap for the Go
 frameworks that actually exist in that space, not inventing Go versions
 of Python-only frameworks.
 
-13. **Agent/orchestration frameworks** — the two real Go options as of
-    this writing:
-    - `cloudwego/eino` (ByteDance's Go LLM application framework —
-      graph-based orchestration, roughly LangGraph's Go analogue). Detect
-      graph/chain construction calls (`compose.NewChain(...)`,
-      `compose.NewGraph(...)`) → AGENT node, and node-registration calls
-      → TOOL nodes, mirroring `langgraph.py`'s node-graph shape.
-    - `firebase/genkit/go` (Google's Genkit Go SDK — flows, tools,
-      prompts as first-class constructs: `genkit.DefineFlow(...)`,
-      `genkit.DefineTool(...)`). `genkit.DefinePrompt(...)` should also
-      feed into phase 6's PROMPT detection rather than being a separate
-      code path.
-14. **MCP client adapter** — `mcp-go`'s client package
-    (`github.com/mark3labs/mcp-go/client`) mirrors Python's
-    `mcp_client.py`: detect `client.NewClient(...)`/`client.NewStdioMCPClient(...)`
-    construction and emit the client-side TOOL/AGENT-consumes-MCP-server
-    relationship, complementing the existing server-side
-    `MCPGoServerAdapter`.
-15. **Guardrails / validation** — no dominant Go equivalent of
+13. ✅ **Agent/orchestration frameworks** — the two real Go options as of
+    this writing. Neither is present in any locally ground-truth-validated
+    fixture (kscope doesn't use them), so call shapes were verified
+    against upstream source/docs via GitHub/pkg.go.dev before writing the
+    adapters, rather than guessed:
+    - `EinoAdapter` (`cloudwego/eino`, ByteDance's Go LLM application
+      framework — graph-based orchestration, roughly LangGraph's Go
+      analogue). `compose.NewChain[I, O](...)`/`compose.NewGraph[I, O](...)`
+      → AGENT node — the `[I, O]` generic type args are already stripped
+      by `go_parser._split_callee` before receiver/function-name
+      splitting, so no special handling was needed there.
+      `utils.NewTool[...](toolInfo, invokeFunc)` → TOOL node, reading
+      `Name`/`Desc` off the `toolInfo` argument — which resolves through
+      `go_parser`'s existing single-file symbol table whether the
+      `&schema.ToolInfo{...}` literal is inline or assigned to a variable
+      first (verified with a dedicated test); a `toolInfo` declared in a
+      *different* file doesn't resolve and is silently skipped, same as
+      every other unresolved-value case in the Go adapters.
+    - `GenkitGoAdapter` (`firebase/genkit/go`, Google's Genkit Go SDK).
+      `genkit.DefineFlow(g, "name", ...)` → AGENT node;
+      `genkit.DefineTool(g, "name", "desc", ...)` → TOOL node with the
+      description captured too. `genkit.DefinePrompt(g, "name",
+      ai.WithPrompt("..."), ...)` is **not** covered — the prompt text is
+      the argument to a *nested* call (`ai.WithPrompt(...)`), which
+      `go_parser._extract_value` has no case for (falls through to an
+      unresolvable `$...` catch-all) — not worth a dedicated nested-call
+      unwrap for a framework with no local ground truth yet.
+14. ✅ **MCP client adapter** (`MCPGoClientAdapter`,
+    `github.com/mark3labs/mcp-go/client`) — mirrors Python's
+    `mcp_client.py` closely: one document-scoped MCP_SERVER node (fixed
+    canonical name `mcp_client:servers`, identical to the Python
+    adapter's, so a mixed Python+Go app still merges into a single node)
+    plus one TOOL node per client-construction call site
+    (`NewStdioMCPClient`/`NewStdioMCPClientWithOptions`/`NewSSEMCPClient`/
+    `NewStreamableHttpClient`/`NewOAuthSSEClient`/
+    `NewOAuthStreamableHttpClient`/`NewClient`, verified against
+    `pkg.go.dev/github.com/mark3labs/mcp-go/client`'s full constructor
+    list), tagged `trust_level="untrusted"` and `mcp_server_url=...` (the
+    exact `NodeMetadata` fields
+    `redteam/scenarios/generator.py`'s `_mcp_toxic_flow_scenarios`/
+    `_mcp_attack_scenarios` filter on) — so this wires straight into
+    MCP-toxic-flow scenario generation with no redteam-side changes.
+    `NewInProcessClient`/`NewInProcessClientWithSamplingHandler` are
+    deliberately excluded: they wrap a local, developer-controlled
+    `*server.MCPServer` value, not a user-configured/untrusted endpoint,
+    so they don't fit this adapter's threat model (covered by a
+    dedicated negative test).
+
+    Complements the existing server-side `MCPGoServerAdapter` from
+    before this investigation (both can fire in the same file for a
+    proxy/gateway app that is simultaneously an MCP server and client).
+
+    **Tests**: `test_go_agent_framework_adapters.py`, 11 unit tests
+    covering eino (chain/graph construction, tool name/desc resolution,
+    unresolvable-info skip, no-import no-op), genkit-go (flow/tool
+    detection, no-import no-op), and the MCP client adapter (stdio,
+    SSE with URL resolution, in-process exclusion, no-import no-op). Full
+    `nuguard/sbom/` suite (1233 tests) + ruff + mypy all pass.
+    Re-ran `kscope-test.sh` against the real repo to confirm no
+    regression/crash — node counts identical to the phase-6 run, as
+    expected since kscope uses none of these three frameworks.
+15. ⏸ **Deferred** — **Guardrails / validation**: no dominant Go equivalent of
     `guardrails-ai` exists yet; track this one rather than build
     speculatively. If a real guardrails library shows up in a scanned
     repo, that's the trigger to add it, not before.
-16. **Function/tool schema detection** — Go doesn't have Python's
+16. ⏸ **Deferred** — **Function/tool schema detection**: Go doesn't have Python's
     duck-typed docstring-to-schema convention, but `langchaingo`'s
     `tools.Tool` interface (`Name()`, `Description()`, `Call(...)`
     methods) and eino's tool-definition structs are the Go analogues of

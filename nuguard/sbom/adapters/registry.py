@@ -45,6 +45,8 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         AnthropicSDKGoAdapter,
         ChiAdapter,
         EchoAdapter,
+        EinoAdapter,
+        GenkitGoAdapter,
         GinAdapter,
         GoDatastoreAdapter,
         GoJWTAdapter,
@@ -54,6 +56,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         GorillaMuxAdapter,
         GqlgenAdapter,
         LangChainGoAdapter,
+        MCPGoClientAdapter,
         MCPGoServerAdapter,
         NetHTTPAdapter,
     )
@@ -137,6 +140,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         AgentOrchestratorTSAdapter(),
         # Go adapters
         MCPGoServerAdapter(),
+        MCPGoClientAdapter(),
         GinAdapter(),
         EchoAdapter(),
         ChiAdapter(),
@@ -150,6 +154,8 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         GoDatastoreAdapter(),
         GoJWTAdapter(),
         GoOAuth2Adapter(),
+        EinoAdapter(),
+        GenkitGoAdapter(),
     ]
     return tuple(sorted(adapters, key=lambda a: (a.priority, canonicalize_text(a.name))))
 
