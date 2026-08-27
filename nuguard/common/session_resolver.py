@@ -13,14 +13,13 @@ endpoint discovery) and adds two new layers:
 
 2. **SBOM context hints** — ``API_ENDPOINT`` nodes that declare
    ``context_payload_fields`` in their metadata surface missing identity
-   fields as config notes, and auto-generate UUIDs for session fields.
+   fields as config notes, and omits session fields so the server creates real sessions.
 
 The result is a :class:`TargetSessionConfig` dataclass that callers can
 hand directly to :func:`~nuguard.common.target_client_builder.build_target_app_client`.
 """
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -193,10 +192,9 @@ def apply_sbom_context_hints(
       (full → strip domain → first name) and the first candidate is injected.  The
       full candidate list is stored under ``__<field>_candidates__`` so the caller
       can rotate to the next candidate if the first attempt produces an empty profile.
-    - **session** fields: a fresh UUID is generated for each run (the
-      :class:`~nuguard.redteam.target.client.TargetAppClient` already extracts
-      and forwards session IDs from responses on subsequent turns, so this only
-      seeds the first request).
+    - **session** fields: the field is omitted from the first request so the server
+      creates a real session. :class:`~nuguard.redteam.target.client.TargetAppClient`
+      extracts and forwards the returned session ID on subsequent turns.
 
     Returns ``(merged_extras, notes)``.
     """
@@ -237,11 +235,15 @@ def apply_sbom_context_hints(
                 )
 
         elif kind == "session":
-            generated = str(uuid.uuid4())
-            merged[field_name] = generated
+            # Don't inject a random UUID — omit the field and let the server create
+            # the session. TargetAppClient extracts and forwards the real session ID
+            # from response bodies on subsequent turns; a fake UUID would cause the
+            # agent to reject the session and return empty responses.
             notes.append(
-                f"auto-generated UUID for '{field_name}' (session field) — "
-                f"will be forwarded by TargetAppClient on subsequent turns"
+                f"Endpoint '{chat_path}' declares '{field_name}' (session field) — "
+                f"omitting from first request so the server creates a real session; "
+                f"TargetAppClient will inject the returned value on subsequent turns. "
+                f"Set chat_payload_extras.{field_name} explicitly to pre-seed a session ID."
             )
 
     return merged, notes
@@ -369,8 +371,9 @@ async def resolve_target_session(
     login_extras = bootstrapper.session.login_response_extras()
 
     # ── 5. SBOM context hints ─────────────────────────────────────────────────
+    _auth_username = getattr(effective_auth, "username", None) or None
     merged_extras, hint_notes = apply_sbom_context_hints(
-        sbom, chat_path, merged_extras, login_extras
+        sbom, chat_path, merged_extras, login_extras, auth_username=_auth_username
     )
     resolution_notes.extend(hint_notes)
 
@@ -393,19 +396,42 @@ async def resolve_target_session(
         if discovered_resp_key and not chat_response_key:
             chat_response_key = discovered_resp_key
 
-    # ── 7. Live probe (only when path still unknown) ──────────────────────────
+    # ── 7. Live probe ─────────────────────────────────────────────────────────
+    # Option A — path unknown: full discovery (path + key).
+    # Option B — path known but key is default: probe only the known path to
+    #            detect the key; keep the user's path unchanged.
+    _original_chat_path = chat_path
     if not chat_path:
+        # Option A: discover both path and key
         probe_result = await probe_chat_endpoints(
             target_url=target_url,
             sbom=sbom,
             auth_headers=effective_headers or None,
-            known_payload_key=chat_payload_key if chat_payload_key != "message" else None,
+            known_payload_key=None,
             known_payload_list=chat_payload_list,
             probe_payload_extras=_probe_extras or None,
         )
         if probe_result is not None:
             chat_path, chat_payload_key, chat_payload_list = probe_result
             _log.info("resolve_target_session: live probe selected endpoint %s", chat_path)
+    elif chat_payload_key == "message":
+        # Option B: path is known but key is still the default — detect key only
+        probe_result = await probe_chat_endpoints(
+            target_url=target_url,
+            sbom=sbom,
+            auth_headers=effective_headers or None,
+            known_payload_key=None,
+            known_payload_list=chat_payload_list,
+            probe_payload_extras=_probe_extras or None,
+            hint_path=chat_path,
+        )
+        if probe_result is not None:
+            _probe_path, chat_payload_key, chat_payload_list = probe_result
+            # Keep the user's path — only the key and list are updated
+            _log.info(
+                "resolve_target_session: key detection on %s found key=%r list=%s",
+                chat_path, chat_payload_key, chat_payload_list,
+            )
 
     # ── 8. Quality check ──────────────────────────────────────────────────────
     # The bootstrap already sent a probe; inspect its response for anonymous-session markers.
