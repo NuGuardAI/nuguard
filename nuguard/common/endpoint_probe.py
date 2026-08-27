@@ -462,7 +462,7 @@ async def _blind_probe(
                 _log.debug("endpoint_probe: %s — %d server error", path, status)
                 if server_error_fallback is None:
                     server_error_fallback = (path, pay_key, pay_list)
-                break  # try next path
+                continue  # try remaining shapes — correct key may still succeed
 
             if status < 300:
                 try:
