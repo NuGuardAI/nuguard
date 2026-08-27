@@ -42,11 +42,15 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
     """
     from .data_classification import DataClassificationPythonAdapter
     from .go import (
+        AnthropicSDKGoAdapter,
         ChiAdapter,
         EchoAdapter,
         GinAdapter,
+        GoogleGenAIAdapter,
+        GoOpenAIAdapter,
         GorillaMuxAdapter,
         GqlgenAdapter,
+        LangChainGoAdapter,
         MCPGoServerAdapter,
         NetHTTPAdapter,
     )
@@ -136,6 +140,10 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         NetHTTPAdapter(),
         GorillaMuxAdapter(),
         GqlgenAdapter(),
+        LangChainGoAdapter(),
+        GoOpenAIAdapter(),
+        AnthropicSDKGoAdapter(),
+        GoogleGenAIAdapter(),
     ]
     return tuple(sorted(adapters, key=lambda a: (a.priority, canonicalize_text(a.name))))
 

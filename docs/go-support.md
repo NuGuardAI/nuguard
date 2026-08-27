@@ -68,11 +68,30 @@ FRAMEWORK node is ever emitted, and endpoints are invisible to
    dispatch branch in `extractor/core.py`, analogous to the SQL/YAML/JSON
    branches).
 
-### Phase 3 — Go AI/LLM SDK adapters
-(Currently only generic regex catches model names.)
-5. Add adapters for `langchaingo`, `go-openai` (sashabaranov),
-   `anthropic-sdk-go`, `google/generative-ai-go` — proper MODEL/TOOL/PROMPT
-   nodes with construction-site evidence instead of bare string matches.
+### Phase 3 — Go AI/LLM SDK adapters ✅ done
+(Previously only generic regex caught model names, with no file/line
+evidence and no FRAMEWORK node.)
+5. ✅ Added adapters for `langchaingo`, `go-openai` (sashabaranov),
+   `anthropic-sdk-go`, `google/generative-ai-go` — FRAMEWORK + MODEL nodes
+   with construction-site (`ast_call`/`ast_instantiation`) evidence instead
+   of bare string matches:
+   - `google/generative-ai-go`: reads the model string straight from
+     `client.GenerativeModel("gemini-...")` calls.
+   - `go-openai` / `anthropic-sdk-go`: read the `Model` field off request
+     struct literals (`ChatCompletionRequest{Model: "..."}`,
+     `MessageNewParams{Model: "..."}`). SDK-provided constants
+     (`openai.GPT4`, `anthropic.ModelClaude3_5SonnetLatest`) are qualified
+     identifiers `go_parser` can't resolve to a literal, so those requests
+     still get the FRAMEWORK node but no MODEL node — acceptable, matches
+     how unresolved values are already treated elsewhere in the Go adapters.
+   - `langchaingo`: one FRAMEWORK-import gate covers all `llms/*` provider
+     subpackages, and a single `WithModel("...")` call-name scan covers
+     model selection across every provider without per-provider branching
+     (langchaingo's functional-options pattern is provider-agnostic here).
+   - TOOL/agent extraction for langchaingo (`tools.Tool` implementations,
+     `agents.Executor` construction) is out of scope — it needs
+     interface-implementation analysis `go_parser` doesn't do; noted as a
+     further follow-up alongside the gqlgen resolver-extraction gap.
 
 ### Phase 4 — datastore/auth structural detection
 6. Add a Go datastore adapter (`mongo-driver`, `database/sql` + driver
