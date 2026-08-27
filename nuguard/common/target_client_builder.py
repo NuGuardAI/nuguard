@@ -104,7 +104,9 @@ def _fallback_url_from_sbom(sbom: "AiSbomDocument | None") -> str | None:
 # ---------------------------------------------------------------------------
 
 _LOGIN_PATH_RE = re.compile(
-    r"/(login|auth|signin|sign-in|authenticate|token)(/|$)",
+    r"/(login|auth|signin|sign-in|authenticate|token"
+    r"|session|sessions|access[-_]?token|connect"
+    r"|credentials|api[-_]?key|user[-_]?login|users?/auth|users?/login)(/|$)",
     re.IGNORECASE,
 )
 _USERNAME_KEYS = frozenset(["username", "user", "email", "user_id", "login", "identifier"])
@@ -149,8 +151,6 @@ def _discover_login_endpoint(sbom: "AiSbomDocument") -> "tuple[str, str, str, st
         method = (meta.method or "POST").upper()
         if method != "POST":
             continue
-        if not _LOGIN_PATH_RE.search(path):
-            continue
 
         # Check that the request body has both a username-like and password-like field.
         schema: dict = {}
@@ -166,9 +166,16 @@ def _discover_login_endpoint(sbom: "AiSbomDocument") -> "tuple[str, str, str, st
         if not user_field or not pass_field:
             continue
 
+        # Path regex match → high confidence; schema-only match → lower confidence
+        path_matches = bool(_LOGIN_PATH_RE.search(path))
         score = node.confidence * 10
-        if any(tok in path.lower() for tok in ("/login", "/signin")):
-            score += 3
+        if path_matches:
+            if any(tok in path.lower() for tok in ("/login", "/signin")):
+                score += 3
+        else:
+            # Accept schema-only match (username+password fields) as a login endpoint
+            # with a confidence penalty so regex-matching candidates are preferred.
+            score -= 3
         if best is None or score > best[0]:
             # Recover the original casing from the schema for the payload key names.
             orig_schema: dict = {}
