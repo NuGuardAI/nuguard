@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import httpx
@@ -25,6 +26,31 @@ if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
+
+
+@dataclass
+class ProbeResult:
+    """Result of a successful chat endpoint probe.
+
+    Supports 3-value tuple unpacking (``path, key, is_list = result``) so
+    existing callers are unchanged.  Access ``.value_template`` explicitly
+    when you need the nested payload shape detected from OpenAPI schema.
+    """
+
+    path: str
+    key: str
+    is_list: bool
+    # Payload value template built from OpenAPI schema when the chat key expects
+    # a structured object (e.g. {"role": "user", "content": "..."}) rather than
+    # a plain string.  None means use a plain string (the default behaviour).
+    value_template: "dict[str, object] | None" = field(default=None, compare=False)
+
+    def __iter__(self):  # noqa: ANN204
+        # Yield only the 3 positional fields so ``a, b, c = result`` still works.
+        return iter((self.path, self.key, self.is_list))
+
+    def __len__(self) -> int:
+        return 3
 
 # Detects path-parameter placeholders — FastAPI/Express {id}, NestJS :id, or <id>.
 _HAS_PATH_PARAM_RE = re.compile(r"(:\w+|\{\w+\}|<\w+>)")
@@ -95,6 +121,16 @@ _RUNTIME_NON_CHAT_KEYS: frozenset[str] = frozenset({
 
 _CAMEL_CASE_RE = re.compile(r"(?<!^)(?=[A-Z])")
 
+# Sentinel placed in the value_template dict for the field that carries the
+# actual chat text.  Replaced at send-time regardless of the field name.
+_CHAT_TEXT_SENTINEL = "__nuguard_chat_text__"
+
+# String field names that most likely carry the chat message text, in priority
+# order.  The first match wins the sentinel in _build_object_template.
+_CONTENT_FIELD_NAMES: tuple[str, ...] = (
+    "content", "text", "message", "body", "input", "prompt", "query", "msg",
+)
+
 
 def _normalize_payload_key(key: str) -> str:
     """Normalize a payload key for comparison against _RUNTIME_NON_CHAT_KEYS.
@@ -117,12 +153,98 @@ def _resolve_openapi_ref(ref: str, schema: dict) -> dict:
     return obj if isinstance(obj, dict) else {}
 
 
-def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool] | None":
-    """Extract ``(path, payload_key, payload_list)`` from an OpenAPI/Swagger schema.
+def _build_object_template(
+    prop_schema: dict,
+    full_schema: dict,
+    depth: int = 0,
+) -> "dict[str, object] | None":
+    """Recursively build a template dict from an OpenAPI object property schema.
+
+    Returns ``None`` when the schema does not describe an object (i.e. it is a
+    plain string, integer, etc.) so callers can fall back to a bare string.
+
+    Required fields and known-content-name string fields are included with
+    sensible defaults.  The one field most likely to carry the chat message text
+    is replaced with ``_CHAT_TEXT_SENTINEL`` so the send path can substitute it
+    without knowing the field name in advance.
+    """
+    if depth > 2:  # guard against pathologically deep schemas
+        return None
+    resolved = prop_schema
+    if isinstance(resolved, dict) and "$ref" in resolved:
+        resolved = _resolve_openapi_ref(resolved["$ref"], full_schema)
+    if not isinstance(resolved, dict):
+        return None
+    # Only proceed for object schemas (explicit type or a properties block).
+    if resolved.get("type") not in ("object", None):
+        return None
+    props = resolved.get("properties") or {}
+    if not props:
+        return None
+
+    required: set[str] = set(resolved.get("required") or [])
+    template: dict[str, object] = {}
+    sentinel_placed = False
+
+    # First pass: place the sentinel on the best content-carrying field.
+    for candidate in _CONTENT_FIELD_NAMES:
+        if candidate not in props:
+            continue
+        fs = props[candidate]
+        if isinstance(fs, dict) and "$ref" in fs:
+            fs = _resolve_openapi_ref(fs["$ref"], full_schema)
+        ftype = fs.get("type") if isinstance(fs, dict) else None
+        # Accept string or untyped fields as the text carrier.
+        if ftype in ("string", None):
+            template[candidate] = _CHAT_TEXT_SENTINEL
+            sentinel_placed = True
+            break
+
+    if not sentinel_placed:
+        # No recognised content field — this schema probably isn't a message object.
+        return None
+
+    # Second pass: fill remaining required fields with type-appropriate defaults.
+    for field_name, field_schema in props.items():
+        if field_name in template:
+            continue  # sentinel field already placed
+        if field_name not in required:
+            continue
+        fs = field_schema
+        if isinstance(fs, dict) and "$ref" in fs:
+            fs = _resolve_openapi_ref(fs["$ref"], full_schema)
+        ftype = fs.get("type") if isinstance(fs, dict) else None
+        fdefault = fs.get("default") if isinstance(fs, dict) else None
+        fenums = fs.get("enum") if isinstance(fs, dict) else None
+        if fdefault is not None:
+            template[field_name] = fdefault
+        elif fenums and isinstance(fenums, list) and fenums:
+            template[field_name] = fenums[0]  # use first enum value as default
+        elif ftype == "string":
+            template[field_name] = ""
+        elif ftype in ("integer", "number"):
+            template[field_name] = 0
+        elif ftype == "boolean":
+            template[field_name] = False
+        elif ftype == "array":
+            template[field_name] = []
+        elif ftype == "object" or (isinstance(fs, dict) and "properties" in fs):
+            nested = _build_object_template(fs, full_schema, depth + 1)
+            if nested is not None:
+                template[field_name] = nested
+        # Unknown/null types are skipped
+
+    return template
+
+
+def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool, dict | None] | None":
+    """Extract ``(path, key, is_list, value_template)`` from an OpenAPI/Swagger schema.
 
     Scores every POST endpoint by chat-signal tokens in its path, then inspects
-    the request body schema for a known chat message field.  Returns the
-    highest-scoring match, or ``None`` when no chat-shaped POST endpoint is found.
+    the request body schema for a known chat message field.  ``value_template``
+    is set when the chat key expects a structured message object (e.g. FastAPI
+    ChatMessage with role+content fields) instead of a plain string.  Returns
+    ``None`` when no chat-shaped POST endpoint is found.
     """
     paths_obj = schema.get("paths") or {}
     best: tuple[int, str, str, bool] | None = None  # (score, path, key, list)
@@ -171,7 +293,15 @@ def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool] | None":
     if best is None:
         return None
     _, path, key, is_list = best
-    return path, key, is_list
+
+    # When the chat key resolves to an object schema, build a generic template
+    # so the probe and redteam client send the correct nested structure.
+    value_template: dict[str, object] | None = None
+    raw_prop = (body_schema.get("properties") or {}).get(key) or {}
+    if not is_list:
+        value_template = _build_object_template(raw_prop, schema)
+
+    return path, key, is_list, value_template
 
 
 def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
@@ -289,11 +419,12 @@ async def _try_openapi_detection(
     timeout: float,
     known_response_key: str | None,
     probe_payload_extras: "dict[str, object] | None",
-) -> "tuple[str, str, bool] | None":
+) -> "ProbeResult | None":
     """Option 1: fetch OpenAPI/Swagger spec and verify the discovered endpoint.
 
     Uses per-request timeout of 5s so a missing spec never delays the pipeline.
-    Returns ``(path, payload_key, payload_list)`` on success, ``None`` otherwise.
+    Returns a ProbeResult on success (including ``value_template`` when the
+    schema reveals a nested message-object shape), ``None`` otherwise.
     """
     schema: dict | None = None
     for spec_path in _OPENAPI_SCHEMA_PATHS:
@@ -318,10 +449,19 @@ async def _try_openapi_detection(
     if config is None:
         return None
 
-    oa_path, oa_key, oa_list = config
-    _log.info("endpoint_probe: OpenAPI config — path=%s key=%r list=%s", oa_path, oa_key, oa_list)
+    oa_path, oa_key, oa_list, oa_template = config
+    _log.info("endpoint_probe: OpenAPI config — path=%s key=%r list=%s template=%s",
+              oa_path, oa_key, oa_list, bool(oa_template))
 
-    val: object = [_TEST_MESSAGE] if oa_list else _TEST_MESSAGE
+    # Use the detected template for the verification request when the schema
+    # says the value must be a message object rather than a plain string.
+    if oa_template is not None:
+        # Replace the sentinel with the test message for the verification probe.
+        val: object = {k: (_TEST_MESSAGE if v == _CHAT_TEXT_SENTINEL else v) for k, v in oa_template.items()}
+    elif oa_list:
+        val = [_TEST_MESSAGE]
+    else:
+        val = _TEST_MESSAGE
     body: dict[str, object] = {}
     if probe_payload_extras:
         body.update(probe_payload_extras)
@@ -342,11 +482,11 @@ async def _try_openapi_detection(
             data = _try_read_first_streaming_json(resp) or {}
         if _looks_like_chat_response(data, known_response_key) or _is_streaming_response(resp):
             _log.info("endpoint_probe: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
-            return oa_path, oa_key, oa_list
+            return ProbeResult(oa_path, oa_key, oa_list, oa_template)
     elif 400 <= status < 500:
         # 4xx (not 404/405) — endpoint exists, schema-specified key accepted
         _log.info("endpoint_probe: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
-        return oa_path, oa_key, oa_list
+        return ProbeResult(oa_path, oa_key, oa_list, oa_template)
     # 5xx — don't block; let the blind probe try this path too
     return None
 
@@ -430,9 +570,9 @@ async def _blind_probe(
     probe_payload_extras: "dict[str, object] | None",
     *,
     known_payload_key: str | None = None,
-) -> "tuple[str, str, bool] | None":
+) -> "ProbeResult | None":
     """Fallback: try each path with each payload shape until one responds usefully."""
-    server_error_fallback: tuple[str, str, bool] | None = None
+    server_error_fallback: ProbeResult | None = None
     base = str(client.base_url).rstrip("/")
 
     for path in paths:
@@ -464,7 +604,7 @@ async def _blind_probe(
             if status >= 500:
                 _log.debug("endpoint_probe: %s — %d server error", path, status)
                 if server_error_fallback is None:
-                    server_error_fallback = (path, pay_key, pay_list)
+                    server_error_fallback = ProbeResult(path, pay_key, pay_list)
                 continue  # try remaining shapes — correct key may still succeed
 
             if status < 300:
@@ -474,11 +614,11 @@ async def _blind_probe(
                     data = _try_read_first_streaming_json(resp) or {}
                 if _looks_like_chat_response(data, known_response_key):
                     _log.info("endpoint_probe: selected %s (key=%r, status=%d)", path, pay_key, status)
-                    return path, pay_key, pay_list
+                    return ProbeResult(path, pay_key, pay_list)
                 # Streaming endpoint: accept even when we can't parse the body content
                 if _is_streaming_response(resp):
                     _log.info("endpoint_probe: selected %s (streaming, key=%r)", path, pay_key)
-                    return path, pay_key, pay_list
+                    return ProbeResult(path, pay_key, pay_list)
                 _log.debug("endpoint_probe: %s key=%r → %d but not chat-like", path, pay_key, status)
                 continue
 
@@ -487,7 +627,7 @@ async def _blind_probe(
             if known_payload_key:
                 # Caller-specified key got 4xx — accept: endpoint is real, mismatch is config
                 _log.info("endpoint_probe: selected %s (key=%r known, status=%d)", path, pay_key, status)
-                return path, pay_key, pay_list
+                return ProbeResult(path, pay_key, pay_list)
 
             # 422 — FastAPI/Pydantic validation error: body tells us the correct field name
             if status == 422:
@@ -519,19 +659,19 @@ async def _blind_probe(
                                 "endpoint_probe: 422-hint selected %s (key=%r, status=%d)",
                                 path, hint_key, hint_status,
                             )
-                            return path, hint_key, False
+                            return ProbeResult(path, hint_key, False)
                     elif hint_status not in (404, 405) and hint_status < 500:
                         _log.info(
                             "endpoint_probe: 422-hint selected %s (key=%r, status=%d)",
                             path, hint_key, hint_status,
                         )
-                        return path, hint_key, False
+                        return ProbeResult(path, hint_key, False)
 
     _log.warning("endpoint_probe: no chat-capable endpoint found after probing %d paths", len(paths))
     if server_error_fallback:
-        p_path, p_key, p_list = server_error_fallback
         _log.info(
-            "endpoint_probe: selected %s as fallback (5xx — payload_key=%r)", p_path, p_key,
+            "endpoint_probe: selected %s as fallback (5xx — payload_key=%r)",
+            server_error_fallback.path, server_error_fallback.key,
         )
         return server_error_fallback
     return None
@@ -546,7 +686,7 @@ async def _detect_chat_endpoint(
     probe_payload_extras: "dict[str, object] | None",
     known_payload_key: str | None = None,
     known_payload_list: bool = False,
-) -> "tuple[str, str, bool] | None":
+) -> "ProbeResult | None":
     """Ordered detection pipeline — smarter options first, blind probe as final fallback.
 
     When ``known_payload_key`` is set the detection options are skipped and the
@@ -588,17 +728,19 @@ async def probe_chat_endpoints(
     known_response_key: str | None = None,
     probe_payload_extras: "dict[str, object] | None" = None,
     hint_path: str | None = None,
-) -> "tuple[str, str, bool] | None":
+) -> "ProbeResult | None":
     """Probe SBOM POST endpoints and return the first chat-capable one.
+
+    Returns a :class:`ProbeResult` with ``(path, key, is_list)`` — supports
+    tuple unpacking so existing callers are unchanged.  Access
+    ``result.value_template`` to get the nested payload shape when OpenAPI
+    schema detection reveals the key expects a message object (e.g.
+    ``{"role": "user", "content": "..."}`` instead of a plain string).
 
     When ``hint_path`` is provided (Option B), only that specific path is probed
     — detection discovers the payload key/list for a user-specified endpoint.
-    When ``hint_path`` is ``None`` (Option A), all SBOM paths + fallbacks are
-    probed and both the path and key are auto-discovered.
-
     When ``known_payload_key`` is supplied the detection pipeline is skipped and
-    the probe verifies paths with that key only (the caller already knows the
-    shape; this just confirms which path accepts it).
+    the probe verifies paths with that key only.
     """
     paths = _sbom_post_paths(sbom)
 
@@ -616,7 +758,7 @@ async def probe_chat_endpoints(
             sbom_frameworks = [str(f).lower() for f in raw_frameworks if f]
     if ADK_FRAMEWORK_NAMES & set(sbom_frameworks):
         _log.info("endpoint_probe: Google ADK detected in SBOM — skipping detection, using /run")
-        return "/run", "__adk__", False
+        return ProbeResult("/run", "__adk__", False)
 
     # Always append common fallback paths so detection has candidates even when
     # the SBOM has no API_ENDPOINT nodes.

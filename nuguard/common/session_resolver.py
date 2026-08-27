@@ -53,6 +53,10 @@ class TargetSessionConfig:
     chat_response_key: str | None
     auth_session: "AuthSession"
     resolution_notes: list[str] = field(default_factory=list)
+    # Nested payload value template from OpenAPI schema detection.
+    # When set, the value for chat_payload_key is built from this template
+    # (e.g. {"role": "user", "content": "..."}) instead of a plain string.
+    chat_payload_value_template: "dict[str, object] | None" = None
 
 
 # ---------------------------------------------------------------------------
@@ -401,6 +405,7 @@ async def resolve_target_session(
     # Option B — path known but key is default: probe only the known path to
     #            detect the key; keep the user's path unchanged.
     _original_chat_path = chat_path
+    chat_payload_value_template: "dict[str, object] | None" = None
     if not chat_path:
         # Option A: discover both path and key
         probe_result = await probe_chat_endpoints(
@@ -413,6 +418,7 @@ async def resolve_target_session(
         )
         if probe_result is not None:
             chat_path, chat_payload_key, chat_payload_list = probe_result
+            chat_payload_value_template = probe_result.value_template
             _log.info("resolve_target_session: live probe selected endpoint %s", chat_path)
     elif chat_payload_key == "message":
         # Option B: path is known but key is still the default — detect key only
@@ -427,10 +433,11 @@ async def resolve_target_session(
         )
         if probe_result is not None:
             _probe_path, chat_payload_key, chat_payload_list = probe_result
+            chat_payload_value_template = probe_result.value_template
             # Keep the user's path — only the key and list are updated
             _log.info(
-                "resolve_target_session: key detection on %s found key=%r list=%s",
-                chat_path, chat_payload_key, chat_payload_list,
+                "resolve_target_session: key detection on %s found key=%r list=%s template=%s",
+                chat_path, chat_payload_key, chat_payload_list, bool(chat_payload_value_template),
             )
 
     # ── 8. Quality check ──────────────────────────────────────────────────────
@@ -458,6 +465,7 @@ async def resolve_target_session(
             auth_headers=effective_headers or None,
             sbom=sbom,
             payload_extras=merged_extras or None,
+            chat_payload_value_template=chat_payload_value_template,
         )
         async with _wu_client:
             from nuguard.redteam.target.session import AttackSession as _WS  # noqa: PLC0415
@@ -489,6 +497,7 @@ async def resolve_target_session(
             chat_response_key=chat_response_key,
             auth_session=bootstrapper.session,
             resolution_notes=resolution_notes,
+            chat_payload_value_template=chat_payload_value_template,
         ),
         health_report,
     )

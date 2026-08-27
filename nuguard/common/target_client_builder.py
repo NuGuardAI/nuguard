@@ -344,6 +344,8 @@ def build_target_app_client(
     explicitly_set: frozenset[str] | set[str] = frozenset(),
     payload_extras: dict[str, Any] | None = None,
     heal_llm: "LLMClient | None" = None,
+    # Nested value template from OpenAPI schema detection (ProbeResult.value_template).
+    chat_payload_value_template: "dict[str, Any] | None" = None,
 ) -> "TargetAppClient":
     """Build a :class:`TargetAppClient` with SBOM-assisted config resolution.
 
@@ -456,6 +458,7 @@ def build_target_app_client(
         framework_adapter=framework_adapter,
         chat_payload_extras=payload_extras or None,
         heal_llm=heal_llm,
+        chat_payload_value_template=chat_payload_value_template,
     )
     client.resolution_notes = resolution_notes
     return client
