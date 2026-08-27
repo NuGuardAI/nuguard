@@ -134,15 +134,160 @@ evidence and no FRAMEWORK node.)
    `Evidence` with a real `.go` file path and a positive line number —
    mirroring the existing Python/TS adapter integration tests
    (`test_milo_style.py`'s pattern). 6/6 pass.
-9. ⏸ **Blocked** — re-running `tests/apps/kscope/kscope-test.sh` against
-   the real `mosaic-care/healthcare-service` repo to diff the before/after
-   SBOM needs GitHub access to that repo, which is still unavailable: `gh
-   api repos/mosaic-care/healthcare-service` returns `404 Not Found` under
-   the authenticated account, the same result found at the start of this
-   investigation. The fixture-based validation in #8 exercises the same
-   code paths against a repo-shaped fixture instead; re-run this item once
-   repo access is granted.
+9. ✅ **Unblocked and run** — repo access was restored (the PAT in
+   `tests/apps/kscope/.env` was refreshed) and `kscope-test.sh` was re-run
+   against the real `mosaic-care/healthcare-service` repo (830 `.go`
+   files). Before → after: `FRAMEWORK` 0 → 3 (Gin, Gorilla/Mux, Net/HTTP),
+   `API_ENDPOINT` 0 → 34.
+
+   Cross-checked the regenerated SBOM against the actual source (separate
+   clone, manual grep):
+   - **net/http** (32 endpoints): every path matches the 33 real
+     `http.HandleFunc`/`http.Handle` call sites in
+     `backend/cmd/healthrecord_repository/main.go` 1:1 (33 calls → 32
+     unique paths after `/` is registered twice and correctly dedupes to
+     one node). Zero false positives, zero misses.
+   - **gin** (2 endpoints: `GET /`, `POST /`): gin is only used inside an
+     internal vendored library (`internal/mongolib/mserver`), which
+     registers 9 routes, 7 with empty-string paths on a router group
+     (`rcBase.GET("", ...)`) that need prefix composition this pass
+     doesn't attempt — the same documented limitation Python's FastAPI
+     adapter already has for router-group roots. The 2 detected are
+     exactly the 2 with a real absolute path.
+   - **gorilla/mux** (0 endpoints, FRAMEWORK node still emitted):
+     confirmed correct — the only file importing it
+     (`internal/msutil/handler/blob.go`) uses it solely for
+     `mux.Vars(r)`, never for route registration.
+   - **MongoDB** (1 DATASTORE node): correctly detected with structural
+     evidence, matching the app's real `mongo.Connect(...)` calls; no
+     Redis or `database/sql` exist in the real backend, so their absence
+     is correct, not a miss.
+   - `policy compile` then failed on an unrelated pre-existing issue
+     (`cognitive_policy.md` not found) — nothing to do with the Go work.
+
+   **Gaps found during this cross-check, scoped as phases 6-8 below**:
+   a genuine ~60-line safety-critical system prompt
+   (`backend/chat/chat.go`'s `const systemPrompt`) gets no real evidence
+   (phase 6); the app's primary LLM integration is a hand-rolled HTTP
+   client calling `api.anthropic.com` directly rather than
+   `anthropic-sdk-go`, so it's invisible to any SDK adapter (phase 8); and
+   a `Snowflake` DATASTORE false positive was found, sourced from the
+   literal string `"Snowflake"` inside a bundled frontend icon library
+   file (`lucide-react.js`) — pre-existing regex-fallback behavior, not
+   introduced by or fixable within this Go-adapter work.
 
 Phase 1+2 give the highest ROI — they turn "framework: none detected" into
 real coverage and unblock endpoint-level `analyze`/`redteam` targeting,
 which is currently completely blind for Go backends.
+
+### Phase 6 — Go prompt-constant extraction
+Ground-truth cross-check (phase 5 item 9) found a real, large,
+safety-critical system prompt —
+`backend/chat/chat.go:48: const systemPrompt = \`You are Mosaic's health
+assistant...\`` (~60 lines, self-harm/escalation handling) — and a second
+one in `backend/ingest/supplement.go` (`const supplementSysPrompt`) — that
+the SBOM represents as a single generic, content-free `prompt_generic`
+node (bare keyword match, confidence 0.48). This is exactly the kind of
+thing `behavior`/`redteam`'s policy-alignment and jailbreak-surface checks
+need to inspect, and right now it's invisible.
+
+10. Add a `GoPromptAdapter` mirroring Python's
+    `_extract_python_prompt_constants` (`extractor/core.py`): scan
+    `GoParseResult.string_literals` for module-level `const`/`var`
+    string declarations (raw string literals — `` `...` `` — are the
+    common Go idiom for multi-line prompts, and `go_parser` already
+    decodes them via `_decode_go_string`) whose assigned name matches a
+    prompt-like pattern (`*[Pp]rompt*`, `*[Ss]ystem*`) or whose content
+    looks like an instruction (heuristics already exist for this in
+    Python's prompt detector — reuse the shape, not the AST-specific
+    code). Emit a PROMPT node per match with the full content in
+    `metadata.extras.content` (matching the Evidence.detail convention
+    documented in `models.py`'s `Evidence.detail` field) and real
+    file/line evidence.
+11. Also cover prompts built from a Go string-formatting call
+    (`fmt.Sprintf("You are %s...", ...)`) assigned to a prompt-like
+    variable name — lower priority than #10 (the constant case is both
+    more common and the one actually found in kscope), but the same
+    `GoFunctionCall` data already captures these calls' arguments.
+12. Validate against a new fixture (extend
+    `go_healthcare_service` or add a sibling fixture) asserting a PROMPT
+    node with real evidence and non-empty content, following phase 5's
+    pattern.
+
+### Phase 7 — Go agent/orchestration framework adapters (Python parity)
+Even after phases 1-6, Go's adapter roster stays far short of Python's 22
+and TypeScript's 14: Python has structural adapters for LangGraph,
+CrewAI, AutoGen, Agno, Azure AI Agents, Bedrock AgentCore, Google ADK,
+Semantic Kernel, LlamaIndex, OpenAI Agents SDK, Guardrails AI (+
+heuristic), an MCP *client* adapter, and OpenAI function-schema
+detection — Go has none of these agent/orchestration/guardrail
+equivalents (only `mcp-go` for MCP *servers*, from before this
+investigation). This phase is about closing that parity gap for the Go
+frameworks that actually exist in that space, not inventing Go versions
+of Python-only frameworks.
+
+13. **Agent/orchestration frameworks** — the two real Go options as of
+    this writing:
+    - `cloudwego/eino` (ByteDance's Go LLM application framework —
+      graph-based orchestration, roughly LangGraph's Go analogue). Detect
+      graph/chain construction calls (`compose.NewChain(...)`,
+      `compose.NewGraph(...)`) → AGENT node, and node-registration calls
+      → TOOL nodes, mirroring `langgraph.py`'s node-graph shape.
+    - `firebase/genkit/go` (Google's Genkit Go SDK — flows, tools,
+      prompts as first-class constructs: `genkit.DefineFlow(...)`,
+      `genkit.DefineTool(...)`). `genkit.DefinePrompt(...)` should also
+      feed into phase 6's PROMPT detection rather than being a separate
+      code path.
+14. **MCP client adapter** — `mcp-go`'s client package
+    (`github.com/mark3labs/mcp-go/client`) mirrors Python's
+    `mcp_client.py`: detect `client.NewClient(...)`/`client.NewStdioMCPClient(...)`
+    construction and emit the client-side TOOL/AGENT-consumes-MCP-server
+    relationship, complementing the existing server-side
+    `MCPGoServerAdapter`.
+15. **Guardrails / validation** — no dominant Go equivalent of
+    `guardrails-ai` exists yet; track this one rather than build
+    speculatively. If a real guardrails library shows up in a scanned
+    repo, that's the trigger to add it, not before.
+16. **Function/tool schema detection** — Go doesn't have Python's
+    duck-typed docstring-to-schema convention, but `langchaingo`'s
+    `tools.Tool` interface (`Name()`, `Description()`, `Call(...)`
+    methods) and eino's tool-definition structs are the Go analogues of
+    Python's `OpenAIFunctionSchemaAdapter`. Needs the same
+    function-*declaration* parsing gap noted in phase 2 (gqlgen) and
+    phase 3 (langchaingo TOOL/agent extraction) — this is the third
+    phase blocked on that same `go_parser` extension, which is reason
+    enough to schedule it as dedicated `go_parser` work rather than
+    deferring it a third time piecemeal.
+
+### Phase 8 — direct-HTTP LLM call detection
+Ground-truth cross-check (phase 5 item 9) found kscope's actual primary
+LLM integration doesn't use any SDK at all: `backend/chat/chat.go` hand-
+rolls an HTTP client (`anthropicReq`/`anthropicResp` structs,
+`http.NewRequest(http.MethodPost, "https://api.anthropic.com/v1/messages", ...)`)
+with the model name in a plain `const chatModel = "claude-sonnet-4-6"`.
+None of the phase-3 SDK adapters can see this — it's real, structural,
+first-party LLM usage that's currently only caught by the low-confidence
+generic `model_generic` regex (0.53 confidence, no call-site evidence,
+and prone to false positives like the `o0`-`o7` matches also found in
+this SBOM).
+
+17. Add a `GoDirectHTTPLLMAdapter` keyed on well-known LLM API hostnames
+    in string literals (`api.anthropic.com`, `api.openai.com`,
+    `generativelanguage.googleapis.com`, mirroring Python's
+    `_BASE_URL_TO_PROVIDER` table in `llm_clients.py`) rather than an
+    import gate, since by definition there's no SDK import to key off.
+    On a match, walk the same file's other string literals/const
+    declarations for a value that looks like a model ID (reuse the
+    `model_generic` regex adapter's existing pattern set rather than
+    inventing a second one) and emit a MODEL node with real evidence
+    (the URL string literal's file/line) instead of relying on whatever
+    line the bare model string happens to appear on.
+18. This is the same shape of gap the `_resolve_provider_from_base_url`
+    proxy-pattern already solves for Python's OpenAI-compatible clients —
+    worth checking whether that logic can be factored into a
+    language-agnostic helper both the Python and Go adapters call,
+    instead of duplicating the hostname table.
+19. Validate against a fixture with a hand-rolled HTTP client hitting
+    `api.anthropic.com` (or extend `go_healthcare_service`'s `triage.go`
+    with a second, SDK-free handler) — assert a MODEL node with real
+    evidence, matching phase 5's validation pattern.
