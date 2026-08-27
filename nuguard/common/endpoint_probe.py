@@ -587,11 +587,14 @@ async def probe_chat_endpoints(
     known_payload_list: bool = False,
     known_response_key: str | None = None,
     probe_payload_extras: "dict[str, object] | None" = None,
+    hint_path: str | None = None,
 ) -> "tuple[str, str, bool] | None":
     """Probe SBOM POST endpoints and return the first chat-capable one.
 
-    Returns ``(path, payload_key, payload_list)`` for the winning endpoint, or
-    ``None`` if no endpoint responded usefully.
+    When ``hint_path`` is provided (Option B), only that specific path is probed
+    — detection discovers the payload key/list for a user-specified endpoint.
+    When ``hint_path`` is ``None`` (Option A), all SBOM paths + fallbacks are
+    probed and both the path and key are auto-discovered.
 
     When ``known_payload_key`` is supplied the detection pipeline is skipped and
     the probe verifies paths with that key only (the caller already knows the
@@ -620,6 +623,11 @@ async def probe_chat_endpoints(
     for fallback in ("/chat", "/run", "/api/chat", "/v1/chat", "/query", "/agent"):
         if fallback not in paths:
             paths.append(fallback)
+
+    # Option B: caller provided a specific path — probe only that path to detect
+    # the payload key, ignoring SBOM paths and fallbacks entirely.
+    if hint_path:
+        paths = [hint_path]
     if not paths:
         _log.debug("endpoint_probe: no probe-eligible paths")
         return None

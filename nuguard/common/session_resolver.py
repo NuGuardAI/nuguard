@@ -396,19 +396,42 @@ async def resolve_target_session(
         if discovered_resp_key and not chat_response_key:
             chat_response_key = discovered_resp_key
 
-    # ── 7. Live probe (only when path still unknown) ──────────────────────────
+    # ── 7. Live probe ─────────────────────────────────────────────────────────
+    # Option A — path unknown: full discovery (path + key).
+    # Option B — path known but key is default: probe only the known path to
+    #            detect the key; keep the user's path unchanged.
+    _original_chat_path = chat_path
     if not chat_path:
+        # Option A: discover both path and key
         probe_result = await probe_chat_endpoints(
             target_url=target_url,
             sbom=sbom,
             auth_headers=effective_headers or None,
-            known_payload_key=chat_payload_key if chat_payload_key != "message" else None,
+            known_payload_key=None,
             known_payload_list=chat_payload_list,
             probe_payload_extras=_probe_extras or None,
         )
         if probe_result is not None:
             chat_path, chat_payload_key, chat_payload_list = probe_result
             _log.info("resolve_target_session: live probe selected endpoint %s", chat_path)
+    elif chat_payload_key == "message":
+        # Option B: path is known but key is still the default — detect key only
+        probe_result = await probe_chat_endpoints(
+            target_url=target_url,
+            sbom=sbom,
+            auth_headers=effective_headers or None,
+            known_payload_key=None,
+            known_payload_list=chat_payload_list,
+            probe_payload_extras=_probe_extras or None,
+            hint_path=chat_path,
+        )
+        if probe_result is not None:
+            _probe_path, chat_payload_key, chat_payload_list = probe_result
+            # Keep the user's path — only the key and list are updated
+            _log.info(
+                "resolve_target_session: key detection on %s found key=%r list=%s",
+                chat_path, chat_payload_key, chat_payload_list,
+            )
 
     # ── 8. Quality check ──────────────────────────────────────────────────────
     # The bootstrap already sent a probe; inspect its response for anonymous-session markers.
