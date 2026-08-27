@@ -348,6 +348,34 @@ async def _try_openapi_detection(
     return None
 
 
+def _extract_422_field_names(resp: "httpx.Response") -> list[str]:
+    """Extract required body field names from a FastAPI/Pydantic 422 response.
+
+    Parses ``{"detail": [{"loc": ["body", "field"], "msg": "..."}]}`` and returns
+    the field names found under ``"body"`` in the loc array, filtered against the
+    domain-key blocklist.  Returns an empty list on any parse failure.
+    """
+    try:
+        detail = resp.json().get("detail")
+        if not isinstance(detail, list):
+            return []
+        names: list[str] = []
+        seen: set[str] = set()
+        for item in detail:
+            if not isinstance(item, dict):
+                continue
+            loc = item.get("loc")
+            if not isinstance(loc, (list, tuple)) or len(loc) < 2 or str(loc[0]) != "body":
+                continue
+            field = str(loc[1])
+            if field and field not in seen and _normalize_payload_key(field) not in _RUNTIME_NON_CHAT_KEYS:
+                seen.add(field)
+                names.append(field)
+        return names
+    except Exception:
+        return []
+
+
 async def _blind_probe(
     client: "httpx.AsyncClient",
     paths: list[str],
@@ -363,7 +391,9 @@ async def _blind_probe(
 
     for path in paths:
         _log.info("endpoint_probe: trying %s%s", base, path)
+        tried_keys: set[str] = set()  # track all keys tried for this path
         for pay_key, pay_list in payload_shapes:
+            tried_keys.add(pay_key)
             if pay_list and pay_key.strip().lower() in _MESSAGE_HISTORY_KEYS:
                 value: object = [{"role": "user", "content": _TEST_MESSAGE}]
             elif pay_list:
@@ -408,6 +438,44 @@ async def _blind_probe(
                 # Caller-specified key got 4xx — accept: endpoint is real, mismatch is config
                 _log.info("endpoint_probe: selected %s (key=%r known, status=%d)", path, pay_key, status)
                 return path, pay_key, pay_list
+
+            # 422 — FastAPI/Pydantic validation error: body tells us the correct field name
+            if status == 422:
+                for hint_key in _extract_422_field_names(resp):
+                    if hint_key in tried_keys:
+                        continue
+                    tried_keys.add(hint_key)
+                    hint_val: object = (
+                        [{"role": "user", "content": _TEST_MESSAGE}]
+                        if hint_key.lower() in _MESSAGE_HISTORY_KEYS
+                        else _TEST_MESSAGE
+                    )
+                    hint_body: dict[str, object] = {}
+                    if probe_payload_extras:
+                        hint_body.update(probe_payload_extras)
+                    hint_body[hint_key] = hint_val
+                    try:
+                        hint_resp = await client.post(path, content=json.dumps(hint_body))
+                    except Exception:
+                        continue
+                    hint_status = hint_resp.status_code
+                    if hint_status < 300:
+                        try:
+                            hint_data = hint_resp.json()
+                        except Exception:
+                            hint_data = {}
+                        if _looks_like_chat_response(hint_data, known_response_key):
+                            _log.info(
+                                "endpoint_probe: 422-hint selected %s (key=%r, status=%d)",
+                                path, hint_key, hint_status,
+                            )
+                            return path, hint_key, False
+                    elif hint_status not in (404, 405) and hint_status < 500:
+                        _log.info(
+                            "endpoint_probe: 422-hint selected %s (key=%r, status=%d)",
+                            path, hint_key, hint_status,
+                        )
+                        return path, hint_key, False
 
     _log.warning("endpoint_probe: no chat-capable endpoint found after probing %d paths", len(paths))
     if server_error_fallback:
