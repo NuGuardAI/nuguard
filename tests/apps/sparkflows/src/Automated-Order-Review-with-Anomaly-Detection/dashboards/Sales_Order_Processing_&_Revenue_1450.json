@@ -1,0 +1,356 @@
+{
+  "id": 1450,
+  "name": "Sales Order Processing & Revenue",
+  "uuid": "6c48fa68-93a7-42b5-9d77-d601bf646b9c",
+  "description": "",
+  "projectId": 3405,
+  "filters": "[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"Status\",\"columnType\":\"string\",\"type\":\"\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":0,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"},{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"EffectiveDate\",\"columnType\":\"string\",\"type\":\"\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":0,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"},{\"datasetUuid\":\"89f8fdb1-f4c2-4633-aef9-c3dfb910cca7\",\"columnName\":\"ApprovalReason\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}]",
+  "userName": "tridev",
+  "icon": {
+    "type": "svg",
+    "icon": "assets/images/icons/actions-icon/iDashboards.svg"
+  },
+  "hideFilters": false,
+  "rows": [
+    {
+      "height": 0,
+      "chartData": [
+        {
+          "id": 1443,
+          "uuid": "c7e01ce1-2bc6-4451-bf37-67df2a75f776",
+          "name": "Total Orders",
+          "content": "{\"name\":\"Total Orders\",\"uuid\":\"c7e01ce1-2bc6-4451-bf37-67df2a75f776\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"TOTAL ORDERS\",\"type\":\"\\u003cCUR\\u003e\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[],\"y\":[{\"columnName\":\"OrderNumber\",\"category\":\"TEXT\",\"aggregate\":\"COUNT\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#3131d3\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+          "filters": "[]",
+          "grow": 1
+        },
+        {
+          "id": 1434,
+          "uuid": "02e98760-e04c-4773-bfdd-661a418fca63",
+          "name": "Manual Bypass Rate",
+          "content": "{\"name\":\"Manual Bypass Rate\",\"uuid\":\"02e98760-e04c-4773-bfdd-661a418fca63\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"MANUAL APPROVAL RATE\",\"type\":\"\\u003cCUR\\u003e%\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"89f8fdb1-f4c2-4633-aef9-c3dfb910cca7\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[],\"y\":[{\"columnName\":\"Manual_Bypass_Rate\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[{\"name\":\"Manual_Bypass_Rate\",\"expression\":\"ROUND((SUM(CASE WHEN ApprovalReason \\u003d \\u0027Manually Approved\\u0027 THEN 1 ELSE 0 END) * 100.0) / COUNT(Id), 1)\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#359c9c\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+          "filters": "[]",
+          "grow": 1
+        },
+        {
+          "id": 1441,
+          "uuid": "8f99e29e-10d6-40bb-bc19-72bd4a6d69e1",
+          "name": "Total Revenue",
+          "content": "{\"name\":\"Total Revenue\",\"uuid\":\"8f99e29e-10d6-40bb-bc19-72bd4a6d69e1\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"TOTAL REVENUE\",\"type\":\"\\u003cCUR\\u003e\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[],\"y\":[{\"columnName\":\"TotalAmount\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#41b72a\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+          "filters": "[]",
+          "grow": 1
+        },
+        {
+          "id": 1438,
+          "uuid": "42e760dc-4876-4f83-b8a6-bba76ec23951",
+          "name": "Processed Orders",
+          "content": "{\"name\":\"Processed Orders\",\"uuid\":\"42e760dc-4876-4f83-b8a6-bba76ec23951\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"PROCESSED ORDERS\",\"type\":\"\\u003cCUR\\u003e\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[],\"y\":[{\"columnName\":\"processed orders\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[{\"name\":\"processed orders\",\"expression\":\"COUNT(CASE WHEN Status \\u003d \\u0027Successfully Processed\\u0027 THEN 1 END)\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#e07c1f\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+          "filters": "[]",
+          "grow": 1
+        },
+        {
+          "id": 1447,
+          "uuid": "72a2d44b-ee28-4ce6-a482-c8ef2fd512e5",
+          "name": "Failed Orders",
+          "content": "{\"name\":\"Failed Orders\",\"uuid\":\"72a2d44b-ee28-4ce6-a482-c8ef2fd512e5\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"VALIDATION FAILED ORDERS\",\"type\":\"\\u003cCUR\\u003e\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[],\"y\":[{\"columnName\":\"validation failure\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[{\"name\":\"validation failure\",\"expression\":\"COUNT(CASE WHEN Status \\u003d \\u0027Validation Failed\\u0027 THEN 1 END)\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#1fe5e5\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+          "filters": "[]",
+          "grow": 1
+        },
+        {
+          "id": 1451,
+          "uuid": "8ee14714-f778-435e-8b15-99d52a18a258",
+          "name": "ChartIsAnomaly",
+          "content": "{\"name\":\"ChartIsAnomaly\",\"uuid\":\"8ee14714-f778-435e-8b15-99d52a18a258\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"ANOMALY COUNT\",\"type\":\"\\u003cCUR\\u003e\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[{\"columnName\":\"Id\",\"category\":\"TEXT\",\"sort\":\"NATURAL_SORTING\",\"maxDisplayedVals\":\"100\",\"xGroupMode\":\"AUTO\"}],\"y\":[{\"columnName\":\"isAnomaly_num\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#2F80ED\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+          "filters": "[]",
+          "grow": 1
+        }
+      ]
+    },
+    {
+      "height": 269,
+      "chartData": [
+        {
+          "id": 1448,
+          "uuid": "e7792e3e-fe1d-4175-98b1-9fe649bb1978",
+          "name": "Validation Failure Trend",
+          "content": "{\"name\":\"Validation Failure Trend\",\"uuid\":\"e7792e3e-fe1d-4175-98b1-9fe649bb1978\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"\",\"type\":\"\",\"chartType\":\"BAR_CHART\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[{\"columnName\":\"EffectiveDate\",\"category\":\"TEXT\",\"sort\":\"NATURAL_SORTING\",\"maxDisplayedVals\":\"100\",\"xGroupMode\":\"AUTO\"}],\"y\":[{\"columnName\":\"Validation Failure\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"EffectiveDate\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}],\"calculatedFields\":[{\"name\":\"Validation Failure\",\"expression\":\"COUNT(CASE WHEN Status\\u003d\\u0027Validation Failed\\u0027 THEN 1 END)\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"lblTotal\":\"Total\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":false,\"datalabels\":{\"fontSize\":\"14px\",\"formatter\":\"value\"},\"summaryCards\":{\"textCenter\":false,\"lblFontSize\":\"22px\",\"descFontSize\":\"12px\",\"lblColor\":\"#2F80ED\",\"descColor\":\"#A4A4A6\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+          "filters": "[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"EffectiveDate\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[{\"value\":\"2026-05-02\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-01\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-06\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-05\",\"count\":\"16\",\"selected\":true},{\"value\":\"2026-05-03\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-04\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-07\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-08\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-09\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-10\",\"count\":\"1\",\"selected\":true}],\"uniqueSelectedValues\":[\"2026-05-02\",\"2026-05-01\",\"2026-05-06\",\"2026-05-05\",\"2026-05-03\",\"2026-05-04\",\"2026-05-07\",\"2026-05-08\",\"2026-05-09\",\"2026-05-10\"],\"value\":\"\"},{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"Status\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":0,\"minValue\":0,\"maxValue\":10,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}]",
+          "grow": 1
+        },
+        {
+          "id": 1436,
+          "uuid": "4a3f507f-7d8a-4b5d-b1dc-20dd31272ac1",
+          "name": "Status Distribution",
+          "content": "{\"name\":\"Status Distribution\",\"uuid\":\"4a3f507f-7d8a-4b5d-b1dc-20dd31272ac1\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"\",\"type\":\"\",\"chartType\":\"PIE_CHART\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[{\"columnName\":\"Status\",\"category\":\"TEXT\",\"sort\":\"NATURAL_SORTING\",\"maxDisplayedVals\":\"100\",\"xGroupMode\":\"AUTO\"}],\"y\":[{\"columnName\":\"OrderNumber\",\"category\":\"TEXT\",\"aggregate\":\"COUNT\"}],\"groupBy\":[],\"filters\":[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"Status\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}],\"calculatedFields\":[],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":true,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":false,\"datalabels\":{\"fontSize\":\"14px\",\"formatter\":\"percentage\"},\"summaryCards\":{\"textCenter\":false,\"lblFontSize\":\"22px\",\"descFontSize\":\"12px\",\"lblColor\":\"#2F80ED\",\"descColor\":\"#A4A4A6\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+          "filters": "[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"Status\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[{\"value\":\"Manually Approved\",\"count\":\"16\",\"selected\":true},{\"value\":\"Validating\",\"count\":\"5\",\"selected\":true},{\"value\":\"Validation Failed\",\"count\":\"4\",\"selected\":true}],\"uniqueSelectedValues\":[\"Manually Approved\",\"Validating\",\"Validation Failed\"],\"value\":\"\"},{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"EffectiveDate\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":0,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}]",
+          "grow": 1
+        }
+      ]
+    },
+    {
+      "height": 273,
+      "chartData": [
+        {
+          "id": 1444,
+          "uuid": "2b97d117-ddff-4cdb-80da-06d00dbc78ca",
+          "name": "Overall Compliance Resolution Profile",
+          "content": "{\"name\":\"Overall Compliance Resolution Profile\",\"uuid\":\"2b97d117-ddff-4cdb-80da-06d00dbc78ca\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"\",\"type\":\"\",\"chartType\":\"PIE_CHART\",\"datasetUuid\":\"89f8fdb1-f4c2-4633-aef9-c3dfb910cca7\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[{\"columnName\":\"Approval_Status\",\"category\":\"NUMERIC\",\"binType\":\"FIXED_NUMBER\",\"noOfBins\":\"10\",\"sort\":\"NATURAL_SORTING\",\"maxDisplayedVals\":\"100\",\"xGroupMode\":\"AUTO\"}],\"y\":[{\"columnName\":\"Id\",\"category\":\"TEXT\",\"aggregate\":\"COUNT\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[{\"name\":\"Approval_Status\",\"expression\":\"CASE \\r\\n    WHEN ApprovalReason IS NULL OR ApprovalReason \\u003d \\u0027\\u0027 THEN \\u0027Pending Review\\u0027\\r\\n    ELSE \\u0027Manually Approved\\u0027\\r\\nEND\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"lblTotal\":\"Total\",\"total\":true,\"label\":true,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":false,\"datalabels\":{\"fontSize\":\"14px\",\"formatter\":\"both\"},\"summaryCards\":{\"textCenter\":false,\"lblFontSize\":\"22px\",\"descFontSize\":\"12px\",\"lblColor\":\"#2F80ED\",\"descColor\":\"#A4A4A6\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+          "filters": "[]",
+          "grow": 1
+        },
+        {
+          "id": 1435,
+          "uuid": "b995b744-1109-47a5-988d-923b6682c13d",
+          "name": "Orders Trend Over Time",
+          "content": "{\"name\":\"Orders Trend Over Time\",\"uuid\":\"b995b744-1109-47a5-988d-923b6682c13d\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"\",\"type\":\"\",\"chartType\":\"LINE_CHART\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#00c0c7\",\"#5144d3\",\"#e8871a\",\"#da3490\",\"#9089fa\",\"#47e26f\",\"#2780eb\",\"#6f38b1\",\"#dfbf03\",\"#cb6f10\"],\"x\":[{\"columnName\":\"EffectiveDate\",\"category\":\"TEXT\",\"sort\":\"NATURAL_SORTING\",\"maxDisplayedVals\":\"100\",\"xGroupMode\":\"AUTO\"}],\"y\":[{\"columnName\":\"Number_of_Orders\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"Status\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":10,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}],\"calculatedFields\":[{\"name\":\"Number_of_Orders\",\"expression\":\"COUNT(OrderNumber)\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"lblTotal\":\"Total\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":false,\"datalabels\":{\"fontSize\":\"14px\",\"formatter\":\"value\"},\"summaryCards\":{\"textCenter\":false,\"lblFontSize\":\"22px\",\"descFontSize\":\"12px\",\"lblColor\":\"#2F80ED\",\"descColor\":\"#A4A4A6\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+          "filters": "[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"Status\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":10,\"uniqueValues\":[{\"value\":\"Manually Approved\",\"count\":\"16\",\"selected\":true},{\"value\":\"Validating\",\"count\":\"5\",\"selected\":true},{\"value\":\"Validation Failed\",\"count\":\"4\",\"selected\":true}],\"uniqueSelectedValues\":[\"Manually Approved\",\"Validating\",\"Validation Failed\"],\"value\":\"\"},{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"EffectiveDate\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":0,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}]",
+          "grow": 1
+        }
+      ]
+    }
+  ],
+  "tabs": [
+    {
+      "id": "8c20fa30-4f24-4a14-88fe-06580fd7edf3",
+      "name": "Dashboard",
+      "rows": [
+        {
+          "height": 0,
+          "chartData": [
+            {
+              "id": 1443,
+              "uuid": "c7e01ce1-2bc6-4451-bf37-67df2a75f776",
+              "name": "Total Orders",
+              "content": "{\"name\":\"Total Orders\",\"uuid\":\"c7e01ce1-2bc6-4451-bf37-67df2a75f776\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"TOTAL ORDERS\",\"type\":\"\\u003cCUR\\u003e\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[],\"y\":[{\"columnName\":\"OrderNumber\",\"category\":\"TEXT\",\"aggregate\":\"COUNT\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#3131d3\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+              "filters": "[]",
+              "grow": 1
+            },
+            {
+              "id": 1434,
+              "uuid": "02e98760-e04c-4773-bfdd-661a418fca63",
+              "name": "Manual Bypass Rate",
+              "content": "{\"name\":\"Manual Bypass Rate\",\"uuid\":\"02e98760-e04c-4773-bfdd-661a418fca63\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"MANUAL APPROVAL RATE\",\"type\":\"\\u003cCUR\\u003e%\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"89f8fdb1-f4c2-4633-aef9-c3dfb910cca7\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[],\"y\":[{\"columnName\":\"Manual_Bypass_Rate\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[{\"name\":\"Manual_Bypass_Rate\",\"expression\":\"ROUND((SUM(CASE WHEN ApprovalReason \\u003d \\u0027Manually Approved\\u0027 THEN 1 ELSE 0 END) * 100.0) / COUNT(Id), 1)\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#359c9c\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+              "filters": "[]",
+              "grow": 1
+            },
+            {
+              "id": 1441,
+              "uuid": "8f99e29e-10d6-40bb-bc19-72bd4a6d69e1",
+              "name": "Total Revenue",
+              "content": "{\"name\":\"Total Revenue\",\"uuid\":\"8f99e29e-10d6-40bb-bc19-72bd4a6d69e1\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"TOTAL REVENUE\",\"type\":\"\\u003cCUR\\u003e\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[],\"y\":[{\"columnName\":\"TotalAmount\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#41b72a\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+              "filters": "[]",
+              "grow": 1
+            },
+            {
+              "id": 1438,
+              "uuid": "42e760dc-4876-4f83-b8a6-bba76ec23951",
+              "name": "Processed Orders",
+              "content": "{\"name\":\"Processed Orders\",\"uuid\":\"42e760dc-4876-4f83-b8a6-bba76ec23951\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"PROCESSED ORDERS\",\"type\":\"\\u003cCUR\\u003e\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[],\"y\":[{\"columnName\":\"processed orders\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[{\"name\":\"processed orders\",\"expression\":\"COUNT(CASE WHEN Status \\u003d \\u0027Successfully Processed\\u0027 THEN 1 END)\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#e07c1f\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+              "filters": "[]",
+              "grow": 1
+            },
+            {
+              "id": 1447,
+              "uuid": "72a2d44b-ee28-4ce6-a482-c8ef2fd512e5",
+              "name": "Failed Orders",
+              "content": "{\"name\":\"Failed Orders\",\"uuid\":\"72a2d44b-ee28-4ce6-a482-c8ef2fd512e5\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"VALIDATION FAILED ORDERS\",\"type\":\"\\u003cCUR\\u003e\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[],\"y\":[{\"columnName\":\"validation failure\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[{\"name\":\"validation failure\",\"expression\":\"COUNT(CASE WHEN Status \\u003d \\u0027Validation Failed\\u0027 THEN 1 END)\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#1fe5e5\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+              "filters": "[]",
+              "grow": 1
+            },
+            {
+              "id": 1451,
+              "uuid": "8ee14714-f778-435e-8b15-99d52a18a258",
+              "name": "ChartIsAnomaly",
+              "content": "{\"name\":\"ChartIsAnomaly\",\"uuid\":\"8ee14714-f778-435e-8b15-99d52a18a258\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"ANOMALY COUNT\",\"type\":\"\\u003cCUR\\u003e\",\"chartType\":\"SUMMARY_CARD\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[{\"columnName\":\"Id\",\"category\":\"TEXT\",\"sort\":\"NATURAL_SORTING\",\"maxDisplayedVals\":\"100\",\"xGroupMode\":\"AUTO\"}],\"y\":[{\"columnName\":\"isAnomaly_num\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":true,\"summaryCards\":{\"textCenter\":true,\"lblFontSize\":\"30px\",\"descFontSize\":\"18px\",\"lblColor\":\"#2F80ED\",\"descColor\":\"#6c6a65\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+              "filters": "[]",
+              "grow": 1
+            }
+          ]
+        },
+        {
+          "height": 269,
+          "chartData": [
+            {
+              "id": 1448,
+              "uuid": "e7792e3e-fe1d-4175-98b1-9fe649bb1978",
+              "name": "Validation Failure Trend",
+              "content": "{\"name\":\"Validation Failure Trend\",\"uuid\":\"e7792e3e-fe1d-4175-98b1-9fe649bb1978\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"\",\"type\":\"\",\"chartType\":\"BAR_CHART\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[{\"columnName\":\"EffectiveDate\",\"category\":\"TEXT\",\"sort\":\"NATURAL_SORTING\",\"maxDisplayedVals\":\"100\",\"xGroupMode\":\"AUTO\"}],\"y\":[{\"columnName\":\"Validation Failure\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"EffectiveDate\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}],\"calculatedFields\":[{\"name\":\"Validation Failure\",\"expression\":\"COUNT(CASE WHEN Status\\u003d\\u0027Validation Failed\\u0027 THEN 1 END)\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"lblTotal\":\"Total\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":false,\"datalabels\":{\"fontSize\":\"14px\",\"formatter\":\"value\"},\"summaryCards\":{\"textCenter\":false,\"lblFontSize\":\"22px\",\"descFontSize\":\"12px\",\"lblColor\":\"#2F80ED\",\"descColor\":\"#A4A4A6\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+              "filters": "[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"EffectiveDate\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[{\"value\":\"2026-05-02\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-01\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-06\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-05\",\"count\":\"16\",\"selected\":true},{\"value\":\"2026-05-03\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-04\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-07\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-08\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-09\",\"count\":\"1\",\"selected\":true},{\"value\":\"2026-05-10\",\"count\":\"1\",\"selected\":true}],\"uniqueSelectedValues\":[\"2026-05-02\",\"2026-05-01\",\"2026-05-06\",\"2026-05-05\",\"2026-05-03\",\"2026-05-04\",\"2026-05-07\",\"2026-05-08\",\"2026-05-09\",\"2026-05-10\"],\"value\":\"\"},{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"Status\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":0,\"minValue\":0,\"maxValue\":10,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}]",
+              "grow": 1
+            },
+            {
+              "id": 1436,
+              "uuid": "4a3f507f-7d8a-4b5d-b1dc-20dd31272ac1",
+              "name": "Status Distribution",
+              "content": "{\"name\":\"Status Distribution\",\"uuid\":\"4a3f507f-7d8a-4b5d-b1dc-20dd31272ac1\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"\",\"type\":\"\",\"chartType\":\"PIE_CHART\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[{\"columnName\":\"Status\",\"category\":\"TEXT\",\"sort\":\"NATURAL_SORTING\",\"maxDisplayedVals\":\"100\",\"xGroupMode\":\"AUTO\"}],\"y\":[{\"columnName\":\"OrderNumber\",\"category\":\"TEXT\",\"aggregate\":\"COUNT\"}],\"groupBy\":[],\"filters\":[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"Status\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}],\"calculatedFields\":[],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"total\":false,\"label\":true,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":false,\"datalabels\":{\"fontSize\":\"14px\",\"formatter\":\"percentage\"},\"summaryCards\":{\"textCenter\":false,\"lblFontSize\":\"22px\",\"descFontSize\":\"12px\",\"lblColor\":\"#2F80ED\",\"descColor\":\"#A4A4A6\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+              "filters": "[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"Status\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[{\"value\":\"Manually Approved\",\"count\":\"16\",\"selected\":true},{\"value\":\"Validating\",\"count\":\"5\",\"selected\":true},{\"value\":\"Validation Failed\",\"count\":\"4\",\"selected\":true}],\"uniqueSelectedValues\":[\"Manually Approved\",\"Validating\",\"Validation Failed\"],\"value\":\"\"},{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"EffectiveDate\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":0,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}]",
+              "grow": 1
+            }
+          ]
+        },
+        {
+          "height": 273,
+          "chartData": [
+            {
+              "id": 1444,
+              "uuid": "2b97d117-ddff-4cdb-80da-06d00dbc78ca",
+              "name": "Overall Compliance Resolution Profile",
+              "content": "{\"name\":\"Overall Compliance Resolution Profile\",\"uuid\":\"2b97d117-ddff-4cdb-80da-06d00dbc78ca\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"\",\"type\":\"\",\"chartType\":\"PIE_CHART\",\"datasetUuid\":\"89f8fdb1-f4c2-4633-aef9-c3dfb910cca7\",\"datasetName\":\"\",\"colors\":[\"#77c8d0\",\"#ffe3b2\",\"#faa19b\",\"#a1bdfd\",\"#b6d7d0\",\"#ffb2c8\",\"#ffd5be\",\"#c7d2ff\",\"#83e3f4\",\"#d1bfff\",\"#649bf7\",\"#f8c9ee\",\"#219aad\",\"#ffbfa3\"],\"x\":[{\"columnName\":\"Approval_Status\",\"category\":\"NUMERIC\",\"binType\":\"FIXED_NUMBER\",\"noOfBins\":\"10\",\"sort\":\"NATURAL_SORTING\",\"maxDisplayedVals\":\"100\",\"xGroupMode\":\"AUTO\"}],\"y\":[{\"columnName\":\"Id\",\"category\":\"TEXT\",\"aggregate\":\"COUNT\"}],\"groupBy\":[],\"filters\":[],\"calculatedFields\":[{\"name\":\"Approval_Status\",\"expression\":\"CASE \\r\\n    WHEN ApprovalReason IS NULL OR ApprovalReason \\u003d \\u0027\\u0027 THEN \\u0027Pending Review\\u0027\\r\\n    ELSE \\u0027Manually Approved\\u0027\\r\\nEND\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"lblTotal\":\"Total\",\"total\":true,\"label\":true,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":false,\"datalabels\":{\"fontSize\":\"14px\",\"formatter\":\"both\"},\"summaryCards\":{\"textCenter\":false,\"lblFontSize\":\"22px\",\"descFontSize\":\"12px\",\"lblColor\":\"#2F80ED\",\"descColor\":\"#A4A4A6\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+              "filters": "[]",
+              "grow": 1
+            },
+            {
+              "id": 1435,
+              "uuid": "b995b744-1109-47a5-988d-923b6682c13d",
+              "name": "Orders Trend Over Time",
+              "content": "{\"name\":\"Orders Trend Over Time\",\"uuid\":\"b995b744-1109-47a5-988d-923b6682c13d\",\"icon\":{\"type\":\"svg\",\"icon\":\"assets/images/icons/actions-icon/interactive.svg\"},\"category\":\"\",\"sheets\":[{\"id\":0,\"name\":\"\",\"description\":\"\",\"type\":\"\",\"chartType\":\"LINE_CHART\",\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"datasetName\":\"\",\"colors\":[\"#00c0c7\",\"#5144d3\",\"#e8871a\",\"#da3490\",\"#9089fa\",\"#47e26f\",\"#2780eb\",\"#6f38b1\",\"#dfbf03\",\"#cb6f10\"],\"x\":[{\"columnName\":\"EffectiveDate\",\"category\":\"TEXT\",\"sort\":\"NATURAL_SORTING\",\"maxDisplayedVals\":\"100\",\"xGroupMode\":\"AUTO\"}],\"y\":[{\"columnName\":\"Number_of_Orders\",\"category\":\"NUMERIC\",\"aggregate\":\"SUM\",\"compute\":\"NORMAL\"}],\"groupBy\":[],\"filters\":[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"Status\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":10,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}],\"calculatedFields\":[{\"name\":\"Number_of_Orders\",\"expression\":\"COUNT(OrderNumber)\"}],\"drillDown\":{\"enabled\":false,\"levels\":[]},\"chartOptions\":{\"legendPosition\":\"top\",\"totalPosition\":\"bottom\",\"tooltip\":\"value\",\"xlabel\":\"\",\"ylabel\":\"\",\"y1label\":\"\",\"lblTotal\":\"Total\",\"total\":false,\"label\":false,\"horizontalBar\":false,\"beginAtZero\":true,\"stacked\":false,\"hideTitleOnDashboard\":false,\"datalabels\":{\"fontSize\":\"14px\",\"formatter\":\"value\"},\"summaryCards\":{\"textCenter\":false,\"lblFontSize\":\"22px\",\"descFontSize\":\"12px\",\"lblColor\":\"#2F80ED\",\"descColor\":\"#A4A4A6\",\"descTop\":true,\"divider\":false,\"dividerColor\":\"#bebebe\",\"formattedValue\":2}},\"filterDependencies\":[{\"parentColumn\":\"\",\"childColumn\":\"\",\"restrict\":false,\"autoClear\":false}]}]}",
+              "filters": "[{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"Status\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":10,\"minValue\":0,\"maxValue\":10,\"uniqueValues\":[{\"value\":\"Manually Approved\",\"count\":\"16\",\"selected\":true},{\"value\":\"Validating\",\"count\":\"5\",\"selected\":true},{\"value\":\"Validation Failed\",\"count\":\"4\",\"selected\":true}],\"uniqueSelectedValues\":[\"Manually Approved\",\"Validating\",\"Validation Failed\"],\"value\":\"\"},{\"datasetUuid\":\"066b647a-8fe2-425f-855e-a84c2670b09a\",\"columnName\":\"EffectiveDate\",\"columnType\":\"string\",\"columnCategory\":\"TEXT\",\"min\":0,\"max\":0,\"minValue\":0,\"maxValue\":0,\"uniqueValues\":[],\"uniqueSelectedValues\":[],\"value\":\"\"}]",
+              "grow": 1
+            }
+          ]
+        }
+      ],
+      "filters": [
+        {
+          "datasetUuid": "066b647a-8fe2-425f-855e-a84c2670b09a",
+          "columnName": "Status",
+          "columnType": "string",
+          "columnCategory": "TEXT",
+          "min": 0.0,
+          "max": 0.0,
+          "minValue": 0.0,
+          "maxValue": 0.0,
+          "uniqueValues": [
+            {
+              "value": "Manually Approved",
+              "count": "16",
+              "selected": true
+            },
+            {
+              "value": "Successfully Processed",
+              "count": "5",
+              "selected": true
+            },
+            {
+              "value": "Validation Failed",
+              "count": "4",
+              "selected": true
+            }
+          ],
+          "uniqueSelectedValues": [
+            "Manually Approved",
+            "Successfully Processed",
+            "Validation Failed"
+          ],
+          "scope": "global",
+          "value": "",
+          "type": ""
+        },
+        {
+          "datasetUuid": "066b647a-8fe2-425f-855e-a84c2670b09a",
+          "columnName": "EffectiveDate",
+          "columnType": "string",
+          "columnCategory": "TEXT",
+          "min": 0.0,
+          "max": 0.0,
+          "minValue": 0.0,
+          "maxValue": 0.0,
+          "uniqueValues": [
+            {
+              "value": "2026-05-02",
+              "count": "1",
+              "selected": true
+            },
+            {
+              "value": "2026-05-01",
+              "count": "1",
+              "selected": true
+            },
+            {
+              "value": "2026-05-06",
+              "count": "1",
+              "selected": true
+            },
+            {
+              "value": "2026-05-05",
+              "count": "16",
+              "selected": true
+            },
+            {
+              "value": "2026-05-03",
+              "count": "1",
+              "selected": true
+            },
+            {
+              "value": "2026-05-04",
+              "count": "1",
+              "selected": true
+            },
+            {
+              "value": "2026-05-07",
+              "count": "1",
+              "selected": true
+            },
+            {
+              "value": "2026-05-08",
+              "count": "1",
+              "selected": true
+            },
+            {
+              "value": "2026-05-09",
+              "count": "1",
+              "selected": true
+            },
+            {
+              "value": "2026-05-10",
+              "count": "1",
+              "selected": true
+            }
+          ],
+          "uniqueSelectedValues": [
+            "2026-05-02",
+            "2026-05-01",
+            "2026-05-06",
+            "2026-05-05",
+            "2026-05-03",
+            "2026-05-04",
+            "2026-05-07",
+            "2026-05-08",
+            "2026-05-09",
+            "2026-05-10"
+          ],
+          "scope": "global",
+          "value": "",
+          "type": ""
+        },
+        {
+          "datasetUuid": "89f8fdb1-f4c2-4633-aef9-c3dfb910cca7",
+          "columnName": "ApprovalReason",
+          "columnType": "string",
+          "columnCategory": "TEXT",
+          "min": 0.0,
+          "max": 10.0,
+          "minValue": 0.0,
+          "maxValue": 0.0,
+          "uniqueValues": [
+            {
+              "value": "Manually Approved",
+              "count": "14",
+              "selected": true
+            },
+            {
+              "value": "",
+              "count": "6",
+              "selected": true
+            }
+          ],
+          "uniqueSelectedValues": [
+            "Manually Approved",
+            ""
+          ],
+          "value": "",
+          "scope": ""
+        }
+      ]
+    }
+  ]
+}

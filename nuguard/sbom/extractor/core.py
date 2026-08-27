@@ -69,6 +69,13 @@ from ..adapters.json_adapters import (
 from ..adapters.nginx import NginxAdapter, is_nginx_file
 from ..adapters.prompt_sql import PromptSQLAdapter
 from ..adapters.registry import default_framework_adapters, default_registry
+from ..adapters.sparkflows import (
+    SparkflowsAgentAdapter,
+    SparkflowsAnalyticsAppAdapter,
+    SparkflowsDatasetAdapter,
+    SparkflowsProjectAdapter,
+    SparkflowsWorkflowAdapter,
+)
 from ..adapters.typescript._ts_regex import TSFrameworkAdapter
 from ..adapters.yaml_adapters import (
     AutoGenYAMLAdapter,
@@ -673,6 +680,11 @@ class AiSbomExtractor:
                 LLMJSONConfigAdapter(),
                 PromptJSONAdapter(),
                 MCPServerJSONAdapter(),
+                SparkflowsProjectAdapter(),
+                SparkflowsAgentAdapter(),
+                SparkflowsWorkflowAdapter(),
+                SparkflowsDatasetAdapter(),
+                SparkflowsAnalyticsAppAdapter(),
             )
         )
         self.nginx_adapter = nginx_adapter if nginx_adapter is not None else NginxAdapter()

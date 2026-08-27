@@ -1,0 +1,140 @@
+{
+  "name": "Root Cause Frequency vs. Resolution Status",
+  "uuid": "11abf894-8692-4b07-96b4-0a4219f4aca2",
+  "icon": {
+    "type": "svg",
+    "icon": "assets/images/icons/actions-icon/interactive.svg"
+  },
+  "category": "",
+  "sheets": [
+    {
+      "id": 0,
+      "name": "",
+      "description": "",
+      "type": "",
+      "chartType": "BAR_CHART",
+      "datasetUuid": "89f8fdb1-f4c2-4633-aef9-c3dfb910cca7",
+      "datasetName": "",
+      "colors": [
+        "#77c8d0",
+        "#ffe3b2",
+        "#faa19b",
+        "#a1bdfd",
+        "#b6d7d0",
+        "#ffb2c8",
+        "#ffd5be",
+        "#c7d2ff",
+        "#83e3f4",
+        "#d1bfff",
+        "#649bf7",
+        "#f8c9ee",
+        "#219aad",
+        "#ffbfa3"
+      ],
+      "x": [
+        {
+          "columnName": "Clean_Issue_Profile",
+          "category": "NUMERIC",
+          "binType": "FIXED_NUMBER",
+          "noOfBins": "10",
+          "sort": "NATURAL_SORTING",
+          "maxDisplayedVals": "100",
+          "xGroupMode": "AUTO"
+        }
+      ],
+      "y": [
+        {
+          "columnName": "Id",
+          "category": "TEXT",
+          "aggregate": "COUNT"
+        }
+      ],
+      "groupBy": [
+        {
+          "columnName": "Approval_Status",
+          "category": "NUMERIC",
+          "binType": "FIXED_NUMBER",
+          "noOfBins": "10",
+          "sort": "NATURAL_SORTING",
+          "maxDisplayedVals": "100"
+        }
+      ],
+      "filters": [
+        {
+          "datasetUuid": "89f8fdb1-f4c2-4633-aef9-c3dfb910cca7",
+          "columnName": "ApprovalReason",
+          "columnType": "string",
+          "columnCategory": "TEXT",
+          "min": 0,
+          "max": 10,
+          "minValue": 0,
+          "maxValue": 0,
+          "uniqueValues": [
+            {
+              "value": "",
+              "count": "8"
+            },
+            {
+              "value": "Manually Approved",
+              "count": "12"
+            }
+          ],
+          "uniqueSelectedValues": [],
+          "value": ""
+        }
+      ],
+      "calculatedFields": [
+        {
+          "name": "Clean_Issue_Profile",
+          "expression": "CASE \r\n    WHEN IssueDetails LIKE '%PO Number is missing%' THEN 'Systemic Validation Failure (PO + Pricebook + Contact + Amount)'\r\n    ELSE 'Isolated Validation Failure (Total Amount Missing/Zero)'\r\nEND"
+        },
+        {
+          "name": "Approval_Status",
+          "expression": "CASE \r\n    WHEN ApprovalReason IS NULL OR ApprovalReason = '' THEN 'Pending Review'\r\n    ELSE 'Manually Approved'\r\nEND"
+        }
+      ],
+      "drillDown": {
+        "enabled": false,
+        "levels": []
+      },
+      "chartOptions": {
+        "legendPosition": "top",
+        "totalPosition": "bottom",
+        "tooltip": "value",
+        "xlabel": "",
+        "ylabel": "",
+        "y1label": "",
+        "lblTotal": "Total",
+        "total": false,
+        "label": false,
+        "horizontalBar": false,
+        "beginAtZero": true,
+        "stacked": false,
+        "hideTitleOnDashboard": false,
+        "datalabels": {
+          "fontSize": "14px",
+          "formatter": "value"
+        },
+        "summaryCards": {
+          "textCenter": false,
+          "lblFontSize": "22px",
+          "descFontSize": "12px",
+          "lblColor": "#2F80ED",
+          "descColor": "#A4A4A6",
+          "descTop": true,
+          "divider": false,
+          "dividerColor": "#bebebe",
+          "formattedValue": 2
+        }
+      },
+      "filterDependencies": [
+        {
+          "parentColumn": "",
+          "childColumn": "",
+          "restrict": false,
+          "autoClear": false
+        }
+      ]
+    }
+  ]
+}
