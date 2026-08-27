@@ -122,13 +122,26 @@ evidence and no FRAMEWORK node.)
    are the uncommon case.
 
 ### Phase 5 — validation
-8. Add a fixture-based test app (small Go+gin or Go+gqlgen service) under
-   `tests/apps/` or `nuguard/sbom/tests/fixtures/` and assert
-   FRAMEWORK/API_ENDPOINT/MODEL nodes get proper file:line evidence —
-   mirroring existing Python/TS adapter tests.
-9. Re-run `tests/apps/kscope/kscope-test.sh` once the token/repo access
-   issue for `mosaic-care/healthcare-service` is resolved, and diff the SBOM
-   before/after to confirm `frameworks` and `api_endpoints` are populated.
+8. ✅ Added a fixture-based test app,
+   `nuguard/sbom/tests/fixtures/apps/go_healthcare_service/` — a small
+   gin + go-openai + MongoDB + JWT backend modeled on
+   `mosaic-care/healthcare-service`'s actual shape (the exact combination
+   that produced zero file-anchored nodes before phases 2-4). The
+   integration test in `nuguard/sbom/tests/test_go_healthcare_fixture.py`
+   asserts FRAMEWORK (gin, go-openai), API_ENDPOINT (both gin routes),
+   MODEL (`gpt-4-turbo` from the request struct), DATASTORE (mongodb), and
+   AUTH (jwt) nodes are all present and that every one of them carries
+   `Evidence` with a real `.go` file path and a positive line number —
+   mirroring the existing Python/TS adapter integration tests
+   (`test_milo_style.py`'s pattern). 6/6 pass.
+9. ⏸ **Blocked** — re-running `tests/apps/kscope/kscope-test.sh` against
+   the real `mosaic-care/healthcare-service` repo to diff the before/after
+   SBOM needs GitHub access to that repo, which is still unavailable: `gh
+   api repos/mosaic-care/healthcare-service` returns `404 Not Found` under
+   the authenticated account, the same result found at the start of this
+   investigation. The fixture-based validation in #8 exercises the same
+   code paths against a repo-shaped fixture instead; re-run this item once
+   repo access is granted.
 
 Phase 1+2 give the highest ROI — they turn "framework: none detected" into
 real coverage and unblock endpoint-level `analyze`/`redteam` targeting,
