@@ -846,8 +846,14 @@ def _looks_like_chat_response(data: object, response_key: str | None = None) -> 
     if len(data) >= 2:
         return True
     # Single-key response: accept if it contains a known chat-y key
-    for key in ("response", "content", "prognosis", "text", "output",
-                "answer", "result", "reply", "choices", "messages"):
+    for key in (
+        "response", "content", "prognosis", "text", "output",
+        "answer", "result", "reply", "choices", "messages",
+        # common custom agent / HuggingFace / LangChain response keys
+        "bot_response", "assistant_message", "assistant_reply",
+        "generated_text", "completion", "delta",
+        "llm_output", "llm_response", "data",
+    ):
         if key in data:
             return True
     return False
