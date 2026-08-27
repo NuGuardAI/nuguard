@@ -145,3 +145,83 @@ func main() {
         LangChainGoAdapter(),
     ):
         assert _extract(adapter, src) == []
+
+
+# ---------------------------------------------------------------------------
+# go-openai Tool/FunctionDefinition schema detection
+# ---------------------------------------------------------------------------
+
+_GO_OPENAI_TOOL_SRC = """
+package main
+
+import openai "github.com/sashabaranov/go-openai"
+
+func run(client *openai.Client) {
+	tool := openai.Tool{
+		Type: openai.ToolTypeFunction,
+		Function: &openai.FunctionDefinition{
+			Name:        "get_weather",
+			Description: "Retrieves current weather conditions",
+		},
+	}
+	req := openai.ChatCompletionRequest{
+		Model: "gpt-4-turbo",
+		Tools: []openai.Tool{tool},
+	}
+	client.CreateChatCompletion(req)
+}
+"""
+
+
+def test_go_openai_tool_struct_emits_tool_node() -> None:
+    detections = _extract(GoOpenAIAdapter(), _GO_OPENAI_TOOL_SRC)
+    tools = _by_type(detections, ComponentType.TOOL)
+    assert len(tools) == 1
+    assert tools[0].display_name == "get_weather"
+    assert tools[0].metadata["description"] == "Retrieves current weather conditions"
+    assert tools[0].relationships
+
+
+_GO_OPENAI_STANDALONE_FUNCTION_DEF_SRC = """
+package main
+
+import openai "github.com/sashabaranov/go-openai"
+
+func run() {
+	fn := openai.FunctionDefinition{
+		Name:        "search_docs",
+		Description: "Searches internal documentation",
+	}
+	_ = fn
+}
+"""
+
+
+def test_go_openai_standalone_function_definition_emits_tool_node() -> None:
+    detections = _extract(GoOpenAIAdapter(), _GO_OPENAI_STANDALONE_FUNCTION_DEF_SRC)
+    tools = _by_type(detections, ComponentType.TOOL)
+    assert len(tools) == 1
+    assert tools[0].display_name == "search_docs"
+    assert tools[0].metadata["description"] == "Searches internal documentation"
+
+
+def test_go_openai_tool_missing_description_still_emits_node() -> None:
+    src = """
+package main
+
+import openai "github.com/sashabaranov/go-openai"
+
+func run() {
+	tool := openai.Tool{
+		Function: &openai.FunctionDefinition{
+			Name: "no_description_tool",
+		},
+	}
+	_ = tool
+}
+"""
+    detections = _extract(GoOpenAIAdapter(), src)
+    tools = _by_type(detections, ComponentType.TOOL)
+    assert len(tools) == 1
+    assert tools[0].display_name == "no_description_tool"
+    assert "description" not in tools[0].metadata

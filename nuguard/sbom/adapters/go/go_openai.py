@@ -6,6 +6,18 @@ field. Only string-literal model values are resolvable — SDK constants like
 ``openai.GPT4`` are qualified identifiers that ``go_parser`` cannot resolve
 to a value, so those requests contribute only the FRAMEWORK node (still
 useful presence evidence, just without a distinct MODEL node).
+
+Also detects hand-built ``openai.Tool``/``openai.FunctionDefinition`` struct
+literals — the Go analogue of
+``nuguard/sbom/adapters/python/openai_function_schema.py``'s dict-literal
+tool-schema detection. Verified against the current go-openai source:
+``Tool.Function`` is ``*FunctionDefinition`` directly (no wrapper type), so
+``inst.args["Function"]`` already resolves to a nested dict via
+``go_parser``'s existing recursive composite-literal handling, the same
+mechanism used above for ``ChatCompletionRequest{Model: "..."}``. Unlike the
+Python adapter, there's no same-file dispatcher lookup (``if tool_name ==
+"x": ...``) here — that needs function-*declaration* parsing, which
+``go_parser`` doesn't have yet.
 """
 
 from __future__ import annotations
@@ -31,6 +43,9 @@ _REQUEST_TYPES = {
     "openai.ImageRequest",
     "openai.AudioRequest",
 }
+_TOOL_TYPES = {"Tool", "openai.Tool"}
+_FUNCTION_DEF_TYPES = {"FunctionDefinition", "openai.FunctionDefinition"}
+_TOOL_SCHEMA_CONFIDENCE = 0.85
 
 
 class GoOpenAIAdapter(GoFrameworkAdapter):
@@ -96,6 +111,54 @@ class GoOpenAIAdapter(GoFrameworkAdapter):
                 )
             )
             detections.append(model)
+
+        seen_tools: set[str] = set()
+        for inst in result.instantiations:
+            func_def: dict[str, Any] | None = None
+            if inst.class_name in _TOOL_TYPES:
+                candidate = inst.args.get("Function")
+                if isinstance(candidate, dict):
+                    func_def = candidate
+            elif inst.class_name in _FUNCTION_DEF_TYPES:
+                func_def = inst.args
+
+            if func_def is None:
+                continue
+
+            tool_name = self._clean(func_def.get("Name"))
+            if not tool_name or tool_name in seen_tools:
+                continue
+            seen_tools.add(tool_name)
+
+            description = self._clean(func_def.get("Description"))
+            tool_canon = canonicalize_text(f"go_openai_function_schema:{tool_name}")
+            tool = ComponentDetection(
+                component_type=ComponentType.TOOL,
+                canonical_name=tool_canon,
+                display_name=tool_name,
+                adapter_name=self.name,
+                priority=self.priority,
+                confidence=_TOOL_SCHEMA_CONFIDENCE,
+                metadata={
+                    "framework": "go_openai",
+                    "language": "golang",
+                    **({"description": description[:200]} if description else {}),
+                },
+                file_path=file_path,
+                line=inst.line,
+                snippet=inst.source_snippet or f"{inst.class_name}{{...}}",
+                evidence_kind="ast_instantiation",
+            )
+            tool.relationships.append(
+                RelationshipHint(
+                    source_canonical=framework.canonical_name,
+                    source_type=ComponentType.FRAMEWORK,
+                    target_canonical=tool_canon,
+                    target_type=ComponentType.TOOL,
+                    relationship_type="CALLS",
+                )
+            )
+            detections.append(tool)
 
         return detections
 
