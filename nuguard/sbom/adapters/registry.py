@@ -46,6 +46,9 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         ChiAdapter,
         EchoAdapter,
         GinAdapter,
+        GoDatastoreAdapter,
+        GoJWTAdapter,
+        GoOAuth2Adapter,
         GoogleGenAIAdapter,
         GoOpenAIAdapter,
         GorillaMuxAdapter,
@@ -144,6 +147,9 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         GoOpenAIAdapter(),
         AnthropicSDKGoAdapter(),
         GoogleGenAIAdapter(),
+        GoDatastoreAdapter(),
+        GoJWTAdapter(),
+        GoOAuth2Adapter(),
     ]
     return tuple(sorted(adapters, key=lambda a: (a.priority, canonicalize_text(a.name))))
 

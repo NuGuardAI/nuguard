@@ -93,13 +93,33 @@ evidence and no FRAMEWORK node.)
      interface-implementation analysis `go_parser` doesn't do; noted as a
      further follow-up alongside the gqlgen resolver-extraction gap.
 
-### Phase 4 — datastore/auth structural detection
-6. Add a Go datastore adapter (`mongo-driver`, `database/sql` + driver
-   imports, `redis/go-redis`) so DATASTORE nodes get code evidence instead
-   of relying solely on IaC/compose files.
-7. Extend auth detection with Go-specific JWT/OAuth2 libraries
-   (`golang-jwt/jwt`, `golang.org/x/oauth2`) as structural adapters,
-   replacing the current bare-word regex matches.
+### Phase 4 — datastore/auth structural detection ✅ done
+6. ✅ Added `GoDatastoreAdapter` (`mongo-driver`'s `mongo.Connect`/
+   `mongo.NewClient`, `redis/go-redis`'s `redis.NewClient`, and stdlib
+   `database/sql`'s `sql.Open(driverName, dsn)` with driver→provider
+   resolution) so DATASTORE nodes get real call-site evidence instead of
+   relying solely on IaC/compose files. One node per distinct provider per
+   file, reusing the Python adapter's `datastore:{provider}` canonical-name
+   convention.
+7. ✅ Added `GoJWTAdapter` (`golang-jwt/jwt`, any major version, plus the
+   legacy `dgrijalva/jwt-go` fork — `jwt.NewWithClaims`/`Parse`/
+   `ParseWithClaims`) and `GoOAuth2Adapter` (`golang.org/x/oauth2` —
+   `oauth2.Config{...}` or `oauth2.NewClient(...)`). Both reuse the exact
+   `auth:jwt`/`auth:oauth2` canonical names the generic regex fallback
+   already uses, so a structural hit and a same-file text hit merge into
+   one node with upgraded evidence rather than producing a duplicate.
+   Verified end-to-end: mixing regex-only and structural Go source in one
+   file still yields exactly one `AUTH | JWT` node.
+
+   **Known limitation, not addressed here**: receiver/package-name matching
+   in both adapters assumes the default (unaliased) import name — e.g.
+   `jwt.NewWithClaims(...)`. A file that imports under an alias
+   (`import j "github.com/golang-jwt/jwt/v5"`) won't be picked up by the
+   structural adapter (the bare-word regex fallback still catches it,
+   just without call-site evidence). `mcp_server.py`'s
+   `_package_aliases()` shows the pattern to fix this properly; not worth
+   promoting to the shared base for a phase-4 pass given aliased imports
+   are the uncommon case.
 
 ### Phase 5 — validation
 8. Add a fixture-based test app (small Go+gin or Go+gqlgen service) under
