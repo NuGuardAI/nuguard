@@ -371,8 +371,9 @@ async def resolve_target_session(
     login_extras = bootstrapper.session.login_response_extras()
 
     # ── 5. SBOM context hints ─────────────────────────────────────────────────
+    _auth_username = getattr(effective_auth, "username", None) or None
     merged_extras, hint_notes = apply_sbom_context_hints(
-        sbom, chat_path, merged_extras, login_extras
+        sbom, chat_path, merged_extras, login_extras, auth_username=_auth_username
     )
     resolution_notes.extend(hint_notes)
 
