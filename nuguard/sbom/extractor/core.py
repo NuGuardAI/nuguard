@@ -45,6 +45,7 @@ from ..adapters.base import (
 from ..adapters.data_classification import DataClassificationSQLAdapter
 from ..adapters.dockerfile import DockerfileAdapter
 from ..adapters.go._go_base import GoFrameworkAdapter
+from ..adapters.go.prompts import extract_go_prompt_constants as _extract_go_prompt_constants
 from ..adapters.iac import (
     BicepAdapter,
     CloudFormationAdapter,
@@ -1173,6 +1174,12 @@ class AiSbomExtractor:
                             continue
                         for det in detections:
                             self._merge_detection(node_map, det)
+
+                    # Phase 1c-go-prime: package-level Go prompt constants.
+                    # Runs on ALL .go files regardless of framework imports, mirroring
+                    # Python's Phase 1a-prime, so prompt-only files are still processed.
+                    for det in _extract_go_prompt_constants(go_result, rel_path):
+                        self._merge_detection(node_map, det)
 
             # SC-019: detect minified JS (single line > 5000 chars) for supply-chain summary
             if suffix == ".js" and content:

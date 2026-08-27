@@ -14,6 +14,7 @@ from nuguard.sbom.adapters.go.http_router import ChiAdapter, EchoAdapter, GinAda
 from nuguard.sbom.adapters.go.langchaingo import LangChainGoAdapter
 from nuguard.sbom.adapters.go.mcp_server import MCPGoServerAdapter
 from nuguard.sbom.adapters.go.net_http import NetHTTPAdapter
+from nuguard.sbom.adapters.go.prompts import extract_go_prompt_constants
 
 __all__ = [
     "GoFrameworkAdapter",
@@ -31,4 +32,5 @@ __all__ = [
     "GoDatastoreAdapter",
     "GoJWTAdapter",
     "GoOAuth2Adapter",
+    "extract_go_prompt_constants",
 ]

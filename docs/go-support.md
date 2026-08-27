@@ -180,7 +180,7 @@ Phase 1+2 give the highest ROI — they turn "framework: none detected" into
 real coverage and unblock endpoint-level `analyze`/`redteam` targeting,
 which is currently completely blind for Go backends.
 
-### Phase 6 — Go prompt-constant extraction
+### Phase 6 — Go prompt-constant extraction ✅ done
 Ground-truth cross-check (phase 5 item 9) found a real, large,
 safety-critical system prompt —
 `backend/chat/chat.go:48: const systemPrompt = \`You are Mosaic's health
@@ -191,28 +191,50 @@ node (bare keyword match, confidence 0.48). This is exactly the kind of
 thing `behavior`/`redteam`'s policy-alignment and jailbreak-surface checks
 need to inspect, and right now it's invisible.
 
-10. Add a `GoPromptAdapter` mirroring Python's
-    `_extract_python_prompt_constants` (`extractor/core.py`): scan
-    `GoParseResult.string_literals` for module-level `const`/`var`
-    string declarations (raw string literals — `` `...` `` — are the
-    common Go idiom for multi-line prompts, and `go_parser` already
-    decodes them via `_decode_go_string`) whose assigned name matches a
-    prompt-like pattern (`*[Pp]rompt*`, `*[Ss]ystem*`) or whose content
-    looks like an instruction (heuristics already exist for this in
-    Python's prompt detector — reuse the shape, not the AST-specific
-    code). Emit a PROMPT node per match with the full content in
-    `metadata.extras.content` (matching the Evidence.detail convention
-    documented in `models.py`'s `Evidence.detail` field) and real
-    file/line evidence.
-11. Also cover prompts built from a Go string-formatting call
+10. ✅ Added `extract_go_prompt_constants()`
+    (`nuguard/sbom/adapters/go/prompts.py`), mirroring Python's
+    `_extract_python_prompt_constants`: scans `GoParseResult.string_literals`
+    for package-level (`lit.context is None` — not inside a
+    function/method) `const`/`var` string declarations whose assigned
+    name ends in `...Prompt`/`...prompt` (case-insensitive suffix match,
+    not Python's `(?:^|_)PROMPT$` anchor — Go's camelCase convention
+    means `systemPrompt`/`supplementSysPrompt` don't have the
+    underscore Python's SCREAMING_SNAKE_CASE names do) and whose content
+    is >=80 chars. Emits a PROMPT node per match with the full content
+    in `metadata.extras.content` and real file/line evidence
+    (`evidence_kind: "ast_constant"`). Reuses
+    `GoFrameworkAdapter._template_vars()` for `{{.Name}}`/`{name}`
+    template-variable extraction rather than writing a second regex.
+    Called unconditionally on every `.go` file's parse result in
+    `extractor/core.py`'s Go dispatch branch, regardless of which (if
+    any) framework adapters matched — mirroring Python's "Phase
+    1a-prime" placement.
+11. Deferred: prompts built from a Go string-formatting call
     (`fmt.Sprintf("You are %s...", ...)`) assigned to a prompt-like
-    variable name — lower priority than #10 (the constant case is both
-    more common and the one actually found in kscope), but the same
-    `GoFunctionCall` data already captures these calls' arguments.
-12. Validate against a new fixture (extend
-    `go_healthcare_service` or add a sibling fixture) asserting a PROMPT
-    node with real evidence and non-empty content, following phase 5's
-    pattern.
+    variable name — not found in the kscope ground truth (all real
+    prompts there are raw-string constants), so not implemented; the
+    `GoFunctionCall` data needed for it already exists if a future repo
+    needs it.
+12. ✅ Extended `go_healthcare_service`'s `triage.go` with a package-level
+    `const systemPrompt` (modeled on the real one) and added
+    `TestPromptDetection` to `test_go_healthcare_fixture.py`, asserting a
+    PROMPT node with real content and evidence. Also added
+    `test_go_prompt_constants.py` (7 unit tests: package-level detection,
+    camelCase suffix matching, function-local strings correctly
+    excluded, min-length and eval/test skip-word filtering, template-variable
+    capture). 7 + 7 = 14 new tests, full `nuguard/sbom/` suite (1222
+    tests) + ruff + mypy all pass.
+
+    **Real-world validation** — re-ran `kscope-test.sh` against the live
+    `mosaic-care/healthcare-service` repo: `PROMPT` node count went from
+    1 (the old content-free generic hit) to 9 — 8 real prompt constants
+    with full content now captured (`Systemprompt`: 9506 chars,
+    `backend/chat/chat.go:48`, content verified byte-for-byte against the
+    real prompt's opening line; `Supplementsysprompt`: 1701 chars,
+    `backend/ingest/supplement.go`; plus 6 more across
+    `classify`/`fhir`/`filter`/`genomic`/`protocol`) — alongside the one
+    pre-existing generic hit still present for whatever didn't match the
+    structural adapter's heuristics.
 
 ### Phase 7 — Go agent/orchestration framework adapters (Python parity)
 Even after phases 1-6, Go's adapter roster stays far short of Python's 22

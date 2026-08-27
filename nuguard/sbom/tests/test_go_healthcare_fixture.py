@@ -1,13 +1,14 @@
-"""Integration test for the go_healthcare_service fixture (phase 5 validation).
+"""Integration test for the go_healthcare_service fixture (phases 5-6 validation).
 
 This fixture is modeled on the shape of mosaic-care/healthcare-service — a
 Golang backend with a gin HTTP router, a go-openai LLM client, a MongoDB
-datastore, and JWT auth — the exact combination that, before
-docs/go-support.md's phases 2-4, produced *zero* file-anchored SBOM nodes
-(only bare-word regex matches with no evidence). This test asserts the full
-extraction pipeline now produces FRAMEWORK/API_ENDPOINT/MODEL/DATASTORE/AUTH
-nodes, each with real file:line evidence tying it back to the exact
-construction/call site.
+datastore, JWT auth, and a package-level system-prompt constant — the exact
+combination that, before docs/go-support.md's phases 2-4 (and the prompt
+constant added for phase 6), produced *zero* file-anchored SBOM nodes (only
+bare-word regex matches with no evidence, and no content at all for the
+prompt). This test asserts the full extraction pipeline now produces
+FRAMEWORK/API_ENDPOINT/MODEL/DATASTORE/AUTH/PROMPT nodes, each with real
+file:line evidence tying it back to the exact construction/call site.
 """
 
 from __future__ import annotations
@@ -78,3 +79,18 @@ class TestAuthDetection:
         jwt_node = next((n for n in auth_nodes if n.metadata.extras.get("auth_type") == "jwt"), None)
         assert jwt_node is not None, f"auth nodes found: {[n.name for n in auth_nodes]}"
         _assert_has_evidence(jwt_node)
+
+
+class TestPromptDetection:
+    def test_system_prompt_constant_becomes_prompt_node_with_content(
+        self, doc: AiSbomDocument
+    ) -> None:
+        prompts = nodes(doc, ComponentType.PROMPT)
+        # Display names go through normalize_display_name in postprocessing
+        # (e.g. "systemPrompt" -> "Systemprompt"), so match case-insensitively.
+        system_prompt = next((n for n in prompts if n.name.lower() == "systemprompt"), None)
+        assert system_prompt is not None, f"prompts found: {[n.name for n in prompts]}"
+        assert system_prompt.metadata.extras.get("role") == "system"
+        content = system_prompt.metadata.extras.get("content", "")
+        assert "Mosaic's health assistant" in content
+        _assert_has_evidence(system_prompt)
