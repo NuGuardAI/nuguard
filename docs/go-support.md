@@ -1,5 +1,18 @@
 # Go Backend Discovery — Findings & Improvement Plan
 
+**Status: all 8 phases complete.** Go backends now get file/line-anchored
+FRAMEWORK, API_ENDPOINT, MODEL, DATASTORE, AUTH, PROMPT, AGENT, TOOL, and
+MCP_SERVER nodes from real structural/AST evidence instead of bare
+whole-file regex matches — validated against both fixture apps and the
+live `mosaic-care/healthcare-service` repo (phases 5, 6, 8). Deferred items
+(gqlgen resolver extraction, langchaingo TOOL/agent extraction, Go
+function/tool schema detection) share one root cause — `go_parser` doesn't
+parse function *declarations*, only imports/instantiations/calls/string
+literals — and are tracked as a single follow-up rather than three
+separate ones. See the phase sections below for what shipped, what was
+explicitly scoped out and why, and the real-world validation numbers for
+each.
+
 ## Finding: Go backends are not being structurally discovered
 
 Confirmed by inspecting `tests/apps/kscope/kscope.sbom.json` (SBOM generated
@@ -388,3 +401,45 @@ this SBOM).
     remaining `o0`-`o7` false positives are unrelated to Go entirely —
     `frontend/webapp/.vite/deps/echarts.js`, a bundled frontend file, not
     backend source.
+
+## Summary
+
+`mosaic-care/healthcare-service` node counts, before this investigation
+started → after all 8 phases:
+
+| Component type | Before | After |
+|---|---|---|
+| FRAMEWORK | 0 | 3 (Gin, Gorilla/Mux, Net/HTTP) |
+| API_ENDPOINT | 0 | 34, all cross-checked against real call sites |
+| PROMPT | 1 (content-free) | 9 (8 with full content, real evidence) |
+| MODEL (structural, high-confidence) | 0 | 2 (was: all 11 on low-confidence bare regex) |
+| DATASTORE (structural) | 0 | 1 (MongoDB) |
+| AUTH (structural) | 0 | 1 (JWT) |
+
+New adapter files (16, all under `nuguard/sbom/adapters/go/`): the
+existing `mcp_server.py` plus `http_router.py` (gin/echo/chi),
+`net_http.py`, `gorilla_mux.py`, `gqlgen.py`, `langchaingo.py`,
+`go_openai.py`, `anthropic_sdk.py`, `google_genai.py`, `datastores.py`,
+`auth.py`, `prompts.py`, `eino.py`, `genkit.py`, `mcp_client.py`,
+`direct_http_llm.py`. Plus the `go_parser.py` dispatch wiring in
+`extractor/core.py` (phase 1) and the `MODEL_NAME_PATTERNS` extraction in
+`adapters/registry.py` (phase 8).
+
+Test coverage: `nuguard/sbom/tests/test_go_*.py` (10 files, 98 tests
+total, including the pre-existing `go_parser`/MCP-server tests), covering
+phases 1-8 with real file/line evidence assertions — plus the
+`go_healthcare_service` fixture app and its integration test
+(`test_go_healthcare_fixture.py`). Full `nuguard/sbom/` suite: 1239 tests
+passing.
+
+Remaining deferred work (not blocking, tracked here for whoever picks
+this up next): gqlgen resolver-level GraphQL operation extraction (phase
+2), langchaingo TOOL/agent extraction (phase 3), and Go
+function/tool-schema detection (phase 7 item 16) all need the same
+`go_parser` extension — a function-*declaration* parsing pass, which
+doesn't exist yet (`GoParseResult` currently covers imports,
+instantiations, calls, and string literals only). That's the single
+highest-leverage next investment for Go SBOM accuracy. Guardrails/
+validation detection (phase 7 item 15) has no dominant Go library to
+build against yet and should stay untracked until one appears in a
+scanned repo.
