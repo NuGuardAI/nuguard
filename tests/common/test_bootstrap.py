@@ -1,14 +1,15 @@
 """Tests for AuthBootstrapper using respx HTTP mocks."""
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 import respx
-import httpx
 
 from nuguard.common.auth import AuthConfig, LoginFlowConfig
-from nuguard.common.bootstrap import AuthBootstrapper, BOOTSTRAP_STARTUP_RETRIES
+from nuguard.common.bootstrap import BOOTSTRAP_STARTUP_RETRIES, AuthBootstrapper
 from nuguard.common.errors import TargetUnavailableError
 from nuguard.redteam.target.canary import CanaryConfig, CanaryTenant
 
@@ -85,6 +86,56 @@ async def test_default_credential_500_treated_as_ok() -> None:
     assert report.all_ok is True
     assert report.checks[0].status == "ok"
     assert report.checks[0].http_status_code == 500
+
+
+
+# ── probe body construction ─────────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_probe_body_flat_extras_merges_message() -> None:
+    # Flat (depth <= 1) chat_payload_extras: unchanged legacy behavior — extras
+    # are merged as sibling fields alongside the flat "message": "ping" probe.
+    route = respx.post(FULL_URL).mock(return_value=httpx.Response(200))
+    bootstrapper = AuthBootstrapper(
+        target_url=TARGET,
+        endpoint=ENDPOINT,
+        default_auth=AuthConfig(type="none"),
+        run_id="test-run",
+        startup_retries=0,
+        probe_payload_extras={"vehicleState": "parked"},
+    )
+    await bootstrapper.run()
+    sent_body = route.calls.last.request.content
+    assert json.loads(sent_body) == {"vehicleState": "parked", "message": "ping"}
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_probe_body_nested_extras_substituted() -> None:
+    # Nested (slot-mode) chat_payload_extras must be substituted, not clobbered
+    # by a flat "message": "ping" overlay — see nuguard.yaml's chat_payload_extras
+    # slot-mode docs and TargetAppClient._build_generic_body.
+    route = respx.post(FULL_URL).mock(return_value=httpx.Response(200))
+    bootstrapper = AuthBootstrapper(
+        target_url=TARGET,
+        endpoint=ENDPOINT,
+        default_auth=AuthConfig(type="none"),
+        run_id="test-run",
+        startup_retries=0,
+        probe_payload_extras={
+            "message": {"role": "user", "content": "{{message}}"},
+            "conversation_id": "{{conversation_id}}",
+            "stream": False,
+        },
+    )
+    await bootstrapper.run()
+    sent_body = route.calls.last.request.content
+    assert json.loads(sent_body) == {
+        "message": {"role": "user", "content": "ping"},
+        "stream": False,
+    }
 
 
 @pytest.mark.anyio

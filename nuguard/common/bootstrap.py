@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from nuguard.common import chat_payload_tokens
 from nuguard.common.auth import AuthConfig, AuthSession
 from nuguard.common.errors import TargetUnavailableError
 from nuguard.common.logging import get_logger
@@ -288,7 +289,24 @@ class AuthBootstrapper:
         # Does NOT need to produce a meaningful AI response; just needs a 2xx vs 4xx/5xx.
         # Extra static fields (chat_payload_extras) are merged in so apps that crash on
         # missing required fields (e.g. vehicleState) don't trip the target_unavailable check.
-        probe_body = {**self._probe_payload_extras, "message": "ping"}
+        #
+        # Nested (slot-mode) chat_payload_extras — e.g. {"message": {"role": ...,
+        # "content": "{{message}}"}} — needs the same substitution TargetAppClient
+        # uses for real turns (see _build_generic_body in target/client.py). A flat
+        # {**extras, "message": "ping"} merge would clobber the nested "message"
+        # object with a bare string and leave "{{conversation_id}}" unsubstituted,
+        # producing a schema-validation 422 that isn't representative of the app's
+        # real contract.
+        if self._probe_payload_extras and chat_payload_tokens.max_depth(self._probe_payload_extras) > 1:
+            context: dict[str, object] = {
+                chat_payload_tokens.MESSAGE: "ping",
+                chat_payload_tokens.HISTORY: [],
+                chat_payload_tokens.SESSION_ID: None,
+                chat_payload_tokens.CONVERSATION_ID: None,
+            }
+            probe_body = chat_payload_tokens.substitute(self._probe_payload_extras, context)
+        else:
+            probe_body = {**self._probe_payload_extras, "message": "ping"}
         start = time.monotonic()
 
         try:
