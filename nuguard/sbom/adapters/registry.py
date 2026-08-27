@@ -41,7 +41,15 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
     files), and Go adapters (run against ``.go`` files).
     """
     from .data_classification import DataClassificationPythonAdapter
-    from .go import MCPGoServerAdapter
+    from .go import (
+        ChiAdapter,
+        EchoAdapter,
+        GinAdapter,
+        GorillaMuxAdapter,
+        GqlgenAdapter,
+        MCPGoServerAdapter,
+        NetHTTPAdapter,
+    )
     from .python import (
         AgnoAdapter,
         AutoGenAdapter,
@@ -122,6 +130,12 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         AgentOrchestratorTSAdapter(),
         # Go adapters
         MCPGoServerAdapter(),
+        GinAdapter(),
+        EchoAdapter(),
+        ChiAdapter(),
+        NetHTTPAdapter(),
+        GorillaMuxAdapter(),
+        GqlgenAdapter(),
     ]
     return tuple(sorted(adapters, key=lambda a: (a.priority, canonicalize_text(a.name))))
 

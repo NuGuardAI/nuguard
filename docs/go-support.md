@@ -46,16 +46,27 @@ FRAMEWORK node is ever emitted, and endpoints are invisible to
    (currently just `MCPGoServerAdapter`) so Go gets a real dispatch path at
    all.
 
-### Phase 2 — Go web framework adapters
+### Phase 2 — Go web framework adapters ✅ done
 (Biggest gap: zero API_ENDPOINT/FRAMEWORK coverage.)
-3. Add adapters for the common Go HTTP routers: `net/http`,
+3. ✅ Added adapters for the common Go HTTP routers: `net/http`,
    `gin-gonic/gin`, `labstack/echo`, `go-chi/chi`, `gorilla/mux` — emit
    FRAMEWORK + API_ENDPOINT nodes with method/path/file/line, using
-   `go_parser`'s function-call extraction (not new regex).
-4. Add a `gqlgen`/GraphQL adapter — extract operations from
-   `.graphqls`/`.graphql` schema files and resolver structs, since
-   `kscope`'s backend looks GraphQL-based (REST route patterns won't apply
-   here at all).
+   `go_parser`'s function-call extraction (not new regex). Verified
+   end-to-end against fixtures for all five, including gorilla/mux's
+   chained `.HandleFunc(...).Methods("GET")`.
+4. ✅ Added a `gqlgen` adapter — emits a FRAMEWORK node (`api_style:
+   graphql`) when `github.com/99designs/gqlgen` is imported.
+   **Scoped down from the original plan**: resolver-level operation
+   extraction (mapping `queryResolver`/`mutationResolver` methods to
+   individual GraphQL operations — the GraphQL analogue of per-route
+   API_ENDPOINT nodes) needs Go function-*declaration* parsing, which
+   `go_parser.GoParseResult` doesn't have yet (it extracts imports,
+   instantiations, calls, and string literals, but not declarations).
+   Follow-up: extend `go_parser` with a function-declaration pass, then
+   revisit gqlgen resolver extraction and `.graphqls`/`.graphql` schema
+   file parsing (schema files aren't `.go`, so they also need a new
+   dispatch branch in `extractor/core.py`, analogous to the SQL/YAML/JSON
+   branches).
 
 ### Phase 3 — Go AI/LLM SDK adapters
 (Currently only generic regex catches model names.)
