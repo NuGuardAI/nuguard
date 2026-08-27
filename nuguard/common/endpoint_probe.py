@@ -26,6 +26,9 @@ if TYPE_CHECKING:
 
 _log = get_logger(__name__)
 
+# Detects path-parameter placeholders — FastAPI/Express {id}, NestJS :id, or <id>.
+_HAS_PATH_PARAM_RE = re.compile(r"(:\w+|\{\w+\}|<\w+>)")
+
 # Endpoint path fragments that are definitively NOT chat endpoints.
 # Keep this list tight — false exclusions are worse than false inclusions
 # because the probe will verify via HTTP anyway.
@@ -185,8 +188,8 @@ def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
         path: str = (meta.endpoint or "").strip()
         if not path or not path.startswith("/"):
             continue
-        # Skip parameterised paths like /user/{id}
-        if "{" in path:
+        # Skip parameterised paths like /user/{id}, /chat/:id, /items/<pk>
+        if _HAS_PATH_PARAM_RE.search(path):
             continue
         # Skip non-POST
         if meta.method and meta.method.upper() not in ("POST", ""):
@@ -732,6 +735,12 @@ def discover_chat_candidates_from_sbom(
         # Penalise nodes that had no explicit payload key (inferred).
         if not meta.chat_payload_key:
             score -= 1
+
+        # Penalise path-param routes — they require a real resource ID and will
+        # 404 with an unresolved placeholder. Still returned so callers can fall
+        # back to them when no parameter-free option exists.
+        if _HAS_PATH_PARAM_RE.search(discovered_path):
+            score -= 5
 
         # Penalise nodes confirmed dead by the live probe — GET 404 means the
         # route doesn't exist at all on the deployed target; POST 405 strongly
