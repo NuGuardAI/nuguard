@@ -36,11 +36,12 @@ def intake_candidates() -> tuple[IntakeCandidate, ...]:
 def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
     """Return all AST-aware framework adapters in priority order.
 
-    Includes both Python adapters (run against ``.py`` and ``.ipynb`` files)
-    and TypeScript adapters (run against ``.ts``, ``.tsx``, ``.js``, ``.jsx``
-    files).
+    Includes Python adapters (run against ``.py`` and ``.ipynb`` files),
+    TypeScript adapters (run against ``.ts``, ``.tsx``, ``.js``, ``.jsx``
+    files), and Go adapters (run against ``.go`` files).
     """
     from .data_classification import DataClassificationPythonAdapter
+    from .go import MCPGoServerAdapter
     from .python import (
         AgnoAdapter,
         AutoGenAdapter,
@@ -119,6 +120,8 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         AgnoTSAdapter(),
         AzureAIAgentsTSAdapter(),
         AgentOrchestratorTSAdapter(),
+        # Go adapters
+        MCPGoServerAdapter(),
     ]
     return tuple(sorted(adapters, key=lambda a: (a.priority, canonicalize_text(a.name))))
 

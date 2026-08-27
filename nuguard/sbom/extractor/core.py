@@ -44,6 +44,7 @@ from ..adapters.base import (
 )
 from ..adapters.data_classification import DataClassificationSQLAdapter
 from ..adapters.dockerfile import DockerfileAdapter
+from ..adapters.go._go_base import GoFrameworkAdapter
 from ..adapters.iac import (
     BicepAdapter,
     CloudFormationAdapter,
@@ -111,6 +112,7 @@ _SQL_EXTENSIONS = {".sql"}
 _NOTEBOOK_EXTENSIONS = {".ipynb"}
 # TypeScript/JavaScript: tree-sitter (or regex fallback) via core/ts_parser
 _TYPESCRIPT_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx"}
+_GO_EXTENSIONS = {".go"}
 # Dockerfile: extensionless file named "Dockerfile" or suffixed ".dockerfile"
 _DOCKERFILE_EXTENSIONS = {".dockerfile"}
 _DOCKERFILE_NAMES = {"dockerfile"}  # lower-cased stem match
@@ -1008,6 +1010,7 @@ class AiSbomExtractor:
             is_python = suffix in _PYTHON_EXTENSIONS
             is_notebook = suffix in _NOTEBOOK_EXTENSIONS
             is_typescript = suffix in _TYPESCRIPT_EXTENSIONS
+            is_go = suffix in _GO_EXTENSIONS
             is_sql = suffix in _SQL_EXTENSIONS
             is_dockerfile = (
                 suffix in _DOCKERFILE_EXTENSIONS or file_path.name.lower() in _DOCKERFILE_NAMES
@@ -1049,8 +1052,8 @@ class AiSbomExtractor:
                             if imp.module
                         }
                         for adapter in self.framework_adapters:
-                            # Skip TypeScript adapters for Python/notebook files
-                            if isinstance(adapter, TSFrameworkAdapter):
+                            # Skip TypeScript/Go adapters for Python/notebook files
+                            if isinstance(adapter, (TSFrameworkAdapter, GoFrameworkAdapter)):
                                 continue
                             if not adapter.can_handle(imported_modules):
                                 continue
@@ -1147,6 +1150,29 @@ class AiSbomExtractor:
                         continue
                     for det in detections:
                         self._merge_detection(node_map, det)
+
+            # Phase 1c-go: Go AST-aware framework adapters
+            elif is_go:
+                go_result = self._parse_go(content, rel_path)
+                if go_result is not None:
+                    for adapter in self.framework_adapters:
+                        if not isinstance(adapter, GoFrameworkAdapter):
+                            continue
+                        if not adapter.can_handle(go_result):
+                            continue
+                        _log.debug("running Go adapter %r on %s", adapter.name, rel_path)
+                        try:
+                            detections = adapter.extract(content, rel_path, go_result)
+                        except Exception as exc:
+                            _log.warning(
+                                "Go adapter %r failed on %s: %s",
+                                adapter.name,
+                                rel_path,
+                                exc,
+                            )
+                            continue
+                        for det in detections:
+                            self._merge_detection(node_map, det)
 
             # SC-019: detect minified JS (single line > 5000 chars) for supply-chain summary
             if suffix == ".js" and content:
@@ -2051,6 +2077,16 @@ class AiSbomExtractor:
     def _parse_typescript(content: str, file_path: str = "") -> TSParseResult:
         """Parse TypeScript/JavaScript via tree-sitter (or regex fallback)."""
         return _parse_ts_impl(content, file_path or None)
+
+    @staticmethod
+    def _parse_go(content: str, file_path: str = "") -> Any | None:
+        """Parse Go source via tree-sitter; return None on parse failure."""
+        try:
+            from ..core.go_parser import parse_go
+
+            return parse_go(content, file_path)
+        except Exception:
+            return None
 
     @staticmethod
     def _extract_notebook_python(content: str) -> str:
