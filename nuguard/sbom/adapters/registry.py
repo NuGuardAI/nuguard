@@ -133,6 +133,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         GenkitGoAdapter,
         GinAdapter,
         GoDatastoreAdapter,
+        GoGuardrailsAdapter,
         GoJWTAdapter,
         GoOAuth2Adapter,
         GoogleGenAIAdapter,
@@ -238,6 +239,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         GoDatastoreAdapter(),
         GoJWTAdapter(),
         GoOAuth2Adapter(),
+        GoGuardrailsAdapter(),
         EinoAdapter(),
         GenkitGoAdapter(),
     ]

@@ -13,6 +13,7 @@ from nuguard.sbom.adapters.go.go_openai import GoOpenAIAdapter
 from nuguard.sbom.adapters.go.google_genai import GoogleGenAIAdapter
 from nuguard.sbom.adapters.go.gorilla_mux import GorillaMuxAdapter
 from nuguard.sbom.adapters.go.gqlgen import GqlgenAdapter
+from nuguard.sbom.adapters.go.guardrails import GoGuardrailsAdapter
 from nuguard.sbom.adapters.go.http_router import ChiAdapter, EchoAdapter, GinAdapter
 from nuguard.sbom.adapters.go.langchaingo import LangChainGoAdapter
 from nuguard.sbom.adapters.go.mcp_client import MCPGoClientAdapter
@@ -37,6 +38,7 @@ __all__ = [
     "GoDatastoreAdapter",
     "GoJWTAdapter",
     "GoOAuth2Adapter",
+    "GoGuardrailsAdapter",
     "EinoAdapter",
     "GenkitGoAdapter",
     "extract_go_prompt_constants",
