@@ -862,6 +862,16 @@ def discover_chat_candidates_from_sbom(
             continue
 
         # ── Scoring ────────────────────────────────────────────────────────
+        # Path must contain a clearly conversational signal — broad tokens like
+        # "ai", "run", "agent", "query" are excluded because they match too many
+        # non-chat paths (e.g. "aibom", "run-redteam", "agents/list").
+        _CHAT_PATH_TOKENS = (
+            "chat", "message", "completions", "converse", "respond",
+            "infer", "generate", "llm", "assistant", "langgraph",
+        )
+        if not any(tok in endpoint_l for tok in _CHAT_PATH_TOKENS):
+            continue
+
         score = 0
         if source == "auto_enrichment":
             score -= 2
