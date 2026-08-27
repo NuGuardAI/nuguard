@@ -1,17 +1,19 @@
 # Go Backend Discovery — Findings & Improvement Plan
 
-**Status: all 8 phases complete.** Go backends now get file/line-anchored
-FRAMEWORK, API_ENDPOINT, MODEL, DATASTORE, AUTH, PROMPT, AGENT, TOOL, and
-MCP_SERVER nodes from real structural/AST evidence instead of bare
-whole-file regex matches — validated against both fixture apps and the
-live `mosaic-care/healthcare-service` repo (phases 5, 6, 8). Deferred items
-(gqlgen resolver extraction, langchaingo TOOL/agent extraction, Go
-function/tool schema detection) share one root cause — `go_parser` doesn't
-parse function *declarations*, only imports/instantiations/calls/string
-literals — and are tracked as a single follow-up rather than three
-separate ones. See the phase sections below for what shipped, what was
-explicitly scoped out and why, and the real-world validation numbers for
-each.
+**Status: all 8 phases complete, including phase 7's guardrails and
+function/tool-schema items (15 and 16) — no longer deferred.** Go backends
+now get file/line-anchored FRAMEWORK, API_ENDPOINT, MODEL, DATASTORE,
+AUTH, PROMPT, AGENT, TOOL, GUARDRAIL, and MCP_SERVER nodes from real
+structural/AST evidence instead of bare whole-file regex matches —
+validated against both fixture apps and the live
+`mosaic-care/healthcare-service` repo (phases 5, 6, 8, and again after
+items 15/16). `go_parser.py` gained function/method-*declaration* parsing
+(phase 7 item 16b) — the gap that was blocking langchaingo TOOL/agent
+extraction and gqlgen resolver extraction is now resolved; gqlgen resolver
+extraction just hasn't been *built* yet (see the Summary section's
+remaining-work list). See the phase sections below for what shipped, what
+was explicitly scoped out and why, and the real-world validation numbers
+for each.
 
 ## Finding: Go backends are not being structurally discovered
 
@@ -249,7 +251,7 @@ need to inspect, and right now it's invisible.
     pre-existing generic hit still present for whatever didn't match the
     structural adapter's heuristics.
 
-### Phase 7 — Go agent/orchestration framework adapters (Python parity) — 13/14 done, 15/16 deferred
+### Phase 7 — Go agent/orchestration framework adapters (Python parity) — 13/14/15/16 all done
 Even after phases 1-6, Go's adapter roster stays far short of Python's 22
 and TypeScript's 14: Python has structural adapters for LangGraph,
 CrewAI, AutoGen, Agno, Azure AI Agents, Bedrock AgentCore, Google ADK,
@@ -322,20 +324,75 @@ of Python-only frameworks.
     Re-ran `kscope-test.sh` against the real repo to confirm no
     regression/crash — node counts identical to the phase-6 run, as
     expected since kscope uses none of these three frameworks.
-15. ⏸ **Deferred** — **Guardrails / validation**: no dominant Go equivalent of
-    `guardrails-ai` exists yet; track this one rather than build
-    speculatively. If a real guardrails library shows up in a scanned
-    repo, that's the trigger to add it, not before.
-16. ⏸ **Deferred** — **Function/tool schema detection**: Go doesn't have Python's
-    duck-typed docstring-to-schema convention, but `langchaingo`'s
-    `tools.Tool` interface (`Name()`, `Description()`, `Call(...)`
-    methods) and eino's tool-definition structs are the Go analogues of
-    Python's `OpenAIFunctionSchemaAdapter`. Needs the same
-    function-*declaration* parsing gap noted in phase 2 (gqlgen) and
-    phase 3 (langchaingo TOOL/agent extraction) — this is the third
-    phase blocked on that same `go_parser` extension, which is reason
-    enough to schedule it as dedicated `go_parser` work rather than
-    deferring it a third time piecemeal.
+15. ✅ **Done** — **Guardrails / validation**: no dominant Go-native
+    guardrails library equivalent to `guardrails-ai` was found (confirmed
+    via web research), but Google's Checks/AI-Safety API has a real,
+    documented Go client verified against pkg.go.dev:
+    `google.golang.org/api/checks/v1alpha`
+    (`checks.NewService(ctx)` → `.Aisafety.ClassifyContent(...).Do()`).
+    Added `GoGuardrailsAdapter` — FRAMEWORK node on `checks.NewService`,
+    GUARDRAIL node per `ClassifyContent` call. Matches on
+    `call.function_name` alone rather than an exact receiver string,
+    since `go_parser._split_callee` keeps the whole dotted prefix as the
+    receiver (`checksService.Aisafety.ClassifyContent` → receiver
+    `"checksService.Aisafety"`) — already safely import-scoped, covered
+    by a dedicated regression test for arbitrary variable names. A
+    heuristic sanitize-function-adjacency fallback (mirroring Python's
+    `guardrail_heuristic.py`) was deliberately **not** built: that
+    adapter relies on Python's native AST block/statement structure for
+    reliable statement adjacency, which `go_parser`'s flat
+    `function_calls` list can only approximate via lossy line-number
+    proximity — left deferred, but for this more specific parser-capability
+    reason rather than "no library exists." 4 new unit tests.
+16. ✅ **Done** — **Function/tool schema detection**, split into two
+    independently-buildable pieces once investigated properly:
+    - **16a** (no parser extension needed): go-openai's
+      `openai.Tool{Function: &openai.FunctionDefinition{Name: "...", Description: "..."}}`
+      / standalone `openai.FunctionDefinition{...}` struct literals — the
+      Go analogue of `openai_function_schema.py`'s dict-literal detection
+      — are plain nested composite literals `go_parser` already resolves
+      into nested dicts (verified `Tool.Function` is `*FunctionDefinition`
+      directly, no wrapper type, against the current go-openai source).
+      Extended `GoOpenAIAdapter` to emit TOOL nodes from them. 3 new unit
+      tests.
+    - **16b** (needed the parser extension): langchaingo's `tools.Tool`
+      interface (`Name() string`, `Description() string`,
+      `Call(ctx context.Context, input string) (string, error)`, verified
+      against pkg.go.dev) genuinely does need function/method
+      *declaration* parsing — the same gap noted in phase 2 (gqlgen) and
+      phase 3 (langchaingo TOOL/agent extraction). Added it:
+      - **16b-i**: `go_parser.py` gained `GoParameter`/
+        `GoFunctionDeclaration` dataclasses and a `function_declarations`
+        field on `GoParseResult`. Tree-sitter walk over
+        `function_declaration`/`method_declaration` nodes — every
+        `child_by_field_name` shape (`name`, `receiver`, `parameters`,
+        `result`) was verified empirically against tree-sitter-go's real
+        grammar output before writing the walker, not assumed. Grouped
+        parameter names sharing one type (`a, b int`) fan out correctly.
+        Doc comments attach as tree-sitter *sibling* nodes, not child
+        fields (also verified empirically) — a new sibling-scanning
+        helper collects them, breaking on any blank-line gap. A
+        best-effort regex-fallback path was added too (grouped parameter
+        names aren't reliably fanned out there — documented limitation).
+        9 new unit tests.
+      - **16b-ii**: `LangChainGoAdapter` groups
+        `parse_result.function_declarations` by `receiver_type` and
+        checks the method set's signatures against the interface. Does
+        **not** extract the tool's actual name/description content (the
+        string a `return "..."` in the method body would produce — needs
+        method-*body* parsing, a further capability that still doesn't
+        exist) — uses the receiver type name as `display_name` instead,
+        with `metadata["name_source"] = "receiver_type"` making the
+        limitation explicit. Confidence `0.75`, below the 0.85+
+        framework-native band. 5 new unit tests.
+
+    All three (15, 16a, 16b) verified against the real
+    `mosaic-care/healthcare-service` repo via `kscope-test.sh`: identical
+    node counts to the phase-8 run (93 nodes) — confirms no regressions
+    and no false positives, since that repo uses none of go-openai
+    tool-calling, Google Checks, or langchaingo. 21 new unit tests total
+    (4 + 3 + 9 + 5), full `nuguard/sbom/` suite (1259 tests) + ruff +
+    mypy all pass.
 
 ### Phase 8 — direct-HTTP LLM call detection ✅ done
 Ground-truth cross-check (phase 5 item 9) found kscope's actual primary
@@ -416,30 +473,39 @@ started → after all 8 phases:
 | DATASTORE (structural) | 0 | 1 (MongoDB) |
 | AUTH (structural) | 0 | 1 (JWT) |
 
-New adapter files (16, all under `nuguard/sbom/adapters/go/`): the
+New adapter files (17, all under `nuguard/sbom/adapters/go/`): the
 existing `mcp_server.py` plus `http_router.py` (gin/echo/chi),
 `net_http.py`, `gorilla_mux.py`, `gqlgen.py`, `langchaingo.py`,
 `go_openai.py`, `anthropic_sdk.py`, `google_genai.py`, `datastores.py`,
 `auth.py`, `prompts.py`, `eino.py`, `genkit.py`, `mcp_client.py`,
-`direct_http_llm.py`. Plus the `go_parser.py` dispatch wiring in
-`extractor/core.py` (phase 1) and the `MODEL_NAME_PATTERNS` extraction in
-`adapters/registry.py` (phase 8).
+`direct_http_llm.py`, `guardrails.py`. Plus the `go_parser.py` dispatch
+wiring in `extractor/core.py` (phase 1), the `MODEL_NAME_PATTERNS`
+extraction in `adapters/registry.py` (phase 8), and `go_parser.py`'s
+function/method-declaration parsing extension (phase 7, item 16b).
 
-Test coverage: `nuguard/sbom/tests/test_go_*.py` (10 files, 98 tests
+Test coverage: `nuguard/sbom/tests/test_go_*.py` (12 files, 118 tests
 total, including the pre-existing `go_parser`/MCP-server tests), covering
-phases 1-8 with real file/line evidence assertions — plus the
-`go_healthcare_service` fixture app and its integration test
-(`test_go_healthcare_fixture.py`). Full `nuguard/sbom/` suite: 1239 tests
-passing.
+all 8 phases plus phase 7's guardrails/tool-schema follow-up work, with
+real file/line evidence assertions — plus the `go_healthcare_service`
+fixture app and its integration test (`test_go_healthcare_fixture.py`).
+Full `nuguard/sbom/` suite: 1259 tests passing.
 
-Remaining deferred work (not blocking, tracked here for whoever picks
-this up next): gqlgen resolver-level GraphQL operation extraction (phase
-2), langchaingo TOOL/agent extraction (phase 3), and Go
-function/tool-schema detection (phase 7 item 16) all need the same
-`go_parser` extension — a function-*declaration* parsing pass, which
-doesn't exist yet (`GoParseResult` currently covers imports,
-instantiations, calls, and string literals only). That's the single
-highest-leverage next investment for Go SBOM accuracy. Guardrails/
-validation detection (phase 7 item 15) has no dominant Go library to
-build against yet and should stay untracked until one appears in a
-scanned repo.
+Remaining deferred/out-of-scope work (not blocking, tracked here for
+whoever picks this up next):
+- gqlgen resolver-level GraphQL operation extraction (phase 2) is **no
+  longer blocked** — the function-declaration parsing added for phase 7
+  item 16b (`GoParseResult.function_declarations`) is exactly what it
+  needs (`queryResolver`/`mutationResolver` method declarations). Not
+  built in this pass since it wasn't in scope, but the prerequisite is
+  now done.
+- Go method-*body*-statement parsing (a further capability beyond
+  declarations) would unlock: extracting the actual string a
+  langchaingo `Name()`/`Description()` method's `return "..."` produces
+  (currently the receiver type name is used instead, see phase 7 item
+  16b-ii), and a same-file dispatcher lookup for
+  `go_openai_function_schema` tool nodes (mirroring
+  `openai_function_schema.py`'s Python behavior, phase 7 item 16a).
+- A heuristic guardrails fallback (sanitize-function-adjacent-to-outbound-call,
+  mirroring `guardrail_heuristic.py`) remains deliberately unbuilt — it
+  needs reliable statement-block adjacency, which `go_parser`'s flat
+  call/declaration lists don't provide (see phase 7 item 15).
