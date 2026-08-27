@@ -218,6 +218,31 @@ _CAPABILITY_PROBE = (
 )
 
 
+def _detect_domain_from_text(text: str) -> str:
+    """Infer the app domain from an agent response's natural language.
+
+    Returns ``"airline"``, ``"banking"``, ``"healthcare"``, or ``""`` (unknown).
+    Used to upgrade the discovery plan when the SBOM use_case tag is generic.
+    """
+    lc = text.lower()
+    if any(k in lc for k in (
+        "flight", "booking", "check-in", "check in", "boarding",
+        "reservation", "departure", "arrival", "itinerary",
+    )):
+        return "airline"
+    if any(k in lc for k in (
+        "account", "balance", "transaction", "payment", "transfer",
+        "card", "credit", "debit", "deposit", "withdrawal",
+    )):
+        return "banking"
+    if any(k in lc for k in (
+        "appointment", "prescription", "doctor", "patient",
+        "clinic", "medication", "medical record",
+    )):
+        return "healthcare"
+    return ""
+
+
 def _domain_messages(use_case: str) -> list[str]:
     """Return the ordered list of primary (bulk-data) discovery messages."""
     lc = use_case.lower()
@@ -331,6 +356,21 @@ async def run_discovery_conversation(
 
         all_responses.append(response)
         _log.info("discovery turn %d response: %s", i + 1, response[:200])
+
+        # After turn 1: detect domain from agent's own words and upgrade the plan
+        # when the SBOM use_case was too generic to select domain-specific messages.
+        if i == 0 and not switched and _domain_messages(use_case) is _GENERIC_MESSAGES:
+            detected = _detect_domain_from_text(response)
+            if detected:
+                upgraded_primary = _domain_messages(detected)
+                task = _domain_task_messages(detected)
+                remaining = max_turns - 1
+                plan[1:] = [("primary", m) for m in upgraded_primary[:remaining]]
+                _log.info(
+                    "discovery: domain detected from agent response (%r) — "
+                    "upgrading to %s messages for remaining turns",
+                    response[:80], detected,
+                )
 
         # Tactical pivot: on first refusal, replace remaining turns with task-framed messages
         if _is_refusal(response) and not switched and i + 1 < len(plan):
