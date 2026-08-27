@@ -452,6 +452,38 @@ class TestSharedTargetBlock:
         assert flat["redteam_chat_payload_list"] is True
         assert flat["redteam_chat_response_key"] == "prognosis"
 
+    def test_shared_nested_chat_payload_extras_propagates(self) -> None:
+        """A nested (slot-mode) chat_payload_extras is still just a dict of dicts
+        to the flat-config layer — the isinstance(..., dict) guard doesn't care
+        about nesting depth."""
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              chat_payload_extras:
+                message:
+                  role: user
+                  content: "{{message}}"
+                conversation_id: "{{conversation_id}}"
+                stream: false
+        """)
+        assert flat["redteam_chat_payload_extras"] == {
+            "message": {"role": "user", "content": "{{message}}"},
+            "conversation_id": "{{conversation_id}}",
+            "stream": False,
+        }
+
+    def test_recognized_tokens_pass_validation_flat_and_nested(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              chat_payload_extras:
+                message: "{{message}}"
+                history: "{{history}}"
+                session_id: "{{session_id}}"
+                conversation_id: "{{conversation_id}}"
+        """)
+        assert flat["redteam_chat_payload_extras"]["message"] == "{{message}}"
+
     def test_shared_headers_propagate_to_redteam(self) -> None:
         flat = _flatten("""
             target:
@@ -696,6 +728,67 @@ class TestConfigValidationErrorIsUserFriendly:
         with pytest.raises(ConfigError) as exc_info:
             load_config(config_file)
         assert "workflows" in str(exc_info.value)
+
+    def test_unrecognized_token_in_shared_target_extras_raises(
+        self, tmp_path: Path
+    ) -> None:
+        from nuguard.common.errors import ConfigError
+
+        config_file = tmp_path / "nuguard.yaml"
+        config_file.write_text(
+            textwrap.dedent(
+                """
+                target:
+                  url: http://shared.test
+                  chat_payload_extras:
+                    content: "{{mesage}}"
+                """
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            load_config(config_file)
+        assert "{{mesage}}" in str(exc_info.value)
+
+    def test_unrecognized_token_in_redteam_extras_raises(self, tmp_path: Path) -> None:
+        from nuguard.common.errors import ConfigError
+
+        config_file = tmp_path / "nuguard.yaml"
+        config_file.write_text(
+            textwrap.dedent(
+                """
+                target:
+                  url: http://shared.test
+                redteam:
+                  chat_payload_extras:
+                    content: "{{sesion_id}}"
+                """
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            load_config(config_file)
+        assert "{{sesion_id}}" in str(exc_info.value)
+
+    def test_unrecognized_token_in_behavior_extras_raises(self, tmp_path: Path) -> None:
+        from nuguard.common.errors import ConfigError
+
+        config_file = tmp_path / "nuguard.yaml"
+        config_file.write_text(
+            textwrap.dedent(
+                """
+                target:
+                  url: http://shared.test
+                behavior:
+                  chat_payload_extras:
+                    content: "{{convo_id}}"
+                """
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            load_config(config_file)
+        assert "{{convo_id}}" in str(exc_info.value)
 
 
 class TestUnsetEnvVarNoneFiltering:

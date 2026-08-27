@@ -72,6 +72,18 @@ target:
   # chat_payload_extras:
   #  user_id: alice
 
+  # Nested request body ("slot mode"): when chat_payload_extras contains a
+  # nested structure (more than one level deep), chat_payload_key is ignored
+  # and the extras structure itself becomes the whole request body, with
+  # {{message}}, {{history}}, {{session_id}}, {{conversation_id}} slot tokens
+  # substituted with the live values for each turn.
+  # chat_payload_extras:
+  #   message:
+  #     role: user
+  #     content: "{{message}}"
+  #   conversation_id: "{{conversation_id}}"
+  #   stream: false
+
   # Authentication — uncomment ONE option:
   auth:
     # Option A: Login flow (preferred when the app exposes a /login endpoint)
