@@ -122,8 +122,15 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
 
     Includes Python adapters (run against ``.py`` and ``.ipynb`` files),
     TypeScript adapters (run against ``.ts``, ``.tsx``, ``.js``, ``.jsx``
-    files), and Go adapters (run against ``.go`` files).
+    files), Go adapters (run against ``.go`` files), and C# adapters (run
+    against ``.cs`` files).
     """
+    from .csharp import (
+        CSharpAspNetCoreAdapter,
+        CSharpLLMClientsAdapter,
+        CSharpMLNetAdapter,
+        CSharpSemanticKernelAdapter,
+    )
     from .data_classification import DataClassificationPythonAdapter
     from .go import (
         AnthropicSDKGoAdapter,
@@ -242,6 +249,11 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         GoGuardrailsAdapter(),
         EinoAdapter(),
         GenkitGoAdapter(),
+        # C# adapters
+        CSharpAspNetCoreAdapter(),
+        CSharpLLMClientsAdapter(),
+        CSharpMLNetAdapter(),
+        CSharpSemanticKernelAdapter(),
     ]
     return tuple(sorted(adapters, key=lambda a: (a.priority, canonicalize_text(a.name))))
 

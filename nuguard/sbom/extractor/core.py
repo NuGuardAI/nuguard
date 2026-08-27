@@ -42,6 +42,7 @@ from ..adapters.base import (
     FrameworkAdapter,
     RelationshipHint,
 )
+from ..adapters.csharp._csharp_base import CSharpFrameworkAdapter
 from ..adapters.data_classification import DataClassificationSQLAdapter
 from ..adapters.dockerfile import DockerfileAdapter
 from ..adapters.go._go_base import GoFrameworkAdapter
@@ -117,6 +118,7 @@ _NOTEBOOK_EXTENSIONS = {".ipynb"}
 # TypeScript/JavaScript: tree-sitter (or regex fallback) via core/ts_parser
 _TYPESCRIPT_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx"}
 _GO_EXTENSIONS = {".go"}
+_CSHARP_EXTENSIONS = {".cs"}
 # Dockerfile: extensionless file named "Dockerfile" or suffixed ".dockerfile"
 _DOCKERFILE_EXTENSIONS = {".dockerfile"}
 _DOCKERFILE_NAMES = {"dockerfile"}  # lower-cased stem match
@@ -1015,6 +1017,7 @@ class AiSbomExtractor:
             is_notebook = suffix in _NOTEBOOK_EXTENSIONS
             is_typescript = suffix in _TYPESCRIPT_EXTENSIONS
             is_go = suffix in _GO_EXTENSIONS
+            is_csharp = suffix in _CSHARP_EXTENSIONS
             is_sql = suffix in _SQL_EXTENSIONS
             is_dockerfile = (
                 suffix in _DOCKERFILE_EXTENSIONS or file_path.name.lower() in _DOCKERFILE_NAMES
@@ -1056,8 +1059,11 @@ class AiSbomExtractor:
                             if imp.module
                         }
                         for adapter in self.framework_adapters:
-                            # Skip TypeScript/Go adapters for Python/notebook files
-                            if isinstance(adapter, (TSFrameworkAdapter, GoFrameworkAdapter)):
+                            # Skip TypeScript/Go/C# adapters for Python/notebook files
+                            if isinstance(
+                                adapter,
+                                (TSFrameworkAdapter, GoFrameworkAdapter, CSharpFrameworkAdapter),
+                            ):
                                 continue
                             if not adapter.can_handle(imported_modules):
                                 continue
@@ -1190,6 +1196,32 @@ class AiSbomExtractor:
                     # matched, since there may be none.
                     for det in _extract_go_direct_http_llm_calls(go_result, rel_path):
                         self._merge_detection(node_map, det)
+
+            # Phase 1c-csharp: C# AST-aware framework adapters
+            elif is_csharp:
+                csharp_result = self._parse_csharp(content, rel_path)
+                if csharp_result is not None:
+                    imported_namespaces_cs = {
+                        directive.namespace for directive in csharp_result.using_directives
+                    }
+                    for adapter in self.framework_adapters:
+                        if not isinstance(adapter, CSharpFrameworkAdapter):
+                            continue
+                        if not adapter.can_handle(imported_namespaces_cs):
+                            continue
+                        _log.debug("running C# adapter %r on %s", adapter.name, rel_path)
+                        try:
+                            detections = adapter.extract(content, rel_path, csharp_result)
+                        except Exception as exc:
+                            _log.warning(
+                                "C# adapter %r failed on %s: %s",
+                                adapter.name,
+                                rel_path,
+                                exc,
+                            )
+                            continue
+                        for det in detections:
+                            self._merge_detection(node_map, det)
 
             # SC-019: detect minified JS (single line > 5000 chars) for supply-chain summary
             if suffix == ".js" and content:
@@ -2102,6 +2134,16 @@ class AiSbomExtractor:
             from ..core.go_parser import parse_go
 
             return parse_go(content, file_path)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _parse_csharp(content: str, file_path: str = "") -> Any | None:
+        """Parse C# source; return None on parse failure."""
+        try:
+            from ..core.csharp_parser import parse_csharp
+
+            return parse_csharp(content, file_path)
         except Exception:
             return None
 
