@@ -14,10 +14,18 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from nuguard.common.logging import get_logger
-from nuguard.models.policy import CognitivePolicy, PolicyControl, PolicyOrigin
+from nuguard.models.policy import (
+    CognitivePolicy,
+    PolicyControl,
+    PolicyDraftRequest,
+    PolicyDraftResult,
+    PolicyDraftSource,
+    PolicyOrigin,
+)
 from nuguard.policy.best_practices import apply_best_practice_defaults
 from nuguard.policy.parser import parse_policy
 from nuguard.policy.sbom_provenance import ComponentEvidenceCandidate
@@ -155,6 +163,79 @@ async def draft_policy(
     except Exception as exc:
         _log.warning("draft_policy: LLM call failed (%s), returning skeleton", exc)
         return _COGNITIVE_POLICY_SKELETON
+
+
+def summarize_sbom_for_policy_draft(sbom_path: Path) -> str:
+    """Extract a plain-text summary from an AI-SBOM for use as LLM policy-draft context.
+
+    Args:
+        sbom_path: Path to the AI-SBOM JSON file.
+
+    Returns:
+        Plain-text summary of use case, frameworks, tools, models, and API
+        endpoints. Empty string when the SBOM is missing or unreadable.
+    """
+    try:
+        data = json.loads(sbom_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+
+    summary = data.get("summary") or {}
+    nodes: list[dict] = data.get("nodes") or []
+    lines: list[str] = []
+    if summary.get("use_case"):
+        lines.append(f"Use case: {summary['use_case']}")
+    if summary.get("frameworks"):
+        lines.append(f"Frameworks: {', '.join(str(f) for f in summary['frameworks'])}")
+    tools = [n["name"] for n in nodes if n.get("component_type") == "TOOL" and n.get("name")]
+    if tools:
+        lines.append(f"Tools: {', '.join(tools[:10])}")
+    models = [n["name"] for n in nodes if n.get("component_type") == "MODEL" and n.get("name")]
+    if models:
+        lines.append(f"Models: {', '.join(models[:5])}")
+    if summary.get("api_endpoints"):
+        eps = [e for e in summary["api_endpoints"] if e and e != "*"]
+        if eps:
+            lines.append(f"API endpoints: {', '.join(eps[:5])}")
+    return "\n".join(lines)
+
+
+async def draft_policy_from_sbom(
+    request: PolicyDraftRequest,
+    llm_client: "LLMClient | None" = None,
+) -> PolicyDraftResult:
+    """Draft a Cognitive Policy Markdown document from an AI-SBOM.
+
+    Args:
+        request:    What to draft the policy from (SBOM path, description, use_llm).
+        llm_client: LLMClient instance; ignored (skeleton returned) when
+                    ``request.use_llm`` is False or no client is given.
+
+    Returns:
+        A :class:`PolicyDraftResult` with the drafted Markdown, its source
+        (llm or skeleton), and the SBOM context used, if any.
+    """
+    sbom_context = summarize_sbom_for_policy_draft(Path(request.sbom_path))
+    app_description = request.app_description or f"AI application described by {request.sbom_path}"
+
+    if not request.use_llm:
+        return PolicyDraftResult(
+            markdown=_COGNITIVE_POLICY_SKELETON,
+            source=PolicyDraftSource.SKELETON,
+            sbom_context=sbom_context,
+        )
+
+    markdown = await draft_policy(
+        app_description=app_description,
+        sbom_context=sbom_context,
+        llm_client=llm_client,
+    )
+    source = (
+        PolicyDraftSource.SKELETON
+        if markdown.strip() == _COGNITIVE_POLICY_SKELETON.strip()
+        else PolicyDraftSource.LLM
+    )
+    return PolicyDraftResult(markdown=markdown, source=source, sbom_context=sbom_context)
 
 
 # ---------------------------------------------------------------------------

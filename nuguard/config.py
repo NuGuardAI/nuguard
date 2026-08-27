@@ -168,6 +168,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["policy_use_llm"] = bool(policy_val["use_llm"])
         elif "llm" in policy_val:
             flat["policy_use_llm"] = bool(policy_val["llm"])
+        if "draft_use_llm" in policy_val:
+            flat["policy_draft_use_llm"] = bool(policy_val["draft_use_llm"])
 
     # LLM section — skip keys whose env-var interpolation produced None (var not set)
     llm = data.get("llm", {}) or {}
@@ -518,6 +520,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["analyze_supply_chain_profile"] = analyze["supply_chain_profile"]
     if "supply_chain_verify" in analyze:
         flat["analyze_supply_chain_verify"] = analyze["supply_chain_verify"]
+    if "llm" in analyze:
+        flat["analyze_llm_enabled"] = bool(analyze["llm"])
 
     # Output section
     output = data.get("output", {}) or {}
@@ -961,11 +965,24 @@ class NuGuardConfig(BaseSettings):
         default=False,
         description="Use LLM to compile policy controls (yaml: policy.use_llm).",
     )
+    policy_draft_use_llm: bool | None = Field(
+        default=None,
+        description=(
+            "Use LLM to draft cognitive-policy.md from an AI-SBOM "
+            "(yaml: policy.draft_use_llm). Defaults to using the LLM "
+            "automatically when llm.api_key is configured; set explicitly "
+            "to force it on or off."
+        ),
+    )
 
     # ------------------------------------------------- SBOM generation
-    sbom_llm_enabled: bool = Field(
-        default=False,
-        description="Enable LLM enrichment during SBOM generation (yaml: sbom_generation.llm).",
+    sbom_llm_enabled: bool | None = Field(
+        default=None,
+        description=(
+            "Enable LLM enrichment during SBOM generation (yaml: sbom_generation.llm). "
+            "Defaults to using the LLM automatically when llm.api_key is configured; "
+            "set explicitly to force it on or off."
+        ),
     )
     sbom_llm_concurrency: int | None = Field(
         default=None,
@@ -1506,6 +1523,14 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Run only NGA structural rules (NGA-001–018), skipping external tool "
             "scans (yaml: analyze.nga_only, CLI: --nga)."
+        ),
+    )
+    analyze_llm_enabled: bool | None = Field(
+        default=None,
+        description=(
+            "Enable LLM enrichment in the ATLAS pass (yaml: analyze.llm, CLI: --llm). "
+            "Defaults to using the LLM automatically when llm.api_key is configured; "
+            "set explicitly to force it on or off."
         ),
     )
     analyze_supply_chain_profile: str = Field(

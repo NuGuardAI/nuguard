@@ -150,7 +150,15 @@ def analyze(
         None, "--supply-chain-verify",
         help="Artifact registry verification: off | warn | fail. [default: off]",
     ),
-    llm: bool = typer.Option(False, "--llm", help="Enable LLM enrichment in ATLAS pass."),
+    llm: Optional[bool] = typer.Option(
+        None,
+        "--llm/--no-llm",
+        help=(
+            "Enable LLM enrichment in the ATLAS pass. Defaults to on when "
+            "llm.api_key is configured in nuguard.yaml (or analyze.llm if set); "
+            "pass --no-llm to force it off."
+        ),
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v",
         help="Show all 21 NGA rules (pass and fail) with evidence on why each passed.",
@@ -280,8 +288,17 @@ def analyze(
         )
         raise typer.Exit(code=2)
 
+    # --llm flag takes precedence; fall back to analyze.llm from nuguard.yaml;
+    # else auto-enable when llm.api_key is configured
+    if llm is not None:
+        effective_llm = llm
+    elif cfg.analyze_llm_enabled is not None:
+        effective_llm = cfg.analyze_llm_enabled
+    else:
+        effective_llm = bool(cfg.litellm_api_key)
+
     atlas_config: dict[str, Any] = {}
-    if llm:
+    if effective_llm:
         atlas_config["llm"] = True
     if "markdown" in formats:
         atlas_config["format"] = "markdown"
