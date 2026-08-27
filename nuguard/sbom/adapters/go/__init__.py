@@ -6,6 +6,7 @@ from nuguard.sbom.adapters.go._go_base import GoFrameworkAdapter
 from nuguard.sbom.adapters.go.anthropic_sdk import AnthropicSDKGoAdapter
 from nuguard.sbom.adapters.go.auth import GoJWTAdapter, GoOAuth2Adapter
 from nuguard.sbom.adapters.go.datastores import GoDatastoreAdapter
+from nuguard.sbom.adapters.go.direct_http_llm import extract_go_direct_http_llm_calls
 from nuguard.sbom.adapters.go.eino import EinoAdapter
 from nuguard.sbom.adapters.go.genkit import GenkitGoAdapter
 from nuguard.sbom.adapters.go.go_openai import GoOpenAIAdapter
@@ -39,4 +40,5 @@ __all__ = [
     "EinoAdapter",
     "GenkitGoAdapter",
     "extract_go_prompt_constants",
+    "extract_go_direct_http_llm_calls",
 ]

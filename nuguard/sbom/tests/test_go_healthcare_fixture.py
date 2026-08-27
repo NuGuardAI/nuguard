@@ -1,12 +1,14 @@
-"""Integration test for the go_healthcare_service fixture (phases 5-6 validation).
+"""Integration test for the go_healthcare_service fixture (phases 5-8 validation).
 
 This fixture is modeled on the shape of mosaic-care/healthcare-service — a
 Golang backend with a gin HTTP router, a go-openai LLM client, a MongoDB
-datastore, JWT auth, and a package-level system-prompt constant — the exact
-combination that, before docs/go-support.md's phases 2-4 (and the prompt
-constant added for phase 6), produced *zero* file-anchored SBOM nodes (only
-bare-word regex matches with no evidence, and no content at all for the
-prompt). This test asserts the full extraction pipeline now produces
+datastore, JWT auth, a package-level system-prompt constant, and (chat.go) a
+hand-rolled HTTP client hitting the Anthropic API directly with no SDK
+import — the exact combination that, before docs/go-support.md's phases
+2-4 (structural detection), 6 (prompt content), and 8 (direct-HTTP LLM
+calls), produced *zero* file-anchored SBOM nodes for the structural pieces,
+no content for the prompt, and no evidence at all for the SDK-free LLM
+call. This test asserts the full extraction pipeline now produces
 FRAMEWORK/API_ENDPOINT/MODEL/DATASTORE/AUTH/PROMPT nodes, each with real
 file:line evidence tying it back to the exact construction/call site.
 """
@@ -63,6 +65,15 @@ class TestModelDetection:
         gpt4 = next((n for n in models if n.name.lower() == "gpt-4-turbo"), None)
         assert gpt4 is not None, f"models found: {[n.name for n in models]}"
         _assert_has_evidence(gpt4)
+
+    def test_direct_http_anthropic_call_model_extracted_with_evidence(
+        self, doc: AiSbomDocument
+    ) -> None:
+        models = nodes(doc, ComponentType.MODEL)
+        claude = next((n for n in models if n.name.lower() == "claude-sonnet-4-6"), None)
+        assert claude is not None, f"models found: {[n.name for n in models]}"
+        assert claude.metadata.extras.get("provider") == "anthropic"
+        _assert_has_evidence(claude)
 
 
 class TestDatastoreDetection:

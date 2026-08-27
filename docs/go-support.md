@@ -324,7 +324,7 @@ of Python-only frameworks.
     enough to schedule it as dedicated `go_parser` work rather than
     deferring it a third time piecemeal.
 
-### Phase 8 — direct-HTTP LLM call detection
+### Phase 8 — direct-HTTP LLM call detection ✅ done
 Ground-truth cross-check (phase 5 item 9) found kscope's actual primary
 LLM integration doesn't use any SDK at all: `backend/chat/chat.go` hand-
 rolls an HTTP client (`anthropicReq`/`anthropicResp` structs,
@@ -336,23 +336,55 @@ generic `model_generic` regex (0.53 confidence, no call-site evidence,
 and prone to false positives like the `o0`-`o7` matches also found in
 this SBOM).
 
-17. Add a `GoDirectHTTPLLMAdapter` keyed on well-known LLM API hostnames
-    in string literals (`api.anthropic.com`, `api.openai.com`,
-    `generativelanguage.googleapis.com`, mirroring Python's
-    `_BASE_URL_TO_PROVIDER` table in `llm_clients.py`) rather than an
-    import gate, since by definition there's no SDK import to key off.
-    On a match, walk the same file's other string literals/const
-    declarations for a value that looks like a model ID (reuse the
-    `model_generic` regex adapter's existing pattern set rather than
-    inventing a second one) and emit a MODEL node with real evidence
-    (the URL string literal's file/line) instead of relying on whatever
-    line the bare model string happens to appear on.
-18. This is the same shape of gap the `_resolve_provider_from_base_url`
-    proxy-pattern already solves for Python's OpenAI-compatible clients —
-    worth checking whether that logic can be factored into a
-    language-agnostic helper both the Python and Go adapters call,
-    instead of duplicating the hostname table.
-19. Validate against a fixture with a hand-rolled HTTP client hitting
-    `api.anthropic.com` (or extend `go_healthcare_service`'s `triage.go`
-    with a second, SDK-free handler) — assert a MODEL node with real
-    evidence, matching phase 5's validation pattern.
+17. ✅ Added `extract_go_direct_http_llm_calls()`
+    (`nuguard/sbom/adapters/go/direct_http_llm.py`), keyed on well-known
+    LLM API hostnames in string literals (`api.anthropic.com`,
+    `api.openai.com`, `generativelanguage.googleapis.com`, + 8 more —
+    a superset of Python's proxy-pattern table since native provider
+    hosts need to be included here, unlike the Python/TS tables which
+    only resolve an *OpenAI-compatible client's* `base_url` override) —
+    a plain function, not a `GoFrameworkAdapter`, since there's no import
+    to gate on. On a hostname match, walks the same file's other string
+    literals for a value matching `MODEL_NAME_PATTERNS` — the *exact*
+    pattern set the `model_generic` regex adapter uses (extracted to a
+    named, importable constant in `adapters/registry.py`; the
+    `RegexAdapter(...)` call now references it directly instead of
+    inlining the four patterns — a pure extraction, verified
+    behavior-identical by the full suite before adding any new code) —
+    and emits a MODEL node anchored to the *model string's own* file/line,
+    not wherever `model_generic`'s whole-file sweep happens to land.
+18. ✅ Checked and **not factored into a shared cross-language helper**:
+    TypeScript's `llm_clients.py` already duplicates Python's
+    `_BASE_URL_TO_PROVIDER` table independently (with a "kept in sync"
+    comment) rather than importing a shared one — that's this codebase's
+    established, working convention for this exact kind of table, so Go
+    follows it instead of introducing a third pattern. The
+    `MODEL_NAME_PATTERNS` regex set (item 17) *was* factored into a real
+    shared constant, because that pattern set needs byte-identical
+    behavior between `model_generic` and the new Go function, not just
+    "the same design intent" the per-language provider tables need.
+19. ✅ Extended `go_healthcare_service` with `chat.go` — a hand-rolled
+    HTTP client hitting `api.anthropic.com` directly (mirroring the real
+    `backend/chat/chat.go`, no `anthropic-sdk-go` import) — and added
+    `TestModelDetection.test_direct_http_anthropic_call_model_extracted_with_evidence`
+    to `test_go_healthcare_fixture.py`. Also added
+    `test_go_direct_http_llm.py` (5 unit tests: hostname+model
+    co-occurrence required, host-without-model and model-without-host
+    both correctly yield nothing, multiple models in one file each get
+    their own node). 5 + 1 = 6 new tests, full `nuguard/sbom/` suite
+    (1239 tests) + ruff + mypy all pass.
+
+    **Real-world validation** — re-ran `kscope-test.sh` against the live
+    repo: `claude-sonnet-4-6` (`backend/chat/chat.go:44`) and
+    `claude-opus-4-8` (`backend/ingest/extract.go:26`) both flipped from
+    `model_generic` (confidence 0.44-0.53, no evidence) to
+    `go_direct_http_llm` (confidence 0.952, exact file/line evidence at
+    the `const` declaration). `claude-haiku-4-5` stayed on
+    `model_generic` — its declaring file (`backend/ingest/classify.go`)
+    has no LLM-hostname string literal of its own (the URL constant it
+    uses lives in a different file; this adapter is file-scoped, matching
+    every other Go adapter's fixture-app single-file basis) — a real,
+    documented boundary, not a bug. Confirmed in passing that the
+    remaining `o0`-`o7` false positives are unrelated to Go entirely —
+    `frontend/webapp/.vite/deps/echarts.js`, a bundled frontend file, not
+    backend source.

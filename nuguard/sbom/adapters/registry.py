@@ -10,6 +10,90 @@ from .base import DetectionAdapter, FrameworkAdapter, RegexAdapter
 from .frameworks import builtin_framework_specs
 from .privilege import privilege_adapters
 
+# Model-name regex patterns shared by the ``model_generic`` regex adapter
+# below and, since it has no SDK import to key off, the Go direct-HTTP LLM
+# adapter (``adapters/go/direct_http_llm.py``) — factored out to a named
+# constant so both stay in sync automatically rather than duplicating the
+# pattern set (which the TypeScript ``llm_clients.py`` module already does
+# for the unrelated base-url-provider table, with a "kept in sync" comment;
+# a real importable constant is preferable where the pattern set itself,
+# not just per-language call-site logic, needs to match exactly).
+MODEL_NAME_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        # Match model name strings, not library names.
+        # - llama-<digit>: canonical dash form (llama-3.3-70b-versatile)
+        # - llama<digit>:<tag>: Ollama colon-tag format (llama3.2:3b)
+        # - o-series: require word boundary or letter suffix to avoid hex
+        # - deepseek/qwen/phi: common open-weight families
+        # - <name>:<size_tag>: generic Ollama pull format (mistral:7b)
+        r"\b(gpt-[\d][\w.-]*|claude-[\d][\w.-]*|claude-(?:sonnet|opus|haiku|instant)[\d-][\w.-]*|gemini-[\d][\w.]*"
+        r"|llama-[\d][\w.-]*|llama[\d][\w.]*:[a-z0-9]+"
+        r"|mistral-[\w.-]+|o\d(?:-[a-z][a-z0-9-]*)?\b"
+        r"|deepseek-[\w.-]+|qwen[\d][\w.-]*|phi[\d][\w.-]*"
+        r"|command-(?:r|light|nightly|a\d)[\w.-]*"
+        # Ollama colon-tag format: require a meaningful prefix containing
+        # at least one letter, and omit 'latest' (too generic — it just
+        # means "pull the newest image" and is not a real model name).
+        r"|[\w.-]+:(?:7b|13b|70b|3b|1b|8b|14b|32b|mini|instruct|chat)\b)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        # HuggingFace Hub org/model-id format (non-high-FP orgs).
+        # Matches strings like "meta-llama/Llama-3.1-8B-Instruct",
+        # "mistralai/Mistral-7B-v0.3".
+        # Anchored to known orgs to avoid matching arbitrary file paths.
+        # Negative lookbehind: skip matches inside URLs or npm @scope
+        #   (e.g. "github.com/meta-llama/..." or "@eleutherai/...").
+        # Negative lookahead: skip GitHub URL path fragments.
+        r"(?<![/@])\b(?:meta-llama|mistralai|HuggingFaceH4|facebook"
+        r"|EleutherAI|tiiuae|databricks|Qwen|deepseek-ai|THUDM|bigscience"
+        r"|openchat|NousResearch|teknium|WizardLM|lmsys|stabilityai"
+        r"|togethercomputer|codellama|sentence-transformers|cohere"
+        r"|ai21labs|allenai|huggingface)"
+        r"/(?!(?:blob|tree|issues|pulls|commit|releases|compare|raw)/)"
+        r"[\w][\w./:-]*",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        # High-FP orgs (google/microsoft/openai): require a digit
+        # in the model ID to distinguish real model names like
+        # "google/gemma-2-27b-it" from SDK/repo names like
+        # "google/adk" or "openai/openai-cookbook".
+        # Negative lookbehind: skip URL paths (/google/) and npm scopes.
+        r"(?<![/@])\b(?:google|microsoft|openai)"
+        r"/(?!(?:blob|tree|issues|pulls|commit|releases|compare|raw)/)"
+        r"[\w][\w.-]*\d[\w./:-]*",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        # HuggingFace-origin standalone model families not covered above.
+        # - bert/roberta/t5: encoder/seq2seq classics
+        # - gpt2/gpt-j/gpt-neo: GPT-2-era models
+        # - bloom/bloomz: BigScience multilingual LLMs
+        # - falcon: TII open-weight LLMs
+        # - starcoder/starcoderbase: code generation
+        # - codellama: Meta code model
+        # - zephyr/vicuna/solar/dolly/wizard/orca: RLHF fine-tunes
+        # - gemma: Google open-weight family (no digit prefix used)
+        # - nomic-embed/bge/e5: embedding models
+        r"\b(bert-(?:base|large)[\w.-]*"
+        r"|roberta-(?:base|large)[\w.-]*"
+        r"|distilbert[\w.-]*"
+        r"|t5-(?:small|base|large|xl|xxl)[\w.-]*"
+        r"|gpt-?2[\w.-]*|gpt-j[\w.-]*|gpt-neo[\w.-]*"
+        r"|bloom[\d-][\w.-]*|bloomz[\w.-]*"
+        r"|falcon-\d[\w.-]*"
+        r"|starcoder[\w.-]*"
+        r"|codellama[\w.-]*"
+        r"|zephyr-\d[\w.-]*|vicuna-\d[\w.-]*|solar-\d[\w.-]*"
+        r"|dolly-[\w.-]+|wizardlm[\w.-]*|wizardcoder[\w.-]*"
+        r"|orca[\w.-]*"
+        r"|gemma-\d[\w.-]*"
+        r"|nomic-embed[\w.-]*|bge-[\w.-]+|e5-[\w.-]+)\b",
+        re.IGNORECASE,
+    ),
+)
+
 
 @dataclass(frozen=True)
 class IntakeCandidate:
@@ -178,81 +262,7 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 name="model_generic",
                 component_type=ComponentType.MODEL,
                 priority=110,
-                patterns=(
-                    re.compile(
-                        # Match model name strings, not library names.
-                        # - llama-<digit>: canonical dash form (llama-3.3-70b-versatile)
-                        # - llama<digit>:<tag>: Ollama colon-tag format (llama3.2:3b)
-                        # - o-series: require word boundary or letter suffix to avoid hex
-                        # - deepseek/qwen/phi: common open-weight families
-                        # - <name>:<size_tag>: generic Ollama pull format (mistral:7b)
-                        r"\b(gpt-[\d][\w.-]*|claude-[\d][\w.-]*|claude-(?:sonnet|opus|haiku|instant)[\d-][\w.-]*|gemini-[\d][\w.]*"
-                        r"|llama-[\d][\w.-]*|llama[\d][\w.]*:[a-z0-9]+"
-                        r"|mistral-[\w.-]+|o\d(?:-[a-z][a-z0-9-]*)?\b"
-                        r"|deepseek-[\w.-]+|qwen[\d][\w.-]*|phi[\d][\w.-]*"
-                        r"|command-(?:r|light|nightly|a\d)[\w.-]*"
-                        # Ollama colon-tag format: require a meaningful prefix containing
-                        # at least one letter, and omit 'latest' (too generic — it just
-                        # means "pull the newest image" and is not a real model name).
-                        r"|[\w.-]+:(?:7b|13b|70b|3b|1b|8b|14b|32b|mini|instruct|chat)\b)\b",
-                        re.IGNORECASE,
-                    ),
-                    re.compile(
-                        # HuggingFace Hub org/model-id format (non-high-FP orgs).
-                        # Matches strings like "meta-llama/Llama-3.1-8B-Instruct",
-                        # "mistralai/Mistral-7B-v0.3".
-                        # Anchored to known orgs to avoid matching arbitrary file paths.
-                        # Negative lookbehind: skip matches inside URLs or npm @scope
-                        #   (e.g. "github.com/meta-llama/..." or "@eleutherai/...").
-                        # Negative lookahead: skip GitHub URL path fragments.
-                        r"(?<![/@])\b(?:meta-llama|mistralai|HuggingFaceH4|facebook"
-                        r"|EleutherAI|tiiuae|databricks|Qwen|deepseek-ai|THUDM|bigscience"
-                        r"|openchat|NousResearch|teknium|WizardLM|lmsys|stabilityai"
-                        r"|togethercomputer|codellama|sentence-transformers|cohere"
-                        r"|ai21labs|allenai|huggingface)"
-                        r"/(?!(?:blob|tree|issues|pulls|commit|releases|compare|raw)/)"
-                        r"[\w][\w./:-]*",
-                        re.IGNORECASE,
-                    ),
-                    re.compile(
-                        # High-FP orgs (google/microsoft/openai): require a digit
-                        # in the model ID to distinguish real model names like
-                        # "google/gemma-2-27b-it" from SDK/repo names like
-                        # "google/adk" or "openai/openai-cookbook".
-                        # Negative lookbehind: skip URL paths (/google/) and npm scopes.
-                        r"(?<![/@])\b(?:google|microsoft|openai)"
-                        r"/(?!(?:blob|tree|issues|pulls|commit|releases|compare|raw)/)"
-                        r"[\w][\w.-]*\d[\w./:-]*",
-                        re.IGNORECASE,
-                    ),
-                    re.compile(
-                        # HuggingFace-origin standalone model families not covered above.
-                        # - bert/roberta/t5: encoder/seq2seq classics
-                        # - gpt2/gpt-j/gpt-neo: GPT-2-era models
-                        # - bloom/bloomz: BigScience multilingual LLMs
-                        # - falcon: TII open-weight LLMs
-                        # - starcoder/starcoderbase: code generation
-                        # - codellama: Meta code model
-                        # - zephyr/vicuna/solar/dolly/wizard/orca: RLHF fine-tunes
-                        # - gemma: Google open-weight family (no digit prefix used)
-                        # - nomic-embed/bge/e5: embedding models
-                        r"\b(bert-(?:base|large)[\w.-]*"
-                        r"|roberta-(?:base|large)[\w.-]*"
-                        r"|distilbert[\w.-]*"
-                        r"|t5-(?:small|base|large|xl|xxl)[\w.-]*"
-                        r"|gpt-?2[\w.-]*|gpt-j[\w.-]*|gpt-neo[\w.-]*"
-                        r"|bloom[\d-][\w.-]*|bloomz[\w.-]*"
-                        r"|falcon-\d[\w.-]*"
-                        r"|starcoder[\w.-]*"
-                        r"|codellama[\w.-]*"
-                        r"|zephyr-\d[\w.-]*|vicuna-\d[\w.-]*|solar-\d[\w.-]*"
-                        r"|dolly-[\w.-]+|wizardlm[\w.-]*|wizardcoder[\w.-]*"
-                        r"|orca[\w.-]*"
-                        r"|gemma-\d[\w.-]*"
-                        r"|nomic-embed[\w.-]*|bge-[\w.-]+|e5-[\w.-]+)\b",
-                        re.IGNORECASE,
-                    ),
-                ),
+                patterns=MODEL_NAME_PATTERNS,
                 metadata={"normalizer": "model-name"},
             ),
             RegexAdapter(
