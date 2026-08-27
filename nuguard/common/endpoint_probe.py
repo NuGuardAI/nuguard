@@ -336,8 +336,8 @@ async def _try_openapi_detection(
         try:
             data = resp.json()
         except Exception:
-            data = {}
-        if _looks_like_chat_response(data, known_response_key):
+            data = _try_read_first_streaming_json(resp) or {}
+        if _looks_like_chat_response(data, known_response_key) or _is_streaming_response(resp):
             _log.info("endpoint_probe: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
             return oa_path, oa_key, oa_list
     elif 400 <= status < 500:
@@ -345,6 +345,49 @@ async def _try_openapi_detection(
         _log.info("endpoint_probe: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
         return oa_path, oa_key, oa_list
     # 5xx — don't block; let the blind probe try this path too
+    return None
+
+
+_STREAMING_CONTENT_TYPES: frozenset[str] = frozenset({
+    "text/event-stream",
+    "application/x-ndjson",
+    "application/ndjson",
+    "application/jsonl",
+    "application/x-jsonlines",
+})
+
+
+def _is_streaming_response(resp: "httpx.Response") -> bool:
+    """Return True when the response Content-Type signals a streaming format."""
+    ct = resp.headers.get("content-type", "").lower().split(";")[0].strip()
+    return ct in _STREAMING_CONTENT_TYPES
+
+
+def _try_read_first_streaming_json(resp: "httpx.Response") -> "dict | None":
+    """Extract the first JSON object from an SSE or NDJSON response body.
+
+    Handles SSE (``data: {...}`` lines) and NDJSON (first non-empty line).
+    Returns ``None`` when the response is not a streaming type or unparseable.
+    """
+    if not _is_streaming_response(resp):
+        return None
+    try:
+        for line in resp.text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("data:"):  # SSE prefix
+                line = line[5:].strip()
+                if line == "[DONE]":
+                    continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    return obj
+            except Exception:
+                continue
+    except Exception:
+        pass
     return None
 
 
@@ -425,9 +468,13 @@ async def _blind_probe(
                 try:
                     data = resp.json()
                 except Exception:
-                    data = {}
+                    data = _try_read_first_streaming_json(resp) or {}
                 if _looks_like_chat_response(data, known_response_key):
                     _log.info("endpoint_probe: selected %s (key=%r, status=%d)", path, pay_key, status)
+                    return path, pay_key, pay_list
+                # Streaming endpoint: accept even when we can't parse the body content
+                if _is_streaming_response(resp):
+                    _log.info("endpoint_probe: selected %s (streaming, key=%r)", path, pay_key)
                     return path, pay_key, pay_list
                 _log.debug("endpoint_probe: %s key=%r → %d but not chat-like", path, pay_key, status)
                 continue
