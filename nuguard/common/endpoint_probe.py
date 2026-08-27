@@ -117,6 +117,8 @@ _RUNTIME_NON_CHAT_KEYS: frozenset[str] = frozenset({
     "recipient_account", "source_account", "debit_account", "credit_account",
     "transfer_amount", "beneficiary_id", "invoice_id", "claim_id",
     "customer_name", "template_data",
+    # Tool/action dispatch keys — these are agentic action endpoints, not chat endpoints.
+    "tool_name", "tool_call", "tool_id", "action", "action_name", "action_type",
 })
 
 _CAMEL_CASE_RE = re.compile(r"(?<!^)(?=[A-Z])")
@@ -336,8 +338,15 @@ def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
             if token in path_l:
                 score += 2
                 break
+
+        # Path token match is required — key presence alone never qualifies an endpoint.
+        if score == 0:
+            continue
+
+        # Key as a small tie-breaker only when it is a plausible chat key.
         if meta.chat_payload_key:
-            score += 3
+            if _normalize_payload_key(meta.chat_payload_key) not in _RUNTIME_NON_CHAT_KEYS:
+                score += 1
         if node.confidence >= 0.9:
             score += 1
 
