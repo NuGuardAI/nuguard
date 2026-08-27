@@ -117,6 +117,18 @@ class TestFrameworkAgentFallback:
         fw_to_agent = [e for e in calls_edges if e.source in fw_ids and e.target in agent_ids]
         assert fw_to_agent, "Expected FRAMEWORK -[CALLS]-> AGENT edges"
 
+    def test_framework_calls_agent_tagged_fallback_heuristic(self, doc) -> None:
+        """FRAMEWORK→AGENT is a metadata-string-match guess, not code evidence —
+        must be tagged derivation="fallback_heuristic" with a confidence score."""
+        calls_edges = _edges_by_rel(doc, RelationshipType.CALLS)
+        fw_ids = _node_ids(doc, ComponentType.FRAMEWORK)
+        agent_ids = _node_ids(doc, ComponentType.AGENT)
+        fw_to_agent = [e for e in calls_edges if e.source in fw_ids and e.target in agent_ids]
+        assert fw_to_agent
+        for edge in fw_to_agent:
+            assert edge.derivation == "fallback_heuristic"
+            assert edge.confidence is not None
+
 
 # ---------------------------------------------------------------------------
 # AGENT → MODEL USES fallback: fires even when agent has tool edges
@@ -260,3 +272,38 @@ class TestHintCanonicalization:
         """At minimum, CALLS edges should exist — hint drops would eliminate these."""
         calls = _edges_by_rel(doc, RelationshipType.CALLS)
         assert calls, "Expected CALLS edges; hint canonicalization failure would drop them"
+
+
+# ---------------------------------------------------------------------------
+# Edge derivation/confidence tagging
+# ---------------------------------------------------------------------------
+
+
+class TestEdgeDerivation:
+    """Every edge must be tagged with a derivation, and the two tiers must be
+    mutually consistent: "hint" edges (real code evidence) carry no separate
+    confidence score, while "fallback_heuristic" edges (structural guesses)
+    always carry one."""
+
+    @pytest.fixture(scope="class")
+    def doc(self):
+        return extract(_LANGGRAPH_FIXTURE)
+
+    def test_all_edges_have_a_valid_derivation(self, doc) -> None:
+        for edge in doc.edges:
+            assert edge.derivation in ("hint", "fallback_heuristic")
+
+    def test_hint_edges_have_no_confidence(self, doc) -> None:
+        for edge in doc.edges:
+            if edge.derivation == "hint":
+                assert edge.confidence is None
+
+    def test_fallback_heuristic_edges_have_confidence(self, doc) -> None:
+        for edge in doc.edges:
+            if edge.derivation == "fallback_heuristic":
+                assert edge.confidence is not None
+
+    def test_some_hint_edges_present(self, doc) -> None:
+        """The langgraph fixture's adapter emits explicit RelationshipHints —
+        at least one edge should be evidence-backed, not just fallback guesses."""
+        assert any(e.derivation == "hint" for e in doc.edges)

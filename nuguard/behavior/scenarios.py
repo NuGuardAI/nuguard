@@ -888,13 +888,43 @@ def _is_standalone_group(agent_name: str) -> bool:
     return agent_name == "__standalone__" or agent_name.startswith("__standalone__")
 
 
+def _scenario_family(scenario: "BehaviorScenario") -> str:
+    """Return the tool-family key for *scenario* (used by prioritize_by_probe).
+
+    Mirrors the family convention used by
+    :meth:`nuguard.behavior.runner.BehaviorRunner.probe_tool_families` and
+    :func:`nuguard.behavior.escalation.tool_family`: the owning agent's name,
+    or ``"__standalone__"`` for tools with no owning agent.
+
+    ``scoped_agents`` is the reliable signal — tool-coverage scenarios set it
+    to ``[agent_name]`` for a real owning agent, or ``[]`` for a
+    standalone-tool group. ``primary_agent`` is *not* reliable for standalone
+    groups: it holds a display label ("assistant") used for message phrasing,
+    not a stable family key. Falls back to ``primary_agent`` for scenario
+    types that don't set ``scoped_agents`` at all (e.g. ``AGENT_COVERAGE``).
+    """
+    if scenario.scoped_agents:
+        return scenario.scoped_agents[0]
+    if scenario.scoped_tools:
+        return "__standalone__"
+    return scenario.primary_agent or "__standalone__"
+
+
 async def _tool_coverage_scenarios(
     sbom: "AiSbomDocument",
     intent: "IntentProfile",
     policy: "CognitivePolicy | None",
     llm_client: "LLMClient | None",
+    tool_chain_size: int = 4,
+    guided_coverage: bool = False,
 ) -> list[BehaviorScenario]:
-    """Generate tool coverage scenarios with natural chaining per agent."""
+    """Generate tool coverage scenarios with natural chaining per agent.
+
+    When ``guided_coverage`` is true, emits one ``GUIDED_COVERAGE`` scenario per
+    agent (or standalone-tool group) instead of pre-chunked static chains — the
+    runner drives the rest of that scenario's turns live via ``CoverageDirector``,
+    picking one uncovered tool at a time based on the agent's actual responses.
+    """
     allowed_topics: list[str] = list(getattr(policy, "allowed_topics", None) or [])
     use_case = ""
     summary = getattr(sbom, "summary", None)
@@ -949,9 +979,8 @@ async def _tool_coverage_scenarios(
         standalone_tools.append((name, desc, tier))
 
     if standalone_tools:
-        # Shard standalone tools by tier and chunk (≤_STANDALONE_GROUP_MAX per group)
+        # Shard standalone tools by tier and chunk (≤tool_chain_size per group)
         # so each scenario stays focused rather than becoming an 80-turn monster.
-        _STANDALONE_GROUP_MAX = 5
         tier_buckets: dict[str, list[tuple[str, str, str]]] = {
             "INFO": [], "DECISION": [], "ACTION": []
         }
@@ -960,9 +989,9 @@ async def _tool_coverage_scenarios(
         for tier_name, bucket in tier_buckets.items():
             if not bucket:
                 continue
-            for chunk_idx, start in enumerate(range(0, len(bucket), _STANDALONE_GROUP_MAX)):
+            for chunk_idx, start in enumerate(range(0, len(bucket), tool_chain_size)):
                 key = f"__standalone__{tier_name}_{chunk_idx}"
-                tool_groups[key] = bucket[start : start + _STANDALONE_GROUP_MAX]
+                tool_groups[key] = bucket[start : start + tool_chain_size]
 
     scenarios: list[BehaviorScenario] = []
 
@@ -977,20 +1006,45 @@ async def _tool_coverage_scenarios(
         if matched_topic is None:
             matched_topic = allowed_topics[0] if allowed_topics else (_policy_fragment(use_case, 60) if use_case else "general")
 
-        # Split into chains of ≤4 tools; split at INFO→ACTION boundaries for large groups
+        if guided_coverage:
+            display_agent = agent_name if not _is_standalone_group(agent_name) else "assistant"
+            topic_short = _policy_fragment(matched_topic, 60)
+            opener = f"I need help with {topic_short}. Can you help me get started?"
+            scenarios.append(
+                BehaviorScenario(
+                    scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+                    name=f"guided_{display_agent.lower().replace(' ', '_')}_{idx}",
+                    messages=[opener],
+                    target_component_type="TOOL",
+                    goal=f"Adaptively exercise {display_agent}'s tools: " + ", ".join(t[0] for t in tools[:5]),
+                    scoped_tools=[t[0] for t in tools],
+                    scoped_agents=[display_agent] if not _is_standalone_group(agent_name) else [],
+                    matched_topic=matched_topic,
+                    primary_agent=display_agent,
+                    tool_action_tiers=[t[2] for t in tools],
+                )
+            )
+            continue
+
+        # Split into chains of ≤tool_chain_size tools; split at INFO→ACTION
+        # boundaries for large groups, chunking (not truncating) each tier so
+        # every tool ends up in some chain.
         chains: list[list[tuple[str, str, str]]] = []
-        if len(tools) <= 4:
+        if len(tools) <= tool_chain_size:
             chains = [tools]
         else:
             # Split into INFO/DECISION group + ACTION group
             info_group = [(n, d, t) for n, d, t in tools if t in ("INFO", "DECISION")]
             action_group = [(n, d, t) for n, d, t in tools if t == "ACTION"]
-            if info_group:
-                chains.append(info_group[:4])
-            if action_group:
-                chains.append(action_group[:4])
+            for start in range(0, len(info_group), tool_chain_size):
+                chains.append(info_group[start : start + tool_chain_size])
+            for start in range(0, len(action_group), tool_chain_size):
+                chains.append(action_group[start : start + tool_chain_size])
             if not chains:
-                chains = [tools[:4]]
+                chains = [
+                    tools[start : start + tool_chain_size]
+                    for start in range(0, len(tools), tool_chain_size)
+                ]
 
         for chain_idx, chain in enumerate(chains):
             if llm_client is None or getattr(llm_client, "api_key", None) is None:
@@ -1469,13 +1523,17 @@ def _dedup_scenarios(scenarios: list[BehaviorScenario]) -> list[BehaviorScenario
     return result
 
 
-def _chain_tool_scenarios(scenarios: list[BehaviorScenario]) -> list[BehaviorScenario]:
+def _chain_tool_scenarios(
+    scenarios: list[BehaviorScenario],
+    max_session_turns: int = 10,
+) -> list[BehaviorScenario]:
     """v7 Pass 0: chain tool_coverage scenarios targeting the same agent into multi-turn.
 
-    When two ``component_coverage`` scenarios share the same ``primary_agent``
-    and one is INFO-only while the other is ACTION-only, merge them: the first
-    scenario's messages form the opening turns, the second's messages follow.
-    A domain-neutral bridge turn connects them.
+    All ``component_coverage`` scenarios sharing the same ``primary_agent`` are
+    folded, in INFO/DECISION → ACTION order, into as few multi-turn sessions as
+    fit within ``max_session_turns`` (domain-neutral bridge turns connect
+    consecutive scenarios). Groups that need more turns than the budget allows
+    spill into additional chained sessions rather than being dropped.
 
     Single-tool scenarios and scenarios without a primary_agent are left as-is.
     """
@@ -1494,51 +1552,77 @@ def _chain_tool_scenarios(scenarios: list[BehaviorScenario]) -> list[BehaviorSce
     result: list[BehaviorScenario] = list(other)
     chained = 0
 
+    # Bridge turn — neutral transition between two chained scenarios' messages
+    bridge = "That's helpful. Now I'd like to take action based on that information."
+
     for agent_name, group in agent_coverage_groups.items():
         if len(group) < 2:
             result.extend(group)
             continue
 
-        # Find an INFO-tier group and an ACTION-tier group
+        # INFO/DECISION scenarios first, then ACTION — a natural "look, then act" order
         info_scenarios = [s for s in group if "ACTION" not in (s.tool_action_tiers or [])]
         action_scenarios = [s for s in group if "ACTION" in (s.tool_action_tiers or [])]
+        ordered = info_scenarios + action_scenarios
 
-        if not info_scenarios or not action_scenarios:
-            result.extend(group)
-            continue
+        # Pack into as few chunks as fit within max_session_turns (accounting
+        # for one bridge turn per join), instead of merging only the first
+        # INFO + first ACTION scenario and leaving the rest unchained.
+        chunks: list[list[BehaviorScenario]] = []
+        current: list[BehaviorScenario] = []
+        current_turns = 0
+        for s in ordered:
+            join_cost = 1 if current else 0
+            if current and current_turns + join_cost + len(s.messages) > max_session_turns:
+                chunks.append(current)
+                current = [s]
+                current_turns = len(s.messages)
+            else:
+                current.append(s)
+                current_turns += join_cost + len(s.messages)
+        if current:
+            chunks.append(current)
 
-        info_s = info_scenarios[0]
-        action_s = action_scenarios[0]
-        remaining = [s for s in group if s not in (info_s, action_s)]
+        for chunk_idx, chunk in enumerate(chunks):
+            if len(chunk) == 1:
+                result.append(chunk[0])
+                continue
 
-        # Bridge turn — neutral transition between INFO and ACTION turns
-        bridge = "That's helpful. Now I'd like to take action based on that information."
+            merged_messages: list[str] = []
+            merged_tools: list[str] = []
+            merged_tiers: list[str] = []
+            goals: list[str] = []
+            chain_source: list[str] = []
+            for i, s in enumerate(chunk):
+                if i > 0:
+                    merged_messages.append(bridge)
+                merged_messages.extend(s.messages)
+                merged_tools.extend(t for t in s.scoped_tools if t not in merged_tools)
+                merged_tiers.extend(s.tool_action_tiers)
+                goals.append(s.goal)
+                chain_source.append(s.name)
 
-        merged_messages = list(info_s.messages) + [bridge] + list(action_s.messages)
-        merged_tools = list(info_s.scoped_tools) + [t for t in action_s.scoped_tools if t not in info_s.scoped_tools]
-        merged_tiers = list(info_s.tool_action_tiers) + list(action_s.tool_action_tiers)
-
-        merged = BehaviorScenario(
-            scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
-            name=f"{agent_name.lower().replace(' ', '_')}_flow",
-            messages=merged_messages,
-            target_component=info_s.target_component,
-            target_component_type="TOOL",
-            goal=f"Verify end-to-end tool flow for {agent_name}: {info_s.goal} then {action_s.goal}",
-            scoped_tools=merged_tools,
-            scoped_agents=[agent_name],
-            matched_topic=info_s.matched_topic or action_s.matched_topic,
-            primary_agent=agent_name,
-            tool_action_tiers=merged_tiers,
-            chain_source=[info_s.name, action_s.name],
-        )
-        result.append(merged)
-        result.extend(remaining)
-        chained += 1
-        _log.info(
-            "_chain_tool_scenarios: chained '%s' + '%s' → '%s' for agent %s",
-            info_s.name, action_s.name, merged.name, agent_name,
-        )
+            suffix = f"_{chunk_idx + 1}" if len(chunks) > 1 else ""
+            merged = BehaviorScenario(
+                scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
+                name=f"{agent_name.lower().replace(' ', '_')}_flow{suffix}",
+                messages=merged_messages,
+                target_component=chunk[0].target_component,
+                target_component_type="TOOL",
+                goal=f"Verify end-to-end tool flow for {agent_name}: " + " then ".join(goals),
+                scoped_tools=merged_tools,
+                scoped_agents=[agent_name],
+                matched_topic=next((s.matched_topic for s in chunk if s.matched_topic), None),
+                primary_agent=agent_name,
+                tool_action_tiers=merged_tiers,
+                chain_source=chain_source,
+            )
+            result.append(merged)
+            chained += 1
+            _log.info(
+                "_chain_tool_scenarios: chained %d scenarios (%s) → '%s' for agent %s",
+                len(chunk), ", ".join(chain_source), merged.name, agent_name,
+            )
 
     if chained:
         _log.info("_chain_tool_scenarios: created %d chained multi-turn scenarios", chained)
@@ -1971,6 +2055,8 @@ async def build_scenarios(
     llm_client: "LLMClient | None" = None,
     skipped_out: "list[str] | None" = None,
     pre_scan_profile: "DiscoveredProfile | None" = None,
+    family_probe_results: "dict[str, str] | None" = None,
+    deprioritized_out: "list[str] | None" = None,
 ) -> list[BehaviorScenario]:
     """Build all scenarios for the configured workflows (v8).
 
@@ -1992,6 +2078,18 @@ async def build_scenarios(
         skipped_out: Optional list to append names of scenarios skipped due to the
             max_scenarios cap.  Callers that need to surface this in a report can
             pass an empty list and inspect it after the call.
+        family_probe_results: Optional mapping of tool-family name (a scenario's
+            ``primary_agent``, or ``"__standalone__"``) to ``"reachable"`` /
+            ``"blocked"`` / ``"unknown"`` from
+            :meth:`nuguard.behavior.runner.BehaviorRunner.probe_tool_families`.
+            When supplied (behavior.prioritize_by_probe), scenarios belonging to
+            a ``"blocked"`` family are demoted to the end of the list as a
+            stable tiebreaker *within* the existing L1-L5 category ordering,
+            before the max_scenarios cap is applied.
+        deprioritized_out: Optional list to append names of scenarios cut by the
+            max_scenarios cap specifically because their family probed blocked
+            (a subset of skipped_out) — lets callers report a systemic-refusal
+            cut distinctly from an arbitrary cap cut.
 
     Returns:
         Deduplicated list of BehaviorScenario objects.
@@ -2033,10 +2131,15 @@ async def build_scenarios(
 
     # --- agent_tool_coverage: SBOM-driven agent, tool, endpoint, and delegation coverage ---
     if "agent_tool_coverage" in workflows and sbom is not None:
+        tool_chain_size = int(getattr(config, "tool_chain_size", None) or 4)
+        guided_coverage = bool(getattr(config, "guided_coverage", False))
         # Fire agent + tool coverage concurrently since they're LLM-backed
         cov_tasks = [
             _agent_coverage_scenarios(sbom, intent, policy, llm_client, pre_scan_profile=pre_scan_profile),  # type: ignore[arg-type]
-            _tool_coverage_scenarios(sbom, intent, policy, llm_client),  # type: ignore[arg-type]
+            _tool_coverage_scenarios(  # type: ignore[arg-type]
+                sbom, intent, policy, llm_client,
+                tool_chain_size=tool_chain_size, guided_coverage=guided_coverage,
+            ),
         ]
         cov_keys = ["agent_coverage", "component_coverage"]
 
@@ -2074,13 +2177,31 @@ async def build_scenarios(
 
     # --- Dedup passes ---
     # Pass 0 (v7): chain tool scenarios for the same agent into multi-turn
-    deduped = _chain_tool_scenarios(all_scenarios)
+    max_session_turns = int(getattr(config, "max_session_turns", None) or 10)
+    deduped = _chain_tool_scenarios(all_scenarios, max_session_turns=max_session_turns)
 
     # Pass 1: name-based dedup
     deduped = _dedup_scenarios(deduped)
 
     # Pass 3: cross-type dedup (happy-path covers component)
     deduped = _dedup_cross_type(deduped)
+
+    # Demote scenarios whose tool family probed as blocked (prioritize_by_probe).
+    # Stable partition — a tiebreaker/demotion *within* the existing category
+    # ordering above, never a replacement for it: scenarios keep their relative
+    # order inside each of the two partitions.
+    blocked_families: set[str] = {
+        fam for fam, status in (family_probe_results or {}).items() if status == "blocked"
+    }
+    if blocked_families:
+        not_blocked = [s for s in deduped if _scenario_family(s) not in blocked_families]
+        blocked = [s for s in deduped if _scenario_family(s) in blocked_families]
+        if blocked:
+            _log.info(
+                "build_scenarios: demoting %d scenarios from probed-blocked families: %s",
+                len(blocked), sorted(blocked_families),
+            )
+        deduped = not_blocked + blocked
 
     # Apply max_scenarios cap
     max_scenarios = getattr(config, "max_scenarios", None)
@@ -2089,8 +2210,13 @@ async def build_scenarios(
             "build_scenarios: capping at max_scenarios=%d (was %d)",
             max_scenarios, len(deduped),
         )
+        cut = deduped[max_scenarios:]
         if skipped_out is not None:
-            skipped_out.extend(s.name for s in deduped[max_scenarios:])
+            skipped_out.extend(s.name for s in cut)
+        if deprioritized_out is not None and blocked_families:
+            deprioritized_out.extend(
+                s.name for s in cut if _scenario_family(s) in blocked_families
+            )
         deduped = deduped[:max_scenarios]
 
     _log.info("build_scenarios: %d total scenarios (%d after dedup)", len(all_scenarios), len(deduped))

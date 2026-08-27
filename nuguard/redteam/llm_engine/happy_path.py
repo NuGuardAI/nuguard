@@ -14,26 +14,15 @@ same opener semantics.
 from __future__ import annotations
 
 import asyncio
-import os
 from typing import TYPE_CHECKING
 
+from nuguard.common.env_utils import env_float as _env_float
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
 
 _log = get_logger(__name__)
-
-
-def _env_float(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if raw is None or not raw.strip():
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        _log.warning("Invalid %s=%r; using default %.2f", name, raw, default)
-        return default
 
 _TIMEOUT_S = 45.0
 _HAPPY_PATH_TEMPERATURE = _env_float("NUGUARD_REDTEAM_HAPPY_PATH_TEMPERATURE", 0.9)

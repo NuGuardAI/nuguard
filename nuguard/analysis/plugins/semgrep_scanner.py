@@ -212,6 +212,9 @@ def _parse_semgrep_output(data: dict[str, Any], scan_path: str) -> list[dict[str
         meta = r.get("extra", {}).get("metadata") or {}
         owasp = meta.get("owasp", "")
         nga_rule = meta.get("nuguard_rule", "")
+        # Only the OWASP LLM Top 10 short-label ("LLM0x: ...") maps onto owasp_llm_ref;
+        # generic web-appsec labels ("A02: ...") aren't LLM Top 10 citations.
+        owasp_llm_ref = owasp if owasp.upper().startswith("LLM") else ""
 
         findings.append({
             "rule_id":     check_id,
@@ -219,7 +222,8 @@ def _parse_semgrep_output(data: dict[str, Any], scan_path: str) -> list[dict[str
             "description": msg,
             "severity":    severity,
             "affected":    [location],
-            "remediation": owasp,
+            "remediation": "",
+            "owasp_llm_ref": owasp_llm_ref,
             "url":         "",
             "source":      "semgrep",
             "scan_target": scan_path,

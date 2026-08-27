@@ -1,48 +1,50 @@
 # NuGuard Python Library Reference
 
-NuGuard exposes its three dynamic-analysis capabilities — red-teaming, behavioral testing, and static analysis — as a set of `async` Python functions that take a JSON-safe Pydantic *request* model and return a JSON-safe Pydantic *result* model. The CLI is itself a caller of these same functions, so there is no drift between what `nuguard redteam` / `nuguard behavior` / `nuguard analyze` do and what an embedding application gets by calling this interface directly.
+NuGuard exposes its platform-facing interfaces as async Python functions with JSON-safe Pydantic request/response models. This includes:
+
+- SBOM generation/serialization APIs
+- SBOM toolbox APIs
+- Static analysis APIs
+- Behavior APIs
+- Redteam APIs
+- Streaming contracts used by streaming APIs
+- Target verification and target-session resolution APIs
+- Report rendering/export APIs
 
 ```bash
 pip install nuguard
 ```
 
-No extras are required for the functions covered on this page.
+## Core pattern
 
-## The pattern
+Most public entry points follow this shape:
 
-Each of the three modules below follows the same structural convention:
+- A `*Request` Pydantic model for JSON-safe run settings.
+- One async entry point function that takes the request, plus domain objects as keyword args.
+- A `*Result` Pydantic model.
 
-- A `*Request` Pydantic model holding JSON-safe run configuration — scalars, enums, small nested config objects.
-- One or more `async def` entry-point functions, called as `fn(request, *, sbom=..., policy=..., llm_client=..., ...)`.
-- A `*Result` Pydantic model returned on success.
+Large domain objects such as SBOM and policy, and stateful collaborators like LLM clients, stay out of request models by design and are passed separately.
 
-Large domain objects (the AI-SBOM, the parsed policy) and live/stateful collaborators (the LLM client) are deliberately kept out of the request model and passed as separate keyword arguments instead, since they're either too large for a clean JSON payload or aren't JSON-serializable at all.
+Error handling behavior is intentional:
 
-**This is the structural shape only** — the exact keyword arguments differ between the three functions (for example, red-team's `sbom` argument is required while behavior's is optional, and red-team splits its LLM client into two roles where behavior and analysis use one). Each section below shows the real, complete signature.
-
-**Error handling**: these functions are not best-effort probes — real exceptions (`TargetUnavailableError`, auth failures, etc.) propagate to the caller. The one deliberate exception is remediation-plan synthesis, which every one of these functions runs internally and which is explicitly best-effort: failures there are logged and swallowed, and `result.remediation_plan` is simply empty rather than raising.
+- Full runs (analysis, behavior, redteam, verify) propagate meaningful runtime exceptions.
+- Remediation-plan synthesis is best-effort and does not fail the whole run.
 
 ## Prerequisites
 
 ### AI-SBOM
-
-Generate one from source, or load an existing file:
 
 ```python
 from pathlib import Path
 from nuguard.sbom.generator import SbomGenerator
 from nuguard.sbom.serializer import AiSbomSerializer
 
-# Generate from source
 sbom = SbomGenerator().from_path(Path("./my_app"))
-
-# ...or load a previously generated one
+# or
 sbom = AiSbomSerializer.from_json(Path("app.sbom.json").read_text())
 ```
 
-`SbomGenerator` is synchronous — no `await` needed.
-
-### Cognitive Policy
+### Cognitive policy
 
 ```python
 from pathlib import Path
@@ -50,8 +52,6 @@ from nuguard.policy.loader import ensure_policy_controls
 
 policy, controls = await ensure_policy_controls(Path("cognitive-policy.md"))
 ```
-
-Returns a `CognitivePolicy` and a compiled `list[PolicyControl]` (both from `nuguard.models.policy`). Loads the compiled `.json` sidecar if one already exists next to the `.md` file; otherwise compiles it and writes the sidecar for next time. Pass `use_llm=True` and an `llm_client` to allow LLM-assisted compilation when the sidecar doesn't exist yet.
 
 ### LLM client
 
@@ -61,106 +61,233 @@ from nuguard.common.llm_client import LLMClient
 llm_client = LLMClient(model="azure/gpt-5.4-mini", api_key="...")
 ```
 
-Read the API key from an environment variable rather than hardcoding it in application code. **If `api_key` is `None`, `LLMClient` does not raise — it silently returns canned placeholder responses.** Any capability that depends on LLM output (attack-payload generation, response judging, remediation text) will run to completion but produce mock content if the key is missing, so verify the client is configured before relying on its output.
+If no API key is provided, the client may return placeholder output. Validate client configuration before relying on LLM-dependent results.
 
-## Red-team
+## SBOM generation and serialization APIs
+
+Module: `nuguard.sbom.public_api`
+
+- `SbomGenerateRequest`
+- `SbomGenerateResult`
+- `SbomParseRequest`
+- `SbomParseResult`
+- `SbomRenderRequest`
+- `SbomRenderResult`
+- `SbomExportRequest`
+- `SbomExportResult`
+- `generate_sbom(request)`
+- `parse_sbom_json(request)`
+- `render_sbom(request, *, sbom)`
+- `export_sbom(request, *, sbom)`
+
+`SbomRenderRequest.format` supports:
+
+- `json`
+- `cyclonedx`
+- `cyclonedx-ext`
+- `markdown`
+
+Example:
 
 ```python
-from nuguard.redteam.public_api import RedteamRunRequest, run_redteam
+from nuguard.sbom.public_api import SbomGenerateRequest, SbomRenderRequest, generate_sbom, render_sbom
 
-request = RedteamRunRequest(
-    target_url="https://my-app.example.com",
-    profile="ci",  # "ci" (fast, high-signal) or "full" (comprehensive)
-)
-
-result = await run_redteam(
-    request,
-    sbom=sbom,                        # required
-    policy=policy,                    # optional
-    policy_controls=controls,         # optional
-    redteam_llm=llm_client,           # optional — attack-payload generation
-    eval_llm=llm_client,              # optional — response judging
-    remediation_llm_client=llm_client,  # optional — falls back to eval_llm if omitted
-)
-
-print(result.scan_outcome)   # "critical_findings" | "high_findings" | "findings" |
-                              # "aborted_target_unavailable" | "inconclusive_target_errors" | "no_findings"
-for finding in result.findings:
-    print(finding.severity, finding.title, finding.remediation)
+generated = await generate_sbom(SbomGenerateRequest(source_path="./my_app"))
+rendered = await render_sbom(SbomRenderRequest(format="json"), sbom=generated.sbom)
 ```
 
-`sbom` is the only required keyword argument. Note the LLM client is split into two roles (`redteam_llm` for generating attack payloads, `eval_llm` for judging responses) — they can be the same `LLMClient` instance, as above, or different ones.
+## SBOM toolbox APIs
 
-`RedteamRunRequest` has many optional fields beyond `target_url`/`profile` — scenario filtering (`scenario_filter: list[str]`), auth (`auth_config: AuthConfig`), canary tracking (`canary_config: CanaryConfig`), finding-trigger tuning (`finding_triggers: RedteamFindingTriggers`), guided-conversation controls, and more — all with defaults matching `nuguard redteam`'s own CLI defaults.
+Module: `nuguard.sbom.toolbox.public_api`
 
-`RedteamRunResult` includes `findings: list[Finding]`, `remediation_plan: list[RemediationArtefact]`, `scan_outcome`, `token_usage`, `scenario_records`, `llm_executive_summary`, `llm_coding_brief`, and coverage/health-check details. Like remediation synthesis, `llm_coding_brief` generation (only attempted when `eval_llm` and `findings` are both present) is independently best-effort — a failure there is logged and leaves the field `None` rather than raising.
+- `ToolboxListPluginsRequest`
+- `ToolboxListPluginsResult`
+- `ToolboxRunPluginRequest`
+- `ToolboxRunPluginResult`
+- `ToolboxRunAllRequest`
+- `ToolboxRunAllResult`
+- `list_toolbox_plugins(request)`
+- `run_toolbox_plugin(request, *, sbom)`
+- `run_toolbox_all(request, *, sbom)`
 
-## Behavior
+Example:
+
+```python
+from nuguard.sbom.toolbox.public_api import ToolboxRunPluginRequest, run_toolbox_plugin
+
+result = await run_toolbox_plugin(
+    ToolboxRunPluginRequest(plugin_name="dependency_analyze"),
+    sbom=generated.sbom,
+)
+```
+
+## Static analysis API
+
+Module: `nuguard.analysis.public_api`
+
+- `AnalysisRunRequest`
+- `AnalysisRunResult`
+- `run_analysis(request, *, sbom, policy=None, llm_client=None)`
+
+Example:
+
+```python
+from nuguard.analysis.public_api import AnalysisRunRequest, run_analysis
+
+result = await run_analysis(
+    AnalysisRunRequest(min_severity="medium"),
+    sbom=sbom,
+    policy=policy,
+    llm_client=llm_client,
+)
+```
+
+`AnalysisRunResult` includes `findings`, `tool_status`, `nga_audit`, `sc_audit`, `token_usage`, and `remediation_plan`.
+
+## Behavior APIs
+
+Module: `nuguard.behavior.public_api`
+
+- `BehaviorAnalysisRequest`
+- `BehaviorRunRequest`
+- `analyze_behavior(request, *, sbom=None, policy=None, controls=None, llm_client=None, remediation_llm_client=None)`
+- `run_behavior_scenarios(request, *, sbom=None, policy=None, intent=None, llm_client=None, remediation_llm_client=None, judge_cache=None)`
+- `discover_behavior_profile(config, *, sbom=None, policy=None, intent=None, llm_client=None)`
+- `analyze_behavior_stream(...)`
+
+Example (full analysis):
 
 ```python
 from nuguard.behavior.public_api import BehaviorAnalysisRequest, analyze_behavior
 from nuguard.config import BehaviorConfig
 
-config = BehaviorConfig(target="https://my-app.example.com")
-
-request = BehaviorAnalysisRequest(
-    config=config,
-    mode="static+dynamic",  # "static" | "dynamic" | "static+dynamic"
-)
-
 result = await analyze_behavior(
-    request,
-    sbom=sbom,                          # optional
-    policy=policy,                      # optional
-    controls=controls,                  # optional
-    llm_client=llm_client,              # optional
-    remediation_llm_client=llm_client,  # optional
+    BehaviorAnalysisRequest(
+        config=BehaviorConfig(target="https://my-app.example.com"),
+        mode="static+dynamic",
+    ),
+    sbom=sbom,
+    policy=policy,
+    controls=controls,
+    llm_client=llm_client,
 )
-
-for finding in result.findings:
-    print(finding.severity, finding.title, finding.remediation)
 ```
 
-`BehaviorConfig` fields are all technically optional (they default to empty). `target` is the URL of the running application being tested. The CLI validates it upfront and errors clearly if it's missing for `dynamic`/`static+dynamic` mode — but `analyze_behavior()` itself does not raise if `target` is empty: it logs a warning and silently skips the entire dynamic portion, returning a result with zero dynamic findings rather than failing. A caller invoking this directly should check `target` themselves before calling, rather than relying on an exception to catch the mistake.
-
-A second, lower-level entry point is available for running a specific, caller-supplied list of scenarios rather than the full static+dynamic pipeline:
+Example (scenario-level run):
 
 ```python
-from nuguard.behavior.public_api import BehaviorRunRequest, run_behavior_scenarios
 from nuguard.behavior.models import BehaviorScenario, BehaviorScenarioType
-
-scenarios = [
-    BehaviorScenario(
-        scenario_type=BehaviorScenarioType.INTENT_HAPPY_PATH,
-        name="check-balance",
-        messages=["What's my account balance?"],
-    ),
-]
+from nuguard.behavior.public_api import BehaviorRunRequest, run_behavior_scenarios
+from nuguard.config import BehaviorConfig
 
 result = await run_behavior_scenarios(
-    BehaviorRunRequest(config=config, scenarios=scenarios),
-    sbom=sbom, policy=policy, llm_client=llm_client,
+    BehaviorRunRequest(
+        config=BehaviorConfig(target="https://my-app.example.com"),
+        scenarios=[
+            BehaviorScenario(
+                scenario_type=BehaviorScenarioType.INTENT_HAPPY_PATH,
+                name="check-balance",
+                messages=["What is my account balance?"],
+            )
+        ],
+    ),
+    sbom=sbom,
+    policy=policy,
+    llm_client=llm_client,
 )
 ```
 
-## Static analysis
+## Redteam APIs
+
+Module: `nuguard.redteam.public_api`
+
+- `RedteamRunRequest`
+- `RedteamRunResult`
+- `RedteamExecutionResult`
+- `run_redteam(request, *, sbom, policy=None, policy_controls=None, redteam_llm=None, eval_llm=None, remediation_llm_client=None, app_log_reader=None, catalog=None, log_path=None, prompt_cache_dir=None)`
+- `run_redteam_stream(...)`
+
+Example:
 
 ```python
-from nuguard.analysis.public_api import AnalysisRunRequest, run_analysis
+from nuguard.redteam.public_api import RedteamRunRequest, run_redteam
 
-request = AnalysisRunRequest(min_severity="medium")
-
-result = await run_analysis(
-    request,
-    sbom=sbom,               # required
-    policy=policy,           # optional
-    llm_client=llm_client,   # optional — used for remediation-text enrichment only
+result = await run_redteam(
+    RedteamRunRequest(target_url="https://my-app.example.com", profile="ci"),
+    sbom=sbom,
+    policy=policy,
+    policy_controls=controls,
+    redteam_llm=llm_client,
+    eval_llm=llm_client,
 )
-
-for finding in result.findings:
-    print(finding.severity, finding.title, finding.remediation)
 ```
 
-`sbom` is required. Unlike red-team and behavior, this entry point does not take a `controls` argument — only `policy`. `AnalysisRunRequest` also controls which detectors and external scanners run (`enable_atlas`, `enable_osv`, `enable_grype`, `enable_checkov`, `enable_trivy`, `enable_semgrep`, `enable_supply_chain`), each on by default.
+`RedteamRunResult.scan_outcome` is one of:
 
-`AnalysisRunResult` includes `findings`, `remediation_plan`, `tool_status` (per-scanner pass/fail), `nga_audit`, `sc_audit`, and `token_usage`.
+- `critical_findings`
+- `high_findings`
+- `findings`
+- `aborted_target_unavailable`
+- `inconclusive_target_errors`
+- `no_findings`
+
+## Streaming contracts
+
+Module: `nuguard.common.streaming_models`
+
+- `StreamEvent`
+- `StreamProgressPayload`
+- `StreamDeltaPayload`
+- `StreamTerminalPayload`
+- `RedteamProgressState`
+- `BehaviorProgressState`
+
+Behavior and redteam streaming APIs return a typed `StreamRunHandle` that emits `StreamEvent` envelopes and resolves to the final result model.
+
+## Target verify and session APIs
+
+Module: `nuguard.common.target_verify_public_api`
+
+- `TargetVerifyRequest`
+- `TargetVerifyCheck`
+- `TargetVerifyResult`
+- `TargetSessionResolveRequest`
+- `TargetSessionResolveResult`
+- `TargetVerifyStatus` (`ok`, `auth_failed`, `target_unavailable`, `skipped`)
+- `verify_target(request, *, sbom=None)`
+- `resolve_target_session_public(request, *, sbom=None)`
+
+These APIs handle endpoint selection (config/SBOM/probe/default), auth bootstrapping, and target health checks before scans.
+
+## Output report/export APIs
+
+Module: `nuguard.output.public_api`
+
+- `ValidationReportMetaModel`
+- `RedteamReportRenderRequest`
+- `RedteamReportRenderResult`
+- `BehaviorReportRenderRequest`
+- `BehaviorReportRenderResult`
+- `ValidationReportExportRequest`
+- `ValidationReportExportResult`
+- `render_redteam_report(request, *, run_result)`
+- `render_behavior_report(request, *, run_result)`
+- `export_validation_report(request, *, redteam_run_result=None, behavior_run_result=None)`
+
+These provide stable in-process report rendering/export contracts without requiring CLI execution.
+
+## Schema contract and anti-drift
+
+Public Pydantic surface is frozen by the contract test in `tests/contracts/test_public_api_schema_contract.py` against `tests/contracts/public_api.schema.json`.
+
+When intentional public-model changes are made, regenerate the snapshot:
+
+```bash
+uv run python -c "import json; from tests.contracts.test_public_api_schema_contract import _live_schema_snapshot; open('tests/contracts/public_api.schema.json','w',encoding='utf-8').write(json.dumps(_live_schema_snapshot(), indent=2) + '\\n')"
+```
+
+Then run:
+
+```bash
+uv run pytest tests/contracts/test_public_api_schema_contract.py -v
+```

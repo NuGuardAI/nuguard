@@ -36,6 +36,25 @@ llm:
 sbom_generation:
   llm: true                        # set true to enrich SBOM nodes with LLM descriptions
                                     # requires LITELLM_API_KEY to be set
+  # llm_concurrency: 5              # max in-flight LLM calls during enrichment
+                                    # (issue #197). Override with NUGUARD_LLM_CONCURRENCY
+                                    # or --llm-concurrency. 1 = sequential (legacy).
+
+  # Gap-fill discovery pass — multi-round LLM discovery of component types
+  # that regex/AST extraction can't see structurally (dynamically-registered
+  # routes, non-literal prompts, hand-rolled multi-agent orchestration, etc.)
+  # gap_fill:
+  #   max_calls: 40             # hard cap on LLM calls for this pass, per scan
+  #   max_cost_usd: 5.0         # estimated USD spend cap (rough per-call estimate)
+  #   enable_privilege: false   # opt-in: also gap-fill PRIVILEGE nodes (off by default)
+  #   enable_guardrail: false   # opt-in: also gap-fill GUARDRAIL nodes (off by default)
+  #   self_critique_categories: []  # extra categories to run Round-3 self-critique on
+  #                                  # (privilege/guardrail always get this regardless)
+
+  # Second-pass LLM verification of uncertain (0.60-0.85 confidence) node detections
+  # verification:
+  #   max_verifications: 20     # max nodes verified per scan
+  #   cost_budget: 20.0         # estimated USD spend cap
 
 # ─── Target application — shared by behavior and redteam ──────────────────────
 # Set once here; both commands pick it up automatically.
@@ -109,11 +128,36 @@ behavior:
 
   # Hard cap on total scenarios executed (after deduplication).
   # Preserves category priority order: topic_coverage → agent_tool_coverage →
-  # guardrail_coverage → data_discovery_probe. Omit for no cap.
-  # max_scenarios: 20
+  # guardrail_coverage → data_discovery_probe (default: 100). Set to null for no cap.
+  # max_scenarios: 100
+
+  # Retry a tool-coverage probe with an escalating ladder of phrasings (explicit
+  # SBOM name/description, then a precondition setup turn) when the response looks
+  # like a canned refusal, instead of accepting one refusal as final (default: false).
+  # escalate_on_refusal: true
+
+  # Max attempts per tool (including the first natural-phrasing attempt) when
+  # escalate_on_refusal is enabled (default: 3).
+  # escalation_max_attempts: 3
+
+  # Consecutive identical-refusal-classification attempts across a tool family
+  # (same owning agent, or standalone tools) before the family is tagged
+  # systemic_deflection and skipped for the rest of the run (default: 3).
+  # escalation_circuit_breaker_threshold: 3
+
+  # Run one lightweight reachability probe per agent/tool-family before building
+  # the full scenario set, then schedule probed-reachable families ahead of
+  # probed-blocked families within max_scenarios (most useful together with
+  # escalate_on_refusal; default: false).
+  # prioritize_by_probe: true
 
   # Canary seed file — same file used by redteam canary scanning.
   # canary: ./canary.json
+
+  # Extra HTTP headers added to every request (overrides the shared
+  # target.headers block for behavior only).
+  # headers:
+  #   X-Tenant-Id: "tenant-1"
 
   # Per-request HTTP timeout in seconds (default: 60)
   # Increase for slow LLM-backed pipelines.
@@ -129,11 +173,34 @@ behavior:
   # Parallel LLM judge calls across all active scenarios (default: 5, max: 20)
   judge_concurrency: 5
 
+  # Gap-driven capability discovery — same behavior as redteam.capability_discovery
+  # above: probe the live agent for tools/sub-agents/system prompt only when the
+  # AI-SBOM is missing them, and merge findings back before scenario generation.
+  capability_discovery: true
+
   # Inter-turn pause in seconds to avoid 429 rate-limit errors (default: 0.0)
   # turn_delay_seconds: 0.5
 
   # Pause between scenarios in seconds to avoid 429 rate-limit errors (default: 0.0)
   # scenario_delay_seconds: 1.0
+
+  # Max adaptive coverage-turns appended to a scenario to probe SBOM components
+  # (agents/tools) not yet exercised by its scripted messages (default: 5)
+  # coverage_turns_per_scenario: 8
+
+  # Hard cap on total turns (scripted + coverage) in a single scenario session
+  # (default: 10)
+  # max_session_turns: 16
+
+  # Max tools grouped into a single tool_coverage/component_coverage scenario chain
+  # (default: 4). Larger values produce fewer, longer multi-turn scenarios for the
+  # same tool coverage — useful for SBOMs with many tools (e.g. 50+).
+  # tool_chain_size: 8
+
+  # Use a live, LLM-steered conversation (CoverageDirector) to exercise uncovered
+  # agents/tools turn-by-turn instead of pre-generated tool-chain scripts. Produces
+  # more natural conversations at the cost of extra adaptive LLM calls (default: false)
+  # guided_coverage: true
 
   # Cross-run scenario prompt cache directory (empty string disables caching)
   # prompt_cache_dir: ./tests/output
@@ -179,7 +246,8 @@ behavior:
 
 # ─── Red-team mode ────────────────────────────────────────────────────────────
 # nuguard redteam exercises adversarial scenarios to find break points.
-# target.url, target.auth, target.endpoint are inherited from the target: block above.
+# target.url, target.auth, target.endpoint, target.headers are inherited from
+# the target: block above.
 # Override any of them here when redteam needs different credentials than behavior.
 redteam:
 
@@ -207,6 +275,23 @@ redteam:
   #   standard — balanced; score ≥ 3, capped at ~40 scenarios
   #   full     — all capability-gated scenarios; ≥ 50 on feature-rich targets
   profile: full
+
+  # Execution mode (see docs/claude-redteam-3.md):
+  #   concurrent  — (default) phase-gated with intra-phase parallelism, existing behavior
+  #   progressive — strictly sequential named 0-12 pentest-style engagement (Security
+  #                 Invariants -> Boundary Discovery -> ... -> Recovery Testing), one
+  #                 scenario at a time so the target app is never asked two adversarial
+  #                 things "at once". Adds off-topic resistance, scripted identity/role
+  #                 escalation, document memory poisoning, and recovery-verification
+  #                 scenarios on top of the existing catalog.
+  # mode: progressive
+  progressive:
+    # Phase gate: 'none' (default) always runs every phase regardless of earlier
+    # findings, for a complete report. 'high' or 'critical' stop dispatching further
+    # phases once a finding at or above that severity is confirmed in the
+    # just-completed phase (remaining phases are recorded as skipped, not silently
+    # omitted). Only applies when mode: progressive.
+    halt_on_severity: none
 
   # Custom scenario catalog — export the built-in catalog as a starting point,
   # edit it, then point here to use your customised version:
@@ -299,6 +384,18 @@ redteam:
   # before generating attack payloads.
   skip_discovery: false             # set true to skip the discovery phase entirely
   discovery_max_turns: 3            # max turns during discovery (stops early on success)
+
+  # Capability discovery: primes the agent into a developer/debug persona, then
+  # asks it directly what tools it can invoke (always cross-checked against the
+  # AI-SBOM, since live-only tools can be invisible to static analysis) and,
+  # only when actually missing from the SBOM, its sub-agents and system prompt.
+  # Findings merge into the in-memory SBOM before scenario generation.
+  # Findings are tagged confidence=0.5, evidence kind="dynamic_probe" to stay
+  # distinguishable from static-analysis results, and (when a --sbom/--from-repo
+  # path is known) persisted into the same <name>.sbom.enriched.json artifact
+  # used by SBOM auto-enrichment, de-duped against tools/sub-agents already in
+  # the SBOM.
+  capability_discovery: true        # set false to disable the extra probes
 
   # Guided adversarial conversations using ConversationDirector
   # build_guided_tool_redteam() derives the goal description from each TOOL node's

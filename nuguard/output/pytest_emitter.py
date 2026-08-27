@@ -38,6 +38,12 @@ _log = get_logger(__name__)
 # the regression suite stays small and deterministic.
 _MIN_SEVERITY_SIGNAL = 0.5
 
+# severity_signal is recorded on an integer 1–5 scale (CRITICAL=5 … INFO=1).
+# Map each level onto the documented 0.0–1.0 scale so the value agrees with
+# the severity-enum fallback in `_finding_sev_float` and every severity level,
+# including LOW, clears the qualification gate above.
+_SIGNAL_TO_FLOAT = {5: 1.0, 4: 0.92, 3: 0.75, 2: 0.58, 1: 0.42}
+
 _FILE_HEADER = '''\
 """Auto-generated regression tests for {goal_type} findings.
 
@@ -209,8 +215,8 @@ def _finding_sev_float(finding: "Finding") -> float:
     raw = finding.scores.get("severity_signal")
     if raw is not None:
         try:
-            return float(raw) / 5.0  # normalise 1–5 scale to 0–1
-        except (TypeError, ValueError):
+            return _SIGNAL_TO_FLOAT[int(raw)]
+        except (KeyError, TypeError, ValueError):
             pass
     # Fall back to severity enum → float
     _sev_map = {"critical": 1.0, "high": 0.8, "medium": 0.5, "low": 0.2, "info": 0.0}

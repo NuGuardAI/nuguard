@@ -178,8 +178,19 @@ class TestLifecycleScriptAdapter:
         node = ls_nodes[0]
         assert node.metadata.references_credentials is True
 
-    def test_clean_package_no_lifecycle_nodes(self):
+    def test_clean_package_lifecycle_nodes_have_no_malicious_flags(self):
+        """clean_package's scripts (jest/tsc/eslint) are captured as
+        LIFECYCLE_SCRIPT nodes (all npm scripts are, not just install-hooks)
+        but none should have any malicious-pattern flag set.
+        """
         adapter = LifecycleScriptAdapter()
         nodes, _ = adapter.scan(FIXTURES / "clean_package")
         ls_nodes = [n for n in nodes if n.component_type == ComponentType.LIFECYCLE_SCRIPT]
-        assert not ls_nodes, f"Expected no LIFECYCLE_SCRIPT nodes in clean package, got: {ls_nodes}"
+        assert {n.metadata.script_phase for n in ls_nodes} == {"test", "build", "lint"}
+        assert not any(
+            n.metadata.invokes_network
+            or n.metadata.invokes_shell
+            or n.metadata.downloads_binary
+            or n.metadata.references_credentials
+            for n in ls_nodes
+        )

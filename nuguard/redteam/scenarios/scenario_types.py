@@ -32,6 +32,11 @@ class AttackScenario(BaseModel):
     target_tool_names: list[str] = Field(default_factory=list)
     precondition_summary: str = ""
     impact_score: float = 0.0
+    # Escalation phase (1-9, see scenarios/generator.py _ATTACK_PHASE) — recon
+    # before boundary-mapping before destructive/high-impact actions. Set by
+    # the generator at sort time and consumed by the orchestrator to batch
+    # dispatch by phase rather than firing the whole catalog concurrently.
+    attack_phase: int = 5
     # ── Catalog taxonomy (docs/llm-runs/Red-team-new-design.md) ──────────────
     # Populated when a scenario is produced by the catalog builder factories.
     # All optional/defaulted so the dozens of direct AttackScenario(...) call

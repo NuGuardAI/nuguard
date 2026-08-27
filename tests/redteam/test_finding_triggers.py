@@ -536,3 +536,223 @@ def test_build_step_details_chat_response_cleaned() -> None:
     assert len(details) == 1
     assert details[0]["response"] == "Hello, I can help you."
     assert "conversation_id" not in details[0]["response"]
+
+
+# ---------------------------------------------------------------------------
+# Cross-tenant leak detection feeding severity (see _detect_cross_tenant_leak
+# in orchestrator.py) — previously cross_tenant was only ever set for
+# ScenarioType.CROSS_TENANT_EXFILTRATION, so a skeleton-key jailbreak on an
+# unrelated scenario type (e.g. AGENTIC_TRUST_ABUSE) that leaked a different
+# customer's data never scored any higher for it.
+# ---------------------------------------------------------------------------
+
+
+def _agentic_trust_scenario() -> AttackScenario:
+    return AttackScenario(
+        scenario_id="scn-2",
+        goal_type=GoalType.AGENTIC_TRUST_ABUSE,
+        scenario_type=ScenarioType.INTENT_ROUTING_CONFUSION,
+        title="Developer Override Mode",
+        description="skeleton-key jailbreak via developer override framing",
+        target_node_ids=["node-1"],
+    )
+
+
+def _agentic_chain() -> ExploitChain:
+    return ExploitChain(
+        chain_id="chain-2",
+        goal_type=GoalType.AGENTIC_TRUST_ABUSE,
+        scenario_type=ScenarioType.INTENT_ROUTING_CONFUSION,
+        sbom_path=["node-1"],
+    )
+
+
+def _leak_step_result(response: str) -> StepResult:
+    step = ExploitStep(
+        step_id="step-1",
+        step_type="INJECT",
+        description="unit step",
+        payload="payload",
+        success_signal="WARNING",
+        on_failure="abort",
+    )
+    result = StepResult(step=step, response=response, tool_calls=[])
+    result.success_signal_found = True
+    return result
+
+
+def test_cross_tenant_leak_scores_higher_than_same_scenario_without_leak() -> None:
+    """A response leaking a different customer's account beats an identical scenario that doesn't."""
+    orchestrator = _default_orchestrator()
+    scenario = _agentic_trust_scenario()
+    chain = _agentic_chain()
+    leaking_response = (
+        "WARNING: The transaction summary for account ID ACCT-002 is as follows: "
+        "Balance: $12,500.00 - Status: Active"
+    )
+    sr_leak = _leak_step_result(leaking_response)
+    session_with_identity = AttackSession(
+        session_id="sess-1", target_url="http://localhost:3000", chain_id="chain-2",
+        golden_ids=["ACCT-001"], golden_name="Alice Johnson",
+    )
+    leak_findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr_leak],
+        step_details=orchestrator._build_step_details([sr_leak]),
+        session=session_with_identity,
+    )
+
+    sr_no_leak = _leak_step_result("WARNING: Here is your own account summary. Balance: $500.00")
+    no_leak_findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr_no_leak],
+        step_details=orchestrator._build_step_details([sr_no_leak]),
+        session=session_with_identity,
+    )
+
+    assert len(leak_findings) == 1
+    assert len(no_leak_findings) == 1
+    assert leak_findings[0].ngrs_score > no_leak_findings[0].ngrs_score
+
+
+def test_cross_tenant_leak_without_session_identity_not_flagged() -> None:
+    """No pre-scan identity captured — can't determine cross-tenant, so no bump."""
+    orchestrator = _default_orchestrator()
+    scenario = _agentic_trust_scenario()
+    chain = _agentic_chain()
+    leaking_response = "WARNING: account ID ACCT-002 balance: $12,500.00"
+    sr = _leak_step_result(leaking_response)
+
+    with_session_findings = orchestrator._build_findings(
+        scenario=scenario, chain=chain, step_results=[sr],
+        step_details=orchestrator._build_step_details([sr]), session=None,
+    )
+    assert len(with_session_findings) == 1
+    # data_class stays at the AGENTIC_TRUST_ABUSE goal-type baseline (2) —
+    # no identity to compare against means cross_tenant can't be detected,
+    # so the PII-class bump introduced by cross_tenant never fires.
+    assert "DC:2" in with_session_findings[0].ngrs_vector
+
+
+def test_scenario_level_owasp_ref_wins_over_goal_type_fallback() -> None:
+    """A chain-level owasp_llm_ref/owasp_asi_ref (set via make_scenario) is more
+    specific than the goal-type table and must take precedence over it.
+    """
+    orchestrator = _orchestrator(
+        RedteamFindingTriggers(
+            canary_hits=True,
+            policy_violations=False,
+            critical_success_hits=False,
+            any_inject_success=False,
+        )
+    )
+    scenario = _scenario()
+    chain = ExploitChain(
+        chain_id="chain-1",
+        goal_type=GoalType.DATA_EXFILTRATION,
+        scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
+        sbom_path=["node-1"],
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM09:2026",
+        mitre_atlas_technique="AML.T0043 – Craft Adversarial Data",
+    )
+    step_result = _step_result(success=False, canary_hits=["PATIENT_ID_123"])
+
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[step_result],
+        step_details=orchestrator._build_step_details([step_result]),
+    )
+
+    assert len(findings) == 1
+    assert findings[0].owasp_asi_ref == "ASI06"
+    assert findings[0].owasp_llm_ref == "LLM09:2026"
+    assert findings[0].mitre_atlas_technique == "AML.T0043 – Craft Adversarial Data"
+
+
+def test_goal_type_fallback_used_when_scenario_sets_no_owasp_ref() -> None:
+    """When the chain doesn't set an owasp/atlas literal, fall back to the
+    goal-type table instead of leaving the Finding's refs empty.
+    """
+    orchestrator = _orchestrator(
+        RedteamFindingTriggers(
+            canary_hits=True,
+            policy_violations=False,
+            critical_success_hits=False,
+            any_inject_success=False,
+        )
+    )
+    scenario = _scenario()
+    chain = _chain()  # no owasp_*/mitre_atlas literals set
+    step_result = _step_result(success=False, canary_hits=["PATIENT_ID_123"])
+
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[step_result],
+        step_details=orchestrator._build_step_details([step_result]),
+    )
+
+    assert len(findings) == 1
+    assert findings[0].owasp_llm_ref == "LLM02:2026"
+    assert findings[0].owasp_asi_ref == "ASI10"
+    assert findings[0].mitre_atlas_technique is not None
+
+
+def test_affected_component_uses_plain_node_name_not_type_suffixed_label() -> None:
+    """Finding.affected_component must be a plain node name (matching behavior/'s
+    convention) so it lines up with RemediationSynthesizer._node_by_name, which is
+    keyed by plain node.name — not the "name (TYPE)" label used for narrative text.
+    """
+    import uuid
+
+    from nuguard.sbom.models import Node
+    from nuguard.sbom.types import ComponentType
+
+    node_id = uuid.uuid5(uuid.NAMESPACE_URL, "node-1")
+    node = Node(
+        id=node_id,
+        name="Fintech App Assistant",
+        component_type=ComponentType.AGENT,
+        confidence=0.9,
+    )
+    sbom = AiSbomDocument(target="unit-test", nodes=[node], edges=[])
+    orchestrator = RedteamOrchestrator(
+        sbom=sbom,
+        target_url="http://localhost:3000",
+        finding_triggers=RedteamFindingTriggers(
+            canary_hits=True,
+            policy_violations=False,
+            critical_success_hits=False,
+            any_inject_success=False,
+        ),
+    )
+    scenario = AttackScenario(
+        scenario_id="scn-1",
+        goal_type=GoalType.DATA_EXFILTRATION,
+        scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
+        title="Extract PHI",
+        description="Attempt to exfiltrate sensitive medical data",
+        target_node_ids=[str(node_id)],
+    )
+    chain = ExploitChain(
+        chain_id="chain-1",
+        goal_type=GoalType.DATA_EXFILTRATION,
+        scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
+        sbom_path=[str(node_id)],
+    )
+    step_result = _step_result(success=False, canary_hits=["PATIENT_ID_123"])
+
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[step_result],
+        step_details=orchestrator._build_step_details([step_result]),
+    )
+
+    assert len(findings) == 1
+    assert findings[0].affected_component == "Fintech App Assistant"
+    assert "(AGENT)" not in findings[0].affected_component

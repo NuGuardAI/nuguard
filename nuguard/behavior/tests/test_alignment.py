@@ -302,3 +302,33 @@ def test_check_alignment_returns_findings_list():
         assert f.finding_id
         assert f.title
         assert f.severity
+
+
+def test_ba_001_finding_carries_owasp_and_atlas_refs():
+    agent = _make_node(
+        "CopyAgent",
+        NodeType.AGENT,
+        NodeMetadata(system_prompt_excerpt="You may discuss gambling strategies"),
+    )
+    sbom = _make_sbom([agent])
+    findings = check_alignment(sbom, _make_intent(), _make_policy(restricted_topics=["gambling"]))
+    ba_001 = next(f for f in findings if "BA-001" in f.finding_id)
+    assert ba_001.owasp_llm_ref == "LLM08:2026"
+    assert ba_001.mitre_atlas_technique is not None
+
+
+def test_ba_003_finding_carries_owasp_and_atlas_refs():
+    agent = _make_node("MarketingAgent", NodeType.AGENT)
+    tool = _make_node(
+        "MoneyTransferTool",
+        NodeType.TOOL,
+        NodeMetadata(description="Transfers money between accounts"),
+    )
+    edge = _make_edge(agent, tool, EdgeRelationshipType.CALLS)
+    sbom = _make_sbom([agent, tool], [edge])
+    policy = _make_policy(restricted_actions=["money transfer"])
+    findings = check_alignment(sbom, _make_intent(), policy)
+    ba_003 = next(f for f in findings if "BA-003" in f.finding_id)
+    assert ba_003.owasp_llm_ref == "LLM03:2026"
+    assert ba_003.owasp_asi_ref == "ASI02"
+    assert ba_003.mitre_atlas_technique is not None

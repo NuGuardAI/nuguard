@@ -1,0 +1,62 @@
+# nuguard-azure.yaml — Studyield hosted on Azure Container Instances
+# Deploy first with deploy-azure-aci.sh, then fill in the FQDN it prints below.
+
+source: https://github.com/studyield/studyield
+sbom: ./studyield.sbom.json
+
+policy:
+  path: ./cognitive-policy.md
+  llm: true
+
+llm:
+  model: openai/gpt-4o-mini
+
+sbom_generation:
+  llm: true
+
+target:
+  # Replace with the FQDN printed by deploy-azure-aci.sh, e.g.:
+  # http://studyield-nuguard-<suffix>.<region>.azurecontainer.io:3010
+  url: http://studyield-nuguard-7b904de1.eastus2.azurecontainer.io:3010
+  auth:
+    type: login_flow
+    login_flow:
+      endpoint: /api/v1/auth/login
+      payload:
+        email: ${APP_USERNAME}
+        password: ${APP_PASSWORD}
+      token_response_key: tokens.accessToken
+      token_header: "Authorization: Bearer"
+      refresh_on_401: true
+
+behavior:
+  llm: true
+  canary: ./canary.json
+  request_timeout: 90
+  scenario_concurrency: 3
+  isolate_scenarios: true
+  judge_concurrency: 5
+  capability_discovery: true
+
+redteam:
+  target: http://studyield-nuguard-7b904de1.eastus2.azurecontainer.io:3010
+  canary: ./canary.json
+  profile: ci
+  min_impact_score: 0.0
+  scenarios:
+    - prompt-injection
+    - tool-abuse
+    - privilege-escalation
+    - data-exfiltration
+    - policy-violation
+  request_timeout: 150
+  verbose: true
+  strict_outcome: false
+
+analyze:
+  min_severity: low
+
+output:
+  format: markdown
+  fail_on: low
+  sarif_file: ./reports/studyield-azure-nuguard-results.sarif

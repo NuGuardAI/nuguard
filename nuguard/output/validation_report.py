@@ -353,14 +353,14 @@ def render_behavior_coverage_evidence(
     lines.append("| Component | Type | Status | First Exercised |")
     lines.append("|---|---|---|---|")
     for cov in coverage:
+        exercised = getattr(cov, "exercised", False)
+        if not exercised:
+            # Callers pass matched-only coverage; skip defensively if not.
+            continue
         name = getattr(cov, "component_name", "?")
         node_type = getattr(cov, "node_type", "?")
-        exercised = getattr(cov, "exercised", False)
         within_policy = getattr(cov, "exercised_within_policy", False)
-        if not exercised:
-            status = "Not exercised"
-            first = "—"
-        elif within_policy:
+        if within_policy:
             status = "Within policy"
             if name in component_first:
                 sn, tn, _, _ = component_first[name]

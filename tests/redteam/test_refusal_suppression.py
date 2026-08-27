@@ -10,14 +10,13 @@ import unittest.mock as mock
 
 import pytest
 
-from nuguard.redteam.llm_engine.response_evaluator import (
-    LLMResponseEvaluator,
-    _REFUSAL_SUPPRESSED_GOALS,
-    _detect_hard_refusal,
-)
 from nuguard.redteam.executor.executor import _REFUSAL_SUPPRESSION_GOALS
 from nuguard.redteam.llm_engine.refusal_patterns import HARD_REFUSAL_TOKENS
-
+from nuguard.redteam.llm_engine.response_evaluator import (
+    _REFUSAL_SUPPRESSED_GOALS,
+    LLMResponseEvaluator,
+)
+from nuguard.redteam.llm_engine.signals import detect_hard_refusal as _detect_hard_refusal
 
 # ---------------------------------------------------------------------------
 # _detect_hard_refusal() unit tests

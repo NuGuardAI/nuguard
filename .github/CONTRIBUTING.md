@@ -42,6 +42,22 @@ make precommit-run
 
 All four checks (`test`, `lint`, `fmt` check, and pre-commit) should pass locally before you open a PR — the [PR Tests](workflows/pr-tests.yml) workflow re-runs lint and type checks on every pull request.
 
+## Public API Schema Snapshot
+
+If you intentionally change a public Pydantic API model, regenerate the committed schema snapshot used by the anti-drift contract test:
+
+```bash
+uv run python -c "import json; from tests.contracts.test_public_api_schema_contract import _live_schema_snapshot; open('tests/contracts/public_api.schema.json','w',encoding='utf-8').write(json.dumps(_live_schema_snapshot(), indent=2) + '\\n')"
+```
+
+Then verify the contract test passes:
+
+```bash
+uv run pytest tests/contracts/test_public_api_schema_contract.py -q
+```
+
+Include the updated `tests/contracts/public_api.schema.json` in the same PR as the model change.
+
 ## Branch Naming
 
 Branch names are enforced server-side by a repository ruleset — a push that doesn't match is rejected outright, not just flagged in review.
