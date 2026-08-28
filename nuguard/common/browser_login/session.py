@@ -319,8 +319,13 @@ class BrowserLoginSession:
                 if await locator.count() > 0:
                     await locator.fill(value, timeout=2000)
                     return True
-            except Exception:  # noqa: BLE001
-                _log.debug("browser_login: fill candidate %r failed", sel, exc_info=True)
+            except Exception as exc:  # noqa: BLE001
+                # No exc_info/traceback here: `value` (a credential — username
+                # or password) is a local in this frame, and the configured
+                # Rich log handler renders tracebacks with local variable
+                # values by default, which would print the credential in
+                # clear text. Log only the exception type/message.
+                _log.debug("browser_login: fill candidate %r failed: %s", sel, exc)
                 continue
         return False
 
