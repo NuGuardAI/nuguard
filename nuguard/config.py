@@ -85,6 +85,7 @@ def _rebase_relative_paths(flat: dict[str, Any], base_dir: Path) -> dict[str, An
         "sarif_output_path",
         "redteam_prompt_cache_dir",
         "redteam_catalog_path",
+        "redteam_auth_cookie_file",
     )
     repo_root = _find_repo_root(base_dir)
 
@@ -249,6 +250,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 flat["redteam_auth_password"] = _shared_auth.get("password") or ""
             if _sa_type == "login_flow" and isinstance(_shared_auth.get("login_flow"), dict):
                 flat["redteam_auth_login_flow"] = _shared_auth["login_flow"]
+            if _sa_type == "cookie_file":
+                flat["redteam_auth_cookie_file"] = _shared_auth.get("cookie_file") or ""
 
     # Redteam section — overrides shared target block when keys are present.
     # Drop keys whose env-var interpolation resolved to None (unset ${VAR}
@@ -503,6 +506,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 flat["redteam_auth_password"] = auth.get("password") or ""
             if auth_type == "login_flow" and isinstance(auth.get("login_flow"), dict):
                 flat["redteam_auth_login_flow"] = auth.get("login_flow")
+            if auth_type == "cookie_file":
+                flat["redteam_auth_cookie_file"] = auth.get("cookie_file") or ""
 
     # Redteam defence_regressions
     if isinstance(redteam, dict) and "defence_regressions" in redteam:
@@ -1572,6 +1577,10 @@ class NuGuardConfig(BaseSettings):
         default=None,
         description="Login-flow auth config for redteam (yaml: redteam.auth.login_flow).",
     )
+    redteam_auth_cookie_file: str = Field(
+        default="",
+        description="Path to a Netscape-format cookies.txt for redteam (yaml: redteam.auth.cookie_file).",
+    )
 
     # ----------------------------------------- Defence regressions
     redteam_defence_regressions: list[dict] = Field(
@@ -1594,6 +1603,7 @@ class NuGuardConfig(BaseSettings):
                 username=self.redteam_auth_username,
                 password=self.redteam_auth_password,
                 login_flow=self.redteam_auth_login_flow,
+                cookie_file=self.redteam_auth_cookie_file,
             )
         if self.redteam_auth_header:
             return AuthConfig.from_header_string(self.redteam_auth_header)

@@ -58,6 +58,10 @@ spdx = [
 secrets = [
     "cryptography>=42.0",
 ]
+browser = [
+    "playwright>=1.45",
+    "ruamel.yaml>=0.18",
+]
 
 [project.urls]
 Homepage = "https://github.com/NuGuardAI/nuguard"
