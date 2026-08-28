@@ -285,8 +285,9 @@ async def resolve_target_session_public(
     auth_config = _build_auth_config(request)
 
     if sbom is not None:
+        resolved_url, _ = resolve_target_url(request.target_url, sbom)
         endpoint, payload_key, payload_list, response_key, endpoint_source = await _resolve_endpoint_plan(
-            target_url=request.target_url,
+            target_url=resolved_url,
             sbom=sbom,
             auth_headers=auth_config.to_headers() or None,
             chat_path=request.chat_path,
@@ -296,7 +297,7 @@ async def resolve_target_session_public(
             chat_payload_extras=request.chat_payload_extras,
         )
         session_cfg, health = await resolve_target_session(
-            target_url=request.target_url,
+            target_url=resolved_url,
             sbom=sbom,
             auth_config=auth_config,
             extra_headers={},

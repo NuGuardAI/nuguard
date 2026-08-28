@@ -273,6 +273,61 @@ async def test_resolve_target_session_public_uses_probe_endpoint_source(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_resolve_target_session_public_resolves_sbom_host_before_planning(monkeypatch):
+    from nuguard.common.session_resolver import TargetSessionConfig
+
+    planned_target_urls = []
+    resolved_session_target_urls = []
+
+    async def _fake_resolve_endpoint_plan(**kwargs):
+        planned_target_urls.append(kwargs["target_url"])
+        return "/chat", "message", False, None, "probe"
+
+    async def _fake_resolve_target_session(**kwargs):
+        resolved_session_target_urls.append(kwargs["target_url"])
+        return (
+            TargetSessionConfig(
+                base_url=kwargs["target_url"],
+                chat_path="/chat",
+                chat_payload_key="message",
+                chat_payload_list=False,
+                chat_payload_extras={},
+                chat_response_key=None,
+                auth_session=_FakeAuthSession(),
+                resolution_notes=[],
+            ),
+            TargetHealthReport(
+                target_url=kwargs["target_url"],
+                endpoint="/chat",
+                run_id="r-resolved-url",
+                checks=[],
+            ),
+        )
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_url",
+        lambda target_url, sbom: ("https://api.example.test", ["used SBOM deployment URL"]),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api._resolve_endpoint_plan",
+        _fake_resolve_endpoint_plan,
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session,
+    )
+
+    result = await resolve_target_session_public(
+        TargetSessionResolveRequest(target_url="https://static.example.test"),
+        sbom=object(),
+    )
+
+    assert planned_target_urls == ["https://api.example.test"]
+    assert resolved_session_target_urls == ["https://api.example.test"]
+    assert result.effective_target_url == "https://api.example.test"
+
+
+@pytest.mark.asyncio
 async def test_parity_tv_001(monkeypatch):
     from nuguard.common.session_resolver import TargetSessionConfig
 

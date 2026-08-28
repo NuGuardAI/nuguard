@@ -263,6 +263,8 @@ Module: `nuguard.common.target_verify_public_api`
 
 These APIs handle endpoint selection (config/SBOM/probe/default), auth bootstrapping, and target health checks before scans.
 
+When an SBOM is supplied, `resolve_target_session_public()` resolves a static-hosting target URL to the SBOM deployment URL before endpoint probing and session bootstrap. The returned `effective_target_url` reports the URL used for the resolved session.
+
 For targets that obtain a token through a login request, set `auth_type="login_flow"` and pass the nested `LoginFlowConfig` model. Its `endpoint`, `payload`, `token_response_key`, `token_header`, and `refresh_on_401` fields configure the complete login flow. No-login callers can omit both fields; `auth_type` defaults to `"none"`.
 
 ```python
