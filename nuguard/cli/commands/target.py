@@ -9,6 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from nuguard.common import chat_payload_tokens
 from nuguard.common.auth import AuthConfig
 from nuguard.common.auth_runtime import bootstrap_auth_runtime, resolve_auth_runtime
 from nuguard.common.errors import TargetUnavailableError
@@ -230,7 +231,7 @@ async def _verify_async(
                 auth_headers=auth_runtime.initial_headers or None,
                 known_payload_key=(discovered_key if discovered_key != "message" else None),
                 known_payload_list=discovered_list,
-                probe_payload_extras=chat_payload_extras or None,
+                probe_payload_extras=chat_payload_tokens.flat_or_none(chat_payload_extras) or None,
             )
             if probe_result:
                 discovered_path, discovered_key, discovered_list = probe_result
@@ -431,9 +432,16 @@ _IDENTITY_EXTRA_KEYS = (
 
 
 def _configured_user_ref(auth: AuthConfig, chat_payload_extras: dict[str, object]) -> str:
-    """Best-effort user/account reference from config: payload extras, then auth username."""
+    """Best-effort user/account reference from config: payload extras, then auth username.
+
+    ``chat_payload_extras`` lookups here assume a flat dict of identity fields —
+    a nested slot-mode extras dict (see ``chat_payload_tokens``) falls straight
+    through to the auth-username fallback instead of matching an unrelated
+    nested key or surfacing a literal ``{{token}}`` placeholder.
+    """
+    flat_extras = chat_payload_tokens.flat_or_none(chat_payload_extras) or {}
     for key in _IDENTITY_EXTRA_KEYS:
-        value = chat_payload_extras.get(key)
+        value = flat_extras.get(key)
         if value:
             return str(value)
     username = getattr(auth, "username", None)

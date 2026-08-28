@@ -47,6 +47,7 @@ from nuguard.behavior.models import (
     TurnRecord,
 )
 from nuguard.behavior.turn_context import TurnContext, extract_turn_context
+from nuguard.common import chat_payload_tokens
 from nuguard.common.console import _console
 from nuguard.common.console import print_turn as _common_print_turn
 from nuguard.common.control_mappings.atlas import atlas_refs_for_finding_type, atlas_technique_label
@@ -849,7 +850,9 @@ class BehaviorRunner:
                 endpoint=endpoint or "/chat",
                 auth_config=runtime.auth_config,
                 run_id=str(_uuid.uuid4()),
-                probe_payload_extras=getattr(self._config, "chat_payload_extras", None) or None,
+                probe_payload_extras=chat_payload_tokens.flat_or_none(
+                    getattr(self._config, "chat_payload_extras", None)
+                ) or None,
             )
             for line in health_report.summary_lines():
                 _log.info("behavior bootstrap %s", line)
@@ -890,6 +893,9 @@ class BehaviorRunner:
             apply_sbom_context_hints,
         )
         _config_extras: dict = dict(getattr(self._config, "chat_payload_extras", None) or {})
+        # Both helpers pass a nested slot-mode chat_payload_extras through
+        # unmodified (see their docstrings in session_resolver.py) instead of
+        # misapplying flat-only identity injection to it.
         _merged_extras, _login_notes = _merge_login_response_extras(
             self._auth_session, _config_extras
         )

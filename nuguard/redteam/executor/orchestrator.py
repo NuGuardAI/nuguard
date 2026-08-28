@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.redteam.target.session import AttackSession
 
+from nuguard.common import chat_payload_tokens
 from nuguard.common.console import print_turn as _common_print_turn
 from nuguard.common.id_extractor import extract_customer_name, extract_ids
 from nuguard.common.logging import get_logger
@@ -995,7 +996,7 @@ class RedteamOrchestrator:
             auth_config=auth_runtime.auth_config,
             canary_config=self._canary_config,
             run_id=str(_uuid.uuid4()),
-            probe_payload_extras=self._chat_payload_extras or None,
+            probe_payload_extras=chat_payload_tokens.flat_or_none(self._chat_payload_extras) or None,
         )
         self.health_report = health_report
         for line in health_report.summary_lines():
@@ -1028,6 +1029,9 @@ class RedteamOrchestrator:
             _merge_login_response_extras,
             apply_sbom_context_hints,
         )
+        # Both helpers pass a nested slot-mode chat_payload_extras through
+        # unmodified (see their docstrings) instead of misapplying flat-only
+        # identity injection to it.
         _merged_extras, _login_notes = _merge_login_response_extras(
             bootstrapper.session, self._chat_payload_extras
         )
@@ -3019,7 +3023,7 @@ class RedteamOrchestrator:
                 known_payload_key=None,
                 known_payload_list=self._chat_payload_list,
                 known_response_key=self._chat_response_key,
-                probe_payload_extras=self._chat_payload_extras or None,
+                probe_payload_extras=chat_payload_tokens.flat_or_none(self._chat_payload_extras) or None,
                 hint_path=self._chat_path,
             )
             if result:
@@ -3050,7 +3054,7 @@ class RedteamOrchestrator:
             ),
             known_payload_list=self._chat_payload_list,
             known_response_key=self._chat_response_key,
-            probe_payload_extras=self._chat_payload_extras or None,
+            probe_payload_extras=chat_payload_tokens.flat_or_none(self._chat_payload_extras) or None,
         )
         if result:
             path, pay_key, pay_list = result

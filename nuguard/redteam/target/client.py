@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from nuguard.common import chat_payload_tokens
+from nuguard.common.env_utils import env_bool
 from nuguard.common.errors import TargetUnavailableError  # noqa: F401 — re-exported for callers
 from nuguard.common.logging import get_logger
 from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KEYS
@@ -30,6 +32,49 @@ _log = get_logger(__name__)
 
 # Dedup set: emit the ADK app_name fallback warning at most once per base URL.
 _adk_fallback_warned: set[str] = set()
+
+
+def _render_http_body(body: Any) -> str:
+    """JSON-render *body* for log output, falling back to ``str()`` if it can't be."""
+    try:
+        return json.dumps(body, default=str)
+    except (TypeError, ValueError):
+        return str(body)
+
+
+def _log_http_request_body(method: str, path: str, body: Any, *, label: str = "") -> None:
+    """Echo an outgoing HTTP JSON body when ``NUGUARD_LOG_HTTP_BODIES=1``.
+
+    Opt-in verbose tracing for diagnosing chat_payload_extras/slot-token
+    issues (or any other payload-shape problem) without needing DEBUG-level
+    logging enabled globally. Re-checks the env var on every call rather than
+    caching it, so it can be toggled mid-run. Labeled distinctly from
+    :func:`_log_http_response_body` so request and response lines are
+    unambiguous in the log stream.
+    """
+    if not env_bool("NUGUARD_LOG_HTTP_BODIES", False):
+        return
+    suffix = f" {label}" if label else ""
+    _log.info(
+        "HTTP %s %s%s: %s",
+        method.upper(), path, suffix, _render_http_body(body),
+    )
+
+
+def _log_http_response_body(status: int | str, path: str, body: Any, *, label: str = "") -> None:
+    """Echo an incoming HTTP JSON body (with status code) when ``NUGUARD_LOG_HTTP_BODIES=1``.
+
+    See :func:`_log_http_request_body` — same opt-in flag, but labeled
+    "HTTP Response" so it's never confused with the outgoing request line.
+    """
+    if not env_bool("NUGUARD_LOG_HTTP_BODIES", False):
+        return
+    suffix = f" {label}" if label else ""
+    _log.info(
+        "HTTP Response %s %s%s: %s",
+        status, path, suffix, _render_http_body(body),
+    )
+
 
 DEFAULT_TIMEOUT = 30.0
 
@@ -794,6 +839,14 @@ class TargetAppClient:
             return payload
         if not _is_message_history_key(self._chat_payload_key):
             return [payload]
+        return self._build_history_messages(payload, session)
+
+    def _build_history_messages(self, payload: str, session: AttackSession) -> list[dict[str, str]]:
+        """Build the OpenAI-style ``[{role, content}, ...]`` turn history.
+
+        Shared by the legacy ``messages``/``history``-key path in
+        :meth:`_build_chat_payload_value` and the ``{{history}}`` slot token.
+        """
         history: list[dict[str, str]] = []
         for turn in session.turns:
             history.append({"role": "user", "content": turn.prompt})
@@ -801,6 +854,62 @@ class TargetAppClient:
                 history.append({"role": "assistant", "content": turn.response})
         history.append({"role": "user", "content": payload})
         return history
+
+    def _resolve_session_token_context(self, payload: str, session: AttackSession) -> dict[str, Any]:
+        """Build the ``{{...}}`` slot-token substitution context for one turn."""
+        session_id = (
+            self._session_context.get("session_id")
+            or self._session_context.get("thread_id")
+            or self._session_context.get("chat_id")
+        )
+        conversation_id = (
+            self._session_context.get("conversation_id")
+            or self._session_context.get("thread_id")
+            or self._session_context.get("chat_id")
+        )
+        return {
+            chat_payload_tokens.MESSAGE: payload,
+            chat_payload_tokens.HISTORY: self._build_history_messages(payload, session),
+            chat_payload_tokens.SESSION_ID: session_id,
+            chat_payload_tokens.CONVERSATION_ID: conversation_id,
+        }
+
+    def _build_generic_body(self, payload: str, session: AttackSession) -> dict:
+        """Build the outgoing JSON/form body for the non-adapter (generic) send path.
+
+        Three cases, driven by ``chat_payload_extras``'s nesting depth:
+
+        - Not defined: ``{chat_payload_key: value}`` + any extracted
+          session/conversation context merged in (unchanged legacy behaviour).
+        - Flat (depth <= 1, e.g. ``{"user_id": "alice"}``): same merge as
+          above, with the extras dict spread underneath so ``chat_payload_key``/
+          session context win on key collision. Slot tokens (e.g.
+          ``{"user_id": "{{session_id}}"}``) are substituted first.
+        - Nested (depth > 1, e.g. an OpenAI-style
+          ``{"message": {"role": "user", "content": "{{message}}"}, ...}``):
+          ``chat_payload_key`` and the session-context merge are skipped —
+          the substituted extras structure *is* the body. A blind top-level
+          merge would otherwise clobber the nested structure (e.g. the
+          default ``chat_payload_key="message"`` overwriting a nested
+          ``"message"`` object with a flat string).
+        """
+        if self._chat_payload_extras and chat_payload_tokens.max_depth(self._chat_payload_extras) > 1:
+            context = self._resolve_session_token_context(payload, session)
+            return chat_payload_tokens.substitute(self._chat_payload_extras, context)
+
+        value: Any = self._build_chat_payload_value(payload, session)
+        body: dict = {self._chat_payload_key: value}
+        # Merge any previously extracted session/conversation context so the
+        # server can correlate subsequent turns within the same conversation.
+        if self._session_context:
+            body.update(self._session_context)
+        # Merge static extra fields (e.g. vehicleState, language) declared in
+        # chat_payload_extras — the message key always takes precedence.
+        if self._chat_payload_extras:
+            context = self._resolve_session_token_context(payload, session)
+            extras = chat_payload_tokens.substitute(self._chat_payload_extras, context)
+            body = {**extras, **body}
+        return body
 
     async def _send_impl(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
         """Inner send implementation (called with or without the request semaphore)."""
@@ -861,17 +970,8 @@ class TargetAppClient:
                     body = self._framework_adapter.build_body(payload, session_id)
                     chat_path = self._framework_adapter.run_path
                 else:
-                    # Generic path: flat key/value body
-                    value: Any = self._build_chat_payload_value(payload, session)
-                    body = {self._chat_payload_key: value}
-                    # Merge any previously extracted session/conversation context so the
-                    # server can correlate subsequent turns within the same conversation.
-                    if self._session_context:
-                        body.update(self._session_context)
-                    # Merge static extra fields (e.g. vehicleState, language) declared in
-                    # chat_payload_extras — the message key always takes precedence.
-                    if self._chat_payload_extras:
-                        body = {**self._chat_payload_extras, **body}
+                    # Generic path: flat key/value or slot-mode nested body
+                    body = self._build_generic_body(payload, session)
                     chat_path, _missing_params = _substitute_path_params(
                         self._chat_path, self._path_param_values
                     )
@@ -882,6 +982,7 @@ class TargetAppClient:
                         )
                         return f"[CONFIG_ERROR: unresolved path param {_missing_params[0]!r}]", []
 
+                _log_http_request_body("POST", chat_path, body)
                 if self._chat_payload_format == "form":
                     resp = await self._client.post(chat_path, data=body)
                 else:
@@ -906,6 +1007,7 @@ class TargetAppClient:
                     data = _sse_text or json.dumps(_sse_events)
                 else:
                     data = resp.json()
+                _log_http_response_body(resp.status_code, chat_path, data)
                 break
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
@@ -996,7 +1098,7 @@ class TargetAppClient:
         # subsequent turns extract a clean text field instead of raw JSON.
         if not text and isinstance(data, dict) and data:
             if self._chat_response_key is None and self._detected_response_key is None:
-                detected = self._detect_response_key(data, value if isinstance(value, str) else "")
+                detected = self._detect_response_key(data, payload)
                 if detected:
                     self._detected_response_key = detected
                     extracted = _extract_nested_key(data, detected)
@@ -1049,6 +1151,7 @@ class TargetAppClient:
         """
         for attempt in range(self._max_429_retries + 1):
             try:
+                _log_http_request_body(method, path, body)
                 if strip_auth and self._auth_header_names:
                     request = self._client.build_request(
                         method=method.upper(),
@@ -1086,6 +1189,7 @@ class TargetAppClient:
                     json_body: dict = resp.json()
                 except Exception:
                     json_body = {}
+                _log_http_response_body(resp.status_code, path, json_body or resp.text)
                 # Any completed response — even a 4xx/5xx — means the direct-HTTP
                 # path is reachable; reset the endpoint-probe circuit breaker.
                 self._record_endpoint_success()
@@ -1159,12 +1263,7 @@ class TargetAppClient:
                 body = self._framework_adapter.build_body(payload, session_id)
                 chat_path = self._framework_adapter.run_path
             else:
-                value: Any = self._build_chat_payload_value(payload, session)
-                body = {self._chat_payload_key: value}
-                if self._session_context:
-                    body.update(self._session_context)
-                if self._chat_payload_extras:
-                    body = {**self._chat_payload_extras, **body}
+                body = self._build_generic_body(payload, session)
                 chat_path, _missing_params = _substitute_path_params(
                     self._chat_path, self._path_param_values
                 )
@@ -1182,6 +1281,7 @@ class TargetAppClient:
                 if self._chat_payload_format == "form"
                 else {"json": body}
             )
+            _log_http_request_body("POST", chat_path, body, label="(stream)")
             async with self._client.stream("POST", chat_path, **_stream_kwargs) as resp:
                 resp.raise_for_status()
                 content_type = resp.headers.get("content-type", "")
@@ -1191,6 +1291,7 @@ class TargetAppClient:
                     accumulated_text_parts: list[str] = []
                     tool_calls: list[dict] = []
                     async for event in iter_sse_events(resp):
+                        _log_http_response_body(resp.status_code, chat_path, event, label="(stream event)")
                         if self._framework_adapter is not None:
                             # Wrap event in list so extract_text/tool_calls can
                             # handle it (ADK adapters expect a list of events)
@@ -1223,6 +1324,7 @@ class TargetAppClient:
                         data = json.loads(raw)
                     except Exception:
                         data = raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw)
+                    _log_http_response_body(resp.status_code, chat_path, data, label="(stream)")
 
                     tool_calls_json: list[dict] = []
                     if self._framework_adapter is not None:
@@ -1267,10 +1369,13 @@ class TargetAppClient:
 
     async def send_raw(self, path: str, body: dict) -> dict:
         """Send a raw POST to any path; returns parsed JSON response."""
+        _log_http_request_body("POST", path, body, label="(raw)")
         try:
             resp = await self._client.post(path, json=body)
             resp.raise_for_status()
-            return resp.json()
+            json_body = resp.json()
+            _log_http_response_body(resp.status_code, path, json_body, label="(raw)")
+            return json_body
         except Exception as exc:
             _log.warning("Raw request to %s failed: %s", path, exc)
             return {}

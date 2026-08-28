@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from nuguard.common import chat_payload_tokens
 from nuguard.common.auth import AuthConfig, LoginFlowConfig
 from nuguard.common.auth_runtime import bootstrap_auth_runtime
 from nuguard.common.discovery import (
@@ -190,7 +191,7 @@ async def _resolve_endpoint_plan(
             known_payload_key=chat_payload_key if chat_payload_key != "message" else None,
             known_payload_list=chat_payload_list,
             known_response_key=chat_response_key,
-            probe_payload_extras=chat_payload_extras,
+            probe_payload_extras=chat_payload_tokens.flat_or_none(chat_payload_extras),
         )
         if probed is not None:
             p_path, p_key, p_list = probed
@@ -224,7 +225,7 @@ async def verify_target(
         auth_config=auth_config,
         run_id=str(uuid.uuid4()),
         timeout=request.request_timeout,
-        probe_payload_extras=request.chat_payload_extras or None,
+        probe_payload_extras=chat_payload_tokens.flat_or_none(request.chat_payload_extras) or None,
     )
 
     checks = [_check_from_health(item) for item in health.checks]
@@ -327,7 +328,7 @@ async def resolve_target_session_public(
         auth_config=auth_config,
         run_id=str(uuid.uuid4()),
         timeout=request.request_timeout,
-        probe_payload_extras=request.chat_payload_extras or None,
+        probe_payload_extras=chat_payload_tokens.flat_or_none(request.chat_payload_extras) or None,
     )
     _ = bootstrapper
     return TargetSessionResolveResult(
