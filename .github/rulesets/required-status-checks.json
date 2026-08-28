@@ -31,16 +31,13 @@
             "context": "require-linked-issue"
           },
           {
-            "context": "develop-e2e"
+            "context": "e2e (openai-cs)"
           },
           {
-            "context": "main-e2e (openai-cs)"
+            "context": "e2e (gemini-auto)"
           },
           {
-            "context": "main-e2e (gemini-auto)"
-          },
-          {
-            "context": "main-e2e (pinnacle-bank)"
+            "context": "e2e (pinnacle-bank)"
           }
         ]
       }
