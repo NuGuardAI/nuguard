@@ -742,7 +742,7 @@ class RedteamOrchestrator:
         elif self._chat_path:
             self._chat_path_source = "sbom"
         else:
-            self._chat_path_source = "default"  # updated by _maybe_probe_endpoints if live probe succeeds
+            self._chat_path_source = "default"  # updated by _maybe_probe_endpoints to "probe" or "auto"
         # Prefer explicit caller-supplied response key; fall back to SBOM-discovered one.
         self._chat_response_key = chat_response_key or _discovered_response_key
         # Populated by run() — scenarios executed and their titles
@@ -3079,4 +3079,4 @@ class RedteamOrchestrator:
             )
             if not self._chat_path:
                 self._chat_path = "/chat"
-                self._chat_path_source = "default"
+                self._chat_path_source = "auto"
