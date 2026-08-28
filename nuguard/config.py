@@ -19,6 +19,7 @@ import yaml  # type: ignore[import-untyped]
 from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from nuguard.common import chat_payload_tokens
 from nuguard.common.auth import LoginFlowConfig
 from nuguard.common.errors import ConfigError
 from nuguard.common.logging import get_logger
@@ -29,6 +30,22 @@ if TYPE_CHECKING:
 _log = get_logger(__name__)
 
 _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
+
+
+def _validate_chat_payload_extras(extras: dict[str, Any], source: str) -> None:
+    """Raise :class:`ConfigError` if *extras* contains an unrecognized ``{{...}}`` token.
+
+    Catches typos (e.g. ``{{mesage}}``) or a token embedded in a larger string
+    (e.g. ``"Hi {{message}}"``, which substitution never resolves) at config-load
+    time instead of sending the literal placeholder text to the target app.
+    """
+    unrecognized = chat_payload_tokens.find_unrecognized(extras, chat_payload_tokens.EXTRAS_RECOGNIZED)
+    if unrecognized:
+        raise ConfigError(
+            f"{source}.chat_payload_extras contains unrecognized slot token(s): "
+            f"{sorted(unrecognized)!r}. Recognized tokens: "
+            f"{sorted(chat_payload_tokens.EXTRAS_RECOGNIZED)!r}."
+        )
 
 
 def _find_repo_root(start_dir: Path) -> Path | None:
@@ -230,6 +247,7 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         if "chat_response_key" in shared_target:
             flat["redteam_chat_response_key"] = shared_target["chat_response_key"]
         if "chat_payload_extras" in shared_target and isinstance(shared_target["chat_payload_extras"], dict):
+            _validate_chat_payload_extras(shared_target["chat_payload_extras"], "target")
             flat["redteam_chat_payload_extras"] = shared_target["chat_payload_extras"]
         if "headers" in shared_target and isinstance(shared_target["headers"], dict):
             flat["redteam_headers"] = {
@@ -276,6 +294,7 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "chat_response_key" in redteam:
         flat["redteam_chat_response_key"] = redteam["chat_response_key"]
     if "chat_payload_extras" in redteam and isinstance(redteam["chat_payload_extras"], dict):
+        _validate_chat_payload_extras(redteam["chat_payload_extras"], "redteam")
         flat["redteam_chat_payload_extras"] = redteam["chat_payload_extras"]
     if "auth_header" in redteam:
         flat["redteam_auth_header"] = redteam["auth_header"]
@@ -479,6 +498,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                     for k, v in b["headers"].items()
                     if v is not None
                 }
+            if isinstance(b, dict) and isinstance(b.get("chat_payload_extras"), dict):
+                _validate_chat_payload_extras(b["chat_payload_extras"], "behavior")
             flat["behavior_config"] = b
 
     # Validate section

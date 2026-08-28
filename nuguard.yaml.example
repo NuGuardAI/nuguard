@@ -72,6 +72,16 @@ target:
   # chat_payload_extras:
   #  user_id: alice
 
+  # Nested example ("slot mode" — the whole structure becomes the request body,
+  # chat_payload_key is ignored): {{message}}, {{history}}, {{session_id}}, and
+  # {{conversation_id}} are substituted per turn; a token that resolves to
+  # nothing (e.g. {{conversation_id}} on turn 1, before the target has issued
+  # one) drops that key entirely rather than sending a literal null.
+  # chat_payload_extras:
+  #   message: {role: user, content: "{{message}}"}
+  #   conversation_id: "{{conversation_id}}"
+  #   stream: false
+
   # Authentication — uncomment ONE option:
   auth:
     # Option A: Login flow (preferred when the app exposes a /login endpoint)
@@ -263,6 +273,13 @@ redteam:
   # chat_payload_extras:           # extra static fields merged into every POST body
   #   user_id: alice
   #   language: en
+
+  # Nested ("slot mode") example — see the target: block above for the full
+  # explanation of {{message}}/{{history}}/{{session_id}}/{{conversation_id}}.
+  # chat_payload_extras:
+  #   message: {role: user, content: "{{message}}"}
+  #   conversation_id: "{{conversation_id}}"
+  #   stream: false
 
   # Google ADK apps: nuguard reads adk_app_name from the SBOM when it is set
   # during 'nuguard sbom generate' (extracted from Runner(app_name=...) in source).

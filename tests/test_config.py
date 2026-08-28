@@ -857,3 +857,76 @@ class TestUnsetEnvVarScalarFields:
               emit_pytest_dir: ${EPD}
         """)
         assert "emit_pytest_dir" not in flat
+
+
+class TestChatPayloadExtrasTokenValidation:
+    """chat_payload_extras is validated for unrecognized {{...}} slot tokens
+    at flatten time, for the target/redteam/behavior sections alike."""
+
+    def test_unrecognized_token_in_target_block_raises(self) -> None:
+        from nuguard.common.errors import ConfigError
+
+        with pytest.raises(ConfigError) as exc_info:
+            _flatten("""
+                target:
+                  url: https://example.com
+                  chat_payload_extras:
+                    content: "{{mesage}}"
+            """)
+        assert "target.chat_payload_extras" in str(exc_info.value)
+        assert "{{mesage}}" in str(exc_info.value)
+
+    def test_unrecognized_token_in_redteam_block_raises(self) -> None:
+        from nuguard.common.errors import ConfigError
+
+        with pytest.raises(ConfigError) as exc_info:
+            _flatten("""
+                redteam:
+                  chat_payload_extras:
+                    content: "{{mesage}}"
+            """)
+        assert "redteam.chat_payload_extras" in str(exc_info.value)
+
+    def test_unrecognized_token_in_behavior_block_raises(self) -> None:
+        from nuguard.common.errors import ConfigError
+
+        with pytest.raises(ConfigError) as exc_info:
+            _flatten("""
+                behavior:
+                  chat_payload_extras:
+                    content: "{{mesage}}"
+            """)
+        assert "behavior.chat_payload_extras" in str(exc_info.value)
+
+    def test_unrecognized_token_embedded_in_larger_string_raises(self) -> None:
+        from nuguard.common.errors import ConfigError
+
+        with pytest.raises(ConfigError):
+            _flatten("""
+                redteam:
+                  chat_payload_extras:
+                    content: "Hi {{mesage}}"
+            """)
+
+    def test_recognized_nested_tokens_load_cleanly(self) -> None:
+        flat = _flatten("""
+            redteam:
+              chat_payload_extras:
+                message: {role: user, content: "{{message}}"}
+                conversation_id: "{{conversation_id}}"
+                stream: false
+        """)
+        assert flat["redteam_chat_payload_extras"] == {
+            "message": {"role": "user", "content": "{{message}}"},
+            "conversation_id": "{{conversation_id}}",
+            "stream": False,
+        }
+
+    def test_recognized_flat_tokens_load_cleanly(self) -> None:
+        flat = _flatten("""
+            target:
+              url: https://example.com
+              chat_payload_extras:
+                session_id: "{{session_id}}"
+        """)
+        assert flat["redteam_chat_payload_extras"] == {"session_id": "{{session_id}}"}

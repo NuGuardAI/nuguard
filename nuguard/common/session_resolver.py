@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from nuguard.common import chat_payload_tokens
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
@@ -77,6 +78,11 @@ def _merge_login_response_extras(
     (e.g. the user configured auth directly on the chat endpoint instead of an
     auth endpoint the SBOM declares) — that's not an error, just nothing to merge.
     """
+    # Assumes a flat config_extras (top-level identity/session keys). A nested
+    # slot-mode extras dict is passed through unmodified rather than getting a
+    # duplicate top-level key injected alongside the user's own structure.
+    if chat_payload_tokens.flat_or_none(config_extras) is None:
+        return dict(config_extras), []
     if session is None:
         return dict(config_extras), []
     login_extras = session.login_response_extras()
@@ -202,6 +208,11 @@ def apply_sbom_context_hints(
 
     Returns ``(merged_extras, notes)``.
     """
+    # Assumes a flat current_extras (top-level field presence checks). A nested
+    # slot-mode extras dict is passed through unmodified — see
+    # _merge_login_response_extras above for the same rationale.
+    if chat_payload_tokens.flat_or_none(current_extras) is None:
+        return dict(current_extras), []
     hints = _get_sbom_context_fields(sbom, chat_path)
     if not hints:
         return dict(current_extras), []
@@ -353,7 +364,14 @@ async def resolve_target_session(
     )
 
     # ── 3. Auth bootstrap ────────────────────────────────────────────────────
-    _probe_extras = probe_payload_extras if probe_payload_extras is not None else chat_payload_extras
+    # Probing assumes a flat extras dict — a nested slot-mode chat_payload_extras
+    # is hidden from probing rather than embedding literal {{token}} strings into
+    # probe request bodies (see chat_payload_tokens.flat_or_none).
+    _probe_extras = (
+        probe_payload_extras
+        if probe_payload_extras is not None
+        else chat_payload_tokens.flat_or_none(chat_payload_extras)
+    )
     bootstrapper, health_report = await bootstrap_auth_runtime(
         target_url=target_url,
         endpoint=chat_path or "/chat",
