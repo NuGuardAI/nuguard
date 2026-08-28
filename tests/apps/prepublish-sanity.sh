@@ -153,7 +153,7 @@ for entry in "${APP_RUNS[@]}"; do
   run_with_allowed_rc "${name}: redteam" "0,1,2" \
     uv run nuguard redteam \
       --config "$cfg" \
-      --profile ci \
+      --profile minimal \
       --format json \
       --format markdown \
       --output "$redteam_base" \
