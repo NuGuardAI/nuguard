@@ -765,7 +765,7 @@ async def probe_chat_endpoints(
         raw_frameworks = getattr(summary, "frameworks", None)
         if isinstance(raw_frameworks, (list, tuple)):
             sbom_frameworks = [str(f).lower() for f in raw_frameworks if f]
-    if ADK_FRAMEWORK_NAMES & set(sbom_frameworks):
+    if ADK_FRAMEWORK_NAMES & set(sbom_frameworks) and not hint_path:
         _log.info("endpoint_probe: Google ADK detected in SBOM — skipping detection, using /run")
         return ProbeResult("/run", "__adk__", False)
 
