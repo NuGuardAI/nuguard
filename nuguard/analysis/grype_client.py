@@ -29,12 +29,18 @@ import json
 import shutil
 import subprocess
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 from nuguard.common.logging import get_logger
 
 _log = get_logger("analysis.grype")
+
+# Max concurrent `grype <image>` subprocesses when scanning multiple container
+# images — each is an independent, blocking subprocess call, so a small
+# thread pool turns an O(n) sequential scan into ~O(n / concurrency).
+_IMAGE_SCAN_CONCURRENCY = 4
 
 # Grype severity labels → normalised values (Grype uses title-case)
 _SEV_MAP: dict[str, str] = {
@@ -114,8 +120,17 @@ def _run_grype(
     return []  # unreachable but satisfies type checker
 
 
-def _match_to_finding(match: dict[str, Any], scan_target: str) -> dict[str, Any]:
-    """Convert a single Grype match dict to the standard nuguard finding shape."""
+def _match_to_finding(
+    match: dict[str, Any],
+    scan_target: str,
+    image_locations: list[str] | None = None,
+) -> dict[str, Any]:
+    """Convert a single Grype match dict to the standard nuguard finding shape.
+
+    *image_locations* is set only for container-image scans (not the SBOM
+    dependency scan) — the Dockerfile path(s) where ``scan_target`` (the image
+    ref) is declared, when that evidence exists (see ``container_images.py``).
+    """
     vuln     = match.get("vulnerability") or {}
     artifact = match.get("artifact") or {}
 
@@ -143,19 +158,32 @@ def _match_to_finding(match: dict[str, Any], scan_target: str) -> dict[str, Any]
     adv_url = (vuln.get("dataSource") or
                f"https://osv.dev/vulnerability/{advisory_id}")
 
-    return {
+    # grype's top-level vulnerability.description is frequently null; the
+    # richer NVD/vendor text usually lives on a relatedVulnerabilities entry
+    # instead (matched by GHSA/OSV data sources during vuln matching).
+    description = vuln.get("description") or next(
+        (rv.get("description") for rv in (match.get("relatedVulnerabilities") or [])
+         if rv.get("description")),
+        None,
+    ) or advisory_id
+
+    result = {
         "dep_name":         dep_name,
         "dep_version":      dep_version,
         "purl":             purl,
         "advisory_id":      advisory_id,
         "cve_ids":          cve_ids,
-        "summary":          vuln.get("description", advisory_id),
+        "summary":          description,
         "severity":         severity,
         "affected_versions": affected,
         "url":              adv_url,
         "source":           "grype",
         "scan_target":      scan_target,
     }
+    if image_locations is not None:
+        result["image_ref"] = scan_target
+        result["image_locations"] = image_locations
+    return result
 
 
 def query_grype_sbom(
@@ -218,39 +246,28 @@ def query_grype_images(
     if _grype_path() is None:
         return []
 
-    image_refs: set[str] = set()
-    for node in container_nodes:
-        meta = node.get("metadata") or {}
-        ref  = (
-            meta.get("base_image")
-            or meta.get("extras", {}).get("base_image")
-        )
-        if not ref:
-            name = (
-                meta.get("image_name")
-                or meta.get("extras", {}).get("image_name")
-                or ""
-            )
-            tag = (
-                meta.get("image_tag")
-                or meta.get("extras", {}).get("image_tag")
-                or "latest"
-            )
-            if name:
-                ref = f"{name}:{tag}"
-        if ref:
-            image_refs.add(ref)
+    from nuguard.analysis.container_images import resolve_container_images  # noqa: PLC0415
+    locations_by_ref = resolve_container_images(container_nodes)
 
-    if not image_refs:
+    if not locations_by_ref:
         _log.debug("grype: no CONTAINER_IMAGE refs found in SBOM nodes")
         return []
 
+    sorted_refs = sorted(locations_by_ref)
     all_findings: list[dict[str, Any]] = []
-    for ref in sorted(image_refs):
-        _log.info("grype: scanning container image %s", ref)
-        matches = _run_grype(ref, timeout=timeout, max_retries=max_retries)
-        all_findings.extend(_match_to_finding(m, ref) for m in matches)
+    # Each image scan is an independent, blocking `grype <ref>` subprocess —
+    # run them concurrently instead of one at a time.
+    with ThreadPoolExecutor(max_workers=min(_IMAGE_SCAN_CONCURRENCY, len(sorted_refs))) as pool:
+        future_to_ref = {}
+        for ref in sorted_refs:
+            _log.info("grype: scanning container image %s", ref)
+            future_to_ref[pool.submit(_run_grype, ref, timeout, max_retries)] = ref
+        for future in as_completed(future_to_ref):
+            ref = future_to_ref[future]
+            matches = future.result()
+            locations = locations_by_ref[ref]
+            all_findings.extend(_match_to_finding(m, ref, locations) for m in matches)
 
     _log.info("grype image scan(s): %d total finding(s) across %d image(s)",
-              len(all_findings), len(image_refs))
+              len(all_findings), len(locations_by_ref))
     return all_findings

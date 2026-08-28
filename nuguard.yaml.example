@@ -26,6 +26,8 @@ source: ./                          # generate SBOM from source dir (alternative
 policy:
   path: ./cognitive-policy.md       # Cognitive Policy Markdown to enforce during behavior/redteam
   llm: false                        # set true to compile richer test/boundary prompts with LLM
+  # draft_use_llm: true             # `nuguard policy draft`: force LLM on/off. Unset = auto
+                                     # (uses LLM automatically when llm.api_key below is set)
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
@@ -34,8 +36,8 @@ llm:
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
 sbom_generation:
-  llm: true                        # set true to enrich SBOM nodes with LLM descriptions
-                                    # requires LITELLM_API_KEY to be set
+  # llm: true                      # force LLM enrichment of SBOM nodes on/off.
+                                    # Unset = auto (on when llm.api_key above is set)
   # llm_concurrency: 5              # max in-flight LLM calls during enrichment
                                     # (issue #197). Override with NUGUARD_LLM_CONCURRENCY
                                     # or --llm-concurrency. 1 = sequential (legacy).
@@ -488,6 +490,8 @@ redteam:
 analyze:
   min_severity: medium              # critical | high | medium | low | info
   nga_only: false                   # true → run only NGA-001–018, skip external scans
+  # llm: true                       # force LLM enrichment in the ATLAS pass on/off.
+                                     # Unset = auto (on when llm.api_key above is set)
 
 # ─── Output ───────────────────────────────────────────────────────────────────
 output:
