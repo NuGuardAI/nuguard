@@ -110,7 +110,8 @@ _SQL_EXTENSIONS = {".sql"}
 # Jupyter notebooks: cells are extracted and parsed as Python
 _NOTEBOOK_EXTENSIONS = {".ipynb"}
 # TypeScript/JavaScript: tree-sitter (or regex fallback) via core/ts_parser
-_TYPESCRIPT_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx"}
+# .mjs = ESM JavaScript, .cjs = CommonJS JavaScript — both contain JS/TS-compatible code
+_TYPESCRIPT_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
 # Dockerfile: extensionless file named "Dockerfile" or suffixed ".dockerfile"
 _DOCKERFILE_EXTENSIONS = {".dockerfile"}
 _DOCKERFILE_NAMES = {"dockerfile"}  # lower-cased stem match
