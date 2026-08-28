@@ -27,14 +27,19 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
         run: |
-          expected=""
+          # Only develop is an allowed PR target for contributors; develop->main is leads-only.
           case "$HEAD_REF" in
-            feat/*) expected="develop" ;;
-            bug/*) expected="main" ;;
-            cherry-pick/*) expected="develop" ;;
+            feat/*|bug/*|cherry-pick/*)
+              if [[ "$BASE_REF" != "develop" ]]; then
+                echo "::error::${HEAD_REF} must target develop, not ${BASE_REF}. Change the base branch to develop and push again."
+                exit 1
+              fi
+              ;;
           esac
 
-          if [[ -n "$expected" && "$BASE_REF" != "$expected" ]]; then
-            echo "::error::${HEAD_REF} must target ${expected}, not ${BASE_REF}. Change the base branch (Edit, top of this PR) to ${expected} and push again."
+          # develop->main merges are handled by leads outside this check; block
+          # any other branch from opening a PR directly against main.
+          if [[ "$BASE_REF" == "main" && "$HEAD_REF" != "develop" ]]; then
+            echo "::error::Only develop can be merged into main. Open your PR targeting develop instead."
             exit 1
           fi
