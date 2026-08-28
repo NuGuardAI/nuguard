@@ -2,6 +2,8 @@
 
 from ._csharp_base import CSharpFrameworkAdapter
 from .aspnet_core import CSharpAspNetCoreAdapter
+from .auth import CSharpAuthAdapter
+from .datastores import CSharpDatastoreAdapter
 from .llm_clients import CSharpLLMClientsAdapter
 from .mlnet import CSharpMLNetAdapter
 from .semantic_kernel import (
@@ -10,6 +12,8 @@ from .semantic_kernel import (
 
 __all__ = [
     "CSharpAspNetCoreAdapter",
+    "CSharpAuthAdapter",
+    "CSharpDatastoreAdapter",
     "CSharpFrameworkAdapter",
     "CSharpLLMClientsAdapter",
     "CSharpMLNetAdapter",
