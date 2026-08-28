@@ -2159,6 +2159,69 @@ class BehaviorRunner:
         self._rotated_chat_endpoint: "tuple[str, str, bool, str | None] | None" = None
         self._bootstrapped_path_params: dict[str, str] = {}
 
+        # Pre-flight endpoint validation: send a single test request to verify the
+        # configured chat endpoint is reachable, and bind any path params it
+        # declares (e.g. a bootstrapped conversation ":id"), before pre-scan/
+        # capability discovery runs below — those also send probes through this
+        # same client, and an unresolved path param makes every one of them fail
+        # with "[CONFIG_ERROR: unresolved path param ...]" instead of a real
+        # response (degrading pre-scan discovery and polluting capability
+        # discovery with a bogus tool/sub-agent literally named "[CONFIG_ERROR").
+        # On 405/404, rotate through ranked SBOM candidates then fall back to
+        # live probing. Abort the run cleanly if no working endpoint is found.
+        _preflight_ok = True
+        _configured_endpoint = getattr(self._config, "target_endpoint", "") or ""
+        _has_explicit_endpoint = self._endpoint_is_explicit()
+        self._target_endpoint_source = "config" if _has_explicit_endpoint else "default"
+        try:
+            from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
+                validate_and_rotate_chat_endpoint,
+            )
+            _bootstrap_hdrs: dict[str, str] = getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
+            _pf = await validate_and_rotate_chat_endpoint(
+                client,
+                self._sbom,
+                has_explicit_endpoint=_has_explicit_endpoint,
+                target_url=target_url or "",
+                auth_headers=_bootstrap_hdrs or None,
+            )
+            for _pf_note in _pf.notes:
+                _console.print(f"[bold red]⚠ {_pf_note}[/bold red]" if not _pf.ok else f"  [cyan]{_pf_note}[/cyan]")
+            if _pf.rotated_endpoint is not None:
+                self._rotated_chat_endpoint = _pf.rotated_endpoint
+                self._target_endpoint_source = _pf.endpoint_source or self._target_endpoint_source
+            if not _pf.ok:
+                _preflight_ok = False
+            # Path params (e.g. a bootstrapped conversation ":id") are bound on
+            # the shared preflight client only — isolated scenario clients get a
+            # fresh TargetAppClient each with no such binding, so capture them
+            # here to replay on every scenario client below, and on the
+            # pre-scan/capability discovery probes that use this same client.
+            _client_path_params = getattr(client, "path_param_values", None)
+            if isinstance(_client_path_params, dict):
+                self._bootstrapped_path_params = _client_path_params
+        except Exception as _pf_exc:
+            _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
+
+        if not _preflight_ok:
+            _failure_note = (
+                f"Configured chat endpoint unreachable (405/404): {_configured_endpoint}. "
+                "Explicit endpoint precedence is enforced; no SBOM/probe rotation was attempted."
+                if _has_explicit_endpoint
+                else "Chat endpoint unreachable: all SBOM candidates and live probe "
+                "returned 405/404. Check 'target_endpoint' in nuguard.yaml."
+            )
+            return BehaviorRunResult(
+                run_id=run_id,
+                findings=[],
+                turn_records=[],
+                scenario_results=[],
+                scenarios_executed=0,
+                scan_outcome="aborted_endpoint_unreachable",
+                coverage=[],
+                config_notes=[_failure_note],
+            )
+
         # Pre-scan discovery: connect to the live agent and extract the
         # authenticated user's real name + IDs before generating test payloads.
         # On HTTP 405/404, rotate through ranked SBOM candidates before giving up.
@@ -2230,62 +2293,6 @@ class BehaviorRunner:
                         _cap_result.probes_sent, len(_cap_notes),
                     )
                     self._persist_capability_discovery_sbom(_cap_notes)
-
-        # Pre-flight endpoint validation: send a single test request to verify the
-        # configured chat endpoint is reachable before launching all scenarios.
-        # On 405/404, rotate through ranked SBOM candidates then fall back to live
-        # probing.  Abort the run cleanly if no working endpoint is found.
-        _preflight_ok = True
-        _configured_endpoint = getattr(self._config, "target_endpoint", "") or ""
-        _has_explicit_endpoint = self._endpoint_is_explicit()
-        self._target_endpoint_source = "config" if _has_explicit_endpoint else "default"
-        try:
-            from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
-                validate_and_rotate_chat_endpoint,
-            )
-            _bootstrap_hdrs: dict[str, str] = getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
-            _pf = await validate_and_rotate_chat_endpoint(
-                client,
-                self._sbom,
-                has_explicit_endpoint=_has_explicit_endpoint,
-                target_url=target_url or "",
-                auth_headers=_bootstrap_hdrs or None,
-            )
-            for _pf_note in _pf.notes:
-                _console.print(f"[bold red]⚠ {_pf_note}[/bold red]" if not _pf.ok else f"  [cyan]{_pf_note}[/cyan]")
-            if _pf.rotated_endpoint is not None:
-                self._rotated_chat_endpoint = _pf.rotated_endpoint
-                self._target_endpoint_source = _pf.endpoint_source or self._target_endpoint_source
-            if not _pf.ok:
-                _preflight_ok = False
-            # Path params (e.g. a bootstrapped conversation ":id") are bound on
-            # the shared preflight client only — isolated scenario clients get a
-            # fresh TargetAppClient each with no such binding, so capture them
-            # here to replay on every scenario client below.
-            _client_path_params = getattr(client, "path_param_values", None)
-            if isinstance(_client_path_params, dict):
-                self._bootstrapped_path_params = _client_path_params
-        except Exception as _pf_exc:
-            _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
-
-        if not _preflight_ok:
-            _failure_note = (
-                f"Configured chat endpoint unreachable (405/404): {_configured_endpoint}. "
-                "Explicit endpoint precedence is enforced; no SBOM/probe rotation was attempted."
-                if _has_explicit_endpoint
-                else "Chat endpoint unreachable: all SBOM candidates and live probe "
-                "returned 405/404. Check 'target_endpoint' in nuguard.yaml."
-            )
-            return BehaviorRunResult(
-                run_id=run_id,
-                findings=[],
-                turn_records=[],
-                scenario_results=[],
-                scenarios_executed=0,
-                scan_outcome="aborted_endpoint_unreachable",
-                coverage=[],
-                config_notes=[_failure_note],
-            )
 
         config_notes: list[str] = []
         for _note in (getattr(client, "resolution_notes", None) or []):
