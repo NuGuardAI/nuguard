@@ -1259,6 +1259,11 @@ class RedteamOrchestrator:
                 s for s in all_scenarios if s.impact_score >= self._min_impact
             ]
 
+        # minimal: one scenario after all filters — catalog already caps to 1,
+        # but SBOM-driven generation is uncapped so truncate here.
+        if self._profile == "minimal" and scenarios:
+            scenarios = scenarios[:1]
+
         if self._scenario_filter:
             _pre_filter_goals = {s.goal_type.value for s in scenarios}
             scenarios = [
@@ -1318,6 +1323,10 @@ class RedteamOrchestrator:
         # This avoids sending structurally identical first messages to the same agent
         # (a common artifact when multiple builders target the same node with the same goal).
         scenarios = _dedup_scenarios_by_opener(scenarios)
+
+        # minimal profile: enforce 1-scenario cap after dedup (dedup may have dropped back to 1 anyway).
+        if self._profile == "minimal" and scenarios:
+            scenarios = scenarios[:1]
 
         self.scenarios_run = len(scenarios)
         if self.llm_enriched_scenarios:
