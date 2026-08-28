@@ -138,6 +138,125 @@ def compile_policy(
     _console.print(table)
 
 
+@policy_app.command("draft")
+def draft(
+    sbom_file: Optional[Path] = typer.Option(
+        None,
+        "--sbom",
+        help="Path to the AI-SBOM JSON file to draft the policy from. Falls back to config sbom path.",
+    ),
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="nuguard.yaml config file."
+    ),
+    app_description: Optional[str] = typer.Option(
+        None,
+        "--app-description",
+        help="Short description of what the application does. Improves LLM drafts.",
+    ),
+    use_llm: Optional[bool] = typer.Option(
+        None,
+        "--llm/--no-llm",
+        help=(
+            "Use an LLM to draft the policy. Defaults to on when llm.api_key is "
+            "configured in nuguard.yaml (or 'policy.draft_use_llm' if set); pass "
+            "--no-llm to force the blank skeleton instead."
+        ),
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Destination Markdown file. Default: ./cognitive-policy.md",
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite the destination file if it already exists."
+    ),
+) -> None:
+    """Draft a cognitive-policy.md Markdown document from an AI-SBOM.
+
+    Summarizes the SBOM's use case, frameworks, tools, and models and uses
+    that as context (optionally via an LLM) to produce a starter Cognitive
+    Policy document, ready for review and editing.
+    """
+    from nuguard.config import load_config
+    from nuguard.models.policy import PolicyDraftRequest, PolicyDraftSource
+    from nuguard.policy.compiler import draft_policy_from_sbom
+
+    try:
+        cfg = load_config(config_file)
+    except Exception as exc:
+        _err_console.print(f"Error: failed to load config: {exc}")
+        raise typer.Exit(code=_EXIT_ERROR) from exc
+
+    resolved_sbom: Optional[Path] = sbom_file
+    if resolved_sbom is None and cfg.sbom_path:
+        resolved_sbom = Path(cfg.sbom_path)
+    if resolved_sbom is None:
+        _err_console.print(
+            "Error: no SBOM file specified. Use --sbom or set 'sbom' in nuguard.yaml."
+        )
+        raise typer.Exit(code=_EXIT_ERROR)
+    if not resolved_sbom.exists():
+        _err_console.print(f"Error: SBOM file not found: {resolved_sbom}")
+        raise typer.Exit(code=_EXIT_ERROR)
+
+    dest = output_file or Path("cognitive-policy.md")
+    if dest.exists() and not force:
+        _err_console.print(f"Error: {dest} already exists (use --force to overwrite).")
+        raise typer.Exit(code=_EXIT_ERROR)
+
+    if use_llm is not None:
+        effective_llm = use_llm
+    elif cfg.policy_draft_use_llm is not None:
+        effective_llm = cfg.policy_draft_use_llm
+    else:
+        effective_llm = bool(cfg.litellm_api_key)
+
+    llm_client = None
+    if effective_llm:
+        from nuguard.common.llm_client import LLMClient
+
+        _model = cfg.litellm_model or ""
+        llm_client = LLMClient(
+            model=cfg.litellm_model,
+            api_key=cfg.litellm_api_key,
+            api_base=cfg.litellm_api_base if _model.startswith("azure") else None,
+        )
+        if not getattr(llm_client, "api_key", None):
+            _err_console.print(
+                "Warning: LLM drafting requested but no API key found "
+                "(set llm.api_key in nuguard.yaml or LITELLM_API_KEY). "
+                "Falling back to blank skeleton.",
+                style="yellow",
+            )
+
+    request = PolicyDraftRequest(
+        sbom_path=str(resolved_sbom),
+        app_description=app_description,
+        use_llm=effective_llm,
+    )
+
+    _console.print(
+        f"Drafting policy from [bold]{resolved_sbom}[/bold] "
+        f"({'LLM-assisted' if effective_llm else 'skeleton'}) …"
+    )
+
+    try:
+        result = asyncio.run(draft_policy_from_sbom(request, llm_client=llm_client))
+    except Exception as exc:
+        _err_console.print(f"Error during drafting: {exc}")
+        raise typer.Exit(code=_EXIT_ERROR) from exc
+
+    dest.write_text(result.markdown, encoding="utf-8")
+
+    if effective_llm and result.source == PolicyDraftSource.SKELETON:
+        _console.print(f"[yellow]⚠ wrote blank skeleton to {dest} (LLM draft unavailable)[/yellow]")
+    else:
+        _console.print(f"[green]✓ drafted policy ({result.source.value}) written to {dest}[/green]")
+    if result.sbom_context:
+        _console.print(f"[dim]SBOM context used:[/dim]\n{result.sbom_context}")
+
+
 @policy_app.command("validate")
 def validate(
     file: Path = typer.Option(

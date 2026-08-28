@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -35,7 +35,7 @@ def _invoke(*args: str) -> Any:
 
 def _make_mock_analyzer() -> MagicMock:
     mock = MagicMock()
-    mock.analyze.return_value = []
+    mock.analyze = AsyncMock(return_value=[])
     mock.tool_status = {}
     mock.nga_audit = []
     mock.sc_audit = []
