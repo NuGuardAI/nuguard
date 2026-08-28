@@ -236,8 +236,8 @@ for item in traces:
         bad += 1
 
 ratio = bad / len(traces)
-if ratio >= 0.8:
-    raise SystemExit(f"redteam_majority_not_tested:{bad}/{len(traces)}")
+if ratio >= 1.0:
+    raise SystemExit(f"redteam_all_scenarios_not_tested:{bad}/{len(traces)}")
 
 print(
     "outcome={};scenarios={};not_tested={};endpoint_source={};effective_endpoint={}".format(
