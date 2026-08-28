@@ -144,7 +144,7 @@ for entry in "${APP_RUNS[@]}"; do
   run_with_allowed_rc "${name}: behavior" "0,1,2" \
     uv run nuguard behavior \
       --config "$cfg" \
-      --mode dynamic \
+      --mode minimal \
       --format json \
       --format markdown \
       --output "$behavior_base" \
