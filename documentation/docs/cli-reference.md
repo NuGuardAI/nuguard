@@ -682,6 +682,49 @@ nuguard target verify --config nuguard.yaml --sbom app.sbom.json
 
 > ✅ Run `nuguard target verify` before `nuguard redteam`, `nuguard behavior`, or `nuguard validate` to catch misconfigured endpoints, expired tokens, or firewall blocks early. Exits non-zero if any non-skipped credential fails.
 
+### 🟣 `nuguard target discover-browser`
+
+For target apps that authenticate via an interactive redirect/OAuth flow (Auth0 Universal Login, SSO, etc.) that no static header/Basic Auth/`login_flow` config can drive. Logs in with a real (headless by default) browser using the credentials in `target.auth`, captures the resulting session cookie, and — unless `--no-sniff-chat` — types a message into the chat UI to sniff the app's own outgoing request and discover any extra payload field it requires (e.g. an opaque consumer/account ID). Previews (or, with `--write`, applies) the corresponding update to `nuguard.yaml`'s `target.auth` / `target.chat_payload_extras`, preserving existing comments.
+
+Requires the `browser` extra: `pip install "nuguard[browser]" && playwright install chromium`.
+
+```bash
+# Preview what would change (default: dry-run, nuguard.yaml untouched)
+nuguard target discover-browser --config nuguard.yaml
+
+# Apply the discovered auth/config to nuguard.yaml
+nuguard target discover-browser --config nuguard.yaml --write --yes
+
+# Debug with a visible browser window, skip payload-field sniffing
+nuguard target discover-browser --config nuguard.yaml --headed --no-sniff-chat
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--config`, `-c` | `./nuguard.yaml` | Config file path — must already exist, since this command writes to it |
+| `--target` | from `nuguard.yaml` | Base URL of the target application |
+| `--headed` / `--headless` | `--headless` | Run with a visible browser window (useful for debugging a failed login) |
+| `--timeout-s` | `30` | Per-step browser timeout, in seconds |
+| `--cookie-file` | `./cookies.txt` next to `nuguard.yaml` | Output path for the captured session cookies |
+| `--sniff-chat` / `--no-sniff-chat` | `--sniff-chat` | Attempt to discover extra chat payload fields by sniffing a live chat request |
+| `--chat-message` | `"Hello"` | Message typed into the chat UI during payload-field sniffing |
+| `--write` / `--dry-run` | `--dry-run` | Apply the discovered config to `nuguard.yaml` (default: print the diff only) |
+| `--yes`, `-y` | off | Skip the interactive confirmation prompt when `--write` is set (for CI) |
+
+Login-flow selectors (which button to click, which fields to fill) use generic heuristics by default. Override them per-app under `target.browser_discovery` in `nuguard.yaml`:
+
+```yaml
+target:
+  browser_discovery:
+    login_button_text: ["Log in"]
+    username_selector: "#auth0-username"
+    password_selector: "#auth0-password"
+    chat_input_selector: "textarea#chat-input"
+    send_button_selector: "button#send"
+```
+
+> ⚠️ The captured session cookie is short-lived (apps commonly expire it within ~24h) — there is no automatic refresh yet. If `nuguard target verify` starts reporting `auth_failed` again after working previously, re-run `nuguard target discover-browser --write --yes`.
+
 </details>
 
 ---
@@ -755,6 +798,12 @@ target:
     # Option E: No authentication (open endpoints, local dev)
     # type: none
 
+    # Option F: Captured session cookie — for apps behind an interactive
+    # redirect/OAuth login (Auth0, SSO) that none of the above can drive.
+    # Generate/refresh with: nuguard target discover-browser --config nuguard.yaml --write
+    # type: cookie_file
+    # cookie_file: ./cookies.txt
+
 redteam:
   llm:
     api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
@@ -779,4 +828,5 @@ nuguard validate --help
 nuguard behavior --help
 nuguard redteam --help
 nuguard target verify --help
+nuguard target discover-browser --help
 ```
