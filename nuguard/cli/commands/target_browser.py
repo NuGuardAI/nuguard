@@ -130,7 +130,7 @@ async def _discover_browser_async(
     yes: bool,
 ) -> None:
     from nuguard.common.browser_login.config import BrowserDiscoveryConfig
-    from nuguard.common.browser_login.session import BrowserLoginSession
+    from nuguard.common.browser_login.public_api import BrowserDiscoveryRequest, discover_browser
     from nuguard.common.browser_login.yaml_writer import (
         apply_target_updates,
         dump_to_string,
@@ -173,12 +173,20 @@ async def _discover_browser_async(
     console.print()
 
     try:
-        async with BrowserLoginSession(
-            target_url, auth, browser_cfg, headless=headless, timeout_s=timeout_s
-        ) as session:
-            result = await session.run(chat_message=chat_message, sniff_chat=sniff_chat)
-            await session.export_cookies(effective_cookie_file)
-            result.cookies_written_to = effective_cookie_file
+        result = await discover_browser(
+            BrowserDiscoveryRequest(
+                target_url=target_url,
+                auth_type="basic",
+                auth_username=auth.username,
+                auth_password=auth.password,
+                headless=headless,
+                timeout_s=timeout_s,
+                sniff_chat=sniff_chat,
+                chat_message=chat_message,
+                browser_discovery=browser_cfg,
+            ),
+            cookie_file=effective_cookie_file,
+        )
     except BrowserLoginError as exc:
         _print_browser_login_error(exc)
         raise typer.Exit(code=_STEP_EXIT_CODES.get(exc.step, 1)) from exc
@@ -205,10 +213,10 @@ async def _discover_browser_async(
     # regardless of the caller's cwd.
     try:
         relative_cookie_path = "./" + str(
-            result.cookies_written_to.resolve().relative_to(resolved_config_path.resolve().parent)
+            effective_cookie_file.resolve().relative_to(resolved_config_path.resolve().parent)
         )
     except ValueError:
-        relative_cookie_path = str(result.cookies_written_to)
+        relative_cookie_path = str(effective_cookie_file)
 
     try:
         editable = load_editable_yaml(resolved_config_path)
