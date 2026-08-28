@@ -401,6 +401,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_trigger_any_inject_success"] = bool(
                 finding_triggers["any_inject_success"]
             )
+        if "tool_trace_hits" in finding_triggers:
+            flat["redteam_trigger_tool_trace_hits"] = bool(
+                finding_triggers["tool_trace_hits"]
+            )
 
     # Redteam LLM section — skip keys whose env-var interpolation produced None
     redteam_llm = redteam.get("llm", {}) or {}
@@ -1403,6 +1407,13 @@ class NuGuardConfig(BaseSettings):
             "signals (yaml: redteam.finding_triggers.any_inject_success)."
         ),
     )
+    redteam_trigger_tool_trace_hits: bool = Field(
+        default=True,
+        description=(
+            "Emit findings when tool-call traces reveal destructive actions "
+            "(yaml: redteam.finding_triggers.tool_trace_hits)."
+        ),
+    )
     redteam_pre_run_warmup: int = Field(
         default=0,
         ge=0,
@@ -1621,6 +1632,7 @@ class NuGuardConfig(BaseSettings):
             policy_violations=self.redteam_trigger_policy_violations,
             critical_success_hits=self.redteam_trigger_critical_success_hits,
             any_inject_success=self.redteam_trigger_any_inject_success,
+            tool_trace_hits=self.redteam_trigger_tool_trace_hits,
         )
 
     model_config = SettingsConfigDict(
