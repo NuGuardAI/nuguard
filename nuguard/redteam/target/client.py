@@ -245,11 +245,16 @@ class TargetAppClient:
         max_concurrent_requests: int = 0,
         max_transient_hold_seconds: float = 300.0,
         heal_llm: "LLMClient | None" = None,
+        # Nested value template from OpenAPI schema detection.  When set, the
+        # value for chat_payload_key is a dict built from this template instead
+        # of a plain string (e.g. {"role": "user", "content": "..."}).
+        chat_payload_value_template: "dict[str, Any] | None" = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._chat_path = chat_path
         self._chat_payload_key = chat_payload_key
         self._chat_payload_list = chat_payload_list
+        self._chat_payload_value_template = chat_payload_value_template
         self._chat_payload_format = (
             chat_payload_format if chat_payload_format in ("json", "form") else "json"
         )
@@ -762,21 +767,30 @@ class TargetAppClient:
     def _build_chat_payload_value(self, payload: str, session: AttackSession) -> Any:
         """Shape the outgoing value for ``chat_payload_key`` in the generic (non-adapter) path.
 
-        Three shapes, chosen by ``chat_payload_list``/``chat_payload_key``:
+        Four shapes, chosen in priority order:
 
-        - Flat string (``chat_payload_list=False``): the raw prompt text.
+        - Nested object (``value_template`` set, ``chat_payload_list=False``):
+          fills the sentinel field in the schema-derived template with the chat
+          text; all other fields keep their schema defaults.  Works for any
+          nested structure, not just OpenAI-style role/content objects.
+        - Flat string (``chat_payload_list=False``, no template): the raw prompt text.
         - Bare list (``chat_payload_list=True``, key not a known message-history
           name): ``[prompt]`` — existing behaviour, e.g. LangGraph's
           ``phrases=[...]``.
         - OpenAI-style message history (``chat_payload_list=True`` and key is
           one of ``messages``/``history``/``conversation``/``chat_history``):
           replay prior turns from *session* as alternating ``{role, content}``
-          dicts, then append the current turn. This is the standard shape used
-          by OpenAI/Anthropic/LangChain-style chat APIs; endpoints whose only
-          accepted body shape is ``messages=[...]`` reject a bare string or a
-          bare-string list outright (400/422), aborting every scenario.
+          dicts, then append the current turn.
         """
         if not self._chat_payload_list:
+            if self._chat_payload_value_template is not None:
+                # Fill the sentinel field with the actual chat text; all other
+                # fields keep their schema-derived defaults.
+                from nuguard.common.endpoint_probe import _CHAT_TEXT_SENTINEL  # noqa: PLC0415
+                return {
+                    k: (payload if v == _CHAT_TEXT_SENTINEL else v)
+                    for k, v in self._chat_payload_value_template.items()
+                }
             return payload
         if not _is_message_history_key(self._chat_payload_key):
             return [payload]
