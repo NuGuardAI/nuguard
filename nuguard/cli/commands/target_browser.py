@@ -76,6 +76,26 @@ def discover_browser_command(
         str,
         typer.Option("--chat-message", help="Message typed into the chat UI during payload-field sniffing"),
     ] = "Hello",
+    username: Annotated[
+        str | None,
+        typer.Option(
+            "--username",
+            envvar="APP_USERNAME",
+            help="Username/email for the login form. Falls back to nuguard.yaml's "
+            "target.browser_login.username, then target.auth.username. Needed because "
+            "a successful --write run replaces target.auth with cookie_file, which has "
+            "no credentials for the next run to reuse.",
+        ),
+    ] = None,
+    password: Annotated[
+        str | None,
+        typer.Option(
+            "--password",
+            envvar="APP_PASSWORD",
+            help="Password for the login form. Falls back to nuguard.yaml's "
+            "target.browser_login.password, then target.auth.password.",
+        ),
+    ] = None,
     write: Annotated[
         bool,
         typer.Option("--write/--dry-run", help="Apply the discovered auth/config to nuguard.yaml (default: dry-run, print the diff only)"),
@@ -111,6 +131,8 @@ def discover_browser_command(
             cookie_file_override=cookie_file,
             sniff_chat=sniff_chat,
             chat_message=chat_message,
+            username=username,
+            password=password,
             write=write,
             yes=yes,
         )
@@ -126,6 +148,8 @@ async def _discover_browser_async(
     cookie_file_override: Path | None,
     sniff_chat: bool,
     chat_message: str,
+    username: str | None,
+    password: str | None,
     write: bool,
     yes: bool,
 ) -> None:
@@ -165,6 +189,29 @@ async def _discover_browser_async(
         raise typer.Exit(code=1)
 
     auth = cfg.resolved_auth_config()
+
+    # ``target.auth`` gets rewritten to cookie_file after the first successful
+    # --write run, so it no longer carries login credentials for a second run
+    # to reuse. target.browser_login is a separate, persisted block this
+    # command never touches, so credentials survive repeated runs (e.g. a
+    # test pipeline that refreshes the session before every run). Precedence:
+    # --username/--password (or their APP_USERNAME/APP_PASSWORD env fallback,
+    # handled by typer) > target.browser_login > target.auth (first-ever run,
+    # when auth is still type: basic).
+    browser_login_block = target_block.get("browser_login") if isinstance(target_block, dict) else None
+    if not isinstance(browser_login_block, dict):
+        browser_login_block = {}
+    login_username = username or browser_login_block.get("username") or auth.username
+    login_password = password or browser_login_block.get("password") or auth.password
+
+    if not login_username or not login_password:
+        console.print(
+            "[red]Error:[/red] No login credentials available. Provide --username/--password, "
+            "set APP_USERNAME/APP_PASSWORD env vars, or add a target.browser_login block "
+            "(username/password) to nuguard.yaml."
+        )
+        raise typer.Exit(code=1)
+
     effective_cookie_file = cookie_file_override or (resolved_config_path.parent / "cookies.txt")
 
     console.print("\n[bold]NuGuard Browser Login Discovery[/bold]")
@@ -177,8 +224,8 @@ async def _discover_browser_async(
             BrowserDiscoveryRequest(
                 target_url=target_url,
                 auth_type="basic",
-                auth_username=auth.username,
-                auth_password=auth.password,
+                auth_username=login_username,
+                auth_password=login_password,
                 headless=headless,
                 timeout_s=timeout_s,
                 sniff_chat=sniff_chat,
