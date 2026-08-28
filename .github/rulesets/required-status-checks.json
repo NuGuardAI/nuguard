@@ -29,6 +29,18 @@
           },
           {
             "context": "require-linked-issue"
+          },
+          {
+            "context": "develop-e2e"
+          },
+          {
+            "context": "main-e2e (openai-cs)"
+          },
+          {
+            "context": "main-e2e (gemini-auto)"
+          },
+          {
+            "context": "main-e2e (pinnacle-bank)"
           }
         ]
       }

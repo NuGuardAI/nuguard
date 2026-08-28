@@ -15,14 +15,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Develop-branch PRs: fast one-app regression check (sbom -> behavior -> redteam)
-  # against the openai-cs-agents-demo target. A failure blocks the PR from merging.
+  # Develop-branch PRs: full 3-app suite, one matrix leg per app so failures are
+  # isolated and legs run in parallel. Mirrors the main-e2e coverage.
   develop-e2e:
     if: github.event_name == 'workflow_dispatch' || github.base_ref == 'develop'
-    name: develop-e2e
+    name: develop-e2e (${{ matrix.app }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: e2e
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: openai-cs
+            report_dir: tests/apps/openai-cs-agents-demo/reports
+          - app: gemini-auto
+            report_dir: tests/apps/Gemini-Auto-app/reports
+          - app: pinnacle-bank
+            report_dir: tests/apps/pinnacle-bank-app/reports
 
     env:
       AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
@@ -44,15 +54,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
-      - name: Run prepublish sanity suite (openai-cs only)
-        run: bash tests/apps/prepublish-sanity.sh openai-cs
+      - name: Run prepublish sanity suite (${{ matrix.app }})
+        run: bash tests/apps/prepublish-sanity.sh ${{ matrix.app }}
 
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nuguard-e2e-develop-openai-cs
-          path: tests/apps/openai-cs-agents-demo/reports/**
+          name: nuguard-e2e-develop-${{ matrix.app }}
+          path: ${{ matrix.report_dir }}/**
           if-no-files-found: ignore
 
   # Main-branch PRs: full 3-app suite (sbom -> behavior -> redteam), one app per
