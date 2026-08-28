@@ -730,6 +730,9 @@ class RedteamOrchestrator:
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
+        # Payload value template from OpenAPI schema detection (ProbeResult.value_template).
+        # Populated by _maybe_probe_endpoints when the schema reveals a nested shape.
+        self._chat_payload_value_template: "dict | None" = None
         # Track how the effective endpoint was resolved for reporting.
         _input_explicit = bool(chat_path)
         if _input_explicit and self._chat_path == chat_path:
@@ -907,10 +910,19 @@ class RedteamOrchestrator:
         if self._eval_llm is not None:
             self._eval_llm.reset_token_counts()
 
-        # 0. Endpoint auto-discovery — when chat_path was not explicitly configured,
-        #    probe SBOM POST endpoints live to find one that accepts chat requests.
-        if not self._chat_path:
+        # 0. Endpoint auto-discovery (Option A) or payload-shape detection (Option B).
+        # Option A: no path configured — probe SBOM endpoints live.
+        # Option B: path known but key is default "message" — detect nested shape.
+        if not self._chat_path or self._chat_payload_key == "message":
             await self._maybe_probe_endpoints()
+
+        _log.info(
+            "Effective chat endpoint: path=%r key=%r list=%s source=%s",
+            self._chat_path or "/chat",
+            self._chat_payload_key,
+            self._chat_payload_list,
+            self._chat_path_source,
+        )
 
         # 0b. Auth bootstrap — resolve effective auth and verify every credential
         #    before running any scenario. Raises TargetUnavailableError on network
@@ -1345,6 +1357,7 @@ class RedteamOrchestrator:
             explicitly_set=frozenset({"target_endpoint", "chat_payload_key", "chat_response_key"}),
             payload_extras=self._chat_payload_extras or None,
             heal_llm=self._eval_llm or self._redteam_llm,
+            chat_payload_value_template=self._chat_payload_value_template,
         )
         for _note in (getattr(client, "resolution_notes", None) or []):
             if isinstance(_note, str) and _note:
@@ -2902,20 +2915,48 @@ class RedteamOrchestrator:
     async def _maybe_probe_endpoints(self) -> None:
         """Live-probe SBOM endpoints when no explicit chat path is configured.
 
-        Updates ``self._chat_path``, ``self._chat_payload_key``, and
-        ``self._chat_payload_list`` in-place when a working endpoint is found.
-        Only runs when ``self._chat_path`` is empty or the generic default '/chat'.
+        Option A: path unknown — full endpoint + key discovery.
+        Option B: path known but key is default — hint_path probe to detect
+                  nested payload structure (e.g. from OpenAPI schema) without
+                  changing the endpoint.
         """
         from nuguard.common.endpoint_probe import probe_chat_endpoints  # noqa: PLC0415
-
-        if self._chat_path:
-            # Already have an explicit path — skip probing
-            return
 
         auth_headers: dict[str, str] = {}
         if self._extra_headers:
             auth_headers.update(self._extra_headers)
 
+        if self._chat_path:
+            # Option B: path already resolved — detect nested payload shape only.
+            if self._chat_payload_key != "message":
+                return  # key explicitly set too; nothing to detect
+            _log.info(
+                "redteam: endpoint known (%s) — probing payload structure via OpenAPI",
+                self._chat_path,
+            )
+            result = await probe_chat_endpoints(
+                target_url=self._target_url,
+                sbom=self._sbom,
+                auth_headers=auth_headers or None,
+                timeout=15.0,
+                known_payload_key=None,
+                known_payload_list=self._chat_payload_list,
+                known_response_key=self._chat_response_key,
+                probe_payload_extras=self._chat_payload_extras or None,
+                hint_path=self._chat_path,
+            )
+            if result:
+                _, pay_key, pay_list = result
+                self._chat_payload_key = pay_key
+                self._chat_payload_list = pay_list
+                self._chat_payload_value_template = result.value_template
+                _log.info(
+                    "redteam: payload structure detected for %s (key=%r list=%s template=%s)",
+                    self._chat_path, pay_key, pay_list, bool(result.value_template),
+                )
+            return
+
+        # Option A: no path — full endpoint + key discovery.
         _log.info(
             "redteam: target_endpoint not configured — probing SBOM endpoints at %s",
             self._target_url,
@@ -2943,6 +2984,7 @@ class RedteamOrchestrator:
             self._chat_path = path
             self._chat_payload_key = pay_key
             self._chat_payload_list = pay_list
+            self._chat_payload_value_template = result.value_template
             self._chat_path_source = "probe"
         else:
             _log.warning(
