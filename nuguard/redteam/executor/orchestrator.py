@@ -7,7 +7,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Callable, Literal, cast
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
@@ -637,6 +637,7 @@ class RedteamOrchestrator:
         codegen_escalation_enabled: bool = True,
         mode: str = "concurrent",
         progressive_halt_on_severity: str = "none",
+        progress_sink: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
@@ -654,6 +655,7 @@ class RedteamOrchestrator:
         # severity gate between phases.
         self._mode = mode if mode in ("concurrent", "progressive") else "concurrent"
         self._progressive_halt_on_severity = progressive_halt_on_severity
+        self._progress_sink = progress_sink
         self.security_invariants: list = []
         self._log_path = log_path
         self._request_timeout = request_timeout
@@ -746,6 +748,7 @@ class RedteamOrchestrator:
         # Populated by run() — scenarios executed and their titles
         self.scenarios_run: int = 0
         self.scenarios_executed: list[tuple[str, str, bool]] = []  # (title, goal_type, had_finding)
+        self._emitted_finding_keys: set[tuple[str, str, str]] = set()
         # Verbose per-scenario records — populated regardless of whether a finding was raised
         self.scenario_records: list[ScenarioRecord] = []
         # Node lookup: str(id) → "name (TYPE)" — use str() so UUID objects and
@@ -809,6 +812,14 @@ class RedteamOrchestrator:
     def resolved_chat_path_source(self) -> str:
         """How the effective endpoint was determined: config | sbom | probe | default."""
         return self._chat_path_source
+
+    def _emit_progress(self, update: dict[str, Any]) -> None:
+        if self._progress_sink is None:
+            return
+        try:
+            self._progress_sink(update)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("Redteam progress sink failed: %s", exc)
 
     def _trigger_enabled(self, name: str) -> bool:
         """Return whether a finding trigger is enabled (defaults preserve legacy behavior)."""
@@ -900,6 +911,7 @@ class RedteamOrchestrator:
 
     async def run(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
+        self._emitted_finding_keys.clear()
         _log.info(
             "Starting red-team scan against %s (profile=%s)",
             self._target_url,
@@ -1555,7 +1567,15 @@ class RedteamOrchestrator:
                         )
                     self.scenarios_run += len(escalation_scenarios)
                     findings, escalation_executed, escalation_records = await self._run_scenarios(
-                        escalation_scenarios, executor, guided_executor
+                        escalation_scenarios,
+                        executor,
+                        guided_executor,
+                        progress_offset=len(records),
+                        progress_total=len(records) + sum(
+                            1
+                            for scenario in escalation_scenarios
+                            if scenario.chain is not None or scenario.guided_conversation is not None
+                        ),
                     )
                     self.scenarios_executed.extend(escalation_executed)
                     self.scenario_records.extend(escalation_records)
@@ -1613,6 +1633,8 @@ class RedteamOrchestrator:
         scenarios: list[AttackScenario],
         executor: AttackExecutor,
         guided_executor: "GuidedAttackExecutor | None" = None,
+        progress_offset: int = 0,
+        progress_total: int | None = None,
     ) -> tuple[list[Finding], list[tuple[str, str, bool]], list[ScenarioRecord]]:
         """Execute scenarios concurrently and return (findings, executed_records, scenario_records).
 
@@ -1718,6 +1740,16 @@ class RedteamOrchestrator:
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
                 if _is_direct_http and endpoint_abort_event.is_set():
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("target_unreachable")
+
+                self._emit_progress(
+                    {
+                        "kind": "scenario_started",
+                        "scenario_id": scenario.scenario_id,
+                        "scenario_title": scenario.title,
+                        "scenario_type": scenario.scenario_type.value,
+                        "goal_type": scenario.goal_type.value,
+                    }
+                )
 
                 # Skip scenarios whose payloads are too similar to already-failed
                 # attacks.  Checked here (post-semaphore) so that misses from
@@ -2010,6 +2042,51 @@ class RedteamOrchestrator:
         # preserves each scenario's incoming impact_score ordering.
         active = sorted(active, key=lambda s: (s.attack_phase, _is_destructive_scenario(s)))
 
+        completed = progress_offset
+        progress_lock = asyncio.Lock()
+        total = progress_total if progress_total is not None else len(active)
+        self._emit_progress(
+            {
+                "kind": "plan",
+                "scenarios_total": total,
+                "scenarios_completed": completed,
+            }
+        )
+
+        async def _run_and_emit(
+            scenario: AttackScenario,
+            scenario_idx: int,
+        ) -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
+            nonlocal completed
+            result = await _run_one(scenario, scenario_idx)
+            async with progress_lock:
+                completed += 1
+                completed_count = completed
+                findings_added = []
+                for finding in result[0]:
+                    key = (
+                        finding.finding_id or "",
+                        finding.goal_type or "",
+                        (finding.affected_component or "").lower(),
+                    )
+                    if key not in self._emitted_finding_keys:
+                        self._emitted_finding_keys.add(key)
+                        findings_added.append(finding)
+            self._emit_progress(
+                {
+                    "kind": "scenario_finished",
+                    "scenario_id": scenario.scenario_id,
+                    "scenario_title": scenario.title,
+                    "scenario_type": scenario.scenario_type.value,
+                    "goal_type": scenario.goal_type.value,
+                    "scenario_status": result[2].chain_status,
+                    "scenarios_total": total,
+                    "scenarios_completed": completed_count,
+                    "findings_added": findings_added,
+                }
+            )
+            return result
+
         _log.info(
             "Running %d scenarios across phased batches (concurrency=%d)",
             len(active), self._concurrency,
@@ -2044,9 +2121,9 @@ class RedteamOrchestrator:
                 # Strictly sequential — no two scenarios run at once, so the
                 # target application is never asked two adversarial things
                 # "at once" within a phase either (docs/claude-redteam-3.md §4).
-                batch_results = [await _run_one(s, idx) for idx, s in batch]
+                batch_results = [await _run_and_emit(s, idx) for idx, s in batch]
             else:
-                batch_results = await asyncio.gather(*(_run_one(s, idx) for idx, s in batch))
+                batch_results = await asyncio.gather(*(_run_and_emit(s, idx) for idx, s in batch))
             results.extend(batch_results)
             batch_start = batch_end
 
