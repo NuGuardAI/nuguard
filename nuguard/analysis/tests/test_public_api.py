@@ -10,7 +10,7 @@ synthesis is best-effort while analyze() failures are not.
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -37,7 +37,7 @@ def _finding(affected_component: str = "next@15.2.4") -> Finding:
 
 def _make_mock_analyzer(findings: list[Finding]) -> MagicMock:
     instance = MagicMock()
-    instance.analyze.return_value = findings
+    instance.analyze = AsyncMock(return_value=findings)
     instance.tool_status = {"osv": {"status": "ok", "findings": str(len(findings))}}
     instance.nga_audit = [{"rule_id": "NGA-001", "status": "PASS"}]
     instance.sc_audit = [{"rule_id": "NGA-SC-001", "status": "PASS"}]

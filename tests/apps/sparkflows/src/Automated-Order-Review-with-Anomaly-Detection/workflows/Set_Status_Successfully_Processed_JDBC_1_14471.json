@@ -1,0 +1,369 @@
+{
+  "name": "Set Status Successfully Processed JDBC 1",
+  "uuid": "99b1cbb5-9adf-49e9-9925-5e3c11029199",
+  "category": "Order Review",
+  "description": "Updates orders_jdbc.review_status=Successfully Processed for the given order_id. JDBC Save with Update mode keyed on Id.",
+  "parameters": "--var order_id=${order_id} --var execution_id=${execution_id}",
+  "nodes": [
+    {
+      "id": "4",
+      "name": "FetchOrderFromSalesforce",
+      "type": "dataset",
+      "nodeClass": "fire.nodes.salesforce.NodeExecuteSOQLInSalesforce",
+      "x": "42.3875px",
+      "y": "59.6125px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "connection",
+          "value": "Salesforce",
+          "widget": "object_array"
+        },
+        {
+          "name": "soqlQuery",
+          "value": "SELECT Id, OrderNumber, Status, Account.Name, PoNumber, PoDate, \n       TotalAmount, ContractId, EffectiveDate, EndDate, \n       Pricebook2Id, BillToContactId, BillingStreet, BillingCity, \n       BillingState, BillingPostalCode, BillingCountry, \n       CustomerAuthorizedById, OwnerId, Owner.Name, Owner.Email, \n       CreatedById, CreatedBy.Name, CreatedBy.Email, \n       LastModifiedDate\nFROM Order where Id = '${order_id}'",
+          "widget": "textarea_small"
+        },
+        {
+          "name": "outputColNames",
+          "value": "[\"Id\",\"OrderNumber\",\"Status\",\"Account\",\"PoNumber\",\"PoDate\",\"TotalAmount\",\"ContractId\",\"EffectiveDate\",\"EndDate\",\"Pricebook2Id\",\"BillToContactId\",\"BillingStreet\",\"BillingCity\",\"BillingState\",\"BillingPostalCode\",\"BillingCountry\",\"CustomerAuthorizedById\",\"OwnerId\",\"Owner\",\"CreatedById\",\"CreatedBy\",\"LastModifiedDate\"]",
+          "widget": "schema_col_names"
+        },
+        {
+          "name": "outputColTypes",
+          "value": "[\"STRING\",\"STRING\",\"STRING\",\"STRUCT\",\"STRING\",\"STRING\",\"DOUBLE\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRUCT\",\"STRING\",\"STRUCT\",\"STRING\"]",
+          "widget": "schema_col_types"
+        },
+        {
+          "name": "outputColFormats",
+          "value": "[\"\",\"\",\"\",\"{\\\"Account\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"{\\\"Owner\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Email\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\",\"\",\"{\\\"CreatedBy\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Email\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\",\"\"]",
+          "widget": "schema_col_formats"
+        },
+        {
+          "name": "properties",
+          "widget": "tab"
+        },
+        {
+          "name": "extraOptionsKeys",
+          "value": "[]",
+          "widget": "key_array"
+        },
+        {
+          "name": "extraOptionsValues",
+          "value": "[]",
+          "widget": "value_array"
+        }
+      ],
+      "engine": "polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "5",
+      "name": "Save JDBC",
+      "type": "transform",
+      "nodeClass": "fire.nodes.save.NodeSaveJDBC",
+      "x": "362.438px",
+      "y": "43.6125px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "connection",
+          "value": "JDBC_MySQL",
+          "widget": "object_array"
+        },
+        {
+          "name": "jdbcDatabase",
+          "value": "userdb",
+          "widget": "textfield"
+        },
+        {
+          "name": "jdbctable",
+          "value": "sales_orders",
+          "widget": "textfield"
+        },
+        {
+          "name": "truncate",
+          "value": "false",
+          "widget": "array"
+        },
+        {
+          "name": "saveMode",
+          "value": "Update",
+          "widget": "array"
+        },
+        {
+          "name": "updateKeyColumn",
+          "value": "Id",
+          "widget": "variable"
+        },
+        {
+          "name": "extraOptions",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "extraOptionsKeys",
+          "value": "[]",
+          "widget": "key_array"
+        },
+        {
+          "name": "extraOptionsValues",
+          "value": "[]",
+          "widget": "value_array"
+        }
+      ],
+      "engine": "pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "6",
+      "name": "Expressions",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeExpressions",
+      "x": "278.438px",
+      "y": "91.6125px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "Expressions",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "outputCols",
+          "value": "[\"Status\"]",
+          "widget": "key_array",
+          "type": "sparksql"
+        },
+        {
+          "name": "expressions",
+          "value": "[\"'Successfully Processed'\"]",
+          "widget": "value_array",
+          "type": "sparksql"
+        },
+        {
+          "name": "propagation",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "inputColumnPropagation",
+          "value": "true",
+          "widget": "array_single"
+        },
+        {
+          "name": "outputSchema",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "outputColNames",
+          "value": "[\"Id\",\"OrderNumber\",\"Status\",\"PoNumber\",\"PoDate\",\"TotalAmount\",\"ContractId\",\"EffectiveDate\",\"EndDate\",\"Pricebook2Id\",\"BillToContactId\",\"BillingStreet\",\"BillingCity\",\"BillingState\",\"BillingPostalCode\",\"BillingCountry\",\"CustomerAuthorizedById\",\"OwnerId\",\"CreatedById\",\"LastModifiedDate\",\"Name\",\"type\",\"url\",\"Email\",\"Name_1\",\"type_1\",\"url_1\",\"Email_1\",\"Name_2\",\"type_2\",\"url_2\"]",
+          "widget": "schema_col_names"
+        },
+        {
+          "name": "outputColTypes",
+          "value": "[\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"DOUBLE\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\"]",
+          "widget": "schema_col_types"
+        },
+        {
+          "name": "outputColFormats",
+          "value": "[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"]",
+          "widget": "schema_col_formats"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "7",
+      "name": "Flatten",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeFlatten",
+      "x": "111.438px",
+      "y": "213.613px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "ids",
+          "value": "[\"00\",\"010\",\"011\",\"10\",\"11\",\"120\",\"121\",\"20\",\"21\",\"220\",\"221\"]",
+          "widget": "flatten_ids"
+        },
+        {
+          "name": "values1",
+          "value": "[\"Account.Name\",\"Account.attributes.type\",\"Account.attributes.url\",\"CreatedBy.Email\",\"CreatedBy.Name\",\"CreatedBy.attributes.type\",\"CreatedBy.attributes.url\",\"Owner.Email\",\"Owner.Name\",\"Owner.attributes.type\",\"Owner.attributes.url\"]",
+          "widget": "flatten_value1"
+        },
+        {
+          "name": "values2",
+          "value": "[\"Name\",\"type\",\"url\",\"Email\",\"Name\",\"type\",\"url\",\"Email\",\"Name\",\"type\",\"url\"]",
+          "widget": "flatten_value2"
+        },
+        {
+          "name": "values3",
+          "value": "[\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\"]",
+          "widget": "flatten_value3"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "8",
+      "name": "Select",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeSelect",
+      "x": "181.413px",
+      "y": "141.625px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "General",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "inputCols",
+          "value": "[\"Name_1\"]",
+          "widget": "variables_list_select"
+        },
+        {
+          "name": "renameCols",
+          "value": "[\"\"]",
+          "widget": "variables_list_textfield"
+        },
+        {
+          "name": "colType",
+          "value": "[\"\"]",
+          "widget": "variables_list_array"
+        },
+        {
+          "name": "drop",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "dropInputCols",
+          "value": "[\"Account\",\"Owner\",\"CreatedBy\"]",
+          "widget": "variables"
+        },
+        {
+          "name": "inputColumnPropagation",
+          "value": "true",
+          "widget": "array_single"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "9",
+      "name": "Sticky Note",
+      "type": "sticky",
+      "nodeClass": "fire.nodes.doc.NodeStickyNote",
+      "x": "463px",
+      "y": "18px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "bgColor",
+          "value": "blue",
+          "widget": "textfield"
+        },
+        {
+          "name": "width",
+          "value": "612.4px",
+          "widget": "textfield"
+        },
+        {
+          "name": "height",
+          "value": "535.4px",
+          "widget": "textfield"
+        },
+        {
+          "name": "pushedToBack",
+          "value": "false",
+          "widget": "textfield"
+        },
+        {
+          "name": "comment",
+          "value": "<p><strong>PURPOSE</strong></p><p>Marks an order as \"Successfully Processed\" after the approved order has been successfully pushed to the downstream accounting system. Represents the happy-path final state of the Order Review process.</p><p><strong>WHAT THIS WORKFLOW DOES</strong></p><p>1. Re-fetch the Order</p><p>&nbsp;&nbsp;Retrieves the latest order details from Salesforce.</p><p>2. Prepare the Data</p><p>&nbsp;&nbsp;Reshapes the Salesforce response into the flat structure used by the orders table.</p><p>3. Apply Status</p><p>&nbsp;&nbsp;Sets the order's status field to \"Successfully Processed\".</p><p>4. Update Database</p><p>&nbsp;&nbsp;Saves the change so the dashboard shows the order as complete.</p><p><strong>WHEN IT RUNS</strong></p><p>Triggered after the Push Approved Order workflow returns push_result = success.</p><p><strong>OUTCOME</strong></p><p>Terminal state — the order has completed its entire review and processing journey successfully. No further automated steps run.</p>",
+          "widget": "textarea_rich"
+        }
+      ],
+      "engine": "scala,pyspark,polars,agent",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "4",
+      "target": "7",
+      "id": 3,
+      "sourceAnchor": "output",
+      "targetAnchor": "input",
+      "index": 0
+    },
+    {
+      "source": "7",
+      "target": "8",
+      "id": 4,
+      "sourceAnchor": "output",
+      "targetAnchor": "input",
+      "index": 0
+    },
+    {
+      "source": "8",
+      "target": "6",
+      "id": 5,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "6",
+      "target": "5",
+      "id": 6,
+      "sourceAnchor": "output",
+      "index": 0
+    }
+  ],
+  "dataSetDetails": [],
+  "engine": "polars",
+  "nodeDebugConfigs": {}
+}

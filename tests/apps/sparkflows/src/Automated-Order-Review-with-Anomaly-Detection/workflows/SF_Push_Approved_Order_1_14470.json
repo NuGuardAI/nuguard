@@ -1,0 +1,216 @@
+{
+  "name": "SF Push Approved Order 1",
+  "uuid": "6de97f6f-e8dd-4523-b939-88740047637e",
+  "category": "Order Review",
+  "description": "Mock D365 push for an approved order. Returns push_result (success or failed) so the agent can route to Set_Status_Successfully_Processed or Set_Status_Exception_Failed. Does NOT write status.",
+  "parameters": "",
+  "nodes": [
+    {
+      "id": "2",
+      "name": "PrintPushAttempt",
+      "type": "transform",
+      "nodeClass": "fire.nodes.util.NodePrintFirstNRows",
+      "x": "260px",
+      "y": "187px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "title",
+          "value": "Mock D365 Push Attempt",
+          "widget": "textfield"
+        },
+        {
+          "name": "n",
+          "value": "1",
+          "widget": "textfield"
+        },
+        {
+          "name": "columns",
+          "value": "[]",
+          "widget": "variables"
+        },
+        {
+          "name": "enableInExecution",
+          "value": "true",
+          "widget": "array"
+        },
+        {
+          "name": "displayDataType",
+          "value": "true",
+          "widget": "array"
+        },
+        {
+          "name": "highlight_tab",
+          "widget": "tab"
+        },
+        {
+          "name": "highlight",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "highlight_type",
+          "value": "[]",
+          "widget": "list_array"
+        },
+        {
+          "name": "highlight_expression",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "color_code",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "rowHeader_tab",
+          "widget": "tab"
+        },
+        {
+          "name": "rowHeader",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "rowHeader_columns",
+          "value": "[]",
+          "widget": "array_textfield"
+        },
+        {
+          "name": "rowHeader_color",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "rowHeader_bgColor",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "rowHeader_value",
+          "value": "[]",
+          "widget": "list_textfield"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "3",
+      "name": "Sticky Note",
+      "type": "sticky",
+      "nodeClass": "fire.nodes.doc.NodeStickyNote",
+      "x": "488px",
+      "y": "2.00002px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "bgColor",
+          "value": "blue",
+          "widget": "textfield"
+        },
+        {
+          "name": "width",
+          "value": "566.4px",
+          "widget": "textfield"
+        },
+        {
+          "name": "height",
+          "value": "362.4px",
+          "widget": "textfield"
+        },
+        {
+          "name": "pushedToBack",
+          "value": "false",
+          "widget": "textfield"
+        },
+        {
+          "name": "comment",
+          "value": "<p><strong>PURPOSE</strong></p><p>Simulates pushing an approved order to the downstream accounting system (Dynamics 365). Acts as a placeholder integration so the full approval flow can be tested end-to-end before the real connection is in place.</p><p><strong>WHAT THIS WORKFLOW DOES</strong></p><p>1. Build Push Attempt Record</p><p>&nbsp;&nbsp;Creates a single record containing the order_id and a hard-coded push_result (defaults to \"success\").</p><p>2. Log the Push Attempt</p><p>&nbsp;&nbsp;Prints the attempt to the execution log so the result can be traced and audited.</p><p><strong>OUTCOME</strong></p><p>Returns push_result to the calling agent. The agent then routes the order to \"Successfully Processed\" on success, or to \"Exception/Failed\" on failure.</p>",
+          "widget": "textarea_rich"
+        }
+      ],
+      "engine": "scala,pyspark,polars,agent",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "4",
+      "name": "BuildPushAttemptRow",
+      "type": "dataset",
+      "nodeClass": "fire.nodes.dataset.NodeDatasetInMemory",
+      "x": "52px",
+      "y": "210px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "dataType",
+          "value": "json",
+          "widget": "array_single"
+        },
+        {
+          "name": "dataStr",
+          "value": "[{\"Id\": \"${order_id}\", \"push_result\": \"success\"}]",
+          "widget": "textarea_large"
+        },
+        {
+          "name": "fieldDefsStr",
+          "value": "",
+          "widget": "textfield"
+        },
+        {
+          "name": "schema",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "outputColNames",
+          "value": "[\"Id\",\"push_result\"]",
+          "widget": "schema_col_names"
+        },
+        {
+          "name": "outputColTypes",
+          "value": "[\"STRING\",\"STRING\"]",
+          "widget": "schema_col_types"
+        },
+        {
+          "name": "outputColFormats",
+          "value": "[\"\",\"\"]",
+          "widget": "schema_col_formats"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "4",
+      "target": "2",
+      "id": 1,
+      "sourceAnchor": "output",
+      "index": 0
+    }
+  ],
+  "dataSetDetails": [],
+  "engine": "polars",
+  "nodeDebugConfigs": {}
+}

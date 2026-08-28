@@ -1,0 +1,90 @@
+{
+  "name": "Manual Bypass Rate",
+  "uuid": "02e98760-e04c-4773-bfdd-661a418fca63",
+  "icon": {
+    "type": "svg",
+    "icon": "assets/images/icons/actions-icon/interactive.svg"
+  },
+  "category": "",
+  "sheets": [
+    {
+      "id": 0,
+      "name": "",
+      "description": "MANUAL APPROVAL RATE",
+      "type": "<CUR>%",
+      "chartType": "SUMMARY_CARD",
+      "datasetUuid": "89f8fdb1-f4c2-4633-aef9-c3dfb910cca7",
+      "datasetName": "",
+      "colors": [
+        "#77c8d0",
+        "#ffe3b2",
+        "#faa19b",
+        "#a1bdfd",
+        "#b6d7d0",
+        "#ffb2c8",
+        "#ffd5be",
+        "#c7d2ff",
+        "#83e3f4",
+        "#d1bfff",
+        "#649bf7",
+        "#f8c9ee",
+        "#219aad",
+        "#ffbfa3"
+      ],
+      "x": [],
+      "y": [
+        {
+          "columnName": "Manual_Bypass_Rate",
+          "category": "NUMERIC",
+          "aggregate": "SUM",
+          "compute": "NORMAL"
+        }
+      ],
+      "groupBy": [],
+      "filters": [],
+      "calculatedFields": [
+        {
+          "name": "Manual_Bypass_Rate",
+          "expression": "ROUND((SUM(CASE WHEN ApprovalReason = 'Manually Approved' THEN 1 ELSE 0 END) * 100.0) / COUNT(Id), 1)"
+        }
+      ],
+      "drillDown": {
+        "enabled": false,
+        "levels": []
+      },
+      "chartOptions": {
+        "legendPosition": "top",
+        "totalPosition": "bottom",
+        "tooltip": "value",
+        "xlabel": "",
+        "ylabel": "",
+        "y1label": "",
+        "total": false,
+        "label": false,
+        "horizontalBar": false,
+        "beginAtZero": true,
+        "stacked": false,
+        "hideTitleOnDashboard": true,
+        "summaryCards": {
+          "textCenter": true,
+          "lblFontSize": "30px",
+          "descFontSize": "18px",
+          "lblColor": "#359c9c",
+          "descColor": "#6c6a65",
+          "descTop": true,
+          "divider": false,
+          "dividerColor": "#bebebe",
+          "formattedValue": 2
+        }
+      },
+      "filterDependencies": [
+        {
+          "parentColumn": "",
+          "childColumn": "",
+          "restrict": false,
+          "autoClear": false
+        }
+      ]
+    }
+  ]
+}

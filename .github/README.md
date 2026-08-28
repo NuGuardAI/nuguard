@@ -142,7 +142,7 @@ Filter by category or profile, or set `enabled: false` per scenario in a catalog
 <a href="../documentation/docs/cli-reference.md">CLI reference</a> ·
 <a href="../documentation/docs/policy-engine-guide.md">Policy engine</a> ·
 <a href="../documentation/docs/static-analysis-guide.md">Static analysis</a> ·
-<a href="../documentation/docs/red-teaming-guide.md">Red-team Guide</a> ·
+<a href="../documentation/docs/redteam-guide.md">Red-team Guide</a> ·
 <a href="../documentation/docs/plugin-guide.md">Claude plugin</a> ·
 <a href="../documentation/docs/troubleshooting.md">Troubleshooting</a> ·
 <a href="SECURITY.md">Security</a> ·

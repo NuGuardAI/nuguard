@@ -173,6 +173,25 @@
             "title": "References",
             "type": "array"
           },
+          "container_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Container Image"
+          },
+          "container_image_locations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Container Image Locations",
+            "type": "array"
+          },
           "goal_type": {
             "anyOf": [
               {
@@ -5165,6 +5184,25 @@
             "title": "References",
             "type": "array"
           },
+          "container_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Container Image"
+          },
+          "container_image_locations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Container Image Locations",
+            "type": "array"
+          },
           "goal_type": {
             "anyOf": [
               {
@@ -6483,6 +6521,25 @@
               "type": "string"
             },
             "title": "References",
+            "type": "array"
+          },
+          "container_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Container Image"
+          },
+          "container_image_locations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Container Image Locations",
             "type": "array"
           },
           "goal_type": {

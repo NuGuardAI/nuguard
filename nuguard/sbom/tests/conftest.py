@@ -30,6 +30,18 @@ PY_ONLY: AiSbomConfig = AiSbomConfig(
     enable_llm=False,
 )
 
+#: Go-only, deterministic
+GO_ONLY: AiSbomConfig = AiSbomConfig(
+    include_extensions={".go"},
+    enable_llm=False,
+)
+
+#: C#-only, deterministic
+CS_ONLY: AiSbomConfig = AiSbomConfig(
+    include_extensions={".cs"},
+    enable_llm=False,
+)
+
 
 # ---------------------------------------------------------------------------
 # Extraction helpers

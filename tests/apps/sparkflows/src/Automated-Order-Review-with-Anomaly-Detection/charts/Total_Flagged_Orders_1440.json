@@ -1,0 +1,90 @@
+{
+  "name": "Total Flagged Orders",
+  "uuid": "39de83da-0919-4b8c-b0a1-2be1e4039118",
+  "icon": {
+    "type": "svg",
+    "icon": "assets/images/icons/actions-icon/interactive.svg"
+  },
+  "category": "",
+  "description": "",
+  "sheets": [
+    {
+      "id": 0,
+      "name": "",
+      "description": "TOTAL FLAGGED ORDERS",
+      "type": "<CUR>",
+      "chartType": "SUMMARY_CARD",
+      "datasetUuid": "89f8fdb1-f4c2-4633-aef9-c3dfb910cca7",
+      "datasetName": "",
+      "colors": [
+        "#77c8d0",
+        "#ffe3b2",
+        "#faa19b",
+        "#a1bdfd",
+        "#b6d7d0",
+        "#ffb2c8",
+        "#ffd5be",
+        "#c7d2ff",
+        "#83e3f4",
+        "#d1bfff",
+        "#649bf7",
+        "#f8c9ee",
+        "#219aad",
+        "#ffbfa3"
+      ],
+      "x": [],
+      "y": [
+        {
+          "columnName": "Id",
+          "category": "TEXT",
+          "aggregate": "COUNT"
+        }
+      ],
+      "groupBy": [],
+      "filters": [],
+      "calculatedFields": [
+        {
+          "name": "Approval_Status",
+          "expression": "CASE \r\n    WHEN ApprovalReason IS NULL OR ApprovalReason = '' THEN 'Pending Review'\r\n    ELSE 'Manually Approved'\r\nEND"
+        }
+      ],
+      "drillDown": {
+        "enabled": false,
+        "levels": []
+      },
+      "chartOptions": {
+        "legendPosition": "top",
+        "totalPosition": "bottom",
+        "tooltip": "value",
+        "xlabel": "",
+        "ylabel": "",
+        "y1label": "",
+        "total": false,
+        "label": false,
+        "horizontalBar": false,
+        "beginAtZero": true,
+        "stacked": false,
+        "hideTitleOnDashboard": true,
+        "summaryCards": {
+          "textCenter": true,
+          "lblFontSize": "30px",
+          "descFontSize": "18px",
+          "lblColor": "#f5c238",
+          "descColor": "#6c6a65",
+          "descTop": true,
+          "divider": false,
+          "dividerColor": "#1a1919",
+          "formattedValue": 2
+        }
+      },
+      "filterDependencies": [
+        {
+          "parentColumn": "",
+          "childColumn": "",
+          "restrict": false,
+          "autoClear": false
+        }
+      ]
+    }
+  ]
+}
