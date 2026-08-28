@@ -742,7 +742,7 @@ class RedteamOrchestrator:
         elif self._chat_path:
             self._chat_path_source = "sbom"
         else:
-            self._chat_path_source = "default"  # updated by _maybe_probe_endpoints if live probe succeeds
+            self._chat_path_source = "default"  # updated by _maybe_probe_endpoints to "probe" or "auto"
         # Prefer explicit caller-supplied response key; fall back to SBOM-discovered one.
         self._chat_response_key = chat_response_key or _discovered_response_key
         # Populated by run() — scenarios executed and their titles
@@ -1276,6 +1276,10 @@ class RedteamOrchestrator:
                 _log.warning(_filter_note)
                 self.config_notes.append(_filter_note)
 
+        # minimal: truncate after scenario_filter so the filter is respected.
+        if self._profile == "minimal" and scenarios:
+            scenarios = scenarios[:1]
+
         # 3. LLM payload enrichment (opt-in — only enrich scenarios that will run)
         _llm_payloads: dict = {}
         if self._redteam_llm and scenarios:
@@ -1318,6 +1322,10 @@ class RedteamOrchestrator:
         # This avoids sending structurally identical first messages to the same agent
         # (a common artifact when multiple builders target the same node with the same goal).
         scenarios = _dedup_scenarios_by_opener(scenarios)
+
+        # minimal profile: enforce 1-scenario cap after dedup (dedup may have dropped back to 1 anyway).
+        if self._profile == "minimal" and scenarios:
+            scenarios = scenarios[:1]
 
         self.scenarios_run = len(scenarios)
         if self.llm_enriched_scenarios:
@@ -3070,4 +3078,4 @@ class RedteamOrchestrator:
             )
             if not self._chat_path:
                 self._chat_path = "/chat"
-                self._chat_path_source = "default"
+                self._chat_path_source = "auto"

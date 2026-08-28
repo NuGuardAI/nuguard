@@ -76,7 +76,7 @@ def redteam(
         ),
     ),
     profile: str = typer.Option(
-        "ci", "--profile", help="Scan profile: ci (fast, safe) or full."
+        "ci", "--profile", help="Scan profile: ci | full."
     ),
     scenarios: Optional[str] = typer.Option(
         None, "--scenarios", help="Comma-separated scenario types to run (default: all)."
@@ -184,6 +184,10 @@ def redteam(
     effective_guided_concurrency = guided_concurrency if guided_concurrency is not None else cfg.redteam_guided_concurrency
     effective_guided_mutation_mode = cfg.redteam_guided_mutation_mode
     effective_verbose = verbose if verbose is not None else cfg.redteam_verbose
+    # minimal profile: disable guided (bounded to 1 static chain) and strip turn delay.
+    effective_turn_delay = 0.0 if effective_profile == "minimal" else cfg.redteam_turn_delay_seconds
+    if effective_profile == "minimal":
+        effective_guided = False
     finding_triggers = cfg.resolved_redteam_finding_triggers()
     if not finding_triggers.any_enabled():
         typer.echo(
@@ -301,7 +305,7 @@ def redteam(
         verbose=effective_verbose,
         scenario_timeout=cfg.redteam_scenario_timeout,
         concurrency=cfg.redteam_concurrency,
-        turn_delay_seconds=cfg.redteam_turn_delay_seconds,
+        turn_delay_seconds=effective_turn_delay,
         scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
         similar_miss_threshold=cfg.redteam_similar_miss_threshold,
         hard_refusal_abort_turns=cfg.redteam_hard_refusal_abort_turns,

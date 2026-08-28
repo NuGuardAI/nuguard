@@ -1221,7 +1221,8 @@
         "enum": [
           "static",
           "dynamic",
-          "static+dynamic"
+          "static+dynamic",
+          "minimal"
         ],
         "title": "Mode",
         "type": "string"
