@@ -917,6 +917,14 @@ class RedteamOrchestrator:
         if not self._chat_path or self._chat_payload_key == "message":
             await self._maybe_probe_endpoints()
 
+        _log.info(
+            "Effective chat endpoint: path=%r key=%r list=%s source=%s",
+            self._chat_path or "/chat",
+            self._chat_payload_key,
+            self._chat_payload_list,
+            self._chat_path_source,
+        )
+
         # 0b. Auth bootstrap — resolve effective auth and verify every credential
         #    before running any scenario. Raises TargetUnavailableError on network
         #    failure; raises AuthError when the default credential is rejected.
