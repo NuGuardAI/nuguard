@@ -4,10 +4,10 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from nuguard.common import chat_payload_tokens
-from nuguard.common.auth import AuthConfig
+from nuguard.common.auth import AuthConfig, LoginFlowConfig
 from nuguard.common.auth_runtime import bootstrap_auth_runtime
 from nuguard.common.discovery import (
     DiscoveredProfile,
@@ -45,12 +45,19 @@ class TargetVerifyRequest(BaseModel):
     auth_value: str | None = None
     auth_username: str | None = None
     auth_password: str | None = None
+    login_flow: LoginFlowConfig | None = None
     chat_payload_key: str = "message"
     chat_payload_list: bool = False
     chat_response_key: str | None = None
     chat_payload_extras: dict[str, Any] | None = None
     request_timeout: float = 30.0
     discovery_max_turns: int = 3
+
+    @model_validator(mode="after")
+    def _validate_login_flow(self) -> "TargetVerifyRequest":
+        if self.auth_type.strip().lower() == "login_flow" and self.login_flow is None:
+            raise ValueError("auth_type=login_flow requires login_flow configuration")
+        return self
 
 
 class TargetVerifyCheck(BaseModel):
@@ -80,11 +87,18 @@ class TargetSessionResolveRequest(BaseModel):
     auth_value: str | None = None
     auth_username: str | None = None
     auth_password: str | None = None
+    login_flow: LoginFlowConfig | None = None
     chat_payload_key: str = "message"
     chat_payload_list: bool = False
     chat_response_key: str | None = None
     chat_payload_extras: dict[str, Any] | None = None
     request_timeout: float = 30.0
+
+    @model_validator(mode="after")
+    def _validate_login_flow(self) -> "TargetSessionResolveRequest":
+        if self.auth_type.strip().lower() == "login_flow" and self.login_flow is None:
+            raise ValueError("auth_type=login_flow requires login_flow configuration")
+        return self
 
 
 class TargetSessionResolveResult(BaseModel):
@@ -109,6 +123,10 @@ def _build_auth_config(request: TargetVerifyRequest | TargetSessionResolveReques
             username=request.auth_username or "",
             password=request.auth_password or "",
         )
+    if auth_type == "login_flow":
+        if request.login_flow is None:
+            raise ValueError("auth_type=login_flow requires login_flow configuration")
+        return AuthConfig(type="login_flow", login_flow=request.login_flow)
     if auth_type == "bearer":
         value = request.auth_value or ""
         if value.lower().startswith("authorization:"):
@@ -268,8 +286,9 @@ async def resolve_target_session_public(
     auth_config = _build_auth_config(request)
 
     if sbom is not None:
+        resolved_url, _ = resolve_target_url(request.target_url, sbom)
         endpoint, payload_key, payload_list, response_key, endpoint_source = await _resolve_endpoint_plan(
-            target_url=request.target_url,
+            target_url=resolved_url,
             sbom=sbom,
             auth_headers=auth_config.to_headers() or None,
             chat_path=request.chat_path,
@@ -279,7 +298,7 @@ async def resolve_target_session_public(
             chat_payload_extras=request.chat_payload_extras,
         )
         session_cfg, health = await resolve_target_session(
-            target_url=request.target_url,
+            target_url=resolved_url,
             sbom=sbom,
             auth_config=auth_config,
             extra_headers={},

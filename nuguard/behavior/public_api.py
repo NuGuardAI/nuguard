@@ -13,8 +13,9 @@ or auth failures propagate to the caller unchanged.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 from pydantic import BaseModel
 
@@ -131,6 +132,7 @@ async def run_behavior_scenarios(
     llm_client: "LLMClient | None" = None,
     remediation_llm_client: "LLMClient | None" = None,
     judge_cache: "JudgeCache | None" = None,
+    _progress_sink: Callable[[dict[str, Any]], None] | None = None,
 ) -> BehaviorRunResult:
     """Run a list of behavior scenarios from a JSON-safe request.
 
@@ -143,15 +145,18 @@ async def run_behavior_scenarios(
     never raises, and simply leaves ``remediation_plan`` empty on failure.
     """
     _log.debug("run_behavior_scenarios: %d scenario(s)", len(request.scenarios))
-    runner = BehaviorRunner(
-        config=request.config,
-        sbom=sbom,
-        sbom_path=sbom_path,
-        policy=policy,
-        intent=intent,
-        llm_client=llm_client,
-        judge_cache=judge_cache,
-    )
+    runner_kwargs: dict[str, Any] = {
+        "config": request.config,
+        "sbom": sbom,
+        "sbom_path": sbom_path,
+        "policy": policy,
+        "intent": intent,
+        "llm_client": llm_client,
+        "judge_cache": judge_cache,
+    }
+    if _progress_sink is not None:
+        runner_kwargs["progress_sink"] = _progress_sink
+    runner = BehaviorRunner(**runner_kwargs)
     result = await runner.run(request.scenarios, pre_scan_profile=request.pre_scan_profile)
     result.remediation_plan = await _synthesize_behavior_remediation_plan(
         result.findings, sbom=sbom, policy=policy, llm_client=remediation_llm_client or llm_client
@@ -212,6 +217,47 @@ async def analyze_behavior_stream(
     run_id = str(uuid.uuid4())
 
     async def _worker(controller):
+        def _publish_progress(update: dict[str, Any]) -> None:
+            kind = update.get("kind")
+            total = int(update.get("scenarios_total") or 0)
+            completed = int(update.get("scenarios_completed") or 0)
+            payload = {
+                "scenarios_total": total,
+                "scenarios_completed": completed,
+                "progress_pct": completed / total if total else 0.0,
+                "current_scenario_type": update.get("scenario_type"),
+                "scenario_id": update.get("scenario_id"),
+                "scenario_title": update.get("scenario_title"),
+                "scenario_status": update.get("scenario_status"),
+            }
+            if kind == "plan":
+                controller.publish(
+                    event_type="scenario_plan_ready",
+                    phase="planning",
+                    payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
+                )
+            elif kind == "scenario_started":
+                controller.publish(
+                    event_type="scenario_started",
+                    phase="execution",
+                    payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
+                )
+            elif kind == "scenario_finished":
+                controller.publish(
+                    event_type="scenario_progress",
+                    phase="execution",
+                    payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
+                )
+                turn_report_added = update.get("turn_report_added") or []
+                if turn_report_added:
+                    controller.publish(
+                        event_type="findings_delta",
+                        phase="execution",
+                        payload=StreamDeltaPayload(
+                            turn_report_added=turn_report_added,
+                        ).model_dump(mode="json"),
+                    )
+
         controller.publish(
             event_type="run_started",
             phase="init",
@@ -226,31 +272,13 @@ async def analyze_behavior_stream(
                 llm_client=llm_client,
                 remediation_llm_client=remediation_llm_client,
                 judge_cache=judge_cache,
-            )
-
-            controller.publish(
-                event_type="scenario_plan_ready",
-                phase="planning",
-                payload=StreamProgressPayload(
-                    scenarios_total=result.scenarios_executed,
-                    scenarios_completed=0,
-                    progress_pct=0.0,
-                ).model_dump(mode="json"),
+                _progress_sink=_publish_progress,
             )
             controller.publish(
                 event_type="findings_delta",
                 phase="execution",
                 payload=StreamDeltaPayload(
                     findings_added=[_stream_finding_view(f) for f in result.findings],
-                ).model_dump(mode="json"),
-            )
-            controller.publish(
-                event_type="scenario_progress",
-                phase="execution",
-                payload=StreamProgressPayload(
-                    scenarios_total=result.scenarios_executed,
-                    scenarios_completed=result.scenarios_executed,
-                    progress_pct=1.0 if result.scenarios_executed > 0 else 0.0,
                 ).model_dump(mode="json"),
             )
             controller.publish_terminal(
@@ -266,6 +294,19 @@ async def analyze_behavior_stream(
                 ).model_dump(mode="json"),
             )
             controller.set_final_result(result)
+        except asyncio.CancelledError as exc:
+            controller.publish_terminal(
+                event_type="failed",
+                phase="finalize",
+                payload=StreamTerminalPayload(
+                    status="failed",
+                    failure_stage="cancelled",
+                    error_type=type(exc).__name__,
+                    error_message="Behavior stream cancelled",
+                ).model_dump(mode="json"),
+            )
+            controller.set_final_exception(exc)
+            raise
         except Exception as exc:  # noqa: BLE001
             controller.publish_terminal(
                 event_type="failed",
