@@ -1259,11 +1259,6 @@ class RedteamOrchestrator:
                 s for s in all_scenarios if s.impact_score >= self._min_impact
             ]
 
-        # minimal: one scenario after all filters — catalog already caps to 1,
-        # but SBOM-driven generation is uncapped so truncate here.
-        if self._profile == "minimal" and scenarios:
-            scenarios = scenarios[:1]
-
         if self._scenario_filter:
             _pre_filter_goals = {s.goal_type.value for s in scenarios}
             scenarios = [
@@ -1280,6 +1275,10 @@ class RedteamOrchestrator:
                 )
                 _log.warning(_filter_note)
                 self.config_notes.append(_filter_note)
+
+        # minimal: truncate after scenario_filter so the filter is respected.
+        if self._profile == "minimal" and scenarios:
+            scenarios = scenarios[:1]
 
         # 3. LLM payload enrichment (opt-in — only enrich scenarios that will run)
         _llm_payloads: dict = {}
