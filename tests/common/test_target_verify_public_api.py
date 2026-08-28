@@ -3,11 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
+from pydantic import ValidationError
 
+from nuguard.common.auth import AuthConfig, LoginFlowConfig
 from nuguard.common.discovery import DiscoveredProfile, DiscoveryOutcome
 from nuguard.common.target_verify_public_api import (
     TargetSessionResolveRequest,
     TargetVerifyRequest,
+    _build_auth_config,
     resolve_target_session_public,
     verify_target,
 )
@@ -26,6 +29,109 @@ class _FakeAuthSession:
 @dataclass
 class _FakeBootstrapper:
     session: _FakeAuthSession
+
+
+@pytest.mark.parametrize(
+    "request_type",
+    [TargetVerifyRequest, TargetSessionResolveRequest],
+)
+def test_public_target_requests_build_login_flow_auth_config(request_type) -> None:
+    login_flow = LoginFlowConfig(
+        endpoint="/api/auth/login",
+        payload={"email": "alice@example.com", "password": "super-secret"},
+        token_response_key="data.access_token",
+        token_header="X-Session-Token",
+        refresh_on_401=False,
+    )
+
+    auth_config = _build_auth_config(
+        request_type(
+            target_url="http://target",
+            auth_type="login_flow",
+            login_flow=login_flow,
+        )
+    )
+
+    assert auth_config.type == "login_flow"
+    assert auth_config.login_flow == login_flow
+
+
+@pytest.mark.parametrize(
+    "request_type",
+    [TargetVerifyRequest, TargetSessionResolveRequest],
+)
+def test_public_target_requests_require_login_flow_config(request_type) -> None:
+    with pytest.raises(ValidationError, match="requires login_flow configuration"):
+        request_type(target_url="http://target", auth_type="login_flow")
+
+
+@pytest.mark.asyncio
+async def test_verify_target_passes_login_flow_to_auth_bootstrap(monkeypatch) -> None:
+    login_flow = LoginFlowConfig(
+        endpoint="/api/auth/login",
+        payload={"email": "alice@example.com", "password": "super-secret"},
+    )
+    captured_auth_configs = []
+
+    async def _fake_bootstrap_auth_runtime(**kwargs):
+        captured_auth_configs.append(kwargs["auth_config"])
+        report = TargetHealthReport(
+            target_url="http://target",
+            endpoint="/chat",
+            run_id="r-login-flow",
+            checks=[
+                CredentialCheckResult(
+                    identity="default",
+                    auth_type="login_flow",
+                    endpoint="http://target/chat",
+                    status="auth_failed",
+                    http_status_code=401,
+                )
+            ],
+        )
+        return _FakeBootstrapper(session=_FakeAuthSession()), report
+
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.bootstrap_auth_runtime", _fake_bootstrap_auth_runtime)
+
+    await verify_target(
+        TargetVerifyRequest(
+            target_url="http://target",
+            auth_type="login_flow",
+            login_flow=login_flow,
+        )
+    )
+
+    assert captured_auth_configs == [AuthConfig(type="login_flow", login_flow=login_flow)]
+
+
+@pytest.mark.asyncio
+async def test_resolve_target_session_passes_login_flow_to_auth_bootstrap(monkeypatch) -> None:
+    login_flow = LoginFlowConfig(endpoint="/api/auth/login", payload={"api_key": "super-secret"})
+    captured_auth_configs = []
+
+    async def _fake_bootstrap_auth_runtime(**kwargs):
+        captured_auth_configs.append(kwargs["auth_config"])
+        return (
+            _FakeBootstrapper(session=_FakeAuthSession()),
+            TargetHealthReport(
+                target_url="http://target",
+                endpoint="/chat",
+                run_id="r-login-flow",
+                checks=[],
+            ),
+        )
+
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.bootstrap_auth_runtime", _fake_bootstrap_auth_runtime)
+
+    await resolve_target_session_public(
+        TargetSessionResolveRequest(
+            target_url="http://target",
+            auth_type="login_flow",
+            login_flow=login_flow,
+        )
+    )
+
+    assert captured_auth_configs == [AuthConfig(type="login_flow", login_flow=login_flow)]
 
 
 @pytest.mark.asyncio
@@ -164,6 +270,61 @@ async def test_resolve_target_session_public_uses_probe_endpoint_source(monkeypa
     assert result.effective_endpoint == "/live"
     dumped = result.model_dump_json()
     assert "very-secret-token" not in dumped
+
+
+@pytest.mark.asyncio
+async def test_resolve_target_session_public_resolves_sbom_host_before_planning(monkeypatch):
+    from nuguard.common.session_resolver import TargetSessionConfig
+
+    planned_target_urls = []
+    resolved_session_target_urls = []
+
+    async def _fake_resolve_endpoint_plan(**kwargs):
+        planned_target_urls.append(kwargs["target_url"])
+        return "/chat", "message", False, None, "probe"
+
+    async def _fake_resolve_target_session(**kwargs):
+        resolved_session_target_urls.append(kwargs["target_url"])
+        return (
+            TargetSessionConfig(
+                base_url=kwargs["target_url"],
+                chat_path="/chat",
+                chat_payload_key="message",
+                chat_payload_list=False,
+                chat_payload_extras={},
+                chat_response_key=None,
+                auth_session=_FakeAuthSession(),
+                resolution_notes=[],
+            ),
+            TargetHealthReport(
+                target_url=kwargs["target_url"],
+                endpoint="/chat",
+                run_id="r-resolved-url",
+                checks=[],
+            ),
+        )
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_url",
+        lambda target_url, sbom: ("https://api.example.test", ["used SBOM deployment URL"]),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api._resolve_endpoint_plan",
+        _fake_resolve_endpoint_plan,
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session,
+    )
+
+    result = await resolve_target_session_public(
+        TargetSessionResolveRequest(target_url="https://static.example.test"),
+        sbom=object(),
+    )
+
+    assert planned_target_urls == ["https://api.example.test"]
+    assert resolved_session_target_urls == ["https://api.example.test"]
+    assert result.effective_target_url == "https://api.example.test"
 
 
 @pytest.mark.asyncio
