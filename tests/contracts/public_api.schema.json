@@ -3702,6 +3702,7 @@
         "enum": [
           "run_started",
           "scenario_plan_ready",
+          "scenario_started",
           "scenario_progress",
           "findings_delta",
           "heartbeat",
@@ -3813,6 +3814,42 @@
         ],
         "default": null,
         "title": "Current Scenario Type"
+      },
+      "scenario_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Scenario Id"
+      },
+      "scenario_title": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Scenario Title"
+      },
+      "scenario_status": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Scenario Status"
       },
       "updated_at": {
         "format": "date-time",

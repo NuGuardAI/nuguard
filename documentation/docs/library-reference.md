@@ -244,6 +244,10 @@ Module: `nuguard.common.streaming_models`
 
 Behavior and redteam streaming APIs return a typed `StreamRunHandle` that emits `StreamEvent` envelopes and resolves to the final result model.
 
+Streams emit `scenario_plan_ready`, `scenario_started`, and `scenario_progress` while scenarios execute. Progress payloads include the scenario ID, title, type, terminal status, and monotonic completion counts. `findings_delta` contains redteam findings and behavior turn reports as scenarios complete. When concurrency is greater than one, event sequence reflects execution completion order rather than scenario-plan order. The final result remains authoritative when scan-level aggregation or deduplication changes the final finding set. Under bounded queue pressure, low-priority progress updates may be dropped so lifecycle and terminal events can be delivered.
+
+Call `handle.cancel()` to request non-blocking cancellation, then `await handle.wait_closed(timeout=5.0)` to wait for worker shutdown without cancelling the worker if the wait expires. Cancellation emits a terminal `failed` event with `failure_stage="cancelled"`; `await handle.final_result()` raises `asyncio.CancelledError`.
+
 ## Target verify and session APIs
 
 Module: `nuguard.common.target_verify_public_api`
