@@ -135,3 +135,18 @@ async def test_all_scenarios_produce_results_across_phases() -> None:
     assert len(executed) == 3
     assert len(records) == 3
     assert {e[0] for e in executed} == {"Scenario phase1-a", "Scenario phase5-a", "Scenario phase9-a"}
+
+
+@pytest.mark.asyncio
+async def test_run_scenarios_emits_live_lifecycle_progress() -> None:
+    updates: list[dict] = []
+    orchestrator = _orchestrator()
+    orchestrator._progress_sink = updates.append
+    scenarios = [_scenario("phase1-a", attack_phase=1), _scenario("phase1-b", attack_phase=1)]
+
+    await orchestrator._run_scenarios(scenarios, _FakeExecutor([], slow_chain_ids=set()))  # type: ignore[arg-type]
+
+    assert updates[0] == {"kind": "plan", "scenarios_total": 2, "scenarios_completed": 0}
+    assert [update["kind"] for update in updates].count("scenario_started") == 2
+    completed = [update["scenarios_completed"] for update in updates if update["kind"] == "scenario_finished"]
+    assert completed == [1, 2]
