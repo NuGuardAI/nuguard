@@ -140,22 +140,7 @@ class BehaviorAnalyzer:
                         )
                     )
 
-                    if disc_path:
-                        _log.info(
-                            "BehaviorAnalyzer: SBOM-discovered endpoint %s "
-                            "(key=%s list=%s response_key=%s)",
-                            disc_path, disc_payload_key, disc_payload_list, disc_response_key,
-                        )
-                        updates: dict = {"target_endpoint": disc_path}
-                        if disc_payload_key and disc_payload_key != getattr(self._config, "chat_payload_key", "message"):
-                            updates["chat_payload_key"] = disc_payload_key
-                        if disc_payload_list != bool(getattr(self._config, "chat_payload_list", False)):
-                            updates["chat_payload_list"] = disc_payload_list
-                        if disc_response_key and not getattr(self._config, "chat_response_key", ""):
-                            updates["chat_response_key"] = disc_response_key
-                        self._config = self._config.model_copy(update=updates)
-                    else:
-                        # 2. Live HTTP probe fallback
+                    def _resolve_auth_headers() -> dict[str, str]:
                         auth_headers: dict[str, str] = {}
                         try:
                             from nuguard.common.auth import AuthConfig  # noqa: PLC0415
@@ -174,11 +159,61 @@ class BehaviorAnalyzer:
                                 auth_headers = getattr(rt, "initial_headers", {}) or {}
                         except Exception:
                             pass
+                        return auth_headers
 
+                    if disc_path:
+                        _log.info(
+                            "BehaviorAnalyzer: SBOM-discovered endpoint %s "
+                            "(key=%s list=%s response_key=%s)",
+                            disc_path, disc_payload_key, disc_payload_list, disc_response_key,
+                        )
+                        # The keyword-scoring fallback in discover_chat_config_from_sbom
+                        # (used when no API_ENDPOINT node carries an explicit
+                        # chat_payload_key, e.g. a plain Express/Node route) returns the
+                        # caller's *default* payload key/shape unchanged — it never
+                        # actually inspected the handler body. Treat "still the literal
+                        # default" as "unconfirmed" and refine it with a live probe
+                        # pinned to this path, mirroring RedteamOrchestrator's Option B
+                        # (_maybe_probe_endpoints) so behavior mode doesn't silently send
+                        # the wrong body shape (e.g. {"message": ...} to an endpoint that
+                        # expects OpenAI-style {"messages": [{"role", "content"}]}).
+                        if disc_payload_key == "message" and not bool(disc_payload_list):
+                            _log.info(
+                                "BehaviorAnalyzer: endpoint known (%s) — probing payload "
+                                "structure to confirm payload key",
+                                disc_path,
+                            )
+                            refine_result = await probe_chat_endpoints(
+                                target_url=target_url,
+                                sbom=self._sbom,
+                                auth_headers=_resolve_auth_headers() or None,
+                                timeout=15.0,
+                                known_response_key=disc_response_key,
+                                hint_path=disc_path,
+                            )
+                            if refine_result:
+                                _, refined_key, refined_list = refine_result
+                                if refined_key != disc_payload_key or refined_list != disc_payload_list:
+                                    _log.info(
+                                        "BehaviorAnalyzer: refined payload shape for %s "
+                                        "(key=%s list=%s)",
+                                        disc_path, refined_key, refined_list,
+                                    )
+                                disc_payload_key, disc_payload_list = refined_key, refined_list
+                        updates: dict = {"target_endpoint": disc_path}
+                        if disc_payload_key and disc_payload_key != getattr(self._config, "chat_payload_key", "message"):
+                            updates["chat_payload_key"] = disc_payload_key
+                        if disc_payload_list != bool(getattr(self._config, "chat_payload_list", False)):
+                            updates["chat_payload_list"] = disc_payload_list
+                        if disc_response_key and not getattr(self._config, "chat_response_key", ""):
+                            updates["chat_response_key"] = disc_response_key
+                        self._config = self._config.model_copy(update=updates)
+                    else:
+                        # 2. Live HTTP probe fallback
                         probe_result = await probe_chat_endpoints(
                             target_url=target_url,
                             sbom=self._sbom,
-                            auth_headers=auth_headers or None,
+                            auth_headers=_resolve_auth_headers() or None,
                             timeout=15.0,
                         )
                         if probe_result:

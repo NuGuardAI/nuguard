@@ -186,6 +186,30 @@ def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
     return current
 
 
+def _extract_sse_event_text(event: dict[str, Any]) -> str:
+    """Extract incremental text from one generic (non-framework-adapter) SSE event.
+
+    Covers the plain ``{"text"|"content"|"message": "..."}`` shapes as well as
+    the OpenAI/Vercel-AI-SDK streaming-completion shape
+    ``{"choices": [{"delta": {"content": "..."}}]}`` used by e.g. OWASP Juice
+    Shop's ``/rest/chat`` and any other ``ai`` package / OpenAI-compatible
+    streaming chat backend. An ``{"error": "..."}`` event is deliberately
+    *not* treated as text here — surfacing it as if it were assistant output
+    would poison the transcript with the app's own error message.
+    """
+    if not isinstance(event, dict) or "error" in event:
+        return ""
+    text = event.get("text") or event.get("content") or event.get("message") or ""
+    if text:
+        return str(text)
+    choices = event.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        delta = choices[0].get("delta")
+        if isinstance(delta, dict):
+            return str(delta.get("content") or "")
+    return ""
+
+
 def _extract_common_response_text(data: Any) -> str:
     """Try the common generic response shapes shared by chat/streaming clients.
 
@@ -899,10 +923,7 @@ class TargetAppClient:
                     from nuguard.redteam.target.sse import parse_sse_events  # noqa: PLC0415
 
                     _sse_events = parse_sse_events(resp.text)
-                    _sse_text = "".join(
-                        str(_ev.get("text") or _ev.get("content") or _ev.get("message") or "")
-                        for _ev in _sse_events
-                    )
+                    _sse_text = "".join(_extract_sse_event_text(_ev) for _ev in _sse_events)
                     data = _sse_text or json.dumps(_sse_events)
                 else:
                     data = resp.json()
@@ -1200,12 +1221,7 @@ class TargetAppClient:
                                 tool_calls.extend(chunk_tools)
                         else:
                             # Generic: look for content/text in the event dict
-                            chunk_text = (
-                                event.get("text")
-                                or event.get("content")
-                                or event.get("message", "")
-                                or ""
-                            )
+                            chunk_text = _extract_sse_event_text(event)
                             tool_calls = []
                         if chunk_text:
                             accumulated_text_parts.append(chunk_text)

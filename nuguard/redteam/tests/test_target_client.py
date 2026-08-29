@@ -399,6 +399,54 @@ async def test_send_sse_response_extracts_text_without_error():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_send_sse_openai_delta_shape_extracts_text():
+    """Regression: OWASP Juice Shop's /rest/chat (Vercel AI SDK ``streamText``)
+    emits ``data: {"choices":[{"delta":{"content": "..."}}]}`` chunks — the
+    OpenAI streaming-completion shape — not the flat ``{"content": ...}``
+    shape covered above. Before the fix these chunks were invisible to the
+    generic SSE join, and the client fell back to json-dumping the raw event
+    list as the "response text"."""
+    sse_body = (
+        'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n'
+        'data: {"choices": [{"delta": {"content": " world"}}]}\n\n'
+        'data: {"choices": [{"finish_reason": "stop"}]}\n\n'
+        "data: [DONE]\n\n"
+    )
+    respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(
+            200, content=sse_body, headers={"content-type": "text/event-stream"}
+        )
+    )
+    client = await _client()
+    async with client:
+        text, tool_calls = await client.send("hi", _session())
+    assert text == "Hello world"
+    assert tool_calls == []
+    assert client._consecutive_errors == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_sse_error_event_not_treated_as_response_text():
+    """An SSE stream whose only event is an app-level error (e.g. juice-shop's
+    "messages must not be empty") must not have that error string extracted as
+    if it were assistant text — it should fall through to the raw-event-list
+    JSON so callers/judges can still see and flag it as a failure."""
+    sse_body = 'data: {"error": "LLM error: messages must not be empty"}\n\ndata: [DONE]\n\n'
+    respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(
+            200, content=sse_body, headers={"content-type": "text/event-stream"}
+        )
+    )
+    client = await _client()
+    async with client:
+        text, _ = await client.send("hi", _session())
+    assert "messages must not be empty" in text
+    assert client._consecutive_errors == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_send_sse_response_does_not_trip_circuit_breaker():
     """Repeated SSE responses never advance the circuit breaker (they are successes)."""
     sse_body = 'data: {"content": "ok"}\n\n'
