@@ -52,7 +52,12 @@ _OPT_OUTPUT = typer.Option(
     help="Output path for the generated SBOM JSON.",
 )
 _OPT_LLM = typer.Option(
-    False, "--llm/--no-llm", help="Enable LLM enrichment (requires LITELLM_API_KEY).",
+    None, "--llm/--no-llm",
+    help=(
+        "Enable LLM enrichment. Defaults to on when llm.api_key is configured "
+        "in nuguard.yaml (or sbom_generation.llm if set); pass --no-llm to force "
+        "it off."
+    ),
 )
 _OPT_FORMAT = typer.Option(
     "json", "--format", "-f",
@@ -99,7 +104,7 @@ def _validate_inputs(
     from_repo: Optional[str],
     token: Optional[str],
     output: Path,
-    llm: bool,
+    llm: Optional[bool],
     format: str,
 ) -> None:
     """Validate all inputs before any work starts; exit with a clear message on failure."""
@@ -255,7 +260,7 @@ def _do_generate(
     ref: str,
     token: Optional[str],
     output: Path,
-    llm: bool,
+    llm: Optional[bool],
     format: str,
     config_file: Optional[Path],
     llm_concurrency: Optional[int] = None,
@@ -291,8 +296,14 @@ def _do_generate(
         )
         raise typer.Exit(code=1)
 
-    # --llm flag takes precedence; fall back to sbom_generation.llm from nuguard.yaml
-    effective_llm = llm or cfg.sbom_llm_enabled
+    # --llm flag takes precedence; fall back to sbom_generation.llm from nuguard.yaml;
+    # else auto-enable when llm.api_key is configured
+    if llm is not None:
+        effective_llm = llm
+    elif cfg.sbom_llm_enabled is not None:
+        effective_llm = cfg.sbom_llm_enabled
+    else:
+        effective_llm = bool(cfg.litellm_api_key)
     _sbom_model = cfg.litellm_model or ""
     _sbom_api_base = cfg.litellm_api_base if _sbom_model.startswith("azure") else None
     # Issue #197: only pass llm_concurrency when explicitly set (CLI flag takes
@@ -396,7 +407,7 @@ def sbom_default(
     ref: str = _OPT_REF,
     token: Optional[str] = _OPT_TOKEN,
     output: Path = _OPT_OUTPUT,
-    llm: bool = _OPT_LLM,
+    llm: Optional[bool] = _OPT_LLM,
     format: str = _OPT_FORMAT,
     config_file: Optional[Path] = _OPT_CONFIG,
     llm_concurrency: Optional[int] = _OPT_LLM_CONCURRENCY,
@@ -417,7 +428,7 @@ def generate(
     ref: str = _OPT_REF,
     token: Optional[str] = _OPT_TOKEN,
     output: Path = _OPT_OUTPUT,
-    llm: bool = _OPT_LLM,
+    llm: Optional[bool] = _OPT_LLM,
     format: str = _OPT_FORMAT,
     config_file: Optional[Path] = _OPT_CONFIG,
     llm_concurrency: Optional[int] = _OPT_LLM_CONCURRENCY,

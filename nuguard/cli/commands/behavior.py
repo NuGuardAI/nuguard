@@ -41,6 +41,7 @@ def behavior_command(
         "--mode",
         "-m",
         help="Analysis mode: static | dynamic | static+dynamic",
+        # minimal is intentionally omitted — internal developer option
     ),
     target: Optional[str] = typer.Option(
         None, "--target", help="Override behavior.target URL"
@@ -196,8 +197,8 @@ async def _run_behavior(
     if updates:
         bc = bc.model_copy(update=updates)
 
-    # 3. Check that target is set for dynamic mode
-    if "dynamic" in mode and not bc.target:
+    # 3. Check that target is set for dynamic/minimal mode
+    if ("dynamic" in mode or mode == "minimal") and not bc.target:
         _err_console.print(
             "[red]Error:[/red] behavior.target is not set. "
             "Add it to nuguard.yaml or pass --target."

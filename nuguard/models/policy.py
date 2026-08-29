@@ -262,3 +262,44 @@ class PolicyControl(BaseModel):
             "SBOM match was found."
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Cognitive Policy drafting (SBOM -> cognitive-policy.md)
+# ---------------------------------------------------------------------------
+
+
+class PolicyDraftSource(str, Enum):
+    """How a drafted policy's content was produced."""
+
+    LLM = "llm"
+    SKELETON = "skeleton"
+
+
+class PolicyDraftRequest(BaseModel):
+    """Input to drafting a Cognitive Policy Markdown document from an AI-SBOM."""
+
+    sbom_path: str = Field(description="Path to the AI-SBOM JSON file to draft the policy from")
+    app_description: str | None = Field(
+        default=None,
+        description=(
+            "Short description of what the application does. Falls back to a "
+            "generic description derived from the SBOM when omitted."
+        ),
+    )
+    use_llm: bool = Field(
+        default=False,
+        description="Use an LLM to draft the policy. Falls back to the blank skeleton when False.",
+    )
+
+
+class PolicyDraftResult(BaseModel):
+    """Output of drafting a Cognitive Policy Markdown document from an AI-SBOM."""
+
+    markdown: str = Field(description="The drafted Cognitive Policy Markdown document")
+    source: PolicyDraftSource = Field(
+        description="Whether the content came from an LLM draft or the blank skeleton"
+    )
+    sbom_context: str = Field(
+        default="", description="Plain-text SBOM summary used as LLM context, empty if none"
+    )

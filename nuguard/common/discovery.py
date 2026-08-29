@@ -95,7 +95,8 @@ class DiscoveredProfile(BaseModel):
 _REFUSAL_RE = re.compile(
     r"\b(sorry|apologize|can'?t|cannot|unable to|not able to|"
     r"I can only|do not have access|cannot access|cannot retrieve|"
-    r"cannot list|from the information I|I don'?t have)\b",
+    r"cannot list|from the information I|I don'?t have|I don'?t use|"
+    r"no,? I don'?t)\b",
     re.IGNORECASE,
 )
 
@@ -677,6 +678,25 @@ _LIST_ITEM_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(.+)$")
 # Strip a trailing parenthetical/explanation after a colon or em-dash so
 # "Booking (checks availability)" -> "Booking"
 _TRAILING_EXPLANATION_RE = re.compile(r"\s*[:–—(].*$")
+# Markdown bold/italic asterisks wrapping a name, e.g. "**get_vitals**" ->
+# "get_vitals". Asterisks only — underscores are left alone since they're
+# also valid mid-identifier characters in real tool names (e.g. get_vitals),
+# and markdown italic single-underscores are rare in these agent replies.
+_MARKDOWN_EMPHASIS_RE = re.compile(r"\*+")
+# A first-person narrative fragment ("I read your question and reason about...")
+# rather than a plausible tool/sub-agent name — these show up when an agent
+# explains its own single-agent reasoning steps as a bulleted list.
+_NARRATIVE_ITEM_RE = re.compile(r"^(I|I'm|I've|We|We're)\b", re.IGNORECASE)
+# Leading connective clause on a prose (non-bulleted) answer, e.g. "I can
+# book flights" -> "book flights". Stripped before the narrative check so a
+# genuine capability isn't discarded just because it was phrased with a
+# leading "I can"/"I'm able to" — unlike a bulleted item, prose fragments are
+# expected to carry this kind of lead-in.
+_LEADING_CONNECTIVE_RE = re.compile(
+    r"^(?:i(?:'m| am)?\s+(?:can(?:\s+also)?|could|able to)|you can|we can)\s+",
+    re.IGNORECASE,
+)
+_MAX_ITEM_WORDS = 6
 
 
 class AgentCapabilityGap(BaseModel):
@@ -741,6 +761,20 @@ def sbom_capability_gaps(sbom: "AiSbomDocument | None") -> list[AgentCapabilityG
     return gaps
 
 
+def _is_plausible_capability_name(cleaned: str) -> bool:
+    """Reject narrative sentence fragments that aren't tool/sub-agent names.
+
+    An agent describing its own single-agent reasoning steps as a bulleted
+    list (e.g. "I read your question and reason about which tools are
+    needed") looks like a list item syntactically but is prose, not a name.
+    """
+    if not cleaned:
+        return False
+    if _NARRATIVE_ITEM_RE.match(cleaned):
+        return False
+    return len(cleaned.split()) <= _MAX_ITEM_WORDS
+
+
 def _extract_list_items(text: str) -> list[str]:
     """Pull bullet/numbered list item names out of a free-text agent reply.
 
@@ -753,7 +787,8 @@ def _extract_list_items(text: str) -> list[str]:
         m = _LIST_ITEM_RE.match(line)
         if m:
             cleaned = _TRAILING_EXPLANATION_RE.sub("", m.group(1)).strip().rstrip(".")
-            if cleaned:
+            cleaned = _MARKDOWN_EMPHASIS_RE.sub("", cleaned).strip()
+            if _is_plausible_capability_name(cleaned):
                 items.append(cleaned)
     if items:
         return items
@@ -762,9 +797,11 @@ def _extract_list_items(text: str) -> list[str]:
     parts = re.split(r",|\band\b", first_sentence)
     for part in parts:
         cleaned = _TRAILING_EXPLANATION_RE.sub("", part).strip(" .")
+        cleaned = _MARKDOWN_EMPHASIS_RE.sub("", cleaned).strip()
+        cleaned = _LEADING_CONNECTIVE_RE.sub("", cleaned).strip()
         # Skip short connective fragments ("I can", "help you with") that
         # aren't plausible capability/tool names.
-        if len(cleaned.split()) in range(1, 6) and len(cleaned) > 2:
+        if len(cleaned) > 2 and _is_plausible_capability_name(cleaned):
             items.append(cleaned)
     return items
 

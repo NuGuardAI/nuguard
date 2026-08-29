@@ -176,6 +176,9 @@ rules:
   # Go AI/LLM security rules (issues #180 / #223)
   # #223 adds qualified official non-streaming SDK sinks; TLS / credential
   # option flows remain unchanged (WithHTTPClient follow-up).
+  # #232 extends coverage to official streaming call shapes, credential
+  # options (option.WithAPIKey and friends), and insecure-TLS flows wired
+  # through option.WithHTTPClient.
   # -------------------------------------------------------------------------
 
   - id: nuguard-go-llm-prompt-injection-sprintf
@@ -219,7 +222,7 @@ rules:
           - pattern: $CLIENT.$METHOD($CTX, $REQ)
           - metavariable-regex:
               metavariable: $METHOD
-              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
       - requires: FORMATTED
         patterns:
           - pattern: $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
@@ -238,6 +241,25 @@ rules:
       - requires: FORMATTED
         patterns:
           - pattern: $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+      # Official streaming variants (#232)
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.Chat.Completions.NewStreaming($CTX, $REQ, ...)
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.Responses.NewStreaming($CTX, $REQ, ...)
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.Messages.NewStreaming($CTX, $REQ, ...)
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.ConverseStream($CTX, $REQ, ...)
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.InvokeModelWithResponseStream($CTX, $REQ, ...)
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.Models.GenerateContentStream($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
     message: >
       Potential prompt injection: untrusted string input is interpolated into an
       LLM prompt via fmt.Sprintf and passed to an AI/LLM API call. Validate and
@@ -276,6 +298,15 @@ rules:
               metavariable: $KEY
               regex: '"(sk-|AIza)'
           - pattern-not: $CFG.ApiKey = os.Getenv(...)
+      # Official SDK credential options (#232) — option.WithAPIKey("sk-…") etc.
+      - patterns:
+          - pattern-either:
+              - pattern: option.WithAPIKey($KEY)
+              - pattern: option.WithToken($KEY)
+              - pattern: option.WithAuthToken($KEY)
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: '"(sk-|AIza)'
     message: >
       Hardcoded AI service API key or auth token detected. Store secrets in
       environment variables or a secrets manager. Never commit API keys to
@@ -294,12 +325,12 @@ rules:
           - pattern: $CLIENT.$METHOD(context.Background(), $REQ)
           - metavariable-regex:
               metavariable: $METHOD
-              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
       - patterns:
           - pattern: $CLIENT.$METHOD(context.TODO(), $REQ)
           - metavariable-regex:
               metavariable: $METHOD
-              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
       - patterns:
           - pattern: |
               $CTX := context.Background()
@@ -307,7 +338,7 @@ rules:
               $CLIENT.$METHOD($CTX, $REQ)
           - metavariable-regex:
               metavariable: $METHOD
-              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
           - pattern-not: |
               $CTX := context.Background()
               ...
@@ -339,7 +370,7 @@ rules:
               $CLIENT.$METHOD($CTX, $REQ)
           - metavariable-regex:
               metavariable: $METHOD
-              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
           - pattern-not: |
               $CTX := context.TODO()
               ...
@@ -371,7 +402,7 @@ rules:
               $CLIENT.$METHOD($CTX, $REQ)
           - metavariable-regex:
               metavariable: $METHOD
-              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
           - pattern-not: |
               $CTX = context.Background()
               ...
@@ -403,7 +434,7 @@ rules:
               $CLIENT.$METHOD($CTX, $REQ)
           - metavariable-regex:
               metavariable: $METHOD
-              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
           - pattern-not: |
               $CTX = context.TODO()
               ...
@@ -452,6 +483,23 @@ rules:
           - pattern: $CLIENT.InvokeModel(context.TODO(), $REQ, ...)
       - patterns:
           - pattern: $CLIENT.Models.GenerateContent(context.TODO(), $MODEL, $CONTENTS, $CONFIG, ...)
+      # Official streaming variants (#232) — direct literal-context calls.
+      # Escaped-context (context.WithTimeout) handling for qualified streaming
+      # shapes is covered by the generic $METHOD patterns above for unqualified
+      # receivers; qualified receivers only match the direct forms here.
+      - pattern-either:
+          - pattern: $CLIENT.Chat.Completions.NewStreaming(context.Background(), $REQ, ...)
+          - pattern: $CLIENT.Chat.Completions.NewStreaming(context.TODO(), $REQ, ...)
+          - pattern: $CLIENT.Responses.NewStreaming(context.Background(), $REQ, ...)
+          - pattern: $CLIENT.Responses.NewStreaming(context.TODO(), $REQ, ...)
+          - pattern: $CLIENT.Messages.NewStreaming(context.Background(), $REQ, ...)
+          - pattern: $CLIENT.Messages.NewStreaming(context.TODO(), $REQ, ...)
+          - pattern: $CLIENT.ConverseStream(context.Background(), $REQ, ...)
+          - pattern: $CLIENT.ConverseStream(context.TODO(), $REQ, ...)
+          - pattern: $CLIENT.InvokeModelWithResponseStream(context.Background(), $REQ, ...)
+          - pattern: $CLIENT.InvokeModelWithResponseStream(context.TODO(), $REQ, ...)
+          - pattern: $CLIENT.Models.GenerateContentStream(context.Background(), $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern: $CLIENT.Models.GenerateContentStream(context.TODO(), $MODEL, $CONTENTS, $CONFIG, ...)
       - patterns:
           - pattern: |
               $CTX := context.Background()
@@ -1188,7 +1236,7 @@ rules:
               }
           - metavariable-regex:
               metavariable: $METHOD
-              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
       - patterns:
           - pattern: |
               func $FN(...) {
@@ -1212,7 +1260,7 @@ rules:
               }
           - metavariable-regex:
               metavariable: $METHOD
-              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
       - patterns:
           - pattern: |
               func $FN(...) {
@@ -1232,7 +1280,7 @@ rules:
               }
           - metavariable-regex:
               metavariable: $METHOD
-              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
       - patterns:
           - pattern: |
               func $FN(...) {
@@ -1252,7 +1300,53 @@ rules:
               }
           - metavariable-regex:
               metavariable: $METHOD
-              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
+      # option.WithHTTPClient flows (#232) — insecure transport wired directly
+      # into the official SDK client constructor via client options. The sink
+      # call is matched separately so qualified receivers (e.g.
+      # client.Models.GenerateContent) still bind.
+      - patterns:
+          - pattern: |
+              func $FN(...) {
+                ...
+                $TRANSPORT := &http.Transport{
+                  TLSClientConfig: &tls.Config{
+                    InsecureSkipVerify: true,
+                  },
+                }
+                ...
+                $HTTP := &http.Client{
+                  Transport: $TRANSPORT,
+                }
+                ...
+                $CLIENT := $NEW(..., option.WithHTTPClient($HTTP), ...)
+                ...
+              }
+          - pattern-either:
+              - pattern: $SINK.$METHOD($CTX, ...)
+              - pattern: $SINK.Models.$METHOD($CTX, ...)
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
+      - patterns:
+          - pattern: |
+              func $FN(...) {
+                ...
+                $CLIENT := $NEW(..., option.WithHTTPClient(&http.Client{
+                  Transport: &http.Transport{
+                    TLSClientConfig: &tls.Config{
+                      InsecureSkipVerify: true,
+                    },
+                  },
+                }), ...)
+                ...
+              }
+          - pattern-either:
+              - pattern: $SINK.$METHOD($CTX, ...)
+              - pattern: $SINK.Models.$METHOD($CTX, ...)
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(CreateChatCompletion|CreateCompletion|CreateChatCompletionStream|ConverseStream|InvokeModelWithResponseStream|GenerateContent|GenerateContentStream|CreateMessage|SendMessage|GenerateText)$
     message: >
       HTTP client TLS configuration disables certificate verification
       (InsecureSkipVerify: true) on an HTTP client assigned to a config that is

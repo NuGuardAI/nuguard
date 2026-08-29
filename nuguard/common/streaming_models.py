@@ -15,6 +15,7 @@ STREAM_SCHEMA_VERSION = "1.0"
 StreamEventType = Literal[
     "run_started",
     "scenario_plan_ready",
+    "scenario_started",
     "scenario_progress",
     "findings_delta",
     "heartbeat",
@@ -32,6 +33,9 @@ class StreamProgressPayload(BaseModel):
     eta_seconds: int | None = None
     current_goal_type: str | None = None
     current_scenario_type: str | None = None
+    scenario_id: str | None = None
+    scenario_title: str | None = None
+    scenario_status: str | None = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -103,7 +107,7 @@ def apply_event_to_redteam_state(state: RedteamProgressState, event: StreamEvent
     """Apply one event to the redteam reduced state deterministically."""
     if event.event_type == "scenario_plan_ready":
         total = int(event.payload.get("scenarios_total") or 0)
-        if state.scenarios_total == 0 and total > 0:
+        if total >= state.scenarios_total and total > 0:
             state.scenarios_total = total
             state.progress_pct = _pct(state.scenarios_completed, state.scenarios_total)
     elif event.event_type == "scenario_progress":
@@ -126,7 +130,7 @@ def apply_event_to_behavior_state(state: BehaviorProgressState, event: StreamEve
     """Apply one event to the behavior reduced state deterministically."""
     if event.event_type == "scenario_plan_ready":
         total = int(event.payload.get("scenarios_total") or 0)
-        if state.scenarios_total == 0 and total > 0:
+        if total >= state.scenarios_total and total > 0:
             state.scenarios_total = total
             state.progress_pct = _pct(state.scenarios_completed, state.scenarios_total)
     elif event.event_type == "scenario_progress":

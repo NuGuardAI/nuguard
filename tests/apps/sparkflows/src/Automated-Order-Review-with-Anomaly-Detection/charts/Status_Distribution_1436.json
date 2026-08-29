@@ -1,0 +1,127 @@
+{
+  "name": "Status Distribution",
+  "uuid": "4a3f507f-7d8a-4b5d-b1dc-20dd31272ac1",
+  "icon": {
+    "type": "svg",
+    "icon": "assets/images/icons/actions-icon/interactive.svg"
+  },
+  "category": "",
+  "sheets": [
+    {
+      "id": 0,
+      "name": "",
+      "description": "",
+      "type": "",
+      "chartType": "PIE_CHART",
+      "datasetUuid": "066b647a-8fe2-425f-855e-a84c2670b09a",
+      "datasetName": "",
+      "colors": [
+        "#77c8d0",
+        "#ffe3b2",
+        "#faa19b",
+        "#a1bdfd",
+        "#b6d7d0",
+        "#ffb2c8",
+        "#ffd5be",
+        "#c7d2ff",
+        "#83e3f4",
+        "#d1bfff",
+        "#649bf7",
+        "#f8c9ee",
+        "#219aad",
+        "#ffbfa3"
+      ],
+      "x": [
+        {
+          "columnName": "Status",
+          "category": "TEXT",
+          "sort": "NATURAL_SORTING",
+          "maxDisplayedVals": "100",
+          "xGroupMode": "AUTO"
+        }
+      ],
+      "y": [
+        {
+          "columnName": "OrderNumber",
+          "category": "TEXT",
+          "aggregate": "COUNT"
+        }
+      ],
+      "groupBy": [],
+      "filters": [
+        {
+          "datasetUuid": "066b647a-8fe2-425f-855e-a84c2670b09a",
+          "columnName": "Status",
+          "columnType": "string",
+          "columnCategory": "TEXT",
+          "min": 0,
+          "max": 10,
+          "minValue": 0,
+          "maxValue": 0,
+          "uniqueValues": [
+            {
+              "value": "Manually Approved",
+              "count": "16"
+            },
+            {
+              "value": "Validation Failed",
+              "count": "3"
+            },
+            {
+              "value": "Successfully Processed",
+              "count": "5"
+            },
+            {
+              "value": "Validating",
+              "count": "1"
+            }
+          ],
+          "uniqueSelectedValues": [],
+          "value": ""
+        }
+      ],
+      "calculatedFields": [],
+      "drillDown": {
+        "enabled": false,
+        "levels": []
+      },
+      "chartOptions": {
+        "legendPosition": "top",
+        "totalPosition": "bottom",
+        "tooltip": "value",
+        "xlabel": "",
+        "ylabel": "",
+        "y1label": "",
+        "total": false,
+        "label": true,
+        "horizontalBar": false,
+        "beginAtZero": true,
+        "stacked": false,
+        "hideTitleOnDashboard": false,
+        "datalabels": {
+          "fontSize": "14px",
+          "formatter": "percentage"
+        },
+        "summaryCards": {
+          "textCenter": false,
+          "lblFontSize": "22px",
+          "descFontSize": "12px",
+          "lblColor": "#2F80ED",
+          "descColor": "#A4A4A6",
+          "descTop": true,
+          "divider": false,
+          "dividerColor": "#bebebe",
+          "formattedValue": 2
+        }
+      },
+      "filterDependencies": [
+        {
+          "parentColumn": "",
+          "childColumn": "",
+          "restrict": false,
+          "autoClear": false
+        }
+      ]
+    }
+  ]
+}
