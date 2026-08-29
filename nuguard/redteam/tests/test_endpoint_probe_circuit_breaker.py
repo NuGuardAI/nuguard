@@ -70,7 +70,12 @@ class _MixedClient:
         self._consecutive_errors = 0
         self._consecutive_endpoint_errors = 0
 
-    async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+    async def send(
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[str, list[dict]]:
         self.chat_sends += 1
         self._consecutive_errors = 0
         return "a perfectly healthy chat reply", []

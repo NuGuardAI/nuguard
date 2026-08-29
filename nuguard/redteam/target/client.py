@@ -648,8 +648,17 @@ class TargetAppClient:
         self._client.headers.update(headers)
         self._auth_header_names.update(headers)
 
-    async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+    async def send(
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[str, list[dict]]:
         """Send a prompt payload to the target and return (response_text, tool_calls).
+
+        ``extra_headers`` (e.g. ``{"Cookie": "show_tool_calls=true"}``) is merged
+        on top of the client's default headers for this request only — used to
+        test client-controlled debug/observability toggles.
 
         When ``max_concurrent_requests`` is set (semaphore mode), transient app
         errors ("having difficulty connecting") are retried **inside** the semaphore
@@ -665,9 +674,9 @@ class TargetAppClient:
         """
         if self._request_sem is not None:
             async with self._request_sem:
-                text, calls = await self._send_with_transient_retry(payload, session)
+                text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
         else:
-            text, calls = await self._send_impl(payload, session)
+            text, calls = await self._send_impl(payload, session, extra_headers)
         # Single choke point: strip known app-generated response-wrapper
         # boilerplate (see nuguard.common.transport.strip_known_boilerplate)
         # once, here, so every downstream consumer (LLM judge, topic-refusal
@@ -675,7 +684,10 @@ class TargetAppClient:
         return strip_known_boilerplate(text), calls
 
     async def _send_with_transient_retry(
-        self, payload: str, session: AttackSession
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
     ) -> tuple[str, list[dict]]:
         """Send with in-semaphore transient-error retries (holds the semaphore during waits).
 
@@ -710,7 +722,7 @@ class TargetAppClient:
         calls: list[dict] = []
 
         while True:
-            text, calls = await self._send_impl(payload, session)
+            text, calls = await self._send_impl(payload, session, extra_headers)
             outcome = classify_transport(text)
             if outcome not in RETRIABLE_OUTCOMES:
                 return text, calls
@@ -826,7 +838,12 @@ class TargetAppClient:
         history.append({"role": "user", "content": payload})
         return history
 
-    async def _send_impl(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+    async def _send_impl(
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[str, list[dict]]:
         """Inner send implementation (called with or without the request semaphore)."""
         data: dict | list | str = {}
         body: dict | None = None
@@ -907,9 +924,9 @@ class TargetAppClient:
                         return f"[CONFIG_ERROR: unresolved path param {_missing_params[0]!r}]", []
 
                 if self._chat_payload_format == "form":
-                    resp = await self._client.post(chat_path, data=body)
+                    resp = await self._client.post(chat_path, data=body, headers=extra_headers)
                 else:
-                    resp = await self._client.post(chat_path, json=body)
+                    resp = await self._client.post(chat_path, json=body, headers=extra_headers)
                 resp.raise_for_status()
                 _content_type = resp.headers.get("content-type", "")
                 if "text/event-stream" in _content_type and self._framework_adapter is None:

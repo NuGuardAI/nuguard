@@ -51,6 +51,25 @@ async def test_send_2xx_returns_immediately():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_send_extra_headers_merged_on_request_only_when_passed():
+    """extra_headers (e.g. a debug-toggle Cookie) must appear on the outgoing
+    request when supplied, and must not leak into a subsequent call that
+    doesn't pass any — each call's extra_headers are per-request, not
+    client-wide state (unlike update_default_headers())."""
+    route = respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(200, json={"response": "ok"})
+    )
+    client = await _client()
+    async with client:
+        await client.send("hi", _session(), extra_headers={"Cookie": "show_tool_calls=true"})
+        assert route.calls.last.request.headers.get("cookie") == "show_tool_calls=true"
+
+        await client.send("hi", _session())
+        assert "cookie" not in route.calls.last.request.headers
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_send_form_payload_mode_uses_form_encoded_body():
     """Form payload mode should send message in request.form-style body."""
     route = respx.post(f"{BASE}{CHAT}").mock(

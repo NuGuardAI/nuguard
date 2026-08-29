@@ -41,7 +41,12 @@ class _FakeClient:
         if headers:
             self.updated_headers.update(headers)
 
-    async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+    async def send(
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[str, list[dict]]:
         self.send_calls += 1
         if self.send_calls == 1:
             return "[HTTP 401]", []

@@ -901,14 +901,15 @@ class AttackExecutor:
         else:
             if self._app_log_reader:
                 self._app_log_reader.mark()
-            response, tool_calls = await self._client.send(payload, session)
+            _extra_headers = step.extra_headers or None
+            response, tool_calls = await self._client.send(payload, session, _extra_headers)
             if response.startswith("[HTTP 401]") and await _refresh_auth_headers():
                 _log.info(
                     "Chain %s step %s: 401 received on chat endpoint, retrying after auth refresh",
                     chain.chain_id,
                     step.step_id,
                 )
-                response, tool_calls = await self._client.send(payload, session)
+                response, tool_calls = await self._client.send(payload, session, _extra_headers)
             # 429 scenario-level retry — on top of TargetAppClient's per-request
             # retries.  Back off and retry the same step payload; the target is
             # alive and functioning, so this must NOT count as a chain failure.
@@ -919,7 +920,7 @@ class AttackExecutor:
                     _rl_attempt,
                     context=f"chain={chain.chain_id} step={step.step_id}",
                 )
-                response, tool_calls = await self._client.send(payload, session)
+                response, tool_calls = await self._client.send(payload, session, _extra_headers)
             # Mid-turn interrupts: the target may ask for a credential or ask
             # a confirmation/clarification question (e.g. "I can send an OTP —
             # let me know if you'd like me to send it now") instead of
@@ -940,6 +941,16 @@ class AttackExecutor:
             session.add_turn(payload, response, tool_calls)
             result = StepResult(step=step, response=response, tool_calls=tool_calls)
             result.resolved_payload = _resolved_payload
+            if step.success_requires_new_tool_disclosure:
+                from nuguard.redteam.executor.tool_trace_judge import (
+                    new_tool_call_disclosure,
+                )
+                _baseline_calls = (
+                    session.turns[-2].tool_calls if len(session.turns) >= 2 else []
+                )
+                result.success_signal_found = new_tool_call_disclosure(
+                    tool_calls, _baseline_calls
+                )
 
         # DISCOVER step: store golden data and exit early — never a finding
         if step.step_type == "DISCOVER":
