@@ -406,6 +406,16 @@ def init_command(
         "--llm/--no-llm",
         help="Use an LLM to draft cognitive-policy.md with sensible defaults (requires LITELLM_API_KEY).",
     ),
+    config: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Existing nuguard.yaml to source the --llm drafting model/credentials from "
+        "(its llm.model/llm.api_key/llm.api_base — keeps this call off the target app's "
+        "own LLM quota). Only used with --llm; ignored otherwise. Falls back to generic "
+        "env-var credential discovery (LITELLM_API_KEY, GEMINI_API_KEY, ...) when omitted "
+        "or the file doesn't exist.",
+    ),
 ) -> None:
     """Create a nuguard.yaml config file with sensible defaults for this project.
 
@@ -423,6 +433,7 @@ def init_command(
       nuguard init --target http://localhost:8080
       nuguard init --target http://localhost:8080 --source ./src --force
       nuguard init --target http://localhost:8080 --llm  # draft policy with LLM
+      nuguard init --llm --config nuguard.yaml  # draft policy using that file's llm: settings
     """
     # Resolve output directory and nuguard.yaml path
     if path is not None:
@@ -473,7 +484,23 @@ def init_command(
     if use_llm:
         from nuguard.common.llm_client import LLMClient
         from nuguard.policy.compiler import draft_policy
-        llm_client = LLMClient()
+
+        drafting_model: str | None = None
+        drafting_api_key: str | None = None
+        drafting_api_base: str | None = None
+        if config is not None and config.exists():
+            from nuguard.config import ConfigError, load_config
+
+            try:
+                drafting_cfg = load_config(config)
+            except ConfigError as exc:
+                typer.echo(f"  warning  failed to load --config {config} for LLM drafting: {exc}", err=True)
+            else:
+                drafting_model = drafting_cfg.litellm_model
+                drafting_api_key = drafting_cfg.litellm_api_key
+                if drafting_cfg.litellm_model.startswith("azure"):
+                    drafting_api_base = drafting_cfg.litellm_api_base
+        llm_client = LLMClient(model=drafting_model, api_key=drafting_api_key, api_base=drafting_api_base)
         if not getattr(llm_client, "api_key", None):
             typer.echo(
                 "  warning  --llm requested but no API key found "
