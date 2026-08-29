@@ -319,15 +319,18 @@ class BrowserLoginSession:
                 if await locator.count() > 0:
                     await locator.fill(value, timeout=2000)
                     return True
-            except Exception as exc:  # noqa: BLE001
-                # No exc_info/traceback, and no str(exc) either: `value` (a
-                # credential — username or password) is a local in this frame,
-                # and both the configured Rich log handler's traceback
-                # rendering AND Playwright's own TimeoutError message (which
-                # embeds the literal fill() call, e.g. `fill("<password>")`,
-                # in its "Call log" text) would print the credential in clear
-                # text. Log only the exception type.
-                _log.debug("browser_login: fill candidate %r failed: %s", sel, type(exc).__name__)
+            except Exception:  # noqa: BLE001
+                # No exc_info/traceback, and nothing derived from the
+                # exception object at all: `value` (a credential — username
+                # or password) is a local in this frame, and both the
+                # configured Rich log handler's traceback rendering AND
+                # Playwright's own TimeoutError message (which embeds the
+                # literal fill() call, e.g. `fill("<password>")`, in its
+                # "Call log" text) would print the credential in clear text.
+                # Not even the exception type name is worth the risk of a
+                # static analyzer (or a future refactor) reintroducing a
+                # path back to the exception's message.
+                _log.debug("browser_login: fill candidate %r failed", sel)
                 continue
         return False
 
