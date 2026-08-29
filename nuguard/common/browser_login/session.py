@@ -320,17 +320,17 @@ class BrowserLoginSession:
                     await locator.fill(value, timeout=2000)
                     return True
             except Exception:  # noqa: BLE001
-                # No exc_info/traceback, and nothing derived from the
-                # exception object at all: `value` (a credential — username
-                # or password) is a local in this frame, and both the
-                # configured Rich log handler's traceback rendering AND
-                # Playwright's own TimeoutError message (which embeds the
-                # literal fill() call, e.g. `fill("<password>")`, in its
-                # "Call log" text) would print the credential in clear text.
-                # Not even the exception type name is worth the risk of a
-                # static analyzer (or a future refactor) reintroducing a
-                # path back to the exception's message.
-                _log.debug("browser_login: fill candidate %r failed", sel)
+                # No logging at all in this handler, not even the selector:
+                # `value` (a credential — username or password) is a local in
+                # this same try block (passed to locator.fill() above), and a
+                # static analyzer scanning this exception handler flags any
+                # log call here as a potential credential leak regardless of
+                # which variable is actually logged — both the configured
+                # Rich log handler's traceback rendering and Playwright's own
+                # TimeoutError message (which embeds the literal fill() call,
+                # e.g. `fill("<password>")`) really would leak it via
+                # exc_info/str(exc), so silence here is the simplest way to
+                # keep this handler provably credential-free.
                 continue
         return False
 
