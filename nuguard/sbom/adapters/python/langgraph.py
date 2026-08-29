@@ -120,6 +120,12 @@ _TEMPLATE_VAR_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 # Graph-internal node names that should never be emitted as AGENT nodes
 _LANGGRAPH_INTERNAL_NODES = {"__start__", "__end__", "tools", "END", "START"}
 
+# langgraph.types.interrupt() — human-in-the-loop pause inside a graph node,
+# treated as a guardrail-equivalent control. Relies on the generic file-level
+# GUARDRAIL->AGENT fallback for wiring (a node function isn't itself an AGENT
+# canonical name in this adapter's model, so no explicit hint is resolvable).
+_INTERRUPT_FUNC_NAME = "interrupt"
+
 
 class LangGraphAdapter(FrameworkAdapter):
     """Adapter for LangGraph / LangChain framework detection."""
@@ -827,6 +833,35 @@ class LangGraphAdapter(FrameworkAdapter):
                             evidence_kind="ast_import",
                         )
                     )
+
+        # 9. langgraph.types.interrupt() calls → GUARDRAIL (human-in-the-loop)
+        interrupt_imported = any(
+            "interrupt" in (imp.names or []) and (imp.module or "").startswith("langgraph")
+            for imp in parse_result.imports
+        )
+        if interrupt_imported or has_langgraph:
+            for call in parse_result.function_calls:
+                if call.function_name != _INTERRUPT_FUNC_NAME or call.receiver is not None:
+                    continue
+                detected.append(
+                    ComponentDetection(
+                        component_type=ComponentType.GUARDRAIL,
+                        canonical_name=canonicalize_text(f"langgraph:guardrail:interrupt:{file_path}:{call.line}"),
+                        display_name="LangGraph Human-in-the-Loop",
+                        adapter_name=self.name,
+                        priority=self.priority,
+                        confidence=0.75,
+                        metadata={
+                            "framework": "langgraph",
+                            "guardrail_type": "human_in_the_loop",
+                            "detection_kind": "framework_native",
+                        },
+                        file_path=file_path,
+                        line=call.line,
+                        snippet="interrupt(...)",
+                        evidence_kind="ast_call",
+                    )
+                )
 
         # Large string literals that look like prompts
         for lit in parse_result.string_literals:

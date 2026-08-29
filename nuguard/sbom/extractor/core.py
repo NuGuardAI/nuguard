@@ -2609,6 +2609,27 @@ class AiSbomExtractor:
                         )
                     )
 
+        # Fallback: GUARDRAIL → AGENT (PROTECTS) for GUARDRAIL nodes with no
+        # outgoing PROTECTS edge yet (e.g. guardrails_ai.py / go/guardrails.py,
+        # which detect GUARDRAIL nodes but emit no relationship hints). Scoped
+        # to file-related agents via _structural_edge_related — unlike the AUTH
+        # fallback above, we deliberately skip an all-agents broad fallback:
+        # these GUARDRAIL nodes are file-scoped validators, not app-wide auth,
+        # so guessing a protects-relationship across unrelated files would
+        # misrepresent coverage.
+        guardrail_ids_with_protects_edges: set[Any] = {
+            e.source
+            for e in doc.edges
+            if e.relationship_type == RelationshipType.PROTECTS
+        }
+        for guardrail in by_type.get(ComponentType.GUARDRAIL, []):
+            if guardrail.id in guardrail_ids_with_protects_edges:
+                continue
+            for agent in by_type.get(ComponentType.AGENT, []):
+                if not self._structural_edge_related(guardrail, agent):
+                    continue
+                _add_edge(guardrail.id, agent.id, "PROTECTS", confidence=0.4)
+
     async def _llm_enrich(
         self,
         doc: AiSbomDocument,

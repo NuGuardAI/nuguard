@@ -15,10 +15,13 @@ Supports detection of AI frameworks in TypeScript and JavaScript code:
 from .agent_orchestrator import AgentOrchestratorTSAdapter
 from .agno import AgnoTSAdapter
 from .auth_detector import NestJSAuthTSAdapter
+from .aws_bedrock_guardrails import AWSBedrockGuardrailsTSAdapter
 from .azure_ai_agents import AzureAIAgentsTSAdapter
+from .azure_content_safety import AzureContentSafetyTSAdapter
 from .bedrock_agents import BedrockAgentsTSAdapter
 from .claude_agent_sdk import ClaudeAgentSDKTSAdapter
 from .datastores import DatastoreTSAdapter
+from .gcp_model_armor import GCPModelArmorTSAdapter
 from .google_adk import GoogleADKAdapter
 from .langgraph import LangGraphTSAdapter
 from .llm_clients import LLMClientTSAdapter
@@ -30,10 +33,13 @@ from .prompts import PromptTSAdapter
 __all__ = [
     "AgentOrchestratorTSAdapter",
     "AgnoTSAdapter",
+    "AWSBedrockGuardrailsTSAdapter",
     "AzureAIAgentsTSAdapter",
+    "AzureContentSafetyTSAdapter",
     "ClaudeAgentSDKTSAdapter",
     "BedrockAgentsTSAdapter",
     "DatastoreTSAdapter",
+    "GCPModelArmorTSAdapter",
     "GoogleADKAdapter",
     "LangGraphTSAdapter",
     "LLMClientTSAdapter",
