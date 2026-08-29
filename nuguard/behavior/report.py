@@ -43,6 +43,18 @@ _GAP_FALLBACK_REMEDIATION = {
 }
 
 
+def _escape_md_cell(value: Any) -> str:
+    """Escape *value* for safe embedding inside a Markdown table cell.
+
+    Pipes (``|``) break column boundaries and newlines create extra rows,
+    so both must be neutralised.  Non-string values are coerced to ``str``
+    first to guard against upstream type drift (gap findings are plain
+    dicts, not Pydantic-validated).
+    """
+    text = str(value) if value is not None else ""
+    return text.replace("|", "\\|").replace("\n", " ").replace("\r", "")
+
+
 def _gap_remediation_text(finding: dict[str, Any]) -> str:
     """Return the remediation text for a promoted gap finding.
 
@@ -56,7 +68,8 @@ def _gap_remediation_text(finding: dict[str, Any]) -> str:
         Remediation text, or an empty string when neither the finding nor the
         type template provides one.
     """
-    remediation = (finding.get("remediation") or "").strip()
+    raw = finding.get("remediation")
+    remediation = str(raw).strip() if raw else ""
     if remediation:
         return remediation
     ftype = finding.get("finding_type", "")
@@ -716,7 +729,10 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 sample = "; ".join(str(g)[:120] for g in (gf.get("gap_texts") or [gf.get("description", "")])[:3])
                 remediation = _gap_remediation_text(gf)
                 comp_display = f"{comp} ({fid})" if fid else comp
-                lines.append(f"| {comp_display} | {count} | {sample} | {remediation} |")
+                lines.append(
+                    f"| {_escape_md_cell(comp_display)} | {count} "
+                    f"| {_escape_md_cell(sample)} | {_escape_md_cell(remediation)} |"
+                )
             lines.append("")
 
     # Dynamic Analysis Findings (policy violations, canary hits — not gap aggregates)
