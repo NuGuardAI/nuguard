@@ -1,0 +1,716 @@
+{
+  "name": "score Order Anomaly 1",
+  "uuid": "86f0e0b2-09a7-479e-ab42-b4ff0127f33f",
+  "category": "ML",
+  "description": "-",
+  "parameters": "--var order_id=${order_id}",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "FetchOrderForValidation",
+      "type": "dataset",
+      "nodeClass": "fire.nodes.salesforce.NodeExecuteSOQLInSalesforce",
+      "x": "448px",
+      "y": "243px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "connection",
+          "value": "Salesforce",
+          "widget": "object_array"
+        },
+        {
+          "name": "soqlQuery",
+          "value": "SELECT Id, OrderNumber, Status, Account.Name, PoNumber, PoDate, \n       TotalAmount, ContractId, EffectiveDate, EndDate, \n       Pricebook2Id, BillToContactId, BillingStreet, BillingCity, \n       BillingState, BillingPostalCode, BillingCountry, \n       CustomerAuthorizedById, OwnerId, Owner.Name, Owner.Email, \n       CreatedById, CreatedBy.Name, CreatedBy.Email, \n       LastModifiedDate\nFROM Order where Id = '${order_id}'",
+          "widget": "textarea_small"
+        },
+        {
+          "name": "outputColNames",
+          "value": "[\"Id\",\"OrderNumber\",\"Status\",\"Account\",\"PoNumber\",\"PoDate\",\"TotalAmount\",\"ContractId\",\"EffectiveDate\",\"EndDate\",\"Pricebook2Id\",\"BillToContactId\",\"BillingStreet\",\"BillingCity\",\"BillingState\",\"BillingPostalCode\",\"BillingCountry\",\"CustomerAuthorizedById\",\"OwnerId\",\"Owner\",\"CreatedById\",\"CreatedBy\",\"LastModifiedDate\"]",
+          "widget": "schema_col_names"
+        },
+        {
+          "name": "outputColTypes",
+          "value": "[\"STRING\",\"STRING\",\"STRING\",\"STRUCT\",\"STRING\",\"STRING\",\"DOUBLE\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRUCT\",\"STRING\",\"STRUCT\",\"STRING\"]",
+          "widget": "schema_col_types"
+        },
+        {
+          "name": "outputColFormats",
+          "value": "[\"\",\"\",\"\",\"{\\\"Account\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"{\\\"Owner\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Email\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\",\"\",\"{\\\"CreatedBy\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Email\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\",\"\"]",
+          "widget": "schema_col_formats"
+        },
+        {
+          "name": "properties",
+          "widget": "tab"
+        },
+        {
+          "name": "extraOptionsKeys",
+          "value": "[]",
+          "widget": "key_array"
+        },
+        {
+          "name": "extraOptionsValues",
+          "value": "[]",
+          "widget": "value_array"
+        }
+      ],
+      "engine": "polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "5",
+      "name": "Flatten",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeFlatten",
+      "x": "587px",
+      "y": "171px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "ids",
+          "value": "[\"00\",\"010\",\"011\",\"10\",\"11\",\"120\",\"121\",\"20\",\"21\",\"220\",\"221\"]",
+          "widget": "flatten_ids"
+        },
+        {
+          "name": "values1",
+          "value": "[\"Account.Name\",\"Account.attributes.type\",\"Account.attributes.url\",\"CreatedBy.Email\",\"CreatedBy.Name\",\"CreatedBy.attributes.type\",\"CreatedBy.attributes.url\",\"Owner.Email\",\"Owner.Name\",\"Owner.attributes.type\",\"Owner.attributes.url\"]",
+          "widget": "flatten_value1"
+        },
+        {
+          "name": "values2",
+          "value": "[\"Name\",\"type\",\"url\",\"Email\",\"Name\",\"type\",\"url\",\"Email\",\"Name\",\"type\",\"url\"]",
+          "widget": "flatten_value2"
+        },
+        {
+          "name": "values3",
+          "value": "[\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\"]",
+          "widget": "flatten_value3"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "6",
+      "name": "Print N Rows",
+      "type": "transform",
+      "nodeClass": "fire.nodes.util.NodePrintFirstNRows",
+      "x": "850.75px",
+      "y": "64.1875px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "title",
+          "value": "Row Values",
+          "widget": "textfield"
+        },
+        {
+          "name": "n",
+          "value": "100",
+          "widget": "textfield"
+        },
+        {
+          "name": "columns",
+          "value": "[]",
+          "widget": "variables"
+        },
+        {
+          "name": "enableInExecution",
+          "value": "true",
+          "widget": "array"
+        },
+        {
+          "name": "displayDataType",
+          "value": "true",
+          "widget": "array"
+        },
+        {
+          "name": "highlight_tab",
+          "widget": "tab"
+        },
+        {
+          "name": "highlight",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "highlight_type",
+          "value": "[]",
+          "widget": "list_array"
+        },
+        {
+          "name": "highlight_expression",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "color_code",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "rowHeader_tab",
+          "widget": "tab"
+        },
+        {
+          "name": "rowHeader",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "rowHeader_columns",
+          "value": "[]",
+          "widget": "array_textfield"
+        },
+        {
+          "name": "rowHeader_color",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "rowHeader_bgColor",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "rowHeader_value",
+          "value": "[]",
+          "widget": "list_textfield"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "7",
+      "name": "H2O Score",
+      "type": "ml-predict",
+      "nodeClass": "fire.nodes.h2o.NodeH2OScore",
+      "x": "771.75px",
+      "y": "240.175px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "isTestData",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "label",
+          "value": "",
+          "widget": "variable"
+        },
+        {
+          "name": "withContribution",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "path",
+          "value": "",
+          "widget": "textfield"
+        },
+        {
+          "name": "modelType",
+          "value": "IsolationForest",
+          "widget": "array"
+        },
+        {
+          "name": "confusionMatrix",
+          "widget": "tab"
+        },
+        {
+          "name": "output_confusion_matrix_chart",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "cmChartTitle",
+          "value": "Title",
+          "widget": "textfield"
+        },
+        {
+          "name": "cmChartDescription",
+          "value": "Visual Representation of Predicted vs. Actual Classes",
+          "widget": "textfield"
+        },
+        {
+          "name": "confusionMatrixTargetLegend",
+          "value": "Target",
+          "widget": "textfield"
+        },
+        {
+          "name": "confusionMatrixPredictedLabelLegend",
+          "value": "PredictedLabel",
+          "widget": "textfield"
+        },
+        {
+          "name": "Description",
+          "widget": "tab"
+        },
+        {
+          "name": "confusionMatrixRowDescription",
+          "value": "",
+          "widget": "textarea_rich"
+        },
+        {
+          "name": "ROC Curve",
+          "widget": "tab"
+        },
+        {
+          "name": "output_roc_chart",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "roc_title",
+          "value": "Title",
+          "widget": "textfield"
+        },
+        {
+          "name": "roc_description",
+          "value": "Receiver operating characteristic (ROC) curve",
+          "widget": "textfield"
+        },
+        {
+          "name": "xlabel",
+          "value": "False Positive Rate (specificity)",
+          "widget": "textfield"
+        },
+        {
+          "name": "ylabel",
+          "value": "True Positive Rate (sensitivity)",
+          "widget": "textfield"
+        },
+        {
+          "name": "predictionOverTime",
+          "widget": "tab"
+        },
+        {
+          "name": "useChampion",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "model_uuid",
+          "value": "",
+          "widget": "textfield"
+        },
+        {
+          "name": "enablePredictionOverTimeMetrics",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "modelCategory",
+          "value": "",
+          "widget": "array"
+        }
+      ],
+      "engine": "pyspark,polars",
+      "inputAnchors": [
+        {
+          "name": "Data",
+          "title": "D"
+        },
+        {
+          "name": "Model",
+          "title": "M"
+        }
+      ],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "8",
+      "name": "H2O ML Model Load",
+      "type": "ml-modelload",
+      "nodeClass": "fire.nodes.h2o.NodeH2OModelLoad",
+      "x": "642.75px",
+      "y": "23.1875px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "selectChampionModel",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "path",
+          "value": "/home/sparkflows/fire-data/data/Agentic_AI/isolation_forest/52cfcf1b-5d89-11f1-b057-7ced8db482f3",
+          "widget": "textfield"
+        }
+      ],
+      "engine": "pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "9",
+      "name": "Save JDBC",
+      "type": "transform",
+      "nodeClass": "fire.nodes.save.NodeSaveJDBC",
+      "x": "1010.15px",
+      "y": "345.2px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "connection",
+          "value": "JDBC_MySQL",
+          "widget": "object_array"
+        },
+        {
+          "name": "jdbcDatabase",
+          "value": "userdb",
+          "widget": "textfield"
+        },
+        {
+          "name": "jdbctable",
+          "value": "sales_orders",
+          "widget": "textfield"
+        },
+        {
+          "name": "truncate",
+          "value": "false",
+          "widget": "array"
+        },
+        {
+          "name": "saveMode",
+          "value": "Update",
+          "widget": "array"
+        },
+        {
+          "name": "updateKeyColumn",
+          "value": "Id",
+          "widget": "variable"
+        },
+        {
+          "name": "extraOptions",
+          "widget": "tab"
+        },
+        {
+          "name": "extraOptionsKeys",
+          "value": "[]",
+          "widget": "key_array"
+        },
+        {
+          "name": "extraOptionsValues",
+          "value": "[]",
+          "widget": "value_array"
+        }
+      ],
+      "engine": "pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "15",
+      "name": "Select",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeSelect",
+      "x": "629.75px",
+      "y": "365.2px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "General",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "inputCols",
+          "value": "[]",
+          "widget": "variables_list_select"
+        },
+        {
+          "name": "renameCols",
+          "value": "[]",
+          "widget": "variables_list_textfield"
+        },
+        {
+          "name": "colType",
+          "value": "[]",
+          "widget": "variables_list_array"
+        },
+        {
+          "name": "drop",
+          "widget": "tab"
+        },
+        {
+          "name": "dropInputCols",
+          "value": "[\"Owner\",\"CreatedBy\",\"Account\"]",
+          "widget": "variables"
+        },
+        {
+          "name": "inputColumnPropagation",
+          "value": "true",
+          "widget": "array_single"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "16",
+      "name": "Expressions",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeExpressions",
+      "x": "895.75px",
+      "y": "211.2px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "Expressions",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "outputCols",
+          "value": "[\"IsAnomaly\"]",
+          "widget": "key_array",
+          "type": "sparksql"
+        },
+        {
+          "name": "expressions",
+          "value": "[\"mean_length > 1\"]",
+          "widget": "value_array",
+          "type": "sparksql"
+        },
+        {
+          "name": "propagation",
+          "widget": "tab"
+        },
+        {
+          "name": "inputColumnPropagation",
+          "value": "true",
+          "widget": "array_single"
+        },
+        {
+          "name": "outputSchema",
+          "widget": "tab"
+        },
+        {
+          "name": "outputColNames",
+          "value": "[\"Id\",\"OrderNumber\",\"Status\",\"PoNumber\",\"PoDate\",\"TotalAmount\",\"ContractId\",\"EffectiveDate\",\"EndDate\",\"Pricebook2Id\",\"BillToContactId\",\"BillingStreet\",\"BillingCity\",\"BillingState\",\"BillingPostalCode\",\"BillingCountry\",\"CustomerAuthorizedById\",\"OwnerId\",\"CreatedById\",\"LastModifiedDate\",\"Name\",\"type\",\"url\",\"Email\",\"Name_1\",\"type_1\",\"url_1\",\"Email_1\",\"Name_2\",\"type_2\",\"url_2\",\"IsAnomaly\"]",
+          "widget": "schema_col_names"
+        },
+        {
+          "name": "outputColTypes",
+          "value": "[\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"DOUBLE\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"BOOLEAN\"]",
+          "widget": "schema_col_types"
+        },
+        {
+          "name": "outputColFormats",
+          "value": "[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"]",
+          "widget": "schema_col_formats"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "17",
+      "name": "Select",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeSelect",
+      "x": "881.75px",
+      "y": "425.2px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "General",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "inputCols",
+          "value": "[\"Id\",\"IsAnomaly\"]",
+          "widget": "variables_list_select"
+        },
+        {
+          "name": "renameCols",
+          "value": "[\"\",\"\"]",
+          "widget": "variables_list_textfield"
+        },
+        {
+          "name": "colType",
+          "value": "[\"\",\"\"]",
+          "widget": "variables_list_array"
+        },
+        {
+          "name": "drop",
+          "widget": "tab"
+        },
+        {
+          "name": "dropInputCols",
+          "value": "[]",
+          "widget": "variables"
+        },
+        {
+          "name": "inputColumnPropagation",
+          "value": "false",
+          "widget": "array_single"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "18",
+      "name": "Sticky Note",
+      "type": "sticky",
+      "nodeClass": "fire.nodes.doc.NodeStickyNote",
+      "x": "3.05e-05px",
+      "y": "9.99998px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "bgColor",
+          "value": "purple",
+          "widget": "textfield"
+        },
+        {
+          "name": "width",
+          "value": "432.4px",
+          "widget": "textfield"
+        },
+        {
+          "name": "height",
+          "value": "561.4px",
+          "widget": "textfield"
+        },
+        {
+          "name": "pushedToBack",
+          "value": "false",
+          "widget": "textfield"
+        },
+        {
+          "name": "comment",
+          "value": "<h2>ORDER ANOMALY SCORING WORKFLOW</h2><p><strong>Purpose:</strong></p><p>Evaluate a Salesforce order using a pre-trained Isolation Forest model</p><p>and determine whether the order exhibits anomalous behavior.</p><p><strong><em>Workflow Steps</em></strong></p><p><strong>1. Fetch Order Data</strong></p><p>&nbsp;&nbsp;• Retrieve order details from Salesforce using order_id</p><p>&nbsp;&nbsp;• Load order attributes required for anomaly detection</p><p><strong>2. Flatten &amp; Prepare Data</strong></p><p>&nbsp;&nbsp;• Flatten nested Salesforce objects</p><p>&nbsp;&nbsp;• Convert order data into model-ready format</p><p>&nbsp;&nbsp;• Remove unsupported complex fields</p><p><strong>3. Load Trained Model</strong></p><p>&nbsp;&nbsp;• Load previously trained Isolation Forest model</p><p>&nbsp;&nbsp;• Reuse production anomaly detection model</p><p><strong>4. Generate Anomaly Score</strong></p><p>&nbsp;&nbsp;• Score the order using the Isolation Forest model</p><p>&nbsp;&nbsp;• Calculate anomaly metrics and mean_length score</p><p><strong>5. Classify Order</strong></p><p>&nbsp;&nbsp;• mean_length &gt; 0.85 → Anomalous Order</p><p>&nbsp;&nbsp;• mean_length ≤ 0.85 → Normal Order</p><p><strong>6. Persist Results</strong></p><p>&nbsp;&nbsp;• Save Order ID and anomaly classification</p><p>&nbsp;&nbsp;• Update anomaly results in MySQL database</p><p><strong><em>Outcome:</em></strong></p><p>Provides real-time anomaly detection for incoming orders and enables</p><p>risk-based review of suspicious transactions before downstream processing.</p>",
+          "widget": "textarea_rich"
+        }
+      ],
+      "engine": "scala,pyspark,polars,agent",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "1",
+      "target": "5",
+      "id": 1,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "7",
+      "target": "6",
+      "id": 8,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "5",
+      "target": "15",
+      "id": 15,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "15",
+      "target": "7",
+      "id": 16,
+      "sourceAnchor": "output",
+      "targetAnchor": "Data",
+      "index": 0
+    },
+    {
+      "source": "8",
+      "target": "7",
+      "id": 17,
+      "sourceAnchor": "output",
+      "targetAnchor": "Model",
+      "index": 0
+    },
+    {
+      "source": "6",
+      "target": "16",
+      "id": 18,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "16",
+      "target": "17",
+      "id": 20,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "17",
+      "target": "9",
+      "id": 21,
+      "sourceAnchor": "output",
+      "index": 0
+    }
+  ],
+  "dataSetDetails": [],
+  "engine": "polars",
+  "nodeDebugConfigs": {}
+}

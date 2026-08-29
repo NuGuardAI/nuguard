@@ -1,0 +1,14 @@
+{
+  "id": 3405,
+  "name": "Automated-Order-Review-with-Anomaly-Detection",
+  "tag": "AUTOMATED-ORDER-REVIEW_3405",
+  "description": "Automates Salesforce order processing with Isolation-Forest anomaly detection and invoice-field validation, routing exceptions to a human reviewer and pushing approved orders to Dynamics 365.",
+  "icon": "{\"type\":\"svg\",\"icon\":\"assets/images/icons/analytics-apps/project_product_info.svg\"}",
+  "uuid": "AUTOMATED-ORDER-REVIEW_590",
+  "category": "AGENTS",
+  "createdBy": "tridev",
+  "updatedBy": "tridev",
+  "dateLastUpdated": "Aug 4, 2026, 5:13:09 AM",
+  "dateCreated": "Jun 1, 2026, 7:39:23 AM",
+  "usersApplication": 0
+}

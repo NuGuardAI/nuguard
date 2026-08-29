@@ -2248,7 +2248,7 @@ class BehaviorRunner:
         _preflight_ok = True
         _configured_endpoint = getattr(self._config, "target_endpoint", "") or ""
         _has_explicit_endpoint = self._endpoint_is_explicit()
-        self._target_endpoint_source = "config" if _has_explicit_endpoint else "default"
+        self._target_endpoint_source = "config" if _has_explicit_endpoint else "auto"
         try:
             from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
                 validate_and_rotate_chat_endpoint,
