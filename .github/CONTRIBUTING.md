@@ -63,7 +63,9 @@ Include the updated `tests/contracts/public_api.schema.json` in the same PR as t
 Branch names are enforced server-side by a repository ruleset — a push that doesn't match is rejected outright, not just flagged in review.
 
 - Format: `feat/<short-description>` or `bug/<short-description>` — lowercase, hyphenated (e.g. `feat/add-pr-templates`, `bug/fix-null-check`).
-- `main` and `develop` are exempt from the rule.
+- **All contributor PRs target `develop`** — both `feat/*` and `bug/*` branches must be opened against `develop`, never `main`.
+- Merging `develop` into `main` is reserved for engineering leads.
+- `main` and `develop` are exempt from the branch-naming rule.
 - Only applies going forward: existing branches that predate the rule aren't affected, and it only blocks *creating* a new non-conforming branch, not pushing further commits to one you already have.
 
 ## Pull Request Guidelines
@@ -77,8 +79,7 @@ Branch names are enforced server-side by a repository ruleset — a push that do
   Check exactly one box under **PR Type** (`Bug fix` or `Feature`) — that checkbox is
   what automation reads to classify the PR, so leave the two lines in place even if
   you trim other sections. Delete the **Root Cause** section for feature PRs.
-- Ensure that all `feat/*` branches are set up from develop and open PRs for develop
-- Ensure that all `bug/*` branches are set up from main and open PRs for main
+- All `feat/*` and `bug/*` branches must be opened against `develop`.
 
 Include in the PR description:
 

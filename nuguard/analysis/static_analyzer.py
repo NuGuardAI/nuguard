@@ -22,10 +22,22 @@ Pipeline
 Each step's raw finding dicts are converted to ``nuguard.models.finding.Finding``
 objects before being returned.  Severity values are normalised to the
 ``Severity`` enum (unknown/unmapped → ``LOW``).
+
+Concurrency
+-----------
+Steps 2-6 (OSV, Grype, Checkov, Trivy, Semgrep) are independent of each
+other's output and each blocks on a subprocess or network call, so
+``analyze()`` runs them concurrently via ``asyncio.gather`` (each wrapped in
+``asyncio.to_thread`` since the underlying clients are synchronous) instead of
+one after another — wall-clock time becomes roughly the slowest single step
+instead of their sum. NGA rules (step 1) still run first and synchronously
+since ATLAS's ``skip_nga`` path assumes NGA already ran; ATLAS native checks
+and supply-chain stay sequential after the gather.
 """
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from pathlib import Path
 from typing import Any
@@ -105,6 +117,8 @@ def _raw_to_finding(raw: dict[str, Any], source: str) -> Finding:
         owasp_asi_ref=owasp_asi_ref,
         mitre_atlas_technique=mitre_atlas,
         evidence=raw.get("evidence"),
+        container_image=raw.get("container_image"),
+        container_image_locations=list(raw.get("container_image_locations") or []),
     )
 
 
@@ -188,13 +202,21 @@ class StaticAnalyzer:
         from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
         self.token_usage: "TokenUsage" = TokenUsage()
 
-    def analyze(self, doc: AiSbomDocument) -> list[Finding]:
+    async def analyze(self, doc: AiSbomDocument) -> list[Finding]:
         """Run all detectors and return a list of ``Finding`` objects.
 
         The SBOM document is serialised to its dict representation so that all
         analysis plugins receive a plain ``dict`` (their common interface).
         """
-        self.tool_status = {}
+        # Pre-seed tool_status keys in the report's display order so the
+        # concurrent dispatch below (step 2-6, completion order is
+        # nondeterministic) can't scramble the Tool Coverage table — a later
+        # `self.tool_status[key] = {...}` updates the value in place without
+        # moving the key (Python dicts preserve first-insertion order).
+        self.tool_status = {
+            "nga-rules": {}, "osv": {}, "grype": {}, "checkov": {},
+            "trivy": {}, "semgrep": {}, "atlas": {}, "supply-chain": {},
+        }
         sbom_dict = doc.model_dump()
 
         # Inject source_path into every SBOM node's metadata so M1 plugins
@@ -219,64 +241,74 @@ class StaticAnalyzer:
 
         all_findings: list[Finding] = []
 
-        # Step 1: NGA structural rules (annotated with ATLAS techniques inline)
+        # Step 1: NGA structural rules (annotated with ATLAS techniques inline).
+        # Runs first and synchronously — offline/cheap, and ATLAS's skip_nga
+        # path (step 7) assumes NGA already ran.
         nga = self._run_nga(sbom_dict, sbom_graph=sbom_graph)
         all_findings.extend(nga)
         self.tool_status["nga-rules"] = {
             "status": "ok", "findings": str(len(nga)),
         }
 
-        # Step 2: OSV dependency CVEs
-        if self.enable_osv:
-            osv = self._run_osv(sbom_dict)
-            all_findings.extend(osv)
+        # Steps 2-6: OSV, Grype, Checkov, Trivy, Semgrep are independent of
+        # each other's output and each blocks on a subprocess or network call
+        # — run them concurrently (thread pool, since the underlying clients
+        # are synchronous) instead of one after another.
+        async def _osv_step() -> list[Finding]:
+            if not self.enable_osv:
+                self.tool_status["osv"] = {"status": "disabled", "findings": "0"}
+                return []
+            osv = await asyncio.to_thread(self._run_osv, sbom_dict)
             self.tool_status["osv"] = {"status": "ok", "findings": str(len(osv))}
-        else:
-            self.tool_status["osv"] = {"status": "disabled", "findings": "0"}
+            return osv
 
-        # Step 3: Grype CVEs (subprocess; skipped gracefully when absent)
-        if self.enable_grype:
+        async def _grype_step() -> list[Finding]:
+            if not self.enable_grype:
+                self.tool_status["grype"] = {"status": "disabled", "findings": "0"}
+                return []
             import shutil  # noqa: PLC0415
-            if shutil.which("grype"):
-                grype = self._run_grype(sbom_dict)
-                all_findings.extend(grype)
-                self.tool_status["grype"] = {"status": "ok", "findings": str(len(grype))}
-            else:
+            if not shutil.which("grype"):
                 self.tool_status["grype"] = {
                     "status": "skipped", "findings": "0",
                     "reason": "grype not installed",
                 }
-        else:
-            self.tool_status["grype"] = {"status": "disabled", "findings": "0"}
+                return []
+            grype = await asyncio.to_thread(self._run_grype, sbom_dict)
+            self.tool_status["grype"] = {"status": "ok", "findings": str(len(grype))}
+            return grype
 
-        # Step 4: Checkov IaC scan
-        # _run_m1 sets tool_status to "skipped"/"error" when the plugin bails
-        # early; only overwrite with "ok" if it did not do so already.
-        if self.enable_checkov:
-            checkov = self._run_m1("checkov", sbom_dict, m1_config)
-            all_findings.extend(checkov)
-            if self.tool_status.get("checkov", {}).get("status") not in ("skipped", "error"):
-                self.tool_status["checkov"] = {"status": "ok", "findings": str(len(checkov))}
-        else:
-            self.tool_status["checkov"] = {"status": "disabled", "findings": "0"}
+        async def _m1_step(tool: str, enabled: bool) -> list[Finding]:
+            # _run_m1 sets tool_status to "skipped"/"error" itself when the
+            # plugin bails early; only overwrite with "ok" if it did not.
+            if not enabled:
+                self.tool_status[tool] = {"status": "disabled", "findings": "0"}
+                return []
+            findings = await asyncio.to_thread(self._run_m1, tool, sbom_dict, m1_config)
+            if self.tool_status.get(tool, {}).get("status") not in ("skipped", "error"):
+                self.tool_status[tool] = {"status": "ok", "findings": str(len(findings))}
+            return findings
 
-        # Step 5: Trivy container/fs scan
-        if self.enable_trivy:
-            trivy = self._run_m1("trivy", sbom_dict, m1_config)
-            all_findings.extend(trivy)
-            if self.tool_status.get("trivy", {}).get("status") not in ("skipped", "error"):
-                self.tool_status["trivy"] = {"status": "ok", "findings": str(len(trivy))}
-        else:
-            self.tool_status["trivy"] = {"status": "disabled", "findings": "0"}
-
-        # Step 6: Semgrep source code scan
-        if self.enable_semgrep:
-            semgrep = self._run_m1("semgrep", sbom_dict, m1_config)
-            all_findings.extend(semgrep)
-            if self.tool_status.get("semgrep", {}).get("status") not in ("skipped", "error"):
-                self.tool_status["semgrep"] = {"status": "ok", "findings": str(len(semgrep))}
-        else:
-            self.tool_status["semgrep"] = {"status": "disabled", "findings": "0"}
+        step_labels = ("osv", "grype", "checkov", "trivy", "semgrep")
+        step_results = await asyncio.gather(
+            _osv_step(),
+            _grype_step(),
+            _m1_step("checkov", self.enable_checkov),
+            _m1_step("trivy", self.enable_trivy),
+            _m1_step("semgrep", self.enable_semgrep),
+            return_exceptions=True,
+        )
+        for label, result in zip(step_labels, step_results):
+            if isinstance(result, BaseException):
+                # Each _run_* already catches its own errors and returns [];
+                # this is a defensive fallback for anything unexpected (e.g.
+                # a bug in the step wrapper itself) so one failure can't take
+                # down the whole gather.
+                _log.warning("%s step failed unexpectedly: %s", label, result)
+                self.tool_status[label] = {
+                    "status": "error", "findings": "0", "reason": str(result),
+                }
+                continue
+            all_findings.extend(result)
 
         # Step 7: MITRE ATLAS native graph checks (NC-001..004)
         # skip_nga=True so the annotator does not re-run NGA rules; Step 1

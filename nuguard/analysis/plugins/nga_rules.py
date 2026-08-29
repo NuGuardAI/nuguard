@@ -2169,6 +2169,8 @@ def _build_pass_evidence(
 # ── OSV / Grype finding converters ───────────────────────────────────────────
 
 _RE_FIXED_VERSION = re.compile(r"<([^\s,;]+)")
+_WS_RE = re.compile(r"\s+")
+_ADVISORY_HEADER_RE = re.compile(r"^(issue summary|impact summary|summary)\s*:\s*", re.IGNORECASE)
 
 
 def _extract_fixed_version(affected_versions: str) -> str | None:
@@ -2177,13 +2179,51 @@ def _extract_fixed_version(affected_versions: str) -> str | None:
     return m.group(1) if m else None
 
 
+_SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
+# Matches when the text right before a candidate sentence-end is itself just
+# a short run of digits ("1", "12", ...) at the start of the string or after
+# whitespace — i.e. the "." belongs to a list marker ("1.", "2.") rather than
+# ending a real sentence.
+_LIST_MARKER_TAIL_RE = re.compile(r"(?:^|\s)\d{1,3}$")
+
+
+def _summarize_description(text: str, max_len: int = 140) -> str:
+    """Condense a (possibly long, multi-paragraph) vulnerability description
+    into a short, one-line summary suitable for a finding title."""
+    text = _ADVISORY_HEADER_RE.sub("", _WS_RE.sub(" ", text or "").strip())
+    if not text:
+        return ""
+    # Prefer the first real sentence, skipping numbered-list markers ("1.",
+    # "2.") whose periods aren't actual sentence boundaries — some advisory
+    # descriptions are formatted as unpunctuated numbered steps.
+    candidate = text
+    for m in _SENTENCE_END_RE.finditer(text):
+        if _LIST_MARKER_TAIL_RE.search(text[:m.start()]):
+            continue
+        chunk = text[:m.end()].strip()
+        if chunk:
+            candidate = chunk
+            break
+    if len(candidate) > max_len:
+        candidate = candidate[:max_len].rsplit(" ", 1)[0] + "…"
+    return candidate.strip()
+
+
+def _finding_title(dep_name: str, adv_id: str, summary: str) -> str:
+    """Human-readable finding title: the advisory's own summary, condensed to
+    one line, instead of a generic "Known vulnerability in X (ID)" template.
+    The advisory/CVE id is already shown alongside the title (report's ID
+    column, or finding_id), so repeating it in the title is redundant.
+    """
+    short = _summarize_description(summary) if summary and summary != adv_id else ""
+    return short or f"Vulnerability in {dep_name}"
+
+
 def _osv_to_finding(osv: dict[str, Any]) -> dict[str, Any]:
     """Convert an osv_client result dict to the standard finding shape."""
     cve_ids = osv.get("cve_ids") or []
     adv_id = osv.get("advisory_id", "")
-    title = f"Known vulnerability in {osv.get('dep_name', '?')} ({adv_id})"
-    if cve_ids:
-        title += f" [{', '.join(cve_ids[:2])}]"
+    title = _finding_title(osv.get("dep_name", "?"), adv_id, osv.get("summary", ""))
     affected_versions = osv.get("affected_versions", "see advisory")
     fixed_version = _extract_fixed_version(affected_versions)
     fixed_note = f"  Fixed in: {fixed_version}." if fixed_version else ""
@@ -2213,9 +2253,7 @@ def _grype_to_finding(grype: dict[str, Any]) -> dict[str, Any]:
     """Convert a grype_client result dict to the standard finding shape."""
     cve_ids = grype.get("cve_ids") or []
     adv_id = grype.get("advisory_id", "")
-    title = f"Known vulnerability in {grype.get('dep_name', '?')} ({adv_id})"
-    if cve_ids:
-        title += f" [{', '.join(cve_ids[:2])}]"
+    title = _finding_title(grype.get("dep_name", "?"), adv_id, grype.get("summary", ""))
     target = grype.get("scan_target", "")
     target_note = f" (image: {target})" if target and target != "sbom" else ""
     affected_versions = grype.get("affected_versions", "see advisory")
@@ -2225,7 +2263,7 @@ def _grype_to_finding(grype: dict[str, Any]) -> dict[str, Any]:
         else _extract_fixed_version(affected_versions)
     )
     fixed_note = f"  Fixed in: {fixed_version}." if fixed_version else ""
-    return {
+    result = {
         "rule_id": adv_id,
         "severity": grype.get("severity", "UNKNOWN"),
         "title": title,
@@ -2246,6 +2284,10 @@ def _grype_to_finding(grype: dict[str, Any]) -> dict[str, Any]:
         "cve_ids": cve_ids,
         "fixed_version": fixed_version,
     }
+    if grype.get("image_ref"):
+        result["container_image"] = grype["image_ref"]
+        result["container_image_locations"] = grype.get("image_locations") or []
+    return result
 
 
 # ── Infrastructure rule N/A detection ────────────────────────────────────────

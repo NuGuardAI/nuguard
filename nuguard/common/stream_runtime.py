@@ -47,7 +47,8 @@ class _StreamController:
             # Drop only low-priority updates under pressure.
             if event_type in ("heartbeat", "scenario_progress"):
                 return
-            # Best-effort: make room by dropping one old low-priority event.
+            # Make room for lifecycle and terminal events. Prefer a low-priority
+            # event, but discard the oldest event when the queue has none.
             drained: list[StreamEvent] = []
             dropped = False
             while not self._queue.empty():
@@ -56,6 +57,8 @@ class _StreamController:
                     dropped = True
                     continue
                 drained.append(existing)
+            if not dropped and drained:
+                drained.pop(0)
             for item in drained:
                 self._queue.put_nowait(item)
             self._queue.put_nowait(event)
@@ -102,6 +105,15 @@ class StreamRunHandle(Generic[T]):
 
     def cancel(self) -> None:
         self._task.cancel()
+
+    async def wait_closed(self, timeout: float | None = None) -> None:
+        """Wait for worker shutdown without cancelling it when the wait times out."""
+        try:
+            await asyncio.wait_for(asyncio.shield(self._task), timeout=timeout)
+        except asyncio.CancelledError:
+            if self._task.cancelled():
+                return
+            raise
 
 
 def create_stream_handle(

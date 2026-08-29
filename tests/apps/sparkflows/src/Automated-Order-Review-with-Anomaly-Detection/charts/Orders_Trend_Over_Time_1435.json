@@ -1,0 +1,130 @@
+{
+  "name": "Orders Trend Over Time",
+  "uuid": "b995b744-1109-47a5-988d-923b6682c13d",
+  "icon": {
+    "type": "svg",
+    "icon": "assets/images/icons/actions-icon/interactive.svg"
+  },
+  "category": "",
+  "sheets": [
+    {
+      "id": 0,
+      "name": "",
+      "description": "",
+      "type": "",
+      "chartType": "LINE_CHART",
+      "datasetUuid": "066b647a-8fe2-425f-855e-a84c2670b09a",
+      "datasetName": "",
+      "colors": [
+        "#00c0c7",
+        "#5144d3",
+        "#e8871a",
+        "#da3490",
+        "#9089fa",
+        "#47e26f",
+        "#2780eb",
+        "#6f38b1",
+        "#dfbf03",
+        "#cb6f10"
+      ],
+      "x": [
+        {
+          "columnName": "EffectiveDate",
+          "category": "TEXT",
+          "sort": "NATURAL_SORTING",
+          "maxDisplayedVals": "100",
+          "xGroupMode": "AUTO"
+        }
+      ],
+      "y": [
+        {
+          "columnName": "Number_of_Orders",
+          "category": "NUMERIC",
+          "aggregate": "SUM",
+          "compute": "NORMAL"
+        }
+      ],
+      "groupBy": [],
+      "filters": [
+        {
+          "datasetUuid": "066b647a-8fe2-425f-855e-a84c2670b09a",
+          "columnName": "Status",
+          "columnType": "string",
+          "columnCategory": "TEXT",
+          "min": 0,
+          "max": 10,
+          "minValue": 0,
+          "maxValue": 10,
+          "uniqueValues": [
+            {
+              "value": "Manually Approved",
+              "count": "16"
+            },
+            {
+              "value": "Waiting Approval",
+              "count": "1"
+            },
+            {
+              "value": "Validation Failed",
+              "count": "3"
+            },
+            {
+              "value": "Successfully Processed",
+              "count": "5"
+            }
+          ],
+          "uniqueSelectedValues": [],
+          "value": ""
+        }
+      ],
+      "calculatedFields": [
+        {
+          "name": "Number_of_Orders",
+          "expression": "COUNT(OrderNumber)"
+        }
+      ],
+      "drillDown": {
+        "enabled": false,
+        "levels": []
+      },
+      "chartOptions": {
+        "legendPosition": "top",
+        "totalPosition": "bottom",
+        "tooltip": "value",
+        "xlabel": "",
+        "ylabel": "",
+        "y1label": "",
+        "lblTotal": "Total",
+        "total": false,
+        "label": false,
+        "horizontalBar": false,
+        "beginAtZero": true,
+        "stacked": false,
+        "hideTitleOnDashboard": false,
+        "datalabels": {
+          "fontSize": "14px",
+          "formatter": "value"
+        },
+        "summaryCards": {
+          "textCenter": false,
+          "lblFontSize": "22px",
+          "descFontSize": "12px",
+          "lblColor": "#2F80ED",
+          "descColor": "#A4A4A6",
+          "descTop": true,
+          "divider": false,
+          "dividerColor": "#bebebe",
+          "formattedValue": 2
+        }
+      },
+      "filterDependencies": [
+        {
+          "parentColumn": "",
+          "childColumn": "",
+          "restrict": false,
+          "autoClear": false
+        }
+      ]
+    }
+  ]
+}

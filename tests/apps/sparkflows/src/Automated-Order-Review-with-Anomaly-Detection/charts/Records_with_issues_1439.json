@@ -1,0 +1,95 @@
+{
+  "name": "Records with issues",
+  "uuid": "b539d890-2a80-4a58-87e8-4ac75cd66cba",
+  "icon": {
+    "type": "svg",
+    "icon": "assets/images/icons/actions-icon/interactive.svg"
+  },
+  "category": "",
+  "sheets": [
+    {
+      "id": 0,
+      "name": "",
+      "description": "",
+      "type": "<CUR>",
+      "chartType": "SUMMARY_CARD",
+      "datasetUuid": "89f8fdb1-f4c2-4633-aef9-c3dfb910cca7",
+      "datasetName": "",
+      "colors": [
+        "#77c8d0",
+        "#ffe3b2",
+        "#faa19b",
+        "#a1bdfd",
+        "#b6d7d0",
+        "#ffb2c8",
+        "#ffd5be",
+        "#c7d2ff",
+        "#83e3f4",
+        "#d1bfff",
+        "#649bf7",
+        "#f8c9ee",
+        "#219aad",
+        "#ffbfa3"
+      ],
+      "x": [],
+      "y": [
+        {
+          "columnName": "orders_issues",
+          "category": "NUMERIC",
+          "aggregate": "SUM",
+          "compute": "NORMAL"
+        }
+      ],
+      "groupBy": [],
+      "filters": [],
+      "calculatedFields": [
+        {
+          "name": "orders_issues",
+          "expression": "SELECT COUNT(DISTINCT Id) AS records_with_issues"
+        }
+      ],
+      "drillDown": {
+        "enabled": false,
+        "levels": []
+      },
+      "chartOptions": {
+        "legendPosition": "top",
+        "totalPosition": "bottom",
+        "tooltip": "value",
+        "xlabel": "",
+        "ylabel": "",
+        "y1label": "",
+        "lblTotal": "Total",
+        "total": false,
+        "label": false,
+        "horizontalBar": false,
+        "beginAtZero": true,
+        "stacked": false,
+        "hideTitleOnDashboard": false,
+        "datalabels": {
+          "fontSize": "14px",
+          "formatter": "value"
+        },
+        "summaryCards": {
+          "textCenter": false,
+          "lblFontSize": "22px",
+          "descFontSize": "12px",
+          "lblColor": "#2F80ED",
+          "descColor": "#A4A4A6",
+          "descTop": true,
+          "divider": false,
+          "dividerColor": "#bebebe",
+          "formattedValue": 2
+        }
+      },
+      "filterDependencies": [
+        {
+          "parentColumn": "",
+          "childColumn": "",
+          "restrict": false,
+          "autoClear": false
+        }
+      ]
+    }
+  ]
+}

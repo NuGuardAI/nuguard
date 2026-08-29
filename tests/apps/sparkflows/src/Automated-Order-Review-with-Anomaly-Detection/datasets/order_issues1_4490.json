@@ -1,0 +1,35 @@
+{
+  "id": 4490,
+  "uuid": "2bcbb49a-b274-4921-aa1d-dcc0a534bc00",
+  "name": "order_issues1",
+  "header": true,
+  "path": "userdb|orders_issues1",
+  "delimiter": ",",
+  "datasetType": "JDBC",
+  "connectionName": "JDBC_MySQL",
+  "datasetSchema": "{colNames:[\"Id\",\"IssueDetails\",\"ApprovalReason\"],colTypes:[\"STRING\",\"STRING\",\"STRING\"],colFormats:[\"\",\"\",\"\"],colMLTypes:[\"TEXT\",\"TEXT\",\"TEXT\"]}",
+  "schemaModel": {
+    "schemaColList": [
+      {
+        "colName": "Id",
+        "colType": "STRING",
+        "colFormat": "",
+        "colMLType": "TEXT"
+      },
+      {
+        "colName": "IssueDetails",
+        "colType": "STRING",
+        "colFormat": "",
+        "colMLType": "TEXT"
+      },
+      {
+        "colName": "ApprovalReason",
+        "colType": "STRING",
+        "colFormat": "",
+        "colMLType": "TEXT"
+      }
+    ]
+  },
+  "dropSpecialCharacterInColumnName": true,
+  "multiLine": false
+}
