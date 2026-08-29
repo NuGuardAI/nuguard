@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from nuguard.common.logging import get_logger
@@ -28,6 +29,9 @@ _BATCH_URL  = "https://api.osv.dev/v1/querybatch"
 _VULN_URL   = "https://api.osv.dev/v1/vulns/{id}"
 _TIMEOUT    = 15.0
 _MAX_DETAIL = 30  # max individual vuln fetches per scan
+# Max concurrent detail-fetch GETs — independent network calls, so a small
+# thread pool turns the sequential fetch loop into a fan-out.
+_DETAIL_FETCH_CONCURRENCY = 8
 
 # Map OSV database_specific.severity → our labels
 _DB_SEV_MAP: dict[str, str] = {
@@ -151,20 +155,31 @@ def query_osv(
     if not found:
         return []
 
-    # Fetch detailed records, deduplicating advisory IDs
+    # Collect the (deduplicated, capped) set of advisory ids to fetch details for
     seen_ids: set[str] = set()
-    detail_map: dict[str, dict[str, Any]] = {}
-    fetch_count = 0
+    to_fetch: list[str] = []
     for _, adv_id in found:
-        if adv_id in seen_ids or fetch_count >= _MAX_DETAIL:
+        if adv_id in seen_ids or len(to_fetch) >= _MAX_DETAIL:
             continue
         seen_ids.add(adv_id)
-        fetch_count += 1
-        try:
-            detail_map[adv_id] = _get_json(_VULN_URL.format(id=adv_id), timeout=timeout)
-        except Exception as exc:
-            _log.warning("OSV detail fetch %s failed: %s", adv_id, exc)
-            detail_map[adv_id] = {"id": adv_id}
+        to_fetch.append(adv_id)
+
+    # Each detail fetch is an independent GET — run them concurrently instead
+    # of one at a time.
+    detail_map: dict[str, dict[str, Any]] = {}
+    if to_fetch:
+        with ThreadPoolExecutor(max_workers=min(_DETAIL_FETCH_CONCURRENCY, len(to_fetch))) as pool:
+            future_to_id = {
+                pool.submit(_get_json, _VULN_URL.format(id=adv_id), timeout): adv_id
+                for adv_id in to_fetch
+            }
+            for future in as_completed(future_to_id):
+                adv_id = future_to_id[future]
+                try:
+                    detail_map[adv_id] = future.result()
+                except Exception as exc:
+                    _log.warning("OSV detail fetch %s failed: %s", adv_id, exc)
+                    detail_map[adv_id] = {"id": adv_id}
 
     findings: list[dict[str, Any]] = []
     for (purl, dep_name, dep_version), adv_id in found:

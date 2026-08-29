@@ -87,6 +87,39 @@ class GoStringLiteral:
 
 
 @dataclass
+class GoParameter:
+    """One parameter or return value in a Go function/method signature.
+
+    ``name`` is ``""`` for an unnamed parameter or return value (e.g. the
+    bare ``string`` in ``func F() string`` or ``func F(int)``).
+    """
+
+    name: str
+    type: str
+
+
+@dataclass
+class GoFunctionDeclaration:
+    """A Go function or method declaration (signature only, not its body).
+
+    ``receiver_name``/``receiver_type`` are set only for methods
+    (``is_method=True``); ``receiver_type`` has any pointer ``*`` prefix
+    stripped, since interface-satisfaction checks care about the type name,
+    not whether the receiver is by value or by pointer.
+    """
+
+    name: str
+    receiver_name: str | None = None
+    receiver_type: str | None = None
+    parameters: list[GoParameter] = field(default_factory=list)
+    results: list[GoParameter] = field(default_factory=list)
+    doc_comment: str | None = None
+    line: int = 0
+    line_end: int = 0
+    is_method: bool = False
+
+
+@dataclass
 class GoParseResult:
     """Structured information extracted from one Go source file."""
 
@@ -94,6 +127,7 @@ class GoParseResult:
     instantiations: list[GoInstantiation] = field(default_factory=list)
     function_calls: list[GoFunctionCall] = field(default_factory=list)
     string_literals: list[GoStringLiteral] = field(default_factory=list)
+    function_declarations: list[GoFunctionDeclaration] = field(default_factory=list)
     source: str = ""
     file_path: str = ""
     parse_error: str | None = None
@@ -101,7 +135,11 @@ class GoParseResult:
 
     def __bool__(self) -> bool:
         return bool(
-            self.imports or self.instantiations or self.function_calls or self.string_literals
+            self.imports
+            or self.instantiations
+            or self.function_calls
+            or self.string_literals
+            or self.function_declarations
         )
 
 
@@ -119,6 +157,7 @@ _WRAPPER_NODES = {
     "parenthesized_expression",
     "unary_expression",
 }
+_DECLARATION_NODES = {"function_declaration", "method_declaration"}
 
 
 def get_go_parser() -> Any | None:
@@ -220,6 +259,11 @@ def _parse_with_tree_sitter(
 
         elif node.type in _STRING_NODES and not _is_non_value_string(node):
             result.string_literals.append(_tree_sitter_string(node, source))
+
+        elif node.type in _DECLARATION_NODES:
+            declaration = _tree_sitter_function_declaration(node, source)
+            if declaration is not None:
+                result.function_declarations.append(declaration)
 
     if root.has_error:
         error_line = _first_error_line(root)
@@ -374,6 +418,116 @@ def _tree_sitter_string(
         assigned_to=_assignment_target(node, source),
         is_raw=node.type == "raw_string_literal",
     )
+
+
+def _tree_sitter_function_declaration(
+    node: Any,
+    source: bytes,
+) -> GoFunctionDeclaration | None:
+    name_node = node.child_by_field_name("name")
+    if name_node is None:
+        return None
+
+    receiver_node = node.child_by_field_name("receiver")
+    receiver_name: str | None = None
+    receiver_type: str | None = None
+    if receiver_node is not None:
+        receiver_params = _parameter_list_params(receiver_node, source)
+        if receiver_params:
+            receiver_name = receiver_params[0].name or None
+            receiver_type = receiver_params[0].type.lstrip("*")
+
+    parameters_node = node.child_by_field_name("parameters")
+    parameters = _parameter_list_params(parameters_node, source) if parameters_node else []
+
+    result_node = node.child_by_field_name("result")
+    results = _result_params(result_node, source)
+
+    return GoFunctionDeclaration(
+        name=_node_text(name_node, source),
+        receiver_name=receiver_name,
+        receiver_type=receiver_type,
+        parameters=parameters,
+        results=results,
+        doc_comment=_leading_doc_comment(node, source),
+        line=_line(node),
+        line_end=_line_end(node),
+        is_method=receiver_node is not None,
+    )
+
+
+def _parameter_list_params(
+    parameter_list_node: Any,
+    source: bytes,
+) -> list[GoParameter]:
+    """Fan out a ``parameter_list``'s ``parameter_declaration`` children.
+
+    A single ``parameter_declaration`` may declare multiple comma-joined
+    names sharing one type (``a, b int``) — each becomes its own
+    :class:`GoParameter`. An unnamed declaration (a bare type, common in
+    return-value lists) yields one entry with ``name=""``.
+    """
+    params: list[GoParameter] = []
+
+    for decl in _named_children(parameter_list_node):
+        if decl.type != "parameter_declaration":
+            continue
+
+        type_node = decl.child_by_field_name("type")
+        type_text = _node_text(type_node, source)
+        names = [_node_text(n, source) for n in _children_by_field_name(decl, "name")]
+
+        if names:
+            params.extend(GoParameter(name=n, type=type_text) for n in names)
+        else:
+            params.append(GoParameter(name="", type=type_text))
+
+    return params
+
+
+def _result_params(result_node: Any | None, source: bytes) -> list[GoParameter]:
+    """Normalize a declaration's ``result`` field into a parameter list.
+
+    ``result`` is absent (no return values), a single bare type node (one
+    unnamed return), or a ``parameter_list`` (multiple/named returns).
+    """
+    if result_node is None:
+        return []
+
+    if result_node.type == "parameter_list":
+        return _parameter_list_params(result_node, source)
+
+    return [GoParameter(name="", type=_node_text(result_node, source))]
+
+
+def _leading_doc_comment(node: Any, source: bytes) -> str | None:
+    """Collect immediately-preceding, blank-line-unbroken ``comment`` siblings.
+
+    Tree-sitter attaches comments as preceding sibling nodes, not child
+    fields, so this walks backward from *node* rather than reading a field.
+    A single blank line between the last comment and *node* (or between two
+    comments) breaks the association.
+    """
+    lines: list[str] = []
+    current = node
+    sibling = current.prev_sibling
+
+    while sibling is not None and sibling.type == "comment":
+        if current.start_point[0] - sibling.end_point[0] != 1:
+            break
+        lines.append(_node_text(sibling, source))
+        current = sibling
+        sibling = current.prev_sibling
+
+    if not lines:
+        return None
+
+    lines.reverse()
+    cleaned = [
+        line.removeprefix("//").removeprefix("/*").removesuffix("*/").strip()
+        for line in lines
+    ]
+    return "\n".join(cleaned)
 
 
 def _split_callee(callee: str) -> tuple[str | None, str]:
@@ -704,6 +858,14 @@ _STRUCT_RE = re.compile(
     r")\s*\{"
 )
 
+_FUNC_DECL_RE = re.compile(
+    r"(?m)^func\s*"
+    r"(?:\(\s*(?P<recv_name>\w+)\s+\*?(?P<recv_type>[\w.]+)\s*\)\s*)?"
+    r"(?P<name>\w+)\s*"
+    r"\((?P<params>[^)]*)\)\s*"
+    r"(?P<result>\([^)]*\)|[\w.\[\]*]+)?\s*\{"
+)
+
 _SYMBOL_RE = re.compile(
     r"(?m)^\s*"
     r"(?:const|var)?\s*"
@@ -785,6 +947,7 @@ def _parse_with_regex(
 
     result.function_calls = calls
     result.instantiations.extend(constructors)
+    result.function_declarations = _regex_function_declarations(content, masked)
 
     import_keys = {(item.line, item.path) for item in result.imports}
 
@@ -1062,6 +1225,94 @@ def _regex_calls(
             )
 
     return calls, constructors
+
+
+def _regex_function_declarations(
+    content: str,
+    masked: str,
+) -> list[GoFunctionDeclaration]:
+    """Best-effort regex fallback for function/method declarations.
+
+    Grouped parameter names sharing one type (``a, b int``) are not
+    reliably fanned out here (each comma-separated segment is parsed
+    independently) — this is a defensive fallback for when tree-sitter
+    bindings aren't installed, not a full parser; the tree-sitter path
+    (``_tree_sitter_function_declaration``) handles that case correctly.
+    """
+    declarations: list[GoFunctionDeclaration] = []
+    lines = content.splitlines()
+
+    for match in _FUNC_DECL_RE.finditer(masked):
+        start_line = content.count("\n", 0, match.start()) + 1
+        end_line = content.count("\n", 0, match.end()) + 1
+
+        recv_name = match.group("recv_name")
+        recv_type = match.group("recv_type")
+
+        parameters = _regex_parse_param_list(match.group("params") or "")
+        result_text = match.group("result")
+        if result_text is None:
+            results: list[GoParameter] = []
+        elif result_text.startswith("("):
+            results = _regex_parse_param_list(result_text[1:-1])
+        else:
+            results = [GoParameter(name="", type=result_text.strip())]
+
+        declarations.append(
+            GoFunctionDeclaration(
+                name=match.group("name"),
+                receiver_name=recv_name,
+                receiver_type=recv_type,
+                parameters=parameters,
+                results=results,
+                doc_comment=_regex_leading_doc_comment(lines, start_line),
+                line=start_line,
+                line_end=end_line,
+                is_method=recv_name is not None,
+            )
+        )
+
+    return declarations
+
+
+def _regex_parse_param_list(params_text: str) -> list[GoParameter]:
+    params: list[GoParameter] = []
+
+    for segment in _split_top_level(params_text):
+        segment = segment.strip()
+        if not segment:
+            continue
+
+        match = re.match(r"^(\w+)\s+(.+)$", segment)
+        if match:
+            params.append(GoParameter(name=match.group(1), type=match.group(2).strip()))
+        else:
+            params.append(GoParameter(name="", type=segment))
+
+    return params
+
+
+def _regex_leading_doc_comment(lines: list[str], start_line: int) -> str | None:
+    """Collect contiguous ``//``-prefixed lines immediately preceding *start_line*.
+
+    *start_line* is 1-indexed; a blank line or any non-``//`` line breaks
+    the association, mirroring the tree-sitter path's rule.
+    """
+    comment_lines: list[str] = []
+    index = start_line - 2  # 0-indexed line immediately above start_line
+
+    while index >= 0:
+        stripped = lines[index].strip()
+        if not stripped.startswith("//"):
+            break
+        comment_lines.append(stripped.removeprefix("//").strip())
+        index -= 1
+
+    if not comment_lines:
+        return None
+
+    comment_lines.reverse()
+    return "\n".join(comment_lines)
 
 
 def _parse_regex_literal_body(

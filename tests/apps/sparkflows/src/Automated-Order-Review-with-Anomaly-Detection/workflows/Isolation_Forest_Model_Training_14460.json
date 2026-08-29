@@ -1,0 +1,731 @@
+{
+  "name": "Isolation Forest Model Training",
+  "uuid": "00c00a5f-3086-4eea-ba82-096231ce2b69",
+  "category": "ML",
+  "parameters": "",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Load Orders From Salesforce",
+      "type": "dataset",
+      "nodeClass": "fire.nodes.salesforce.NodeExecuteSOQLInSalesforce",
+      "x": "40px",
+      "y": "441px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "connection",
+          "value": "Salesforce",
+          "widget": "object_array"
+        },
+        {
+          "name": "soqlQuery",
+          "value": "SELECT Id, OrderNumber, Account.Name, PoNumber, TotalAmount, ContractId, EffectiveDate, EndDate, Pricebook2Id, BillToContactId, BillingStreet, BillingCity, BillingState, BillingPostalCode, BillingCountry, CustomerAuthorizedById, Owner.Name, Owner.Email, CreatedBy.Name, CreatedBy.Email \nFROM Order",
+          "widget": "textarea_small"
+        },
+        {
+          "name": "outputColNames",
+          "value": "[\"Id\",\"OrderNumber\",\"Account\",\"PoNumber\",\"TotalAmount\",\"ContractId\",\"EffectiveDate\",\"EndDate\",\"Pricebook2Id\",\"BillToContactId\",\"BillingStreet\",\"BillingCity\",\"BillingState\",\"BillingPostalCode\",\"BillingCountry\",\"CustomerAuthorizedById\",\"Owner\",\"CreatedBy\"]",
+          "widget": "schema_col_names"
+        },
+        {
+          "name": "outputColTypes",
+          "value": "[\"STRING\",\"STRING\",\"STRUCT\",\"STRING\",\"DOUBLE\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRUCT\",\"STRUCT\"]",
+          "widget": "schema_col_types"
+        },
+        {
+          "name": "outputColFormats",
+          "value": "[\"\",\"\",\"{\\\"Account\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"{\\\"Owner\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Email\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\",\"{\\\"CreatedBy\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Email\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\"]",
+          "widget": "schema_col_formats"
+        },
+        {
+          "name": "properties",
+          "widget": "tab"
+        },
+        {
+          "name": "extraOptionsKeys",
+          "value": "[]",
+          "widget": "key_array"
+        },
+        {
+          "name": "extraOptionsValues",
+          "value": "[]",
+          "widget": "value_array"
+        }
+      ],
+      "engine": "polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "2",
+      "name": "ISOLATION FOREST - Train Order Anomaly Model ",
+      "type": "ml-estimator",
+      "nodeClass": "fire.nodes.h2o.NodeH2OIsolationForest",
+      "x": "647.75px",
+      "y": "412.188px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "sampleSize",
+          "value": "256",
+          "widget": "textfield"
+        },
+        {
+          "name": "sampleRate",
+          "value": "-1.0",
+          "widget": "textfield"
+        },
+        {
+          "name": "featuresCols",
+          "value": "[\"OrderNumber\",\"Account\",\"PoNumber\",\"TotalAmount\",\"EffectiveDate\"]",
+          "widget": "variables"
+        },
+        {
+          "name": "mtries",
+          "value": "-1",
+          "widget": "textfield"
+        },
+        {
+          "name": "contamination",
+          "value": "-1.0",
+          "widget": "textfield"
+        },
+        {
+          "name": "ntrees",
+          "value": "50",
+          "widget": "textfield"
+        },
+        {
+          "name": "maxDepth",
+          "value": "8",
+          "widget": "textfield"
+        },
+        {
+          "name": "minRows",
+          "value": "1.0",
+          "widget": "textfield"
+        },
+        {
+          "name": "seed",
+          "value": "-1",
+          "widget": "textfield"
+        },
+        {
+          "name": "buildTreeOneNode",
+          "value": "false",
+          "widget": "array"
+        },
+        {
+          "name": "colSampleRatePerTree",
+          "value": "1.0",
+          "widget": "textfield"
+        },
+        {
+          "name": "colSampleRateChangePerLevel",
+          "value": "1.0",
+          "widget": "textfield"
+        },
+        {
+          "name": "scoreTreeInterval",
+          "value": "0",
+          "widget": "textfield"
+        },
+        {
+          "name": "categoricalEncoding",
+          "value": "AUTO",
+          "widget": "array"
+        },
+        {
+          "name": "ignoreConstCols",
+          "value": "true",
+          "widget": "array"
+        },
+        {
+          "name": "ignoredCols",
+          "value": "[]",
+          "widget": "variables"
+        },
+        {
+          "name": "columnsToCategorical",
+          "value": "[]",
+          "widget": "variables"
+        },
+        {
+          "name": "scoreEachIteration",
+          "value": "false",
+          "widget": "array"
+        },
+        {
+          "name": "stoppingRounds",
+          "value": "0",
+          "widget": "textfield"
+        },
+        {
+          "name": "maxRuntimeSecs",
+          "value": "0.0",
+          "widget": "textfield"
+        },
+        {
+          "name": "stoppingMetric",
+          "value": "AUTO",
+          "widget": "array"
+        },
+        {
+          "name": "stoppingTolerance",
+          "value": "0.01",
+          "widget": "textfield"
+        },
+        {
+          "name": "Grid Search",
+          "widget": "tab"
+        },
+        {
+          "name": "paramKeys",
+          "value": "[]",
+          "widget": "key_array"
+        },
+        {
+          "name": "paramValues",
+          "value": "[]",
+          "widget": "value_array"
+        },
+        {
+          "name": "gridStrategy",
+          "value": "Cartesian",
+          "widget": "array"
+        },
+        {
+          "name": "gridMaxModels",
+          "value": "0",
+          "widget": "textfield"
+        },
+        {
+          "name": "gridMaxRuntimeSecs",
+          "value": "0",
+          "widget": "textfield"
+        },
+        {
+          "name": "gridStoppingRounds",
+          "value": "3",
+          "widget": "textfield"
+        },
+        {
+          "name": "gridStoppingTolerance",
+          "value": "0.001",
+          "widget": "textfield"
+        },
+        {
+          "name": "gridStoppingMetric",
+          "value": "AUTO",
+          "widget": "array"
+        },
+        {
+          "name": "gridParallelism",
+          "value": "2",
+          "widget": "textfield"
+        },
+        {
+          "name": "gridSelectBestModelBy",
+          "value": "RMSE",
+          "widget": "array"
+        }
+      ],
+      "engine": "pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "3",
+      "name": "Persist Trained Model",
+      "type": "ml-modelsave",
+      "nodeClass": "fire.nodes.h2o.NodeH2OModelSave",
+      "x": "532.75px",
+      "y": "645.188px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "path",
+          "value": "/home/sparkflows/fire-data/data/Agentic_AI/isolation_forest",
+          "widget": "textfield"
+        },
+        {
+          "name": "fixedPath",
+          "value": "false",
+          "widget": "array"
+        }
+      ],
+      "engine": "pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "5",
+      "name": "Flatten Salesforce Fields",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeFlatten",
+      "x": "264px",
+      "y": "440px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "ids",
+          "value": "[\"00\",\"010\",\"011\",\"10\",\"11\",\"120\",\"121\",\"20\",\"21\",\"220\",\"221\"]",
+          "widget": "flatten_ids"
+        },
+        {
+          "name": "values1",
+          "value": "[\"Account.Name\",\"Account.attributes.type\",\"Account.attributes.url\",\"CreatedBy.Email\",\"CreatedBy.Name\",\"CreatedBy.attributes.type\",\"CreatedBy.attributes.url\",\"Owner.Email\",\"Owner.Name\",\"Owner.attributes.type\",\"Owner.attributes.url\"]",
+          "widget": "flatten_value1"
+        },
+        {
+          "name": "values2",
+          "value": "[\"Name\",\"type\",\"url\",\"Email\",\"Name\",\"type\",\"url\",\"Email\",\"Name\",\"type\",\"url\"]",
+          "widget": "flatten_value2"
+        },
+        {
+          "name": "values3",
+          "value": "[\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\",\"string\"]",
+          "widget": "flatten_value3"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "6",
+      "name": "Review Anomalous Orders",
+      "type": "transform",
+      "nodeClass": "fire.nodes.util.NodePrintFirstNRows",
+      "x": "710.75px",
+      "y": "2.1875px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "title",
+          "value": "Row Values",
+          "widget": "textfield"
+        },
+        {
+          "name": "n",
+          "value": "100",
+          "widget": "textfield"
+        },
+        {
+          "name": "columns",
+          "value": "[]",
+          "widget": "variables"
+        },
+        {
+          "name": "enableInExecution",
+          "value": "true",
+          "widget": "array"
+        },
+        {
+          "name": "displayDataType",
+          "value": "true",
+          "widget": "array"
+        },
+        {
+          "name": "highlight_tab",
+          "widget": "tab"
+        },
+        {
+          "name": "highlight",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "highlight_type",
+          "value": "[]",
+          "widget": "list_array"
+        },
+        {
+          "name": "highlight_expression",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "color_code",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "rowHeader_tab",
+          "widget": "tab"
+        },
+        {
+          "name": "rowHeader",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "rowHeader_columns",
+          "value": "[]",
+          "widget": "array_textfield"
+        },
+        {
+          "name": "rowHeader_color",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "rowHeader_bgColor",
+          "value": "[]",
+          "widget": "list_textfield"
+        },
+        {
+          "name": "rowHeader_value",
+          "value": "[]",
+          "widget": "list_textfield"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "7",
+      "name": "H2O SCORE - Generate Anomaly Scores",
+      "type": "ml-predict",
+      "nodeClass": "fire.nodes.h2o.NodeH2OScore",
+      "x": "929.75px",
+      "y": "168.188px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "isTestData",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "label",
+          "value": "",
+          "widget": "variable"
+        },
+        {
+          "name": "withContribution",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "path",
+          "value": "",
+          "widget": "textfield"
+        },
+        {
+          "name": "modelType",
+          "value": "IsolationForest",
+          "widget": "array"
+        },
+        {
+          "name": "confusionMatrix",
+          "widget": "tab"
+        },
+        {
+          "name": "output_confusion_matrix_chart",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "cmChartTitle",
+          "value": "Title",
+          "widget": "textfield"
+        },
+        {
+          "name": "cmChartDescription",
+          "value": "Visual Representation of Predicted vs. Actual Classes",
+          "widget": "textfield"
+        },
+        {
+          "name": "confusionMatrixTargetLegend",
+          "value": "Target",
+          "widget": "textfield"
+        },
+        {
+          "name": "confusionMatrixPredictedLabelLegend",
+          "value": "PredictedLabel",
+          "widget": "textfield"
+        },
+        {
+          "name": "Description",
+          "widget": "tab"
+        },
+        {
+          "name": "confusionMatrixRowDescription",
+          "value": "",
+          "widget": "textarea_rich"
+        },
+        {
+          "name": "ROC Curve",
+          "widget": "tab"
+        },
+        {
+          "name": "output_roc_chart",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "roc_title",
+          "value": "Title",
+          "widget": "textfield"
+        },
+        {
+          "name": "roc_description",
+          "value": "Receiver operating characteristic (ROC) curve",
+          "widget": "textfield"
+        },
+        {
+          "name": "xlabel",
+          "value": "False Positive Rate (specificity)",
+          "widget": "textfield"
+        },
+        {
+          "name": "ylabel",
+          "value": "True Positive Rate (sensitivity)",
+          "widget": "textfield"
+        },
+        {
+          "name": "predictionOverTime",
+          "widget": "tab"
+        },
+        {
+          "name": "useChampion",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "model_uuid",
+          "value": "",
+          "widget": "textfield"
+        },
+        {
+          "name": "enablePredictionOverTimeMetrics",
+          "value": "false",
+          "widget": "array_single"
+        },
+        {
+          "name": "modelCategory",
+          "value": "",
+          "widget": "array"
+        }
+      ],
+      "engine": "pyspark,polars",
+      "inputAnchors": [
+        {
+          "name": "Data",
+          "title": "D"
+        },
+        {
+          "name": "Model",
+          "title": "M"
+        }
+      ],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "8",
+      "name": "Sticky Note",
+      "type": "sticky",
+      "nodeClass": "fire.nodes.doc.NodeStickyNote",
+      "x": "1px",
+      "y": "14px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "bgColor",
+          "value": "green",
+          "widget": "textfield"
+        },
+        {
+          "name": "width",
+          "value": "548px",
+          "widget": "textfield"
+        },
+        {
+          "name": "height",
+          "value": "400px",
+          "widget": "textfield"
+        },
+        {
+          "name": "pushedToBack",
+          "value": "false",
+          "widget": "textfield"
+        },
+        {
+          "name": "comment",
+          "value": "<p><strong>ORDER ANOMALY DETECTION WORKFLOW</strong></p><p>1. Extract order records from Salesforce.</p><p>2. Flatten nested Salesforce objects into model-ready columns.</p><p>3. Train an Isolation Forest model to learn normal order behavior.</p><p>4. Save the trained model for future reuse.</p><p>5. Score all orders using the trained model.</p><p>6. Generate anomaly scores and identify suspicious orders.</p><p>7. Display scored records for analyst review.</p><p><br></p><p>Goal:</p><p>Automatically detect unusual orders that may require investigation without needing labeled anomaly data.</p>",
+          "widget": "textarea_rich"
+        }
+      ],
+      "engine": "scala,pyspark,polars,agent",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "9",
+      "name": "Sticky Note",
+      "type": "sticky",
+      "nodeClass": "fire.nodes.doc.NodeStickyNote",
+      "x": "818px",
+      "y": "346px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "bgColor",
+          "value": "pink",
+          "widget": "textfield"
+        },
+        {
+          "name": "width",
+          "value": "396px",
+          "widget": "textfield"
+        },
+        {
+          "name": "height",
+          "value": "393px",
+          "widget": "textfield"
+        },
+        {
+          "name": "pushedToBack",
+          "value": "false",
+          "widget": "textfield"
+        },
+        {
+          "name": "comment",
+          "value": "<p><strong>ISOLATION FOREST TRAINING</strong></p><p>• Uses unsupervised machine learning.</p><p>• Learns patterns of normal orders.</p><p>• No labeled anomaly examples required.</p><p>• Randomly isolates records using multiple decision trees.</p><p>• Orders isolated quickly are considered potential anomalies.</p><p>• Produces a reusable anomaly detection model.</p><p>• Features Used:</p><p>&nbsp;- Order Number</p><p>&nbsp;- Account</p><p>&nbsp;- PO Number</p><p>&nbsp;- Total Amount</p><p>&nbsp;- Effective Date</p>",
+          "widget": "textarea_rich"
+        }
+      ],
+      "engine": "scala,pyspark,polars,agent",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "11",
+      "name": "Sticky Note",
+      "type": "sticky",
+      "nodeClass": "fire.nodes.doc.NodeStickyNote",
+      "x": "1026px",
+      "y": "0px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "bgColor",
+          "value": "purple",
+          "widget": "textfield"
+        },
+        {
+          "name": "width",
+          "value": "296px",
+          "widget": "textfield"
+        },
+        {
+          "name": "height",
+          "value": "327px",
+          "widget": "textfield"
+        },
+        {
+          "name": "pushedToBack",
+          "value": "false",
+          "widget": "textfield"
+        },
+        {
+          "name": "comment",
+          "value": "<p><strong>ANOMALY SCORING</strong></p><p>• Applies the trained Isolation Forest model.</p><p>• Calculates anomaly score for every order.</p><p>• Higher score = greater likelihood of abnormal behavior.</p><p>• Produces anomaly metrics for downstream analysis.</p><p>• Helps identify unusual order patterns.</p><p>• Results can be reviewed, filtered, or routed for investigation.</p>",
+          "widget": "textarea_rich"
+        }
+      ],
+      "engine": "scala,pyspark,polars,agent",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "1",
+      "target": "5",
+      "id": 1,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "2",
+      "target": "3",
+      "id": 3,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "2",
+      "target": "7",
+      "id": 7,
+      "sourceAnchor": "output",
+      "targetAnchor": "Model",
+      "index": 0
+    },
+    {
+      "source": "7",
+      "target": "6",
+      "id": 8,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "5",
+      "target": "2",
+      "id": 9,
+      "sourceAnchor": "output",
+      "index": 0
+    }
+  ],
+  "dataSetDetails": [],
+  "engine": "polars",
+  "nodeDebugConfigs": {}
+}

@@ -19,6 +19,8 @@ permissions:
 jobs:
   require-linked-issue:
     runs-on: ubuntu-latest
+    # develop→main merges are batch releases; individual issue links live on feature PRs.
+    if: github.event.pull_request.base.ref != 'main'
     steps:
       - name: Check for a linked issue
         id: check

@@ -15,6 +15,7 @@ except ImportError:
 
 import typer
 
+from nuguard.cli.commands import target_browser  # noqa: F401 — registers `target discover-browser`
 from nuguard.cli.commands.analyze import analyze_app
 from nuguard.cli.commands.behavior import behavior_app
 from nuguard.cli.commands.findings import findings_app
