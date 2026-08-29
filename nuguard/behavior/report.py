@@ -34,6 +34,51 @@ _MAX_DIAG_SNIPPET_CHARS = 800
 # excluded from the Dynamic Analysis Findings section.
 _GAP_FINDING_TYPES = frozenset({"CAPABILITY_GAP", "INTENT_MISALIGNMENT", "TOOL_CHAIN_BROKEN"})
 
+# Per-type fallback remediation used when a promoted gap finding carries no
+# remediation text (e.g. gap aggregation records predate remediation backfill).
+_GAP_FALLBACK_REMEDIATION = {
+    "CAPABILITY_GAP": "Verify {component} is correctly wired and returns expected output",
+    "INTENT_MISALIGNMENT": "Align {component} system prompt with application's stated purpose",
+    "TOOL_CHAIN_BROKEN": "Repair broken tool invocation chain in {component}",
+}
+
+
+def _escape_md_cell(value: Any) -> str:
+    """Escape *value* for safe embedding inside a Markdown table cell.
+
+    Pipes (``|``) break column boundaries and newlines create extra rows,
+    so both must be neutralised.  Non-string values are coerced to ``str``
+    first to guard against upstream type drift (gap findings are plain
+    dicts, not Pydantic-validated).
+    """
+    text = str(value) if value is not None else ""
+    return text.replace("|", "\\|").replace("\n", " ").replace("\r", "")
+
+
+def _gap_remediation_text(finding: dict[str, Any]) -> str:
+    """Return the remediation text for a promoted gap finding.
+
+    Prefers an explicit ``remediation`` value; falls back to the per-type
+    guidance template keyed off the finding type when it is missing.
+
+    Args:
+        finding: A gap-aggregated dynamic finding.
+
+    Returns:
+        Remediation text, or an empty string when neither the finding nor the
+        type template provides one.
+    """
+    raw = finding.get("remediation")
+    remediation = str(raw).strip() if raw else ""
+    if remediation:
+        return remediation
+    ftype = finding.get("finding_type", "")
+    template = _GAP_FALLBACK_REMEDIATION.get(ftype, "")
+    if not template:
+        return ""
+    comp = finding.get("affected_component", "unknown")
+    return template.format(component=comp)
+
 
 def to_json(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) -> str:
     """Generate JSON report string.
@@ -675,15 +720,19 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             label = ftype.replace("_", " ").title()
             lines.append(f"### {label}")
             lines.append("")
-            lines.append("| Component | Occurrences | Sample Gaps |")
-            lines.append("|---|---|---|")
+            lines.append("| Component | Occurrences | Sample Gaps | Remediation |")
+            lines.append("|---|---|---|---|")
             for gf in type_findings:
                 comp = gf.get("affected_component", "unknown")
                 fid = gf.get("finding_id", "")
                 count = gf.get("occurrence_count", 1)
                 sample = "; ".join(str(g)[:120] for g in (gf.get("gap_texts") or [gf.get("description", "")])[:3])
+                remediation = _gap_remediation_text(gf)
                 comp_display = f"{comp} ({fid})" if fid else comp
-                lines.append(f"| {comp_display} | {count} | {sample} |")
+                lines.append(
+                    f"| {_escape_md_cell(comp_display)} | {count} "
+                    f"| {_escape_md_cell(sample)} | {_escape_md_cell(remediation)} |"
+                )
             lines.append("")
 
     # Dynamic Analysis Findings (policy violations, canary hits — not gap aggregates)
@@ -984,3 +1033,65 @@ def to_text(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
             sev = str(f.get("severity", "")).upper()
             color = {"CRITICAL": "red", "HIGH": "red", "MEDIUM": "yellow", "LOW": "blue"}.get(sev, "white")
             console.print(f"  [{color}][{sev}][/{color}] {f.get('title', '')}")
+
+
+def to_text_str(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) -> str:
+    """Return a plain-text (no Rich markup) report string.
+
+    Used when ``--format text --output <file>`` is requested so that the
+    written file contains readable plain text rather than Markdown.
+
+    Args:
+        result: Complete BehaviorAnalysisResult.
+        meta: Optional report metadata.
+
+    Returns:
+        Plain-text report as a string.
+    """
+    lines: list[str] = []
+
+    # Summary
+    lines.append("Behavior Analysis Summary")
+    lines.append("=" * 40)
+    lines.append(f"  Intent:        {result.intent.app_purpose or 'not determined'}")
+    lines.append(f"  Risk Score:    {result.overall_risk_score:.1f} / 100")
+    lines.append(f"  Coverage:      {result.coverage_percentage * 100:.0f}%")
+    lines.append(f"  Alignment:     {result.intent_alignment_score:.2f} / 5.0")
+    lines.append(f"  Findings:      {len(result.static_findings) + len(result.dynamic_findings)}")
+    lines.append(f"  Outcome:       {result.scan_outcome}")
+    lines.append("")
+
+    # Config notes
+    if result.config_notes:
+        lines.append("Configuration Notes")
+        lines.append("-" * 40)
+        for note in result.config_notes:
+            lines.append(f"  - {note}")
+        lines.append("")
+
+    # Coverage table
+    if result.coverage:
+        lines.append("Component Coverage")
+        lines.append("-" * 40)
+        header = f"  {'Component':<30} {'Type':<15} {'Exercised':<10} {'In Policy':<10} {'Deviations':<10}"
+        lines.append(header)
+        lines.append("  " + "-" * 75)
+        for cov in result.coverage:
+            ex = "Yes" if cov.exercised else "No"
+            wp = "Yes" if cov.exercised_within_policy else ("No" if cov.exercised else "-")
+            name = cov.component_name[:29]
+            ntype = cov.node_type[:14]
+            lines.append(f"  {name:<30} {ntype:<15} {ex:<10} {wp:<10} {len(cov.deviations):<10}")
+        lines.append("")
+
+    # Findings
+    all_findings = list(result.static_findings) + list(result.dynamic_findings)
+    if all_findings:
+        lines.append("Findings")
+        lines.append("-" * 40)
+        for f in all_findings:
+            sev = str(f.get("severity", "")).upper()
+            lines.append(f"  [{sev}] {f.get('title', '')}")
+        lines.append("")
+
+    return "\n".join(lines)

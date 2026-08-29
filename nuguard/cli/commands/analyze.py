@@ -2,8 +2,8 @@
 
 Exit codes
 ----------
-0  No findings at or above ``--min-severity``
-1  One or more findings at or above ``--min-severity``
+0  No findings at or above ``--fail-on`` threshold (default: high)
+1  One or more findings at or above ``--fail-on`` threshold
 2  Analysis error (SBOM could not be read / parsed)
 3  Not implemented / reserved
 """
@@ -175,6 +175,10 @@ def analyze(
         None, "--output", "-o",
         help="Write report to this file instead of stdout.",
     ),
+    fail_on: Optional[str] = typer.Option(
+        None, "--fail-on",
+        help="Exit non-zero when any finding meets this severity: critical | high | medium | low. [default: high]",
+    ),
 ) -> None:
     """Run static analysis against the AI-SBOM.
 
@@ -209,6 +213,9 @@ def analyze(
 
     # --min-severity: CLI wins when explicitly set (non-None); else use config default
     min_severity = min_severity or cfg.analyze_min_severity
+
+    # --fail-on: CLI wins when explicitly set; else use output.fail_on from config
+    effective_fail_on = fail_on or cfg.fail_on
 
     # --source: CLI wins; fall back to top-level source: in nuguard.yaml.
     # A remote GitHub URL in `source:` can't be passed to local-scan tools
@@ -432,8 +439,13 @@ def analyze(
     else:
         typer.echo(_render(formats[0]))
 
-    # Exit 1 if any findings at or above threshold
-    raise typer.Exit(code=1 if visible else 0)
+    # Exit 1 if any findings meet the fail-on severity threshold
+    fail_threshold = _SEV_ORDER.get(effective_fail_on.lower(), 1)
+    worst = min(
+        (_SEV_ORDER.get(f.severity.value.lower(), 4) for f in visible),
+        default=99,
+    )
+    raise typer.Exit(code=1 if worst <= fail_threshold else 0)
 
 
 # ---------------------------------------------------------------------------
