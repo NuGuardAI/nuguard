@@ -54,7 +54,7 @@ class BehaviorAnalysisRequest(BaseModel):
     """JSON-safe input for :func:`analyze_behavior`."""
 
     config: BehaviorConfig
-    mode: Literal["static", "dynamic", "static+dynamic"] = "static+dynamic"
+    mode: Literal["static", "dynamic", "static+dynamic", "minimal"] = "static+dynamic"
 
 
 async def analyze_behavior(

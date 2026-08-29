@@ -18,4 +18,4 @@ Verifies your app behaves as intended against its Cognitive Policy — multi-tur
 
 Adversarial attack scenarios — prompt injection, data exfiltration, tool abuse, and more — against a live target.
 
-[![Read the Red-Team Guide](https://img.shields.io/badge/→_Read_the_Red--Team_Guide-da3633?style=for-the-badge)](red-teaming-guide.md#quick-start)
+[![Read the Red-Team Guide](https://img.shields.io/badge/→_Read_the_Red--Team_Guide-da3633?style=for-the-badge)](redteam-guide.md#quick-start)

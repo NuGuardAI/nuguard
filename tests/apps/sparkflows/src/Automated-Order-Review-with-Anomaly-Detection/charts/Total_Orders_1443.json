@@ -1,0 +1,84 @@
+{
+  "name": "Total Orders",
+  "uuid": "c7e01ce1-2bc6-4451-bf37-67df2a75f776",
+  "icon": {
+    "type": "svg",
+    "icon": "assets/images/icons/actions-icon/interactive.svg"
+  },
+  "category": "",
+  "sheets": [
+    {
+      "id": 0,
+      "name": "",
+      "description": "TOTAL ORDERS",
+      "type": "<CUR>",
+      "chartType": "SUMMARY_CARD",
+      "datasetUuid": "066b647a-8fe2-425f-855e-a84c2670b09a",
+      "datasetName": "",
+      "colors": [
+        "#77c8d0",
+        "#ffe3b2",
+        "#faa19b",
+        "#a1bdfd",
+        "#b6d7d0",
+        "#ffb2c8",
+        "#ffd5be",
+        "#c7d2ff",
+        "#83e3f4",
+        "#d1bfff",
+        "#649bf7",
+        "#f8c9ee",
+        "#219aad",
+        "#ffbfa3"
+      ],
+      "x": [],
+      "y": [
+        {
+          "columnName": "OrderNumber",
+          "category": "TEXT",
+          "aggregate": "COUNT"
+        }
+      ],
+      "groupBy": [],
+      "filters": [],
+      "calculatedFields": [],
+      "drillDown": {
+        "enabled": false,
+        "levels": []
+      },
+      "chartOptions": {
+        "legendPosition": "top",
+        "totalPosition": "bottom",
+        "tooltip": "value",
+        "xlabel": "",
+        "ylabel": "",
+        "y1label": "",
+        "total": false,
+        "label": false,
+        "horizontalBar": false,
+        "beginAtZero": true,
+        "stacked": false,
+        "hideTitleOnDashboard": true,
+        "summaryCards": {
+          "textCenter": true,
+          "lblFontSize": "30px",
+          "descFontSize": "18px",
+          "lblColor": "#3131d3",
+          "descColor": "#6c6a65",
+          "descTop": true,
+          "divider": false,
+          "dividerColor": "#bebebe",
+          "formattedValue": 2
+        }
+      },
+      "filterDependencies": [
+        {
+          "parentColumn": "",
+          "childColumn": "",
+          "restrict": false,
+          "autoClear": false
+        }
+      ]
+    }
+  ]
+}

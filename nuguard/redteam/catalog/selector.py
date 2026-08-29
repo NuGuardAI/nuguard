@@ -31,11 +31,13 @@ _PROFILE_CAPS: dict[str, int] = {
     "ci": 20,
     "standard": 40,
     "full": 9999,  # effectively unlimited
+    "minimal": 1,
 }
 _PROFILE_MIN_IMPACT: dict[str, float] = {
     "ci": 5.0,
     "standard": 3.0,
     "full": 0.0,
+    "minimal": 0.0,
 }
 
 

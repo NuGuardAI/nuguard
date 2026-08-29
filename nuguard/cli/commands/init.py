@@ -61,30 +61,9 @@ def _build_sbom_context(base: Path, sbom_rel: str | None) -> str:
     """
     if not sbom_rel:
         return ""
-    try:
-        import json
-        sbom_file = base / sbom_rel.lstrip("./")
-        data = json.loads(sbom_file.read_text(encoding="utf-8"))
-        summary = data.get("summary") or {}
-        nodes: list[dict] = data.get("nodes") or []
-        lines: list[str] = []
-        if summary.get("use_case"):
-            lines.append(f"Use case: {summary['use_case']}")
-        if summary.get("frameworks"):
-            lines.append(f"Frameworks: {', '.join(str(f) for f in summary['frameworks'])}")
-        tools = [n["name"] for n in nodes if n.get("component_type") == "TOOL" and n.get("name")]
-        if tools:
-            lines.append(f"Tools: {', '.join(tools[:10])}")
-        models = [n["name"] for n in nodes if n.get("component_type") == "MODEL" and n.get("name")]
-        if models:
-            lines.append(f"Models: {', '.join(models[:5])}")
-        if summary.get("api_endpoints"):
-            eps = [e for e in summary["api_endpoints"] if e and e != "*"]
-            if eps:
-                lines.append(f"API endpoints: {', '.join(eps[:5])}")
-        return "\n".join(lines)
-    except Exception:
-        return ""
+    from nuguard.policy.compiler import summarize_sbom_for_policy_draft
+
+    return summarize_sbom_for_policy_draft(base / sbom_rel.lstrip("./"))
 
 
 # ---------------------------------------------------------------------------
