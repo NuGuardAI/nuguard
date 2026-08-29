@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from nuguard.behavior.models import BehaviorAnalysisResult, BehaviorCoverage, IntentProfile, ScenarioResult
-from nuguard.behavior.report import to_markdown
+from nuguard.behavior.report import to_markdown, to_text_str
 from nuguard.cli.report_meta import ReportMeta
 
 
@@ -216,3 +216,89 @@ def test_to_markdown_recommendations_and_remediation_are_separate_sections():
     assert "## Recommendations" in md
     # No remediation_plan was supplied, so no Remediation Plan section is emitted.
     assert "## Remediation Plan" not in md
+
+
+# ---------------------------------------------------------------------------
+# to_text_str — plain-text file output
+# ---------------------------------------------------------------------------
+
+
+def test_to_text_str_returns_string():
+    """to_text_str must return a plain-text string, not None."""
+    result = _make_result()
+    output = to_text_str(result)
+    assert isinstance(output, str)
+    assert len(output) > 0
+
+
+def test_to_text_str_no_markdown_syntax():
+    """Plain-text output must not contain Markdown heading or table syntax."""
+    result = _make_result(
+        dynamic_findings=[_finding("high")],
+    )
+    output = to_text_str(result)
+    assert not output.lstrip().startswith("#"), "Should not start with Markdown heading"
+    assert "|" not in output, "Should not contain Markdown table pipes"
+
+
+def test_to_text_str_no_ansi_escapes():
+    """Plain-text output must not contain ANSI escape sequences."""
+    result = _make_result()
+    output = to_text_str(result)
+    assert "\x1b[" not in output, "Plain text must not contain ANSI escapes"
+
+
+def test_to_text_str_contains_summary_fields():
+    """Summary section must include all key metrics."""
+    result = _make_result(dynamic_findings=[_finding("critical")])
+    output = to_text_str(result)
+    assert "Behavior Analysis Summary" in output
+    assert "Intent:" in output
+    assert "Risk Score:" in output
+    assert "Coverage:" in output
+    assert "Findings:" in output
+    assert "Outcome:" in output
+
+
+def test_to_text_str_with_findings():
+    """Findings section must list severity and title."""
+    result = _make_result(
+        dynamic_findings=[_finding("critical"), _finding("low")],
+    )
+    output = to_text_str(result)
+    assert "[CRITICAL]" in output
+    assert "[LOW]" in output
+    assert "critical issue" in output
+    assert "low issue" in output
+
+
+def test_to_text_str_with_config_notes():
+    """Config notes must appear when present."""
+    result = _make_result(config_notes=["No SBOM provided"])
+    output = to_text_str(result)
+    assert "Configuration Notes" in output
+    assert "No SBOM provided" in output
+
+
+def test_to_text_str_without_config_notes():
+    """Config notes section must be omitted when empty."""
+    result = _make_result()
+    output = to_text_str(result)
+    assert "Configuration Notes" not in output
+
+
+def test_to_text_str_with_coverage():
+    """Coverage table must render as aligned text, not Markdown table."""
+    cov = BehaviorCoverage(
+        component_name="booking_agent",
+        node_type="AGENT",
+        exercised=True,
+        exercised_within_policy=True,
+    )
+    result = _make_result(coverage=[cov])
+    output = to_text_str(result)
+    assert "Component Coverage" in output
+    assert "booking_agent" in output
+    assert "AGENT" in output
+    # Must be a plain-text table (dashes for alignment), not Markdown pipes
+    assert "---" in output
