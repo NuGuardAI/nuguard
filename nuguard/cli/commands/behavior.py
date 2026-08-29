@@ -351,12 +351,14 @@ async def _run_behavior(
             return to_json(result, meta)
         if fmt == "markdown":
             return to_markdown(result, meta)
-        if output_path is None:
-            to_text(result, meta)
-            return None
-        # Preserve prior behavior for --format text --output ...
-        # where markdown was written to file.
-        return to_markdown(result, meta)
+        if fmt == "text":
+            if output_path is None:
+                to_text(result, meta)
+                return None
+            from nuguard.behavior.report import to_text_str  # noqa: PLC0415
+
+            return to_text_str(result, meta)
+        return None
 
     if output_path is not None:
         for fmt in formats:
