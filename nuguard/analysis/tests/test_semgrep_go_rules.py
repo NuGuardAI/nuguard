@@ -253,6 +253,91 @@ class TestGoOfficialSdkSinks:
             _assert_no_rule(semgrep_findings, "official_sdk_negative.go", rule_id)
 
 
+class TestGoOfficialStreamingSinks:
+    """Issue #232: official SDK streaming call shapes."""
+
+    def test_streaming_prompt_injection(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        lines = _rule_lines(
+            semgrep_findings,
+            "official_sdk_streaming_positive.go",
+            "nuguard-go-llm-prompt-injection-sprintf",
+        )
+        # Chat.Completions.NewStreaming and Models.GenerateContentStream.
+        assert lines == [63, 91]
+
+    def test_streaming_missing_timeout(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        lines = _rule_lines(
+            semgrep_findings,
+            "official_sdk_streaming_positive.go",
+            "nuguard-go-llm-missing-context-timeout",
+        )
+        # NewStreaming x3, ConverseStream, InvokeModelWithResponseStream,
+        # GenerateContentStream.
+        assert lines == [63, 71, 77, 83, 91]
+
+    def test_bounded_context_streaming_not_reported(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        """A timeout-bounded streaming call with trusted input stays clean."""
+        for rule_id in (
+            "nuguard-go-llm-prompt-injection-sprintf",
+            "nuguard-go-llm-missing-context-timeout",
+        ):
+            hits = _rule_lines(semgrep_findings, "official_sdk_streaming_positive.go", rule_id)
+            assert 99 not in hits
+
+
+class TestGoCredentialOptions:
+    """Issue #232: hardcoded credentials via official client options."""
+
+    def test_positive_literal_options(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        lines = _rule_lines(
+            semgrep_findings,
+            "credential_options_positive.go",
+            "nuguard-go-hardcoded-api-key",
+        )
+        # WithAPIKey("sk-…"), WithAuthToken("sk-…"), WithToken("AIza…").
+        assert lines == [15, 24, 29]
+
+    def test_negative_env_and_non_secret(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        _assert_no_rule(
+            semgrep_findings,
+            "credential_options_negative.go",
+            "nuguard-go-hardcoded-api-key",
+        )
+
+
+class TestGoInsecureTLSViaHTTPClientOption:
+    """Issue #232: InsecureSkipVerify wired through option.WithHTTPClient."""
+
+    def test_positive_variable_and_literal_transport(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        lines = _rule_lines(
+            semgrep_findings,
+            "http_client_option_positive.go",
+            "nuguard-go-llm-insecure-tls",
+        )
+        assert lines == [25, 40]
+
+    def test_negative_secure_and_non_ai(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        _assert_no_rule(
+            semgrep_findings,
+            "http_client_option_negative.go",
+            "nuguard-go-llm-insecure-tls",
+        )
+
+
 class TestGoRuleInventory:
     def test_only_expected_go_rules_fire_on_fixtures(
         self, semgrep_findings: dict[str, list[dict[str, object]]]
