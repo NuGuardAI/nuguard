@@ -173,6 +173,25 @@
             "title": "References",
             "type": "array"
           },
+          "container_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Container Image"
+          },
+          "container_image_locations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Container Image Locations",
+            "type": "array"
+          },
           "goal_type": {
             "anyOf": [
               {
@@ -1202,7 +1221,8 @@
         "enum": [
           "static",
           "dynamic",
-          "static+dynamic"
+          "static+dynamic",
+          "minimal"
         ],
         "title": "Mode",
         "type": "string"
@@ -3702,6 +3722,7 @@
         "enum": [
           "run_started",
           "scenario_plan_ready",
+          "scenario_started",
           "scenario_progress",
           "findings_delta",
           "heartbeat",
@@ -3814,6 +3835,42 @@
         "default": null,
         "title": "Current Scenario Type"
       },
+      "scenario_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Scenario Id"
+      },
+      "scenario_title": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Scenario Title"
+      },
+      "scenario_status": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Scenario Status"
+      },
       "updated_at": {
         "format": "date-time",
         "title": "Updated At",
@@ -3888,6 +3945,61 @@
     "type": "object"
   },
   "common.target_verify.TargetSessionResolveRequest": {
+    "$defs": {
+      "LoginFlowConfig": {
+        "description": "Configuration for apps that require a login request to obtain a JWT.\n\nExample nuguard.yaml block::\n\n    auth:\n      type: login_flow\n      login_flow:\n        endpoint: /login\n        payload:\n          username: ${APP_USERNAME}\n          password: ${APP_PASSWORD}\n        token_response_key: access_token\n        token_header: \"Authorization: Bearer\"\n        refresh_on_401: true",
+        "properties": {
+          "endpoint": {
+            "default": "/login",
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "enum": [
+              "POST",
+              "GET"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Url"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "token_response_key": {
+            "default": "access_token",
+            "title": "Token Response Key",
+            "type": "string"
+          },
+          "token_header": {
+            "default": "Authorization: Bearer",
+            "title": "Token Header",
+            "type": "string"
+          },
+          "refresh_on_401": {
+            "default": true,
+            "title": "Refresh On 401",
+            "type": "boolean"
+          }
+        },
+        "title": "LoginFlowConfig",
+        "type": "object"
+      }
+    },
     "properties": {
       "target_url": {
         "title": "Target Url",
@@ -3945,6 +4057,17 @@
         ],
         "default": null,
         "title": "Auth Password"
+      },
+      "login_flow": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/LoginFlowConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       },
       "chat_payload_key": {
         "default": "message",
@@ -4135,6 +4258,61 @@
     "type": "object"
   },
   "common.target_verify.TargetVerifyRequest": {
+    "$defs": {
+      "LoginFlowConfig": {
+        "description": "Configuration for apps that require a login request to obtain a JWT.\n\nExample nuguard.yaml block::\n\n    auth:\n      type: login_flow\n      login_flow:\n        endpoint: /login\n        payload:\n          username: ${APP_USERNAME}\n          password: ${APP_PASSWORD}\n        token_response_key: access_token\n        token_header: \"Authorization: Bearer\"\n        refresh_on_401: true",
+        "properties": {
+          "endpoint": {
+            "default": "/login",
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "enum": [
+              "POST",
+              "GET"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Url"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "token_response_key": {
+            "default": "access_token",
+            "title": "Token Response Key",
+            "type": "string"
+          },
+          "token_header": {
+            "default": "Authorization: Bearer",
+            "title": "Token Header",
+            "type": "string"
+          },
+          "refresh_on_401": {
+            "default": true,
+            "title": "Refresh On 401",
+            "type": "boolean"
+          }
+        },
+        "title": "LoginFlowConfig",
+        "type": "object"
+      }
+    },
     "properties": {
       "target_url": {
         "title": "Target Url",
@@ -4192,6 +4370,17 @@
         ],
         "default": null,
         "title": "Auth Password"
+      },
+      "login_flow": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/LoginFlowConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       },
       "chat_payload_key": {
         "default": "message",
@@ -4996,6 +5185,25 @@
             "title": "References",
             "type": "array"
           },
+          "container_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Container Image"
+          },
+          "container_image_locations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Container Image Locations",
+            "type": "array"
+          },
           "goal_type": {
             "anyOf": [
               {
@@ -5571,6 +5779,7 @@
           "high_findings",
           "findings",
           "aborted_target_unavailable",
+          "aborted_endpoint_unreachable",
           "inconclusive_target_errors",
           "no_findings"
         ],
@@ -6315,6 +6524,25 @@
             "title": "References",
             "type": "array"
           },
+          "container_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Container Image"
+          },
+          "container_image_locations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Container Image Locations",
+            "type": "array"
+          },
           "goal_type": {
             "anyOf": [
               {
@@ -6890,6 +7118,7 @@
           "high_findings",
           "findings",
           "aborted_target_unavailable",
+          "aborted_endpoint_unreachable",
           "inconclusive_target_errors",
           "no_findings"
         ],

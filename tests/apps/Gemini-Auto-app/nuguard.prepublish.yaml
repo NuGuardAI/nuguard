@@ -63,25 +63,25 @@ target:
   #   vehicleState.fuel, .tirePressure, .music.playing, .weather.temp are mandatory
   #   — the server throws 'Cannot read properties of undefined' for each missing one.
   #   language / googleAccessToken are optional but included for fidelity.
-  #chat_payload_extras:
-  #  vehicleState:
-  #    fuel: 75
-  #    temp: 21
-  #    tirePressure: [32, 32, 32, 32]   # any array; server reads [0]
-  #    battery: 85
-  #    destination: null
-  #    stops: []
-  #    navMetadata: null
-  #    music:
-  #      playing: false                 # required; track/artist/provider optional
-  #      track: ""
-  #      artist: ""
-  #      provider: simulated
-  #    weather:
-  #      temp: 22                       # required; condition optional
-  #      condition: sunny
-  #  language: en-US
-  #  googleAccessToken: null
+  chat_payload_extras:
+    vehicleState:
+      fuel: 75
+      temp: 21
+      tirePressure: [32, 32, 32, 32]
+      battery: 85
+      destination: null
+      stops: []
+      navMetadata: null
+      music:
+        playing: false
+        track: ""
+        artist: ""
+        provider: simulated
+      weather:
+        temp: 22
+        condition: sunny
+    language: en-US
+    googleAccessToken: null
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 sbom: ./gemini-auto.sbom.json

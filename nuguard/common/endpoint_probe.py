@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import httpx
@@ -26,13 +27,32 @@ if TYPE_CHECKING:
 
 _log = get_logger(__name__)
 
-# Unresolved path-parameter placeholders — FastAPI/Express style `{id}`,
-# NestJS/Express colon style `:id`, or `<id>` — sent to the target literally,
-# they 404 every time (no real resource ID exists to substitute). A route
-# behind one of these can still be the only chat surface an app exposes
-# (e.g. NestJS's `POST /chat/conversations/:id/messages`, which requires a
-# conversation to be created first), so this is a scoring penalty, not an
-# exclusion — see discover_chat_candidates_from_sbom.
+
+@dataclass
+class ProbeResult:
+    """Result of a successful chat endpoint probe.
+
+    Supports 3-value tuple unpacking (``path, key, is_list = result``) so
+    existing callers are unchanged.  Access ``.value_template`` explicitly
+    when you need the nested payload shape detected from OpenAPI schema.
+    """
+
+    path: str
+    key: str
+    is_list: bool
+    # Payload value template built from OpenAPI schema when the chat key expects
+    # a structured object (e.g. {"role": "user", "content": "..."}) rather than
+    # a plain string.  None means use a plain string (the default behaviour).
+    value_template: "dict[str, object] | None" = field(default=None, compare=False)
+
+    def __iter__(self):  # noqa: ANN204
+        # Yield only the 3 positional fields so ``a, b, c = result`` still works.
+        return iter((self.path, self.key, self.is_list))
+
+    def __len__(self) -> int:
+        return 3
+
+# Detects path-parameter placeholders — FastAPI/Express {id}, NestJS :id, or <id>.
 _HAS_PATH_PARAM_RE = re.compile(r"(:\w+|\{\w+\}|<\w+>)")
 
 # Endpoint path fragments that are definitively NOT chat endpoints.
@@ -61,21 +81,35 @@ _PROBE_PAYLOADS: list[tuple[str, bool]] = [
 _TEST_MESSAGE = "Hello, this is a connectivity test."
 
 # Well-known OpenAI/Anthropic/LangChain-style chat-history field names.
-# Mirrors nuguard.redteam.target.client._MESSAGE_HISTORY_KEYS — kept as a
-# separate constant here to avoid a cross-package import for a 4-item set.
 # When the probe tries one of these keys, the value must be a
-# [{"role": "user", "content": ...}] message list, not a bare string/list —
-# a message-history endpoint will 422 on a flat body and register as a miss.
+# [{"role": "user", "content": ...}] message list, not a bare string/list.
 _MESSAGE_HISTORY_KEYS: frozenset[str] = frozenset(
     {"messages", "history", "conversation", "chat_history"}
 )
 
+# OpenAPI/Swagger spec paths tried in priority order.
+_OPENAPI_SCHEMA_PATHS: tuple[str, ...] = (
+    "/openapi.json",
+    "/v1/openapi.json",
+    "/api/openapi.json",
+    "/swagger.json",
+    "/swagger/v1/swagger.json",
+)
+
+# Chat-signal tokens used to score OpenAPI endpoint paths.
+_OPENAPI_CHAT_TOKENS: frozenset[str] = frozenset({
+    "chat", "message", "messages", "completions", "complete", "generate",
+    "infer", "query", "respond", "converse", "run", "agent", "llm", "ai",
+})
+
+# Priority order for chat message field names in OpenAPI request body schemas.
+_OPENAPI_PAYLOAD_KEYS: tuple[str, ...] = (
+    "messages", "message", "input", "query", "prompt", "text", "content", "msg",
+)
+
 # Payload keys that are definitively NOT conversational chat keys.
 # These appear in domain-specific endpoints (banking transfers, healthcare orders, etc.)
-# and must not be treated as the primary chat message field. Entries are
-# snake_case; matching against `meta.chat_payload_key` normalizes camelCase
-# (e.g. "patientName") to snake_case first — see _normalize_payload_key —
-# so a single entry here covers both spellings.
+# and must not be treated as the primary chat message field.
 _RUNTIME_NON_CHAT_KEYS: frozenset[str] = frozenset({
     "from_account_id", "to_account_id", "amount", "card_id", "account_id",
     "patient_id", "patient_name", "order_id", "booking_reference", "flight_number",
@@ -83,9 +117,21 @@ _RUNTIME_NON_CHAT_KEYS: frozenset[str] = frozenset({
     "recipient_account", "source_account", "debit_account", "credit_account",
     "transfer_amount", "beneficiary_id", "invoice_id", "claim_id",
     "customer_name", "template_data",
+    # Tool/action dispatch keys — these are agentic action endpoints, not chat endpoints.
+    "tool_name", "tool_call", "tool_id", "action", "action_name", "action_type",
 })
 
 _CAMEL_CASE_RE = re.compile(r"(?<!^)(?=[A-Z])")
+
+# Sentinel placed in the value_template dict for the field that carries the
+# actual chat text.  Replaced at send-time regardless of the field name.
+_CHAT_TEXT_SENTINEL = "__nuguard_chat_text__"
+
+# String field names that most likely carry the chat message text, in priority
+# order.  The first match wins the sentinel in _build_object_template.
+_CONTENT_FIELD_NAMES: tuple[str, ...] = (
+    "content", "text", "message", "body", "input", "prompt", "query", "msg",
+)
 
 
 def _normalize_payload_key(key: str) -> str:
@@ -95,6 +141,169 @@ def _normalize_payload_key(key: str) -> str:
     and lowercases, so both spellings match a single blocklist entry.
     """
     return _CAMEL_CASE_RE.sub("_", key).lower()
+
+
+def _resolve_openapi_ref(ref: str, schema: dict) -> dict:
+    """Resolve a local $ref (e.g. '#/components/schemas/Foo') within *schema*."""
+    if not isinstance(ref, str) or not ref.startswith("#/"):
+        return {}
+    obj: object = schema
+    for part in ref.lstrip("#/").split("/"):
+        if not isinstance(obj, dict):
+            return {}
+        obj = obj.get(part, {})
+    return obj if isinstance(obj, dict) else {}
+
+
+def _build_object_template(
+    prop_schema: dict,
+    full_schema: dict,
+    depth: int = 0,
+) -> "dict[str, object] | None":
+    """Recursively build a template dict from an OpenAPI object property schema.
+
+    Returns ``None`` when the schema does not describe an object (i.e. it is a
+    plain string, integer, etc.) so callers can fall back to a bare string.
+
+    Required fields and known-content-name string fields are included with
+    sensible defaults.  The one field most likely to carry the chat message text
+    is replaced with ``_CHAT_TEXT_SENTINEL`` so the send path can substitute it
+    without knowing the field name in advance.
+    """
+    if depth > 2:  # guard against pathologically deep schemas
+        return None
+    resolved = prop_schema
+    if isinstance(resolved, dict) and "$ref" in resolved:
+        resolved = _resolve_openapi_ref(resolved["$ref"], full_schema)
+    if not isinstance(resolved, dict):
+        return None
+    # Only proceed for object schemas (explicit type or a properties block).
+    if resolved.get("type") not in ("object", None):
+        return None
+    props = resolved.get("properties") or {}
+    if not props:
+        return None
+
+    required: set[str] = set(resolved.get("required") or [])
+    template: dict[str, object] = {}
+    sentinel_placed = False
+
+    # First pass: place the sentinel on the best content-carrying field.
+    for candidate in _CONTENT_FIELD_NAMES:
+        if candidate not in props:
+            continue
+        fs = props[candidate]
+        if isinstance(fs, dict) and "$ref" in fs:
+            fs = _resolve_openapi_ref(fs["$ref"], full_schema)
+        ftype = fs.get("type") if isinstance(fs, dict) else None
+        # Accept string or untyped fields as the text carrier.
+        if ftype in ("string", None):
+            template[candidate] = _CHAT_TEXT_SENTINEL
+            sentinel_placed = True
+            break
+
+    if not sentinel_placed:
+        # No recognised content field — this schema probably isn't a message object.
+        return None
+
+    # Second pass: fill remaining required fields with type-appropriate defaults.
+    for field_name, field_schema in props.items():
+        if field_name in template:
+            continue  # sentinel field already placed
+        if field_name not in required:
+            continue
+        fs = field_schema
+        if isinstance(fs, dict) and "$ref" in fs:
+            fs = _resolve_openapi_ref(fs["$ref"], full_schema)
+        ftype = fs.get("type") if isinstance(fs, dict) else None
+        fdefault = fs.get("default") if isinstance(fs, dict) else None
+        fenums = fs.get("enum") if isinstance(fs, dict) else None
+        if fdefault is not None:
+            template[field_name] = fdefault
+        elif fenums and isinstance(fenums, list) and fenums:
+            template[field_name] = fenums[0]  # use first enum value as default
+        elif ftype == "string":
+            template[field_name] = ""
+        elif ftype in ("integer", "number"):
+            template[field_name] = 0
+        elif ftype == "boolean":
+            template[field_name] = False
+        elif ftype == "array":
+            template[field_name] = []
+        elif ftype == "object" or (isinstance(fs, dict) and "properties" in fs):
+            nested = _build_object_template(fs, full_schema, depth + 1)
+            if nested is not None:
+                template[field_name] = nested
+        # Unknown/null types are skipped
+
+    return template
+
+
+def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool, dict | None] | None":
+    """Extract ``(path, key, is_list, value_template)`` from an OpenAPI/Swagger schema.
+
+    Scores every POST endpoint by chat-signal tokens in its path, then inspects
+    the request body schema for a known chat message field.  ``value_template``
+    is set when the chat key expects a structured message object (e.g. FastAPI
+    ChatMessage with role+content fields) instead of a plain string.  Returns
+    ``None`` when no chat-shaped POST endpoint is found.
+    """
+    paths_obj = schema.get("paths") or {}
+    best: tuple[int, str, str, bool] | None = None  # (score, path, key, list)
+
+    for path, methods in paths_obj.items():
+        if not isinstance(methods, dict):
+            continue
+        post_op = methods.get("post")
+        if not isinstance(post_op, dict):
+            continue
+        if _EXCLUDE_PATTERNS.search(path):
+            continue
+
+        score = sum(2 for tok in _OPENAPI_CHAT_TOKENS if tok in path.lower())
+        if score == 0:
+            continue
+
+        # OpenAPI 3.x: requestBody.content["application/json"].schema
+        body_schema: dict = {}
+        req_body = post_op.get("requestBody") or {}
+        json_content = (req_body.get("content") or {}).get("application/json") or {}
+        body_schema = json_content.get("schema") or {}
+
+        # Swagger 2.x: parameters[?in=body].schema
+        if not body_schema:
+            for param in post_op.get("parameters") or []:
+                if isinstance(param, dict) and param.get("in") == "body":
+                    body_schema = param.get("schema") or {}
+                    break
+
+        if "$ref" in body_schema:
+            body_schema = _resolve_openapi_ref(body_schema["$ref"], schema)
+
+        props = body_schema.get("properties") or {}
+        for key in _OPENAPI_PAYLOAD_KEYS:
+            if key not in props:
+                continue
+            prop = props[key]
+            if isinstance(prop, dict) and "$ref" in prop:
+                prop = _resolve_openapi_ref(prop["$ref"], schema)
+            is_list = isinstance(prop, dict) and prop.get("type") == "array"
+            if best is None or score > best[0]:
+                best = (score, path, key, is_list)
+            break
+
+    if best is None:
+        return None
+    _, path, key, is_list = best
+
+    # When the chat key resolves to an object schema, build a generic template
+    # so the probe and redteam client send the correct nested structure.
+    value_template: dict[str, object] | None = None
+    raw_prop = (body_schema.get("properties") or {}).get(key) or {}
+    if not is_list:
+        value_template = _build_object_template(raw_prop, schema)
+
+    return path, key, is_list, value_template
 
 
 def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
@@ -111,8 +320,7 @@ def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
         path: str = (meta.endpoint or "").strip()
         if not path or not path.startswith("/"):
             continue
-        # Skip parameterised paths like /user/{id} or /user/:id — sending the
-        # placeholder literally always 404s with no real ID to substitute.
+        # Skip parameterised paths like /user/{id}, /chat/:id, /items/<pk>
         if _HAS_PATH_PARAM_RE.search(path):
             continue
         # Skip non-POST
@@ -130,8 +338,15 @@ def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
             if token in path_l:
                 score += 2
                 break
+
+        # Path token match is required — key presence alone never qualifies an endpoint.
+        if score == 0:
+            continue
+
+        # Key as a small tie-breaker only when it is a plausible chat key.
         if meta.chat_payload_key:
-            score += 3
+            if _normalize_payload_key(meta.chat_payload_key) not in _RUNTIME_NON_CHAT_KEYS:
+                score += 1
         if node.confidence >= 0.9:
             score += 1
 
@@ -208,6 +423,310 @@ def is_empty_session_response(response_text: str) -> bool:
     return False
 
 
+async def _try_openapi_detection(
+    client: "httpx.AsyncClient",
+    timeout: float,
+    known_response_key: str | None,
+    probe_payload_extras: "dict[str, object] | None",
+) -> "ProbeResult | None":
+    """Option 1: fetch OpenAPI/Swagger spec and verify the discovered endpoint.
+
+    Uses per-request timeout of 5s so a missing spec never delays the pipeline.
+    Returns a ProbeResult on success (including ``value_template`` when the
+    schema reveals a nested message-object shape), ``None`` otherwise.
+    """
+    schema: dict | None = None
+    for spec_path in _OPENAPI_SCHEMA_PATHS:
+        try:
+            resp = await client.get(spec_path, timeout=min(timeout, 5.0))
+            if resp.status_code != 200:
+                continue
+            candidate = resp.json()
+            if isinstance(candidate, dict) and (
+                "paths" in candidate or "openapi" in candidate or "swagger" in candidate
+            ):
+                _log.info("endpoint_probe: fetched OpenAPI schema from %s", spec_path)
+                schema = candidate
+                break
+        except Exception:
+            continue
+
+    if schema is None:
+        return None
+
+    config = _chat_config_from_openapi(schema)
+    if config is None:
+        return None
+
+    oa_path, oa_key, oa_list, oa_template = config
+    _log.info("endpoint_probe: OpenAPI config — path=%s key=%r list=%s template=%s",
+              oa_path, oa_key, oa_list, bool(oa_template))
+
+    # Use the detected template for the verification request when the schema
+    # says the value must be a message object rather than a plain string.
+    if oa_template is not None:
+        # Replace the sentinel with the test message for the verification probe.
+        val: object = {k: (_TEST_MESSAGE if v == _CHAT_TEXT_SENTINEL else v) for k, v in oa_template.items()}
+    elif oa_list:
+        val = [_TEST_MESSAGE]
+    else:
+        val = _TEST_MESSAGE
+    body: dict[str, object] = {}
+    if probe_payload_extras:
+        body.update(probe_payload_extras)
+    body[oa_key] = val
+    try:
+        resp = await client.post(oa_path, content=json.dumps(body))
+    except Exception as exc:
+        _log.debug("endpoint_probe: OpenAPI verify %s failed: %s", oa_path, exc)
+        return None
+
+    status = resp.status_code
+    if status in (404, 405):
+        return None
+    if status < 300:
+        try:
+            data = resp.json()
+        except Exception:
+            data = _try_read_first_streaming_json(resp) or {}
+        if _looks_like_chat_response(data, known_response_key) or _is_streaming_response(resp):
+            _log.info("endpoint_probe: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
+            return ProbeResult(oa_path, oa_key, oa_list, oa_template)
+    elif 400 <= status < 500:
+        # 4xx (not 404/405) — endpoint exists, schema-specified key accepted
+        _log.info("endpoint_probe: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
+        return ProbeResult(oa_path, oa_key, oa_list, oa_template)
+    # 5xx — don't block; let the blind probe try this path too
+    return None
+
+
+_STREAMING_CONTENT_TYPES: frozenset[str] = frozenset({
+    "text/event-stream",
+    "application/x-ndjson",
+    "application/ndjson",
+    "application/jsonl",
+    "application/x-jsonlines",
+})
+
+
+def _is_streaming_response(resp: "httpx.Response") -> bool:
+    """Return True when the response Content-Type signals a streaming format."""
+    ct = resp.headers.get("content-type", "").lower().split(";")[0].strip()
+    return ct in _STREAMING_CONTENT_TYPES
+
+
+def _try_read_first_streaming_json(resp: "httpx.Response") -> "dict | None":
+    """Extract the first JSON object from an SSE or NDJSON response body.
+
+    Handles SSE (``data: {...}`` lines) and NDJSON (first non-empty line).
+    Returns ``None`` when the response is not a streaming type or unparseable.
+    """
+    if not _is_streaming_response(resp):
+        return None
+    try:
+        for line in resp.text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("data:"):  # SSE prefix
+                line = line[5:].strip()
+                if line == "[DONE]":
+                    continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict):
+                    return obj
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return None
+
+
+def _extract_422_field_names(resp: "httpx.Response") -> list[str]:
+    """Extract required body field names from a FastAPI/Pydantic 422 response.
+
+    Parses ``{"detail": [{"loc": ["body", "field"], "msg": "..."}]}`` and returns
+    the field names found under ``"body"`` in the loc array, filtered against the
+    domain-key blocklist.  Returns an empty list on any parse failure.
+    """
+    try:
+        detail = resp.json().get("detail")
+        if not isinstance(detail, list):
+            return []
+        names: list[str] = []
+        seen: set[str] = set()
+        for item in detail:
+            if not isinstance(item, dict):
+                continue
+            loc = item.get("loc")
+            if not isinstance(loc, (list, tuple)) or len(loc) < 2 or str(loc[0]) != "body":
+                continue
+            field = str(loc[1])
+            if field and field not in seen and _normalize_payload_key(field) not in _RUNTIME_NON_CHAT_KEYS:
+                seen.add(field)
+                names.append(field)
+        return names
+    except Exception:
+        return []
+
+
+async def _blind_probe(
+    client: "httpx.AsyncClient",
+    paths: list[str],
+    payload_shapes: "list[tuple[str, bool]]",
+    known_response_key: str | None,
+    probe_payload_extras: "dict[str, object] | None",
+    *,
+    known_payload_key: str | None = None,
+) -> "ProbeResult | None":
+    """Fallback: try each path with each payload shape until one responds usefully."""
+    server_error_fallback: ProbeResult | None = None
+    base = str(client.base_url).rstrip("/")
+
+    for path in paths:
+        _log.info("endpoint_probe: trying %s%s", base, path)
+        tried_keys: set[str] = set()  # track all keys tried for this path
+        for pay_key, pay_list in payload_shapes:
+            tried_keys.add(pay_key)
+            if pay_list and pay_key.strip().lower() in _MESSAGE_HISTORY_KEYS:
+                value: object = [{"role": "user", "content": _TEST_MESSAGE}]
+            elif pay_list:
+                value = [_TEST_MESSAGE]
+            else:
+                value = _TEST_MESSAGE
+            body: dict[str, object] = {}
+            if probe_payload_extras:
+                body.update(probe_payload_extras)
+            body[pay_key] = value
+            try:
+                resp = await client.post(path, content=json.dumps(body))
+            except Exception as exc:
+                _log.debug("endpoint_probe: %s — request error: %s", path, exc)
+                break  # network error; skip remaining shapes for this path
+
+            status = resp.status_code
+            if status in (404, 405):
+                _log.debug("endpoint_probe: %s — %d (not found/method not allowed)", path, status)
+                break  # try next path
+
+            if status >= 500:
+                _log.debug("endpoint_probe: %s — %d server error", path, status)
+                if server_error_fallback is None:
+                    server_error_fallback = ProbeResult(path, pay_key, pay_list)
+                continue  # try remaining shapes — correct key may still succeed
+
+            if status < 300:
+                try:
+                    data = resp.json()
+                except Exception:
+                    data = _try_read_first_streaming_json(resp) or {}
+                if _looks_like_chat_response(data, known_response_key):
+                    _log.info("endpoint_probe: selected %s (key=%r, status=%d)", path, pay_key, status)
+                    return ProbeResult(path, pay_key, pay_list)
+                # Streaming endpoint: accept even when we can't parse the body content
+                if _is_streaming_response(resp):
+                    _log.info("endpoint_probe: selected %s (streaming, key=%r)", path, pay_key)
+                    return ProbeResult(path, pay_key, pay_list)
+                _log.debug("endpoint_probe: %s key=%r → %d but not chat-like", path, pay_key, status)
+                continue
+
+            # 4xx other than 404/405 — endpoint exists, payload shape may be wrong
+            _log.debug("endpoint_probe: %s key=%r → %d (trying next shape)", path, pay_key, status)
+            if known_payload_key:
+                # Caller-specified key got 4xx — accept: endpoint is real, mismatch is config
+                _log.info("endpoint_probe: selected %s (key=%r known, status=%d)", path, pay_key, status)
+                return ProbeResult(path, pay_key, pay_list)
+
+            # 422 — FastAPI/Pydantic validation error: body tells us the correct field name
+            if status == 422:
+                for hint_key in _extract_422_field_names(resp):
+                    if hint_key in tried_keys:
+                        continue
+                    tried_keys.add(hint_key)
+                    hint_val: object = (
+                        [{"role": "user", "content": _TEST_MESSAGE}]
+                        if hint_key.lower() in _MESSAGE_HISTORY_KEYS
+                        else _TEST_MESSAGE
+                    )
+                    hint_body: dict[str, object] = {}
+                    if probe_payload_extras:
+                        hint_body.update(probe_payload_extras)
+                    hint_body[hint_key] = hint_val
+                    try:
+                        hint_resp = await client.post(path, content=json.dumps(hint_body))
+                    except Exception:
+                        continue
+                    hint_status = hint_resp.status_code
+                    if hint_status < 300:
+                        try:
+                            hint_data = hint_resp.json()
+                        except Exception:
+                            hint_data = {}
+                        if _looks_like_chat_response(hint_data, known_response_key):
+                            _log.info(
+                                "endpoint_probe: 422-hint selected %s (key=%r, status=%d)",
+                                path, hint_key, hint_status,
+                            )
+                            return ProbeResult(path, hint_key, False)
+                    elif hint_status not in (404, 405) and hint_status < 500:
+                        _log.info(
+                            "endpoint_probe: 422-hint selected %s (key=%r, status=%d)",
+                            path, hint_key, hint_status,
+                        )
+                        return ProbeResult(path, hint_key, False)
+
+    _log.warning("endpoint_probe: no chat-capable endpoint found after probing %d paths", len(paths))
+    if server_error_fallback:
+        _log.info(
+            "endpoint_probe: selected %s as fallback (5xx — payload_key=%r)",
+            server_error_fallback.path, server_error_fallback.key,
+        )
+        return server_error_fallback
+    return None
+
+
+async def _detect_chat_endpoint(
+    base: str,
+    paths: list[str],
+    headers: "dict[str, str]",
+    timeout: float,
+    known_response_key: str | None,
+    probe_payload_extras: "dict[str, object] | None",
+    known_payload_key: str | None = None,
+    known_payload_list: bool = False,
+) -> "ProbeResult | None":
+    """Ordered detection pipeline — smarter options first, blind probe as final fallback.
+
+    When ``known_payload_key`` is set the detection options are skipped and the
+    blind probe runs immediately with that single shape (the caller already knows
+    the key; we just need to confirm which path accepts it).
+    """
+    async with httpx.AsyncClient(
+        base_url=base,
+        timeout=httpx.Timeout(timeout),
+        headers=headers,
+        follow_redirects=True,
+    ) as client:
+        if not known_payload_key:
+            # Option 1: OpenAPI/Swagger schema
+            result = await _try_openapi_detection(client, timeout, known_response_key, probe_payload_extras)
+            if result is not None:
+                return result
+
+            # Option 2+: future detection options go here
+
+        # Final: blind multi-shape probe (or single-shape when key is known)
+        payload_shapes = (
+            [(known_payload_key, known_payload_list)] if known_payload_key else _PROBE_PAYLOADS
+        )
+        return await _blind_probe(
+            client, paths, payload_shapes,
+            known_response_key, probe_payload_extras,
+            known_payload_key=known_payload_key,
+        )
+
+
 async def probe_chat_endpoints(
     target_url: str,
     sbom: "AiSbomDocument",
@@ -217,32 +736,26 @@ async def probe_chat_endpoints(
     known_payload_list: bool = False,
     known_response_key: str | None = None,
     probe_payload_extras: "dict[str, object] | None" = None,
-) -> tuple[str, str, bool] | None:
+    hint_path: str | None = None,
+) -> "ProbeResult | None":
     """Probe SBOM POST endpoints and return the first chat-capable one.
 
-    Returns ``(path, payload_key, payload_list)`` for the winning endpoint, or
-    ``None`` if no endpoint responded usefully.
+    Returns a :class:`ProbeResult` with ``(path, key, is_list)`` — supports
+    tuple unpacking so existing callers are unchanged.  Access
+    ``result.value_template`` to get the nested payload shape when OpenAPI
+    schema detection reveals the key expects a message object (e.g.
+    ``{"role": "user", "content": "..."}`` instead of a plain string).
 
-    Args:
-        target_url: Base URL of the target app (scheme + host).
-        sbom: Parsed AI-SBOM document containing API_ENDPOINT nodes.
-        auth_headers: Optional auth headers forwarded on each probe request.
-        timeout: Per-request timeout in seconds.
-        known_payload_key: If the caller already knows the payload key, only
-            that shape is tried (skips the multi-shape probe loop).
-        known_payload_list: Whether the known payload key wraps value in a list.
-        known_response_key: If set, presence of this key in the response JSON
-            signals success even if the value is empty.
+    When ``hint_path`` is provided (Option B), only that specific path is probed
+    — detection discovers the payload key/list for a user-specified endpoint.
+    When ``known_payload_key`` is supplied the detection pipeline is skipped and
+    the probe verifies paths with that key only.
     """
     paths = _sbom_post_paths(sbom)
-    # ── ADK fast-path ────────────────────────────────────────────────────────
-    # When the SBOM identifies the target as a Google ADK application we skip
-    # the generic multi-shape probe entirely.  ADK uses a fixed protocol
-    # (RunAgentRequest) that bears no resemblance to the flat key/value shapes
-    # in _PROBE_PAYLOADS; trying them would always produce HTTP 422, consuming
-    # probe time and polluting the logs.
-    # Instead, do a quick health check to confirm the server is reachable and
-    # return the well-known '/run' path immediately.
+
+    # ── ADK fast-path (framework shortcut — skip all detection) ──────────────
+    # Google ADK uses a fixed RunAgentRequest protocol; the generic payload
+    # shapes would always 422. Return the well-known '/run' path immediately.
     from nuguard.redteam.target.framework_adapters.google_adk import (  # noqa: PLC0415
         ADK_FRAMEWORK_NAMES,
     )
@@ -252,20 +765,20 @@ async def probe_chat_endpoints(
         raw_frameworks = getattr(summary, "frameworks", None)
         if isinstance(raw_frameworks, (list, tuple)):
             sbom_frameworks = [str(f).lower() for f in raw_frameworks if f]
-    if ADK_FRAMEWORK_NAMES & set(sbom_frameworks):
-        adk_run_path = "/run"
-        _log.info(
-            "endpoint_probe: Google ADK detected in SBOM — skipping generic probe, using %s",
-            adk_run_path,
-        )
-        return adk_run_path, "__adk__", False
+    if ADK_FRAMEWORK_NAMES & set(sbom_frameworks) and not hint_path:
+        _log.info("endpoint_probe: Google ADK detected in SBOM — skipping detection, using /run")
+        return ProbeResult("/run", "__adk__", False)
 
-    # ── Generic probe loop ────────────────────────────────────────────────────
-    # Always append common fallback paths (deduplicated) so we try them even
-    # when the SBOM has no useful metadata.
+    # Always append common fallback paths so detection has candidates even when
+    # the SBOM has no API_ENDPOINT nodes.
     for fallback in ("/chat", "/run", "/api/chat", "/v1/chat", "/query", "/agent"):
         if fallback not in paths:
             paths.append(fallback)
+
+    # Option B: caller provided a specific path — probe only that path to detect
+    # the payload key, ignoring SBOM paths and fallbacks entirely.
+    if hint_path:
+        paths = [hint_path]
     if not paths:
         _log.debug("endpoint_probe: no probe-eligible paths")
         return None
@@ -278,104 +791,12 @@ async def probe_chat_endpoints(
     if auth_headers:
         headers.update(auth_headers)
 
-    payload_shapes = (
-        [(known_payload_key, known_payload_list)]
-        if known_payload_key
-        else _PROBE_PAYLOADS
+    return await _detect_chat_endpoint(
+        base, paths, headers, timeout,
+        known_response_key, probe_payload_extras,
+        known_payload_key=known_payload_key,
+        known_payload_list=known_payload_list,
     )
-
-    async with httpx.AsyncClient(
-        base_url=base,
-        timeout=httpx.Timeout(timeout),
-        headers=headers,
-        follow_redirects=True,
-    ) as client:
-        # Track the first 5xx path as a fallback. A 5xx response means the endpoint
-        # exists and is processing POST requests — the error is likely due to missing
-        # auth, a required field the probe doesn't know about, or the LLM backend
-        # returning an error for the synthetic test payload.  In all these cases the
-        # real redteam requests (with auth headers and proper payloads) may succeed.
-        server_error_fallback: tuple[str, str, bool] | None = None
-
-        for path in paths:
-            _log.info("endpoint_probe: trying %s%s", base, path)
-            for pay_key, pay_list in payload_shapes:
-                if pay_list and pay_key.strip().lower() in _MESSAGE_HISTORY_KEYS:
-                    value: object = [{"role": "user", "content": _TEST_MESSAGE}]
-                elif pay_list:
-                    value = [_TEST_MESSAGE]
-                else:
-                    value = _TEST_MESSAGE
-                body: dict[str, object] = {}
-                if probe_payload_extras:
-                    body.update(probe_payload_extras)
-                body[pay_key] = value
-                try:
-                    resp = await client.post(path, content=json.dumps(body))
-                except Exception as exc:
-                    _log.debug("endpoint_probe: %s — request error: %s", path, exc)
-                    break  # network error; skip remaining shapes for this path
-
-                status = resp.status_code
-                if status in (404, 405):
-                    _log.debug(
-                        "endpoint_probe: %s — %d (not found/method not allowed)", path, status
-                    )
-                    break  # try next path
-
-                if status >= 500:
-                    _log.debug("endpoint_probe: %s — %d server error", path, status)
-                    # Record as fallback: endpoint exists, error may be auth/payload.
-                    if server_error_fallback is None:
-                        server_error_fallback = (path, pay_key, pay_list)
-                    break  # try next path
-
-                # 2xx or 4xx (other than 404/405) — endpoint exists
-                if status < 300:
-                    # Verify the response looks like a chat reply
-                    try:
-                        data = resp.json()
-                    except Exception:
-                        data = {}
-                    if _looks_like_chat_response(data, known_response_key):
-                        _log.info(
-                            "endpoint_probe: selected %s (payload_key=%r, list=%s, status=%d)",
-                            path, pay_key, pay_list, status,
-                        )
-                        return path, pay_key, pay_list
-                    # Response exists but doesn't look like chat — try next shape
-                    _log.debug(
-                        "endpoint_probe: %s key=%r → status %d but body doesn't look like chat",
-                        path, pay_key, status,
-                    )
-                    continue
-
-                # 4xx other than 404/405 — endpoint exists, payload shape may be wrong
-                _log.debug(
-                    "endpoint_probe: %s key=%r → %d (endpoint exists, trying next shape)",
-                    path, pay_key, status,
-                )
-                # If known_payload_key was provided but got 4xx, still accept it
-                # (endpoint is reachable; payload mismatch is config, not discovery)
-                if known_payload_key:
-                    _log.info(
-                        "endpoint_probe: selected %s (payload_key=%r known, status=%d)",
-                        path, pay_key, status,
-                    )
-                    return path, pay_key, pay_list
-
-    _log.warning(
-        "endpoint_probe: no chat-capable endpoint found after probing %d paths", len(paths)
-    )
-    if server_error_fallback:
-        p_path, p_key, p_list = server_error_fallback
-        _log.info(
-            "endpoint_probe: selected %s as fallback (5xx — endpoint exists, "
-            "error likely auth/payload-related; payload_key=%r)",
-            p_path, p_key,
-        )
-        return server_error_fallback
-    return None
 
 
 def discover_chat_candidates_from_sbom(
@@ -441,6 +862,16 @@ def discover_chat_candidates_from_sbom(
             continue
 
         # ── Scoring ────────────────────────────────────────────────────────
+        # Path must contain a clearly conversational signal — broad tokens like
+        # "ai", "run", "agent", "query" are excluded because they match too many
+        # non-chat paths (e.g. "aibom", "run-redteam", "agents/list").
+        _CHAT_PATH_TOKENS = (
+            "chat", "message", "completions", "converse", "respond",
+            "infer", "generate", "llm", "assistant", "langgraph",
+        )
+        if not any(tok in endpoint_l for tok in _CHAT_PATH_TOKENS):
+            continue
+
         score = 0
         if source == "auto_enrichment":
             score -= 2
@@ -454,11 +885,11 @@ def discover_chat_candidates_from_sbom(
         elif node.confidence >= 0.75:
             score += 1
 
-        if "/chat/message" in endpoint_l or "/api/chat" in endpoint_l or "/v1/chat" in endpoint_l:
-            score += 2
-        elif endpoint_l.endswith("/chat"):
+        if "/chat/message" in endpoint_l:
             score += 2
         elif any(token in endpoint_l for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")):
+            score += 3
+        elif endpoint_l.endswith("/chat"):
             score += 1
 
         # LangGraph run endpoint is always the primary agent interface.
@@ -474,12 +905,11 @@ def discover_chat_candidates_from_sbom(
         if not meta.chat_payload_key:
             score -= 1
 
-        # Penalise (don't exclude) unresolved path-parameter routes — see
-        # _HAS_PATH_PARAM_RE. A parameter-free alternative should win when one
-        # exists; otherwise this remains the best (only) candidate and callers
-        # still get it, just ranked honestly against cleaner routes.
+        # Penalise path-param routes — they require a real resource ID and will
+        # 404 with an unresolved placeholder. Still returned so callers can fall
+        # back to them when no parameter-free option exists.
         if _HAS_PATH_PARAM_RE.search(discovered_path):
-            score -= 4
+            score -= 5
 
         # Penalise nodes confirmed dead by the live probe — GET 404 means the
         # route doesn't exist at all on the deployed target; POST 405 strongly
@@ -594,8 +1024,14 @@ def _looks_like_chat_response(data: object, response_key: str | None = None) -> 
     if len(data) >= 2:
         return True
     # Single-key response: accept if it contains a known chat-y key
-    for key in ("response", "content", "prognosis", "text", "output",
-                "answer", "result", "reply", "choices", "messages"):
+    for key in (
+        "response", "content", "prognosis", "text", "output",
+        "answer", "result", "reply", "choices", "messages",
+        # common custom agent / HuggingFace / LangChain response keys
+        "bot_response", "assistant_message", "assistant_reply",
+        "generated_text", "completion", "delta",
+        "llm_output", "llm_response", "data",
+    ):
         if key in data:
             return True
     return False
@@ -608,11 +1044,7 @@ def _looks_like_chat_response(data: object, response_key: str | None = None) -> 
 # Detects a served page that's a bundled SPA (Vite/CRA/webpack), not a JSON API.
 _SCRIPT_SRC_RE = re.compile(r'<script[^>]+src=["\']([^"\']+\.js[^"\']*)["\']', re.IGNORECASE)
 
-# Matches the common "baseURL: '<absolute-url>'" shape client bundles bake in
-# (axios `baseURL`, or hand-rolled `apiUrl`/`API_URL`/`apiBaseUrl` constants).
-# Deliberately scoped to key names that mean "API origin" — this keeps false
-# positives low against unrelated absolute URLs bundled for other SDKs
-# (analytics, error-tracking, payment widgets, ...) which use different names.
+# Matches the common "baseURL: '<absolute-url>'" shape client bundles bake in.
 _API_BASE_URL_RE = re.compile(
     r'(?:baseURL|baseUrl|apiBaseUrl|apiBase|apiUrl|API_URL|API_BASE_URL)\s*[:=]\s*'
     r'[`"\'](https?://[^`"\'\s,)]+)',
@@ -621,39 +1053,19 @@ _API_BASE_URL_RE = re.compile(
 _MAX_SCRIPTS_TO_SCAN = 6
 _SCRIPT_FETCH_TIMEOUT = 15.0
 
-# Hostnames that only resolve relative to whatever machine is currently
-# running NuGuard — never the app's actual backend from this process's point
-# of view. A bundle built for same-host container-group networking (e.g. an
-# ACI/docker-compose deployment where frontend and backend share "localhost")
-# bakes these in as a real value, but blindly trusting them here means
-# requests silently go to whatever unrelated service happens to be listening
-# on that port on *this* machine instead of erroring out — a misdirection bug
-# discovered against tests/apps/studyield-app, where a coincidentally
-# identical local port made every auth/chat request target the wrong app.
 _LOOPBACK_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1"})
 
 
 async def discover_api_origin_from_frontend_bundle(
     target_url: str,
-) -> tuple[str | None, list[str]]:
+) -> "tuple[str | None, list[str]]":
     """Best-effort: find a separate-origin API base URL baked into a served SPA bundle.
 
-    Some single-page apps call a backend on a different host/port directly
-    from client-side JS (``baseURL: "http://api-host:3010"``) instead of
-    proxying ``/api`` through the frontend's own server — SBOM candidate
-    rotation and live endpoint probing both fail against *target_url* in that
-    case because every path under it is served by the SPA's catch-all route,
-    not the API. This mirrors what a real browser does: fetch the page,
-    follow its ``<script src>`` tags, and read the API origin out of the
-    bundle the same way the app's own JS would at runtime.
-
-    Returns ``(origin, notes)``. *origin* is ``scheme://host[:port]`` (no
-    path — callers append their own SBOM/config-derived endpoint paths, which
-    already include any API prefix like ``/api/v1``) when a *different*
-    origin than *target_url* was found baked into a script; otherwise
-    ``None``. Never raises — network/parse failures just return ``(None, [])``.
+    Returns ``(origin, notes)``. *origin* is ``scheme://host[:port]`` when a different
+    origin than *target_url* was found baked into a script; otherwise ``None``.
+    Never raises — network/parse failures return ``(None, [])``.
     """
-    from urllib.parse import urljoin, urlparse
+    from urllib.parse import urljoin, urlparse  # noqa: PLC0415
 
     try:
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as http_client:
@@ -667,7 +1079,8 @@ async def discover_api_origin_from_frontend_bundle(
     if not script_srcs:
         return None, []
 
-    target_host_port = (urlparse(target_url).hostname, urlparse(target_url).port)
+    target_parsed = urlparse(target_url)
+    target_host_port = (target_parsed.hostname, target_parsed.port)
 
     for src in script_srcs:
         script_url = urljoin(target_url.rstrip("/") + "/", src)
@@ -677,10 +1090,7 @@ async def discover_api_origin_from_frontend_bundle(
             ) as http_client:
                 script_resp = await http_client.get(script_url)
         except Exception as exc:
-            _log.debug(
-                "discover_api_origin_from_frontend_bundle: GET script %s failed: %s",
-                script_url, exc,
-            )
+            _log.debug("discover_api_origin_from_frontend_bundle: GET script %s failed: %s", script_url, exc)
             continue
 
         match = _API_BASE_URL_RE.search(script_resp.text or "")
@@ -689,33 +1099,23 @@ async def discover_api_origin_from_frontend_bundle(
 
         parsed = urlparse(match.group(1))
         if (parsed.hostname, parsed.port) == target_host_port:
-            # Bundle just references the same origin we already have — no override needed.
             continue
 
         if (parsed.hostname or "").lower() in _LOOPBACK_HOSTNAMES:
-            # The hostname is never usable from here (see _LOOPBACK_HOSTNAMES),
-            # but the *port* is still meaningful: a same-host, different-port
-            # deployment (frontend on :80, backend on :3010 sharing one
-            # container-group's localhost networking) bakes in "localhost"
-            # for exactly that reason. Keep the real target's own hostname and
-            # just take the port instead of discarding the hint outright.
-            target_hostname = urlparse(target_url).hostname
+            target_hostname = target_parsed.hostname
             if not target_hostname or parsed.port is None or parsed.port == target_host_port[1]:
                 _log.warning(
                     "discover_api_origin_from_frontend_bundle: ignoring loopback origin "
-                    "%r baked into %r — not reachable from this process; check "
-                    "%r's frontend build config (e.g. VITE_API_URL) or set "
-                    "target.url in nuguard.yaml directly.",
-                    match.group(1), script_url, target_url,
+                    "%r baked into %r — not reachable from this process",
+                    match.group(1), script_url,
                 )
                 continue
-            scheme = urlparse(target_url).scheme or parsed.scheme
+            scheme = target_parsed.scheme or parsed.scheme
             origin = f"{scheme}://{target_hostname}:{parsed.port}"
             note = (
                 f"Target URL {target_url!r} serves a frontend bundle whose baked-in API "
-                f"origin {match.group(1)!r} uses a loopback host meaningless outside its "
-                f"own container/host — reusing target.url's hostname with the discovered "
-                f"port {parsed.port} instead ({origin!r})."
+                f"origin {match.group(1)!r} uses a loopback host — reusing target hostname "
+                f"with discovered port {parsed.port} instead ({origin!r})."
             )
             _log.warning("discover_api_origin_from_frontend_bundle: %s", note)
             return origin, [note]
@@ -723,12 +1123,10 @@ async def discover_api_origin_from_frontend_bundle(
         origin = f"{parsed.scheme}://{parsed.netloc}"
         note = (
             f"Target URL {target_url!r} serves a frontend bundle with no proxied API "
-            f"surface; discovered API origin {origin!r} baked into {script_url!r} "
-            f"(matched {match.group(0)[:80]!r}). Using it for auth/chat/redteam requests. "
+            f"surface; discovered API origin {origin!r} baked into {script_url!r}. "
             f"Set target.url in nuguard.yaml to this origin directly to skip this scan."
         )
         _log.warning("discover_api_origin_from_frontend_bundle: %s", note)
         return origin, [note]
 
     return None, []
-    return False

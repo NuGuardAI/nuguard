@@ -155,6 +155,7 @@ All fields are optional unless marked otherwise. Fields are populated by whichev
 | `chat_payload_list` | boolean | True when the chat payload key is typed as a list |
 | `response_text_key` | string | Inferred primary response text field in the response body |
 | `context_payload_fields` | object | Non-chat context fields detected in POST body schemas. Values are `"identity"` for static user/tenant/account identifiers or `"session"` for per-conversation identifiers. |
+| `path_param_sources` | object | Maps each entry in `path_params` to the `API_ENDPOINT` path that creates the identified resource, e.g. `{"id": "/chat/conversations"}` for `/chat/conversations/:id/messages` |
 | `no_auth_required` | boolean | True when the endpoint is invocable without authentication |
 
 ### DATASTORE fields
@@ -235,6 +236,8 @@ Populated by the supply-chain second pass for AI coding-agent and editor configs
 | `permissions_denied` | string[] | Explicit deny-list entries from the config, e.g. `["Bash(rm:*)"]` |
 | `auto_execute` | boolean | True when the config enables auto-run or auto-approve mode |
 | `permission_scope` | string | Scope of the config file: `"repo"`, `"user"`, or `"global"` |
+| `file_size_bytes` | integer | Raw file size in bytes of this config file (for NGA-SC-017 large-file detection) |
+| `content_entropy` | float | Shannon entropy (bits/byte) of the file content at extraction time (for NGA-SC-018 high-entropy blob detection). Typical text is ~4–5; encrypted/base64 content is >6.5 |
 
 ### LIFECYCLE_SCRIPT fields
 
@@ -256,6 +259,8 @@ Populated by the supply-chain second pass for AI coding-agent and editor configs
 | `publishes_to` | string[] | Publish targets detected in workflow steps: `"pypi"`, `"npm"`, `"smithery"` |
 | `uses_oidc` | boolean | True when any job has `permissions.id-token: write` |
 | `action_refs` | string[] | All `uses: owner/action@ref` strings in the workflow, used to detect unpinned mutable refs |
+| `workflow_has_unpinned_global_install` | boolean | True when any step runs an unpinned global npm install or npx |
+| `workflow_has_cred_access` | boolean | True when any step accesses credential paths or env vars |
 
 ### MCP_SERVER fields
 
@@ -412,6 +417,8 @@ A directed relationship between two nodes.
 | `target` | UUID string | **yes** | ID of the target Node |
 | `relationship_type` | RelationshipType | **yes** | One of the values listed below |
 | `access_type` | AccessType \| null | - | Access direction for `ACCESSES` edges |
+| `derivation` | `"hint"` \| `"fallback_heuristic"` | - | `hint`: backed by an adapter-emitted evidence hint. `fallback_heuristic`: synthesized by structural fallback rules with no direct evidence. Default: `"hint"` |
+| `confidence` | float [0, 1] \| null | - | Set only for `fallback_heuristic` edges — a rough strength score for the guess. `null` for `hint` edges. |
 
 ### RelationshipType values
 
@@ -422,6 +429,7 @@ A directed relationship between two nodes.
 | `USES` | Component depends on a framework, model, auth provider, or other component |
 | `PROTECTS` | A guardrail protects an agent or endpoint |
 | `DEPLOYS` | A deployment resource hosts a container or service |
+| `DELEGATES_TO` | An agent hands off a conversation or task to another agent |
 | `CONTAINS` | A parent component contains a child component; used for `DEVELOPER_TOOL_CONFIG → MCP_SERVER` and `DEVELOPER_TOOL_CONFIG → LIFECYCLE_SCRIPT` relationships |
 
 ### AccessType values
@@ -506,6 +514,14 @@ Scan-level metadata derived during extraction. Populated when `nuguard sbom gene
 | `data_classification` | string[] | Union of all classification labels detected across the repo, e.g. `["PHI", "PII", "PFI"]` |
 | `classified_tables` | string[] | Names of SQL tables or Python models that contain classified data fields |
 
+### Supply-chain repository signals
+
+| Field | Type | Description |
+|---|---|---|
+| `has_package_json` | boolean \| null | True when a `package.json` file was found at the repo root. Used by NGA-SC-024 lockfile-coverage checks without requiring a live filesystem. |
+| `has_lockfile` | boolean \| null | True when an npm lockfile (`package-lock.json`, `pnpm-lock.yaml`, or `yarn.lock`) was found at the repo root. Used by NGA-SC-024. |
+| `minified_js_files` | string[] | Relative paths to JavaScript files containing a single line exceeding 5000 characters — a reliable indicator of minified/bundled code. Used by NGA-SC-019. |
+
 ### Runtime environment
 
 | Field | Type | Description |
@@ -561,7 +577,8 @@ When the SBOM includes supply-chain node types (populated by the second pass dur
 | GitHub Actions risks (NGA-SC-001–006) | `GITHUB_WORKFLOW` nodes: `workflow_triggers`, `uses_oidc`, `publishes_to`, `action_refs`, `workflow_permissions` |
 | AI-agent config poisoning (NGA-SC-007–010) | `DEVELOPER_TOOL_CONFIG` nodes: `permissions_granted`, `auto_execute`, `permission_scope`; `MCP_SERVER` nodes: `mcp_server_trusted`, `mcp_server_url` |
 | Lifecycle scripts (NGA-SC-011–016) | `LIFECYCLE_SCRIPT` nodes: `script_phase`, `script_body`, `invokes_network`, `invokes_shell`, `downloads_binary`, `references_credentials` |
-| Dependency integrity (NGA-SC-023–025) | `deps` array: `name`, `version_spec`, `purl`; threat-intel feeds matched against `name` |
+| Oversized/high-entropy/minified payloads (NGA-SC-017–019) | `DEVELOPER_TOOL_CONFIG` nodes: `file_size_bytes`, `content_entropy`; `summary.minified_js_files` |
+| Dependency integrity (NGA-SC-023–025) | `deps` array: `name`, `version_spec`, `purl`; `summary.has_package_json`, `summary.has_lockfile`; threat-intel feeds matched against `name` |
 
 MITRE ATLAS annotations and supply-chain findings are produced by `nuguard analyze`. They appear on analysis findings, not on the SBOM document itself. See [docs/static-analysis-guide.md](static-analysis-guide.md) for the full rule reference.
 

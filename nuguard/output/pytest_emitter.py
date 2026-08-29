@@ -45,7 +45,7 @@ _MIN_SEVERITY_SIGNAL = 0.5
 _SIGNAL_TO_FLOAT = {5: 1.0, 4: 0.92, 3: 0.75, 2: 0.58, 1: 0.42}
 
 _FILE_HEADER = '''\
-"""Auto-generated regression tests for {goal_type} findings.
+"""Auto-generated regression tests for {goal_type_doc} findings.
 
 DO NOT EDIT — regenerate with: nuguard redteam --emit-pytest
 
@@ -53,7 +53,7 @@ Each test replays a successful attack payload that was recorded during a red-tea
 run and asserts that the target now refuses it.  A passing test means the fix held;
 a failing test means the defence regressed.
 
-Target: {target_url}
+Target: {target_url_doc}
 Generated: {generated_at}
 """
 from __future__ import annotations
@@ -64,7 +64,7 @@ import httpx
 import pytest
 
 
-_TARGET_URL = os.environ.get("NUGUARD_TARGET_URL", {target_url!r})
+_TARGET_URL = os.environ.get("NUGUARD_TARGET_URL", {target_url_literal})
 _TIMEOUT = float(os.environ.get("NUGUARD_TIMEOUT", "60"))
 _AUTH_USERNAME = os.environ.get("APP_USERNAME", "")
 _AUTH_PASSWORD = os.environ.get("APP_PASSWORD", "")
@@ -109,11 +109,11 @@ def _is_refusal(text: str) -> bool:
 _TEST_TEMPLATE = '''\
 @pytest.mark.regression
 def test_sev_{sev_int:03d}_{slug}():
-    """Regression: {title}
+    """Regression: {title_doc}
 
-    Finding ID: {finding_id}
-    Goal type:  {goal_type}
-    Evidence:   {evidence_excerpt}
+    Finding ID: {finding_id_doc}
+    Goal type:  {goal_type_doc}
+    Evidence:   {evidence_excerpt_doc}
     """
     # Replay the attack payload that succeeded during the red-team run.
     payload_repr = {payload}
@@ -174,8 +174,9 @@ def emit_regression_tests(
         fpath = output_dir / fname
 
         header = _FILE_HEADER.format(
-            goal_type=goal_type,
-            target_url=target_url,
+            goal_type_doc=_docstring_literal(goal_type),
+            target_url_literal=repr(target_url),
+            target_url_doc=_docstring_literal(target_url),
             generated_at=generated_at,
         )
         tests: list[str] = []
@@ -241,23 +242,29 @@ def _render_test(finding: "Finding", seen_slugs: set[str]) -> str | None:
         counter += 1
     seen_slugs.add(slug)
 
+    # Every untrusted field that lands inside the generated source is embedded
+    # as a Python string *literal* via repr(), so hostile content (backslashes,
+    # quotes, braces, newlines, control/NUL bytes, ``\u``/``\U``/``\N`` sequences)
+    # can never break compilation of non-raw triple-quoted docstrings or the
+    # runtime f-string.
     evidence_excerpt = (finding.evidence_quote or finding.evidence or "")[:120]
+    # Evidence is functionally load-bearing: the emitted assert checks whether
+    # the response no longer contains its leading 40 chars (lowercased).
     evidence_check = evidence_excerpt[:40].lower() if evidence_excerpt else ""
     title = finding.title or finding.finding_id
+    goal = finding.goal_type or "unknown"
 
-    # `repr()` produces a valid Python literal that survives any payload content
-    # (single quotes, backslashes, braces, newlines...).  The payload_repr is
-    # embedded in a *runtime* f-string of the generated test, so braces must be
-    # doubled for the template's own `.format()` pass.
+    # `repr(payload)` produces a valid Python literal — then the braces that
+    # .format() would interpret are doubled inside the template's literal text.
     payload_repr = repr(payload[:500])
 
     return _TEST_TEMPLATE.format(
         sev_int=sev_int,
         slug=slug,
-        title=title.replace('"', "'"),
-        finding_id=finding.finding_id,
-        goal_type=finding.goal_type or "unknown",
-        evidence_excerpt=evidence_excerpt.replace('"', "'"),
+        title_doc=_docstring_literal(title),
+        finding_id_doc=_docstring_literal(finding.finding_id),
+        goal_type_doc=_docstring_literal(goal),
+        evidence_excerpt_doc=_docstring_literal(evidence_excerpt),
         payload=payload_repr,
         evidence_check=evidence_check,
     )
@@ -276,6 +283,25 @@ def _extract_payload(finding: "Finding") -> str:
     if finding.evidence_quote and len(finding.evidence_quote) > 5:
         return finding.evidence_quote[:300]
     return ""
+
+
+def _docstring_literal(text: str) -> str:
+    """Return *text* as a string body safe to embed in a non-raw docstring.
+
+    The generated header/function docstrings are non-raw triple-double-quoted
+    strings, so hostile content — backslashes, control/NUL bytes, ``\\u``/
+    ``\\U``/``\\N`` escape sequences, quotes, newlines — would otherwise crash
+    compilation with ``SyntaxError``.  ``repr()`` yields a valid quoted
+    literal; only its escaped *body* is kept here (the surrounding quote
+    delimiters are dropped, since they would otherwise appear as visible
+    content inside the already-open docstring and break verbatim round-trip
+    of the metadata).  One extra hazard remains in a triple-double-quote
+    context: a run of three double-quote characters in the value would close
+    the docstring early, so each such character is escaped and the content is
+    preserved verbatim instead.
+    """
+    literal = repr(text)
+    return literal[1:-1].replace('"""', '\\"\\"\\"')
 
 
 def _slugify(text: str) -> str:

@@ -97,7 +97,7 @@ class BehaviorAnalyzer:
         _dynamic_run_result = None  # captured for abort/inconclusive propagation
         _dynamic_scan_outcome = None
 
-        if "dynamic" in mode:
+        if "dynamic" in mode or mode == "minimal":
             target_url = getattr(self._config, "target", None) or ""
             if not target_url:
                 _log.warning("BehaviorAnalyzer.analyze: no target URL for dynamic mode")
@@ -292,6 +292,10 @@ class BehaviorAnalyzer:
                     if pre_scan_profile is None or pre_scan_profile.is_empty:
                         scenario_cache.save(cache_key, scenarios)
                 _log.info("BehaviorAnalyzer.analyze: %d scenarios to execute", len(scenarios))
+
+                # minimal: one scenario only — proves the full pipeline reaches the target.
+                if mode == "minimal" and scenarios:
+                    scenarios = scenarios[:1]
 
                 run_result = await runner.run(scenarios, pre_scan_profile=pre_scan_profile)
                 _dynamic_run_result = run_result

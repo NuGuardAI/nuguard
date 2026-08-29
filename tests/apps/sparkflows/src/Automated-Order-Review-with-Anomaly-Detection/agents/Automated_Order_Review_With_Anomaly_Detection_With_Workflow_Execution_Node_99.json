@@ -1,0 +1,1030 @@
+{
+  "agentType": "SINGLE_LLM",
+  "engine": "agent",
+  "name": "Automated Order Review With Anomaly Detection With Workflow Execution Node",
+  "description": "Each order_id goes through processing and validation. Valid orders are pushed to D365 and marked as Successfully Processed. Orders requiring review move to Waiting Approval, where approved orders are manually processed and pushed to D365, while failed validations trigger an email notification and are marked as Validation Failed.",
+  "category": "Order Review",
+  "uuid": "8dc40b70-cd02-4e0a-9397-ffaf13883114",
+  "content": {
+    "name": "Automated Order Review With Anomaly Detection With Workflow Execution Node",
+    "uuid": "d3e4f5a6-b7c8-4d0e-9f10-3b4c5d6e7f80",
+    "category": "Order Review",
+    "description": "",
+    "parameters": "--var order_id=801gK000011hp6EQAQ, 801gK000011hp6FQAQ, 801gK000011qD6XQAU --var execution_id=${execution_id}",
+    "nodes": [
+      {
+        "id": "1",
+        "name": "Input",
+        "type": "input",
+        "nodeClass": "fire.nodes.agent.NodeInput",
+        "x": "5px",
+        "y": "188px",
+        "fields": [
+          {
+            "name": "inputName",
+            "value": "[]",
+            "widget": "key_array",
+            "type": ""
+          },
+          {
+            "name": "inputValue",
+            "value": "[]",
+            "widget": "value_array",
+            "type": ""
+          },
+          {
+            "name": "enableLooping",
+            "value": "true",
+            "widget": "array_single",
+            "type": ""
+          },
+          {
+            "name": "loopParam",
+            "value": "order_id",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "loopValues",
+            "value": "${order_id}",
+            "widget": "textareafield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      },
+      {
+        "id": "5",
+        "name": "Decision: Validation Passed?",
+        "type": "decision",
+        "nodeClass": "fire.nodes.agent.NodeDecision",
+        "x": "402px",
+        "y": "154px",
+        "fields": [
+          {
+            "name": "condition",
+            "value": "'all_fields_ok=true' in analysis",
+            "widget": "textareafield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [
+          {
+            "name": "true",
+            "title": "T"
+          },
+          {
+            "name": "false",
+            "title": "F"
+          }
+        ],
+        "agentTool": false
+      },
+      {
+        "id": "14",
+        "name": "Email Notification (Validation Failed)",
+        "type": "email",
+        "nodeClass": "fire.nodes.agent.NodeEmailNotification",
+        "x": "845px",
+        "y": "375px",
+        "fields": [
+          {
+            "name": "draftMode",
+            "value": "ai",
+            "widget": "array_single",
+            "type": ""
+          },
+          {
+            "name": "emailAddress",
+            "value": "shreyash@sparkflows.io",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "subjectHint",
+            "value": "",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "subject",
+            "value": "",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "content",
+            "value": "",
+            "widget": "textareafield",
+            "type": ""
+          },
+          {
+            "name": "llmConnection",
+            "value": "737",
+            "widget": "object_array",
+            "type": ""
+          },
+          {
+            "name": "temperature",
+            "value": "0.0",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "maxTokens",
+            "value": "1500",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "systemPrompt",
+            "value": "You are an Order Management remediation assistant. The order's review_status is 'Validation Failed' in orders_jdbc. Write a SHORT professional email listing only the missing critical fields (where has_*=0). Contract is BLOCKING only when total_amount > 50000.\n\n\nFormat:\nSubject: Action Required: Order <order_id> held — <N> missing field(s)\nHi User,\n<2-3 sentences explaining the order is HELD>\n<HTML table: Missing Field | Current Value | Severity>\nPlease update the order in Salesforce.",
+            "widget": "textareafield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      },
+      {
+        "id": "20",
+        "name": "Approval",
+        "type": "approval",
+        "nodeClass": "fire.nodes.agent.NodeApproval",
+        "x": "510px",
+        "y": "326px",
+        "fields": [
+          {
+            "name": "title",
+            "value": "Human Approval Required",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "description",
+            "value": "Validation Failed and the order is marked Waiting Approval. Review the details before pushing to Dynamics 365.\n\nApprove -> Push to D365 (status becomes Manually Approved or Exception/Failed)",
+            "widget": "textareafield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [
+          {
+            "name": "approved",
+            "title": "A"
+          },
+          {
+            "name": "rejected",
+            "title": "R  "
+          }
+        ],
+        "agentTool": false
+      },
+      {
+        "id": "28",
+        "name": "Fetch Order (Processing)",
+        "type": "workflow_execution",
+        "nodeClass": "fire.nodes.utility.NodeWorkflowExecution",
+        "x": "131.5px",
+        "y": "189.375px",
+        "fields": [
+          {
+            "name": "storageLevel",
+            "value": "DEFAULT",
+            "widget": "array",
+            "type": ""
+          },
+          {
+            "name": "Tasks",
+            "value": "",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "workflow_uuid",
+            "value": "cd8b2373-29b2-4ea4-98fc-649a216cf96d",
+            "widget": "workflow",
+            "type": ""
+          },
+          {
+            "name": "parameterName",
+            "value": "[\"order_id\"]",
+            "widget": "key_array",
+            "type": ""
+          },
+          {
+            "name": "parameterValue",
+            "value": "[\"\"]",
+            "widget": "value_array",
+            "type": ""
+          },
+          {
+            "name": "executionConfigHeader",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "timeout",
+            "value": "180",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "retryAttempts",
+            "value": "0",
+            "widget": "textfield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      },
+      {
+        "id": "29",
+        "name": "Detect Anomaly",
+        "type": "workflow_execution",
+        "nodeClass": "fire.nodes.utility.NodeWorkflowExecution",
+        "x": "222.5px",
+        "y": "167.391px",
+        "fields": [
+          {
+            "name": "storageLevel",
+            "value": "DEFAULT",
+            "widget": "array",
+            "type": ""
+          },
+          {
+            "name": "Tasks",
+            "value": "",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "workflow_uuid",
+            "value": "86f0e0b2-09a7-479e-ab42-b4ff0127f33f",
+            "widget": "workflow",
+            "type": ""
+          },
+          {
+            "name": "parameterName",
+            "value": "[\"order_id\"]",
+            "widget": "key_array",
+            "type": ""
+          },
+          {
+            "name": "parameterValue",
+            "value": "[\"\"]",
+            "widget": "value_array",
+            "type": ""
+          },
+          {
+            "name": "executionConfigHeader",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "timeout",
+            "value": "180",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "retryAttempts",
+            "value": "0",
+            "widget": "textfield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      },
+      {
+        "id": "31",
+        "name": "Push Order to D365",
+        "type": "workflow_execution",
+        "nodeClass": "fire.nodes.utility.NodeWorkflowExecution",
+        "x": "544.766px",
+        "y": "21.1719px",
+        "fields": [
+          {
+            "name": "storageLevel",
+            "value": "DEFAULT",
+            "widget": "array",
+            "type": ""
+          },
+          {
+            "name": "Tasks",
+            "value": "",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "workflow_uuid",
+            "value": "6de97f6f-e8dd-4523-b939-88740047637e",
+            "widget": "workflow",
+            "type": ""
+          },
+          {
+            "name": "parameterName",
+            "value": "[\"order_id\"]",
+            "widget": "key_array",
+            "type": ""
+          },
+          {
+            "name": "parameterValue",
+            "value": "[\"\"]",
+            "widget": "value_array",
+            "type": ""
+          },
+          {
+            "name": "executionConfigHeader",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "timeout",
+            "value": "180",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "retryAttempts",
+            "value": "0",
+            "widget": "textfield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      },
+      {
+        "id": "32",
+        "name": "Set Status Successfully Processed",
+        "type": "workflow_execution",
+        "nodeClass": "fire.nodes.utility.NodeWorkflowExecution",
+        "x": "724.547px",
+        "y": "13.3594px",
+        "fields": [
+          {
+            "name": "storageLevel",
+            "value": "DEFAULT",
+            "widget": "array",
+            "type": ""
+          },
+          {
+            "name": "Tasks",
+            "value": "",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "workflow_uuid",
+            "value": "99b1cbb5-9adf-49e9-9925-5e3c11029199",
+            "widget": "workflow",
+            "type": ""
+          },
+          {
+            "name": "parameterName",
+            "value": "[\"order_id\"]",
+            "widget": "key_array",
+            "type": ""
+          },
+          {
+            "name": "parameterValue",
+            "value": "[\"\"]",
+            "widget": "value_array",
+            "type": ""
+          },
+          {
+            "name": "executionConfigHeader",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "timeout",
+            "value": "180",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "retryAttempts",
+            "value": "0",
+            "widget": "textfield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      },
+      {
+        "id": "33",
+        "name": "Set Status Waiting Approval",
+        "type": "workflow_execution",
+        "nodeClass": "fire.nodes.utility.NodeWorkflowExecution",
+        "x": "379.547px",
+        "y": "328.359px",
+        "fields": [
+          {
+            "name": "storageLevel",
+            "value": "DEFAULT",
+            "widget": "array",
+            "type": ""
+          },
+          {
+            "name": "Tasks",
+            "value": "",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "workflow_uuid",
+            "value": "b67d6633-4bda-4a08-8c33-60ace4654c34",
+            "widget": "workflow",
+            "type": ""
+          },
+          {
+            "name": "parameterName",
+            "value": "[\"order_id\"]",
+            "widget": "key_array",
+            "type": ""
+          },
+          {
+            "name": "parameterValue",
+            "value": "[\"\"]",
+            "widget": "value_array",
+            "type": ""
+          },
+          {
+            "name": "executionConfigHeader",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "timeout",
+            "value": "180",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "retryAttempts",
+            "value": "0",
+            "widget": "textfield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      },
+      {
+        "id": "34",
+        "name": "Set Status Validation Failed",
+        "type": "workflow_execution",
+        "nodeClass": "fire.nodes.utility.NodeWorkflowExecution",
+        "x": "680.594px",
+        "y": "396.297px",
+        "fields": [
+          {
+            "name": "storageLevel",
+            "value": "DEFAULT",
+            "widget": "array",
+            "type": ""
+          },
+          {
+            "name": "Tasks",
+            "value": "",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "workflow_uuid",
+            "value": "7284f2aa-24a8-49e9-935e-abeb7809bb8e",
+            "widget": "workflow",
+            "type": ""
+          },
+          {
+            "name": "parameterName",
+            "value": "[\"order_id\"]",
+            "widget": "key_array",
+            "type": ""
+          },
+          {
+            "name": "parameterValue",
+            "value": "[\"\"]",
+            "widget": "value_array",
+            "type": ""
+          },
+          {
+            "name": "executionConfigHeader",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "timeout",
+            "value": "180",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "retryAttempts",
+            "value": "0",
+            "widget": "textfield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      },
+      {
+        "id": "35",
+        "name": "Set Status Manually Approved",
+        "type": "workflow_execution",
+        "nodeClass": "fire.nodes.utility.NodeWorkflowExecution",
+        "x": "602.594px",
+        "y": "177.312px",
+        "fields": [
+          {
+            "name": "storageLevel",
+            "value": "DEFAULT",
+            "widget": "array",
+            "type": ""
+          },
+          {
+            "name": "Tasks",
+            "value": "",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "workflow_uuid",
+            "value": "8bb50ca8-3933-4eb3-a332-e8e504bbd9dc",
+            "widget": "workflow",
+            "type": ""
+          },
+          {
+            "name": "parameterName",
+            "value": "[\"order_id\"]",
+            "widget": "key_array",
+            "type": ""
+          },
+          {
+            "name": "parameterValue",
+            "value": "[\"\"]",
+            "widget": "value_array",
+            "type": ""
+          },
+          {
+            "name": "executionConfigHeader",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "timeout",
+            "value": "180",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "retryAttempts",
+            "value": "0",
+            "widget": "textfield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      },
+      {
+        "id": "36",
+        "name": "Push Order to D365",
+        "type": "workflow_execution",
+        "nodeClass": "fire.nodes.utility.NodeWorkflowExecution",
+        "x": "777.594px",
+        "y": "193.312px",
+        "fields": [
+          {
+            "name": "storageLevel",
+            "value": "DEFAULT",
+            "widget": "array",
+            "type": ""
+          },
+          {
+            "name": "Tasks",
+            "value": "",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "workflow_uuid",
+            "value": "6de97f6f-e8dd-4523-b939-88740047637e",
+            "widget": "workflow",
+            "type": ""
+          },
+          {
+            "name": "parameterName",
+            "value": "[\"order_id\"]",
+            "widget": "key_array",
+            "type": ""
+          },
+          {
+            "name": "parameterValue",
+            "value": "[\"\"]",
+            "widget": "value_array",
+            "type": ""
+          },
+          {
+            "name": "executionConfigHeader",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "timeout",
+            "value": "180",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "retryAttempts",
+            "value": "0",
+            "widget": "textfield",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      },
+      {
+        "id": "37",
+        "name": "Validate Invoicing Fields",
+        "type": "agent",
+        "nodeClass": "fire.nodes.gai.NodeAgent",
+        "x": "329.75px",
+        "y": "61.1875px",
+        "fields": [
+          {
+            "name": "storageLevel",
+            "value": "DEFAULT",
+            "widget": "array",
+            "type": ""
+          },
+          {
+            "name": "llmConfigHeader",
+            "value": "",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "llmConnection",
+            "value": "737",
+            "widget": "object_array",
+            "type": ""
+          },
+          {
+            "name": "temperature",
+            "value": "0.7",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "topP",
+            "value": "1.0",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "maxTokens",
+            "value": "500",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "timeout",
+            "value": "180",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "knowledgeRetrievalEnabled",
+            "value": "false",
+            "widget": "array_single",
+            "type": ""
+          },
+          {
+            "name": "knowledgeRerankMode",
+            "value": "none",
+            "widget": "array_single",
+            "type": ""
+          },
+          {
+            "name": "knowledgeSource",
+            "value": "existing_vector_db",
+            "widget": "array_single",
+            "type": ""
+          },
+          {
+            "name": "knowledgeProvider",
+            "value": "pinecone",
+            "widget": "array_single",
+            "type": ""
+          },
+          {
+            "name": "pineconeConnection",
+            "value": "",
+            "widget": "object_array",
+            "type": ""
+          },
+          {
+            "name": "knowledgeIndexName",
+            "value": "",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "knowledgeNamespace",
+            "value": "",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "knowledgeTopK",
+            "value": "3",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "knowledgeEmbeddingModel",
+            "value": "text-embedding-3-small",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "knowledgeEmbeddingDimensions",
+            "value": "",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "knowledgeRerankModel",
+            "value": "bge-reranker-v2-m3",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "knowledgeDocumentPath",
+            "value": "",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "knowledgeChunkSize",
+            "value": "1200",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "knowledgeChunkOverlap",
+            "value": "150",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "memoryEnabled",
+            "value": "false",
+            "widget": "array_single",
+            "type": ""
+          },
+          {
+            "name": "llmConfigEnd",
+            "value": "",
+            "widget": "line",
+            "type": ""
+          },
+          {
+            "name": "Prompt",
+            "widget": "tab",
+            "type": ""
+          },
+          {
+            "name": "systemPrompt",
+            "value": "Call sf_validate_invoicing_fields_jdbc ONCE using order_id from your context. The tool validates the order's critical invoicing fields and returns no_of_issues plus all_fields_ok flag. It does NOT save status — the agent routes the next status update.\n\nValidate critical fields: customer_po, total_amount, pricebook_id, bill_to_contact, billing_street/city/state/zip/country, contract_id (only when total_amount > 50000).\n\nReply with EXACTLY:\nall_fields_ok=<true|false>",
+            "widget": "textareafield",
+            "type": ""
+          },
+          {
+            "name": "outputFormatHeader",
+            "value": "",
+            "widget": "line",
+            "type": ""
+          },
+          {
+            "name": "outputFormat",
+            "value": "text",
+            "widget": "array_single",
+            "type": ""
+          },
+          {
+            "name": "outputSchema",
+            "value": "",
+            "widget": "textarea_large",
+            "type": ""
+          },
+          {
+            "name": "outputSavePath",
+            "value": "",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "Tasks",
+            "widget": "tab",
+            "type": "multiTab"
+          },
+          {
+            "name": "workflow_uuid",
+            "value": "7af4e040-af7a-4c3f-865f-9191a3415b07",
+            "widget": "workflow",
+            "type": ""
+          },
+          {
+            "name": "parameterName",
+            "value": "[\"order_id\"]",
+            "widget": "key_array",
+            "type": ""
+          },
+          {
+            "name": "parameterValue",
+            "value": "[\"\"]",
+            "widget": "value_array",
+            "type": ""
+          }
+        ],
+        "engine": "agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      },
+      {
+        "id": "38",
+        "name": "Sticky Note",
+        "type": "sticky",
+        "nodeClass": "fire.nodes.doc.NodeStickyNote",
+        "x": "998px",
+        "y": "0px",
+        "fields": [
+          {
+            "name": "storageLevel",
+            "value": "DEFAULT",
+            "widget": "array",
+            "type": ""
+          },
+          {
+            "name": "bgColor",
+            "value": "purple",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "width",
+            "value": "388px",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "height",
+            "value": "744px",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "pushedToBack",
+            "value": "false",
+            "widget": "textfield",
+            "type": ""
+          },
+          {
+            "name": "comment",
+            "value": "<h2><strong>AUTOMATED ORDER REVIEW WORKFLOW WITH ANOMALY DETECTION</strong></h2><p><strong>Purpose:</strong></p><p>Automate Salesforce order processing while detecting anomalies,</p><p>validating critical invoicing fields, and routing exceptions for review.</p><p><strong>Workflow Steps</strong></p><p><em>1. Fetch Order</em></p><p>&nbsp;&nbsp;• Retrieve order from Salesforce</p><p>&nbsp;&nbsp;• Mark status as Processing</p><p><em>2. Anomaly Detection</em></p><p>&nbsp;&nbsp;• Score order using Isolation Forest model</p><p>&nbsp;&nbsp;• Flag unusual orders for visibility and auditing</p><p><em>3. Invoice Validation</em></p><p>&nbsp;&nbsp;• Validate PO Number, Billing Details, Contact, Pricebook, Amount</p><p>&nbsp;&nbsp;• Validate Contract for high-value orders</p><p><em>4. Decision Routing</em></p><p>&nbsp;&nbsp;✓ Validation Passed</p><p>&nbsp;&nbsp;&nbsp;→ Push Order to Dynamics 365</p><p>&nbsp;&nbsp;&nbsp;→ Mark as Successfully Processed</p><p>&nbsp;&nbsp;✗ Validation Failed</p><p>&nbsp;&nbsp;&nbsp;→ Mark as Waiting Approval</p><p>&nbsp;&nbsp;&nbsp;→ Route to Human Reviewer</p><p><em>5. Human Approval Path</em></p><p>&nbsp;&nbsp;✓ Approved</p><p>&nbsp;&nbsp;&nbsp;→ Mark as Manually Approved</p><p>&nbsp;&nbsp;&nbsp;→ Push Order to Dynamics 365</p><p>&nbsp;&nbsp;✗ Rejected</p><p>&nbsp;&nbsp;&nbsp;→ Mark as Validation Failed</p><p>&nbsp;&nbsp;&nbsp;→ Send Remediation Email</p><p>&nbsp;&nbsp;&nbsp;→ Request Salesforce Data Correction</p><p><strong>Final Outcomes</strong></p><p>• Successfully Processed</p><p>• Manually Approved &amp; Processed</p><p>• Validation Failed</p><ul><li>• Anomaly Score Generated For Audit &amp; Monitoring</li></ul><p><br></p>",
+            "widget": "textarea_rich",
+            "type": ""
+          }
+        ],
+        "engine": "scala,pyspark,polars,agent",
+        "inputAnchors": [],
+        "outputAnchors": [],
+        "agentTool": false
+      }
+    ],
+    "edges": [
+      {
+        "source": "1",
+        "target": "28",
+        "id": 41.0,
+        "sourceAnchor": "output",
+        "index": 0.0
+      },
+      {
+        "source": "28",
+        "target": "29",
+        "id": 42.0,
+        "sourceAnchor": "output",
+        "index": 0.0
+      },
+      {
+        "source": "5",
+        "target": "31",
+        "id": 45.0,
+        "sourceAnchor": "true",
+        "index": 0.0
+      },
+      {
+        "source": "31",
+        "target": "32",
+        "id": 46.0,
+        "sourceAnchor": "output",
+        "index": 0.0
+      },
+      {
+        "source": "5",
+        "target": "33",
+        "id": 47.0,
+        "sourceAnchor": "false",
+        "index": 0.0
+      },
+      {
+        "source": "33",
+        "target": "20",
+        "id": 48.0,
+        "sourceAnchor": "output",
+        "index": 0.0
+      },
+      {
+        "source": "20",
+        "target": "34",
+        "id": 49.0,
+        "sourceAnchor": "rejected",
+        "index": 0.0
+      },
+      {
+        "source": "34",
+        "target": "14",
+        "id": 50.0,
+        "sourceAnchor": "output",
+        "index": 0.0
+      },
+      {
+        "source": "20",
+        "target": "35",
+        "id": 51.0,
+        "sourceAnchor": "approved",
+        "index": 0.0
+      },
+      {
+        "source": "35",
+        "target": "36",
+        "id": 52.0,
+        "sourceAnchor": "output",
+        "index": 0.0
+      },
+      {
+        "source": "29",
+        "target": "37",
+        "id": 53.0,
+        "sourceAnchor": "output",
+        "index": 0.0
+      },
+      {
+        "source": "37",
+        "target": "5",
+        "id": 54.0,
+        "sourceAnchor": "output",
+        "index": 0.0
+      }
+    ],
+    "dataSetDetails": [],
+    "engine": "agent",
+    "nodeDebugConfigs": {}
+  }
+}

@@ -104,27 +104,41 @@ def _fallback_url_from_sbom(sbom: "AiSbomDocument | None") -> str | None:
 # ---------------------------------------------------------------------------
 
 _LOGIN_PATH_RE = re.compile(
-    r"/(login|auth|signin|sign-in|authenticate|token)(/|$)",
+    r"/(login|auth|signin|sign-in|authenticate|token"
+    r"|session|sessions|access[-_]?token|connect"
+    r"|credentials|api[-_]?key|user[-_]?login|users?/auth|users?/login)(/|$)",
     re.IGNORECASE,
 )
 _USERNAME_KEYS = frozenset(["username", "user", "email", "user_id", "login", "identifier"])
 _PASSWORD_KEYS = frozenset(["password", "passwd", "pass", "secret", "pin"])
 # Ordered preference list for the token key in the login response.
-_TOKEN_KEY_CANDIDATES = ["token", "access_token", "jwt", "id_token", "auth_token"]
+# Covers snake_case and camelCase variants across common auth frameworks.
+_TOKEN_KEY_CANDIDATES = [
+    "token", "access_token", "accessToken",
+    "jwt", "id_token", "idToken",
+    "auth_token", "authToken",
+    "bearer_token", "bearerToken",
+    "session_token", "sessionToken",
+    "api_key", "apiKey",
+]
+_TOKEN_KEY_CANDIDATES_SET: frozenset[str] = frozenset(
+    k.lower() for k in _TOKEN_KEY_CANDIDATES
+)
 
 
-def _discover_login_endpoint(sbom: "AiSbomDocument") -> tuple[str, str, str] | None:
+def _discover_login_endpoint(sbom: "AiSbomDocument") -> "tuple[str, str, str, str | None] | None":
     """Scan SBOM API_ENDPOINT nodes for a login endpoint.
 
-    Returns ``(endpoint_path, username_field, password_field)`` for the
-    best candidate, or ``None`` when no login-like endpoint is found.
+    Returns ``(endpoint_path, username_field, password_field, token_response_key)``
+    for the best candidate, or ``None`` when no login-like endpoint is found.
+    ``token_response_key`` is ``None`` when it cannot be inferred from the SBOM.
     """
     try:
         from nuguard.sbom.models import NodeType  # noqa: PLC0415
     except Exception:
         return None
 
-    best: tuple[float, str, str, str] | None = None  # (score, path, user_field, pass_field)
+    best: "tuple[float, str, str, str, str | None] | None" = None  # (score, path, user_field, pass_field, token_key)
     for node in sbom.nodes:
         if node.component_type != NodeType.API_ENDPOINT:
             continue
@@ -136,8 +150,6 @@ def _discover_login_endpoint(sbom: "AiSbomDocument") -> tuple[str, str, str] | N
             continue
         method = (meta.method or "POST").upper()
         if method != "POST":
-            continue
-        if not _LOGIN_PATH_RE.search(path):
             continue
 
         # Check that the request body has both a username-like and password-like field.
@@ -154,9 +166,16 @@ def _discover_login_endpoint(sbom: "AiSbomDocument") -> tuple[str, str, str] | N
         if not user_field or not pass_field:
             continue
 
+        # Path regex match → high confidence; schema-only match → lower confidence
+        path_matches = bool(_LOGIN_PATH_RE.search(path))
         score = node.confidence * 10
-        if any(tok in path.lower() for tok in ("/login", "/signin")):
-            score += 3
+        if path_matches:
+            if any(tok in path.lower() for tok in ("/login", "/signin")):
+                score += 3
+        else:
+            # Accept schema-only match (username+password fields) as a login endpoint
+            # with a confidence penalty so regex-matching candidates are preferred.
+            score -= 3
         if best is None or score > best[0]:
             # Recover the original casing from the schema for the payload key names.
             orig_schema: dict = {}
@@ -172,9 +191,21 @@ def _discover_login_endpoint(sbom: "AiSbomDocument") -> tuple[str, str, str] | N
             orig_pass = next(
                 (k for k in orig_schema if k.lower() == pass_field), pass_field
             )
-            best = (score, path, orig_user, orig_pass)
+            # Try to detect the token key from the response body schema
+            token_key: str | None = None
+            try:
+                resp_schema = getattr(meta, "response_body_schema", None) or {}
+                if isinstance(resp_schema, dict) and resp_schema:
+                    resp_keys_lower = {k.lower(): k for k in resp_schema}
+                    for candidate in _TOKEN_KEY_CANDIDATES:
+                        if candidate.lower() in resp_keys_lower:
+                            token_key = resp_keys_lower[candidate.lower()]
+                            break
+            except Exception:
+                pass
+            best = (score, path, orig_user, orig_pass, token_key)
 
-    return (best[1], best[2], best[3]) if best else None
+    return (best[1], best[2], best[3], best[4]) if best else None
 
 
 def resolve_auth_config_with_sbom_fallback(
@@ -208,7 +239,8 @@ def resolve_auth_config_with_sbom_fallback(
     if result is None:
         return auth_config, None
 
-    endpoint_path, user_field, pass_field = result
+    endpoint_path, user_field, pass_field, detected_token_key = result
+    token_key = detected_token_key or _TOKEN_KEY_CANDIDATES[0]
 
     try:
         from nuguard.common.auth import AuthConfig, LoginFlowConfig  # noqa: PLC0415
@@ -219,7 +251,7 @@ def resolve_auth_config_with_sbom_fallback(
         endpoint=endpoint_path,
         method="POST",
         payload={user_field: auth_config.username, pass_field: auth_config.password},
-        token_response_key=_TOKEN_KEY_CANDIDATES[0],  # "token" — most common default
+        token_response_key=token_key,
         token_header="Authorization: Bearer",
         refresh_on_401=True,
     )
@@ -238,7 +270,7 @@ def resolve_auth_config_with_sbom_fallback(
         f"auth.type='basic' with credentials for '{auth_config.username}' was upgraded to "
         f"'login_flow' using SBOM-discovered login endpoint '{endpoint_path}' "
         f"(payload fields: {user_field!r}/{pass_field!r}, "
-        f"token_response_key: '{_TOKEN_KEY_CANDIDATES[0]}'). "
+        f"token_response_key: '{token_key}'). "
         f"If the token key differs, set auth.login_flow explicitly in nuguard.yaml."
     )
     _log.warning("resolve_auth_config_with_sbom_fallback: %s", note)
@@ -312,6 +344,8 @@ def build_target_app_client(
     explicitly_set: frozenset[str] | set[str] = frozenset(),
     payload_extras: dict[str, Any] | None = None,
     heal_llm: "LLMClient | None" = None,
+    # Nested value template from OpenAPI schema detection (ProbeResult.value_template).
+    chat_payload_value_template: "dict[str, Any] | None" = None,
 ) -> "TargetAppClient":
     """Build a :class:`TargetAppClient` with SBOM-assisted config resolution.
 
@@ -424,6 +458,7 @@ def build_target_app_client(
         framework_adapter=framework_adapter,
         chat_payload_extras=payload_extras or None,
         heal_llm=heal_llm,
+        chat_payload_value_template=chat_payload_value_template,
     )
     client.resolution_notes = resolution_notes
     return client
