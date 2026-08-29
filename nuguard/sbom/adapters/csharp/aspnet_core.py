@@ -84,6 +84,16 @@ _INFRASTRUCTURE_TYPES = {
     "IHeaderDictionary",
     "IServiceProvider",
 }
+_BINDING_SOURCES = {
+    "AsParameters": "parameters",
+    "FromBody": "body",
+    "FromForm": "form",
+    "FromHeader": "header",
+    "FromKeyedServices": "services",
+    "FromQuery": "query",
+    "FromRoute": "route",
+    "FromServices": "services",
+}
 _AI_ROUTE_RE = re.compile(
     r"(?:^|[/_-])"
     r"(?:ai|ask|assistant|chat|complete|"
@@ -778,31 +788,66 @@ def _minimal_response_type(
 def _lambda_parameters(
     handler: str,
 ) -> list[str]:
-    match = re.search(
-        r"(?:async\s*)?"
-        r"\((?P<params>[^()]*)\)"
-        r"\s*=>",
-        handler,
-        re.DOTALL,
-    )
+    """Return an outer C# lambda's parameters using balanced delimiters."""
+    masked = mask_non_code(handler)
+    arrow = masked.find("=>")
 
-    if match:
-        _, positional = parse_arguments(match.group("params"))
-        return positional
+    if arrow >= 0:
+        cursor = arrow
+
+        while cursor > 0 and masked[cursor - 1].isspace():
+            cursor -= 1
+
+        if cursor > 0 and masked[cursor - 1] == ")":
+            close_paren = cursor - 1
+            open_paren = _matching_lambda_open_paren(
+                masked,
+                close_paren,
+            )
+
+            if open_paren is not None:
+                _, positional = parse_arguments(handler[open_paren + 1 : close_paren])
+                return positional
 
     single = re.search(
         r"(?:async\s+)?"
         r"(?P<param>[A-Za-z_]\w*)"
         r"\s*=>",
-        handler,
+        masked,
     )
 
-    return [single.group("param")] if single else []
+    return [handler[single.start("param") : single.end("param")]] if single else []
+
+
+def _matching_lambda_open_paren(
+    source: str,
+    close_paren: int,
+) -> int | None:
+    """Return the opening parenthesis paired with *close_paren*."""
+    depth = 0
+
+    for index in range(
+        close_paren,
+        -1,
+        -1,
+    ):
+        char = source[index]
+
+        if char == ")":
+            depth += 1
+        elif char == "(":
+            depth -= 1
+
+            if depth == 0:
+                return index
+
+    return None
 
 
 def _parse_parameter(
     value: str,
-) -> tuple[str, str, bool] | None:
+) -> tuple[str, str, str | None] | None:
+    binding_source = _binding_source(value)
     clean = (
         re.sub(
             r"\[[^\]]+\]\s*",
@@ -835,26 +880,64 @@ def _parse_parameter(
     return (
         match.group("type"),
         match.group("name").removeprefix("@"),
-        "FromBody" in value,
+        binding_source,
     )
+
+
+def _binding_source(
+    value: str,
+) -> str | None:
+    """Return the explicit ASP.NET parameter binding source, if any."""
+    for section in re.findall(
+        r"\[([^\]]+)\]",
+        value,
+    ):
+        normalized = re.sub(
+            r"^\s*(?:assembly|event|field|method|module|"
+            r"param|property|return|type|typevar)"
+            r"\s*:\s*",
+            "",
+            section,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+
+        for attribute in split_top_level(normalized):
+            name = attribute.split("(", 1)[0].strip().split(".")[-1].removesuffix("Attribute")
+            binding = _BINDING_SOURCES.get(name)
+
+            if binding is not None:
+                return binding
+
+    return None
 
 
 def _request_parameter(
-    parameters: list[tuple[str, str, bool]],
+    parameters: list[tuple[str, str, str | None]],
 ) -> tuple[str, str | None]:
     ordered = sorted(
         parameters,
-        key=lambda item: not item[2],
+        key=lambda item: item[2] != "body",
     )
 
-    for type_name, name, from_body in ordered:
+    for type_name, name, binding in ordered:
         base = _base_type(type_name)
+
+        if binding in {
+            "form",
+            "header",
+            "parameters",
+            "query",
+            "route",
+            "services",
+        }:
+            continue
 
         if base in _INFRASTRUCTURE_TYPES:
             continue
 
         if base in _PRIMITIVE_TYPES:
-            if from_body or name.casefold() in _PROMPT_FIELDS:
+            if binding == "body":
                 return type_name, name
 
             continue
