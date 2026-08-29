@@ -984,3 +984,65 @@ def to_text(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
             sev = str(f.get("severity", "")).upper()
             color = {"CRITICAL": "red", "HIGH": "red", "MEDIUM": "yellow", "LOW": "blue"}.get(sev, "white")
             console.print(f"  [{color}][{sev}][/{color}] {f.get('title', '')}")
+
+
+def to_text_str(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) -> str:
+    """Return a plain-text (no Rich markup) report string.
+
+    Used when ``--format text --output <file>`` is requested so that the
+    written file contains readable plain text rather than Markdown.
+
+    Args:
+        result: Complete BehaviorAnalysisResult.
+        meta: Optional report metadata.
+
+    Returns:
+        Plain-text report as a string.
+    """
+    lines: list[str] = []
+
+    # Summary
+    lines.append("Behavior Analysis Summary")
+    lines.append("=" * 40)
+    lines.append(f"  Intent:        {result.intent.app_purpose or 'not determined'}")
+    lines.append(f"  Risk Score:    {result.overall_risk_score:.1f} / 100")
+    lines.append(f"  Coverage:      {result.coverage_percentage * 100:.0f}%")
+    lines.append(f"  Alignment:     {result.intent_alignment_score:.2f} / 5.0")
+    lines.append(f"  Findings:      {len(result.static_findings) + len(result.dynamic_findings)}")
+    lines.append(f"  Outcome:       {result.scan_outcome}")
+    lines.append("")
+
+    # Config notes
+    if result.config_notes:
+        lines.append("Configuration Notes")
+        lines.append("-" * 40)
+        for note in result.config_notes:
+            lines.append(f"  - {note}")
+        lines.append("")
+
+    # Coverage table
+    if result.coverage:
+        lines.append("Component Coverage")
+        lines.append("-" * 40)
+        header = f"  {'Component':<30} {'Type':<15} {'Exercised':<10} {'In Policy':<10} {'Deviations':<10}"
+        lines.append(header)
+        lines.append("  " + "-" * 75)
+        for cov in result.coverage:
+            ex = "Yes" if cov.exercised else "No"
+            wp = "Yes" if cov.exercised_within_policy else ("No" if cov.exercised else "-")
+            name = cov.component_name[:29]
+            ntype = cov.node_type[:14]
+            lines.append(f"  {name:<30} {ntype:<15} {ex:<10} {wp:<10} {len(cov.deviations):<10}")
+        lines.append("")
+
+    # Findings
+    all_findings = list(result.static_findings) + list(result.dynamic_findings)
+    if all_findings:
+        lines.append("Findings")
+        lines.append("-" * 40)
+        for f in all_findings:
+            sev = str(f.get("severity", "")).upper()
+            lines.append(f"  [{sev}] {f.get('title', '')}")
+        lines.append("")
+
+    return "\n".join(lines)
