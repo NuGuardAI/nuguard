@@ -86,13 +86,17 @@ def test_fixture_emits_framework_agent_model_and_tools() -> None:
     assert framework.evidence_kind == "ast_import"
 
     model = models[0]
-    assert model.canonical_name == "langchaingo_model_gpt_4o_mini"
+    assert model.canonical_name == "gpt_4o_mini"
     assert model.display_name == "gpt-4o-mini"
     assert model.metadata["provider"] == "openai"
     assert model.metadata["model_name"] == "gpt-4o-mini"
     assert model.metadata["assigned_to"] == "llm"
     assert model.confidence == 0.94
     assert model.evidence_kind == "ast_instantiation"
+    assert len(model.relationships) == 1
+    assert model.relationships[0].source_canonical == framework.canonical_name
+    assert model.relationships[0].target_canonical == model.canonical_name
+    assert model.relationships[0].relationship_type == "USES"
 
     agent = agents[0]
     assert agent.canonical_name == "langchaingo_agent_agent"
@@ -104,6 +108,13 @@ def test_fixture_emits_framework_agent_model_and_tools() -> None:
 
     assert len(tools) == 3
     assert all(tool.evidence_kind == "ast_instantiation" for tool in tools)
+    assert all(tool.relationships for tool in tools)
+    assert all(
+        tool.relationships[0].source_canonical == framework.canonical_name
+        and tool.relationships[0].target_canonical == tool.canonical_name
+        and tool.relationships[0].relationship_type == "CALLS"
+        for tool in tools
+    )
 
     weather_tool = next(tool for tool in tools if tool.display_name == "WeatherTool")
     assert weather_tool.line == 16

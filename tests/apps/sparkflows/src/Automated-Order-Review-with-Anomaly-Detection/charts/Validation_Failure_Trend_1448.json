@@ -1,0 +1,158 @@
+{
+  "name": "Validation Failure Trend",
+  "uuid": "e7792e3e-fe1d-4175-98b1-9fe649bb1978",
+  "icon": {
+    "type": "svg",
+    "icon": "assets/images/icons/actions-icon/interactive.svg"
+  },
+  "category": "",
+  "sheets": [
+    {
+      "id": 0,
+      "name": "",
+      "description": "",
+      "type": "",
+      "chartType": "BAR_CHART",
+      "datasetUuid": "066b647a-8fe2-425f-855e-a84c2670b09a",
+      "datasetName": "",
+      "colors": [
+        "#77c8d0",
+        "#ffe3b2",
+        "#faa19b",
+        "#a1bdfd",
+        "#b6d7d0",
+        "#ffb2c8",
+        "#ffd5be",
+        "#c7d2ff",
+        "#83e3f4",
+        "#d1bfff",
+        "#649bf7",
+        "#f8c9ee",
+        "#219aad",
+        "#ffbfa3"
+      ],
+      "x": [
+        {
+          "columnName": "EffectiveDate",
+          "category": "TEXT",
+          "sort": "NATURAL_SORTING",
+          "maxDisplayedVals": "100",
+          "xGroupMode": "AUTO"
+        }
+      ],
+      "y": [
+        {
+          "columnName": "Validation Failure",
+          "category": "NUMERIC",
+          "aggregate": "SUM",
+          "compute": "NORMAL"
+        }
+      ],
+      "groupBy": [],
+      "filters": [
+        {
+          "datasetUuid": "066b647a-8fe2-425f-855e-a84c2670b09a",
+          "columnName": "EffectiveDate",
+          "columnType": "string",
+          "columnCategory": "TEXT",
+          "min": 0,
+          "max": 10,
+          "minValue": 0,
+          "maxValue": 10,
+          "uniqueValues": [
+            {
+              "value": "2026-05-02",
+              "count": "1"
+            },
+            {
+              "value": "2026-05-01",
+              "count": "1"
+            },
+            {
+              "value": "2026-05-06",
+              "count": "1"
+            },
+            {
+              "value": "2026-05-05",
+              "count": "16"
+            },
+            {
+              "value": "2026-05-03",
+              "count": "1"
+            },
+            {
+              "value": "2026-05-04",
+              "count": "1"
+            },
+            {
+              "value": "2026-05-07",
+              "count": "1"
+            },
+            {
+              "value": "2026-05-08",
+              "count": "1"
+            },
+            {
+              "value": "2026-05-09",
+              "count": "1"
+            },
+            {
+              "value": "2026-05-10",
+              "count": "1"
+            }
+          ],
+          "uniqueSelectedValues": [],
+          "value": ""
+        }
+      ],
+      "calculatedFields": [
+        {
+          "name": "Validation Failure",
+          "expression": "COUNT(CASE WHEN Status='Validation Failed' THEN 1 END)"
+        }
+      ],
+      "drillDown": {
+        "enabled": false,
+        "levels": []
+      },
+      "chartOptions": {
+        "legendPosition": "top",
+        "totalPosition": "bottom",
+        "tooltip": "value",
+        "xlabel": "",
+        "ylabel": "",
+        "y1label": "",
+        "lblTotal": "Total",
+        "total": false,
+        "label": false,
+        "horizontalBar": false,
+        "beginAtZero": true,
+        "stacked": false,
+        "hideTitleOnDashboard": false,
+        "datalabels": {
+          "fontSize": "14px",
+          "formatter": "value"
+        },
+        "summaryCards": {
+          "textCenter": false,
+          "lblFontSize": "22px",
+          "descFontSize": "12px",
+          "lblColor": "#2F80ED",
+          "descColor": "#A4A4A6",
+          "descTop": true,
+          "divider": false,
+          "dividerColor": "#bebebe",
+          "formattedValue": 2
+        }
+      },
+      "filterDependencies": [
+        {
+          "parentColumn": "",
+          "childColumn": "",
+          "restrict": false,
+          "autoClear": false
+        }
+      ]
+    }
+  ]
+}

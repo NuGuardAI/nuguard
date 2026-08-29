@@ -219,7 +219,8 @@ def scan(
                 supply_chain_profile=supply_chain_profile,
                 supply_chain_verify_artifacts=supply_chain_verify,
             )
-            all_findings = analyzer.analyze(sbom_doc)
+            import asyncio as _asyncio  # noqa: PLC0415
+            all_findings = _asyncio.run(analyzer.analyze(sbom_doc))
             tool_status["nga-rules"] = "ok"
             tool_status["osv"] = "ok" if not no_osv else "skipped"
             tool_status["grype"] = _detect_tool_status("grype", not no_grype)

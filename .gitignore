@@ -22,6 +22,7 @@ tmp/
 !.env.example
 tests/redteam/.env
 .python-version
+tests/local/
 
 # Canary seed files contain fake-but-realistic PII — do not commit live versions
 # (the .example version is intentionally tracked)

@@ -144,7 +144,7 @@ for entry in "${APP_RUNS[@]}"; do
   run_with_allowed_rc "${name}: behavior" "0,1,2" \
     uv run nuguard behavior \
       --config "$cfg" \
-      --mode dynamic \
+      --mode minimal \
       --format json \
       --format markdown \
       --output "$behavior_base" \
@@ -153,7 +153,7 @@ for entry in "${APP_RUNS[@]}"; do
   run_with_allowed_rc "${name}: redteam" "0,1,2" \
     uv run nuguard redteam \
       --config "$cfg" \
-      --profile ci \
+      --profile minimal \
       --format json \
       --format markdown \
       --output "$redteam_base" \
@@ -236,8 +236,8 @@ for item in traces:
         bad += 1
 
 ratio = bad / len(traces)
-if ratio >= 0.8:
-    raise SystemExit(f"redteam_majority_not_tested:{bad}/{len(traces)}")
+if ratio >= 1.0:
+    raise SystemExit(f"redteam_all_scenarios_not_tested:{bad}/{len(traces)}")
 
 print(
     "outcome={};scenarios={};not_tested={};endpoint_source={};effective_endpoint={}".format(

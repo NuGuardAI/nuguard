@@ -18,9 +18,10 @@ async-client cleanup is guaranteed via ``finally``, mirroring the CLI exactly.
 """
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import uuid
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Callable, Literal
 
 from pydantic import BaseModel, Field
 
@@ -127,6 +128,7 @@ class RedteamRunResult(BaseModel):
         "high_findings",
         "findings",
         "aborted_target_unavailable",
+        "aborted_endpoint_unreachable",
         "inconclusive_target_errors",
         "no_findings",
     ]
@@ -234,6 +236,7 @@ async def run_redteam(
     catalog: "tuple | None" = None,
     log_path: "Path | None" = None,
     prompt_cache_dir: "Path | None" = None,
+    _progress_sink: Callable[[dict[str, Any]], None] | None = None,
 ) -> RedteamRunResult:
     """Run a full v1 red-team scan from a JSON-safe request.
 
@@ -295,6 +298,7 @@ async def run_redteam(
         codegen_escalation_enabled=request.codegen_escalation_enabled,
         mode=request.mode,
         progressive_halt_on_severity=request.progressive_halt_on_severity,
+        progress_sink=_progress_sink,
     )
 
     try:
@@ -387,6 +391,48 @@ async def run_redteam_stream(
     run_id = str(uuid.uuid4())
 
     async def _worker(controller):
+        def _publish_progress(update: dict[str, Any]) -> None:
+            kind = update.get("kind")
+            total = int(update.get("scenarios_total") or 0)
+            completed = int(update.get("scenarios_completed") or 0)
+            payload = {
+                "scenarios_total": total,
+                "scenarios_completed": completed,
+                "progress_pct": completed / total if total else 0.0,
+                "current_goal_type": update.get("goal_type"),
+                "current_scenario_type": update.get("scenario_type"),
+                "scenario_id": update.get("scenario_id"),
+                "scenario_title": update.get("scenario_title"),
+                "scenario_status": update.get("scenario_status"),
+            }
+            if kind == "plan":
+                controller.publish(
+                    event_type="scenario_plan_ready",
+                    phase="planning",
+                    payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
+                )
+            elif kind == "scenario_started":
+                controller.publish(
+                    event_type="scenario_started",
+                    phase="execution",
+                    payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
+                )
+            elif kind == "scenario_finished":
+                controller.publish(
+                    event_type="scenario_progress",
+                    phase="execution",
+                    payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
+                )
+                findings_added = update.get("findings_added") or []
+                if findings_added:
+                    controller.publish(
+                        event_type="findings_delta",
+                        phase="execution",
+                        payload=StreamDeltaPayload(
+                            findings_added=[_stream_finding_view(finding) for finding in findings_added],
+                        ).model_dump(mode="json"),
+                    )
+
         controller.publish(
             event_type="run_started",
             phase="init",
@@ -405,32 +451,13 @@ async def run_redteam_stream(
                 catalog=catalog,
                 log_path=log_path,
                 prompt_cache_dir=prompt_cache_dir,
-            )
-
-            controller.publish(
-                event_type="scenario_plan_ready",
-                phase="planning",
-                payload=StreamProgressPayload(
-                    scenarios_total=result.scenarios_run,
-                    scenarios_completed=0,
-                    progress_pct=0.0,
-                ).model_dump(mode="json"),
+                _progress_sink=_publish_progress,
             )
             controller.publish(
                 event_type="findings_delta",
-                phase="execution",
+                phase="finalize",
                 payload=StreamDeltaPayload(
-                    findings_added=[_stream_finding_view(f) for f in result.findings],
                     scenario_record_added=result.scenario_records,
-                ).model_dump(mode="json"),
-            )
-            controller.publish(
-                event_type="scenario_progress",
-                phase="execution",
-                payload=StreamProgressPayload(
-                    scenarios_total=result.scenarios_run,
-                    scenarios_completed=result.scenarios_run,
-                    progress_pct=1.0 if result.scenarios_run > 0 else 0.0,
                 ).model_dump(mode="json"),
             )
             controller.publish_terminal(
@@ -446,6 +473,19 @@ async def run_redteam_stream(
                 ).model_dump(mode="json"),
             )
             controller.set_final_result(RedteamExecutionResult.model_validate(result.model_dump(mode="json")))
+        except asyncio.CancelledError as exc:
+            controller.publish_terminal(
+                event_type="failed",
+                phase="finalize",
+                payload=StreamTerminalPayload(
+                    status="failed",
+                    failure_stage="cancelled",
+                    error_type=type(exc).__name__,
+                    error_message="Redteam stream cancelled",
+                ).model_dump(mode="json"),
+            )
+            controller.set_final_exception(exc)
+            raise
         except Exception as exc:  # noqa: BLE001
             controller.publish_terminal(
                 event_type="failed",

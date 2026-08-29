@@ -48,6 +48,33 @@ class AuthError(NuGuardError):
         self.detail = detail
 
 
+class BrowserLoginError(NuGuardError):
+    """Raised when a Playwright-driven browser login fails.
+
+    Attributes:
+        step: Which stage failed — one of ``"playwright_not_installed"``,
+            ``"browser_binary_missing"``, ``"navigate"``, ``"find_login_trigger"``,
+            ``"fill_credentials"``, ``"missing_credentials"``, ``"await_redirect"``,
+            ``"cookie_export"``, ``"yaml_write"``, ``"yaml_write_conflict"``, or
+            ``"unknown"``. Callers map this to an exit code/user message instead
+            of string-matching the exception text.
+        url: The target URL being processed, if known.
+        cause: Underlying exception, if any, stringified for diagnostics.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        step: str = "unknown",
+        url: str = "",
+        cause: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.step = step
+        self.url = url
+        self.cause = cause
+
+
 class TargetUnavailableError(NuGuardError):
     """Raised when the target is unreachable (network error, 5xx, circuit breaker).
 

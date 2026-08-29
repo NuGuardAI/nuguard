@@ -3,8 +3,9 @@
 Detects ``github.com/tmc/langchaingo`` usage and emits:
 
 - a ``FRAMEWORK`` node for LangChainGo;
-- ``MODEL`` nodes from constructors in ``langchaingo/llms`` packages;
-- ``TOOL`` nodes from concrete values in ``[]tools.Tool`` collections;
+- ``MODEL`` nodes from provider constructors and ``WithModel(...)`` options;
+- ``TOOL`` nodes from imported tool structs, typed ``[]tools.Tool``
+  collections, and types satisfying the LangChainGo ``tools.Tool`` interface;
 - ``AGENT`` nodes from ``agents.NewOneShotAgent`` and
   ``agents.NewConversationalAgent`` calls.
 """
@@ -15,10 +16,10 @@ import ast
 import re
 from typing import Any
 
-from ...core.go_parser import GoParseResult, parse_go
+from ...core.go_parser import GoFunctionDeclaration, GoParseResult, parse_go
 from ...normalization import canonicalize_text
 from ...types import ComponentType
-from ..base import ComponentDetection
+from ..base import ComponentDetection, RelationshipHint
 from ._go_base import GoFrameworkAdapter
 
 _LANGCHAINGO_MODULE = "github.com/tmc/langchaingo"
@@ -30,6 +31,9 @@ _AGENT_CONSTRUCTORS = {
     "NewOneShotAgent",
     "NewConversationalAgent",
 }
+
+_MODEL_OPTION_CALL = "WithModel"
+_TOOL_INTERFACE_CONFIDENCE = 0.75
 
 _MODEL_OPTION_RE = re.compile(
     r"(?:[A-Za-z_][A-Za-z0-9_]*\.)?"
@@ -46,11 +50,36 @@ _TOOL_LITERAL_RE = re.compile(
 )
 
 
+def _is_no_arg_string_getter(
+    declaration: GoFunctionDeclaration,
+) -> bool:
+    """Return whether a method has the ``func (T) X() string`` shape."""
+    return (
+        not declaration.parameters
+        and len(declaration.results) == 1
+        and declaration.results[0].type == "string"
+    )
+
+
+def _is_tool_call_method(
+    declaration: GoFunctionDeclaration,
+) -> bool:
+    """Return whether a method matches LangChainGo's ``tools.Tool.Call``."""
+    if len(declaration.parameters) != 2 or len(declaration.results) != 2:
+        return False
+
+    context_parameter, input_parameter = declaration.parameters
+    if "Context" not in context_parameter.type or input_parameter.type != "string":
+        return False
+
+    return declaration.results[0].type == "string" and declaration.results[1].type == "error"
+
+
 class LangChainGoAdapter(GoFrameworkAdapter):
     """Detect LangChainGo agents, models, and tools."""
 
     name = "langchaingo"
-    priority = 30
+    priority = 50
     handles_imports = [_LANGCHAINGO_MODULE]
 
     def extract(
@@ -94,24 +123,64 @@ class LangChainGoAdapter(GoFrameworkAdapter):
             }
         )
 
+        models = self._models(
+            result,
+            model_aliases,
+            file_path,
+        )
+
+        tools_by_name = {
+            tool.display_name: tool
+            for tool in self._interface_tools(
+                result,
+                file_path,
+            )
+        }
+        for tool in self._tools(
+            content,
+            result,
+            tool_aliases,
+            file_path,
+        ):
+            # Concrete usage is stronger evidence than interface satisfaction
+            # when both describe the same receiver/type name.
+            tools_by_name[tool.display_name] = tool
+
+        tools = list(tools_by_name.values())
+
+        agents = self._agents(
+            result,
+            agent_aliases,
+            file_path,
+        )
+
+        for model in models:
+            model.relationships.append(
+                RelationshipHint(
+                    source_canonical=framework.canonical_name,
+                    source_type=ComponentType.FRAMEWORK,
+                    target_canonical=model.canonical_name,
+                    target_type=ComponentType.MODEL,
+                    relationship_type="USES",
+                )
+            )
+
+        for tool in tools:
+            tool.relationships.append(
+                RelationshipHint(
+                    source_canonical=framework.canonical_name,
+                    source_type=ComponentType.FRAMEWORK,
+                    target_canonical=tool.canonical_name,
+                    target_type=ComponentType.TOOL,
+                    relationship_type="CALLS",
+                )
+            )
+
         return [
             framework,
-            *self._models(
-                result,
-                model_aliases,
-                file_path,
-            ),
-            *self._tools(
-                content,
-                result,
-                tool_aliases,
-                file_path,
-            ),
-            *self._agents(
-                result,
-                agent_aliases,
-                file_path,
-            ),
+            *models,
+            *tools,
+            *agents,
         ]
 
     @staticmethod
@@ -154,8 +223,11 @@ class LangChainGoAdapter(GoFrameworkAdapter):
 
             provider = _provider_from_import(aliases[receiver])
             model_name = _model_name(instantiation.source_snippet or "")
-            identity = model_name or provider
-            canonical = canonicalize_text(f"langchaingo:model:{identity}")
+            canonical = (
+                canonicalize_text(model_name.lower())
+                if model_name
+                else canonicalize_text(f"langchaingo:model:{provider}")
+            )
 
             metadata: dict[str, Any] = {
                 "framework": "langchaingo",
@@ -164,10 +236,8 @@ class LangChainGoAdapter(GoFrameworkAdapter):
                 "provider": provider,
                 "creation_method": instantiation.class_name,
             }
-
             if model_name:
                 metadata["model_name"] = model_name
-
             if instantiation.assigned_to:
                 metadata["assigned_to"] = instantiation.assigned_to
 
@@ -185,6 +255,46 @@ class LangChainGoAdapter(GoFrameworkAdapter):
                     line=instantiation.line,
                     snippet=(instantiation.source_snippet or f"{instantiation.class_name}(...)"),
                     evidence_kind="ast_instantiation",
+                ),
+            )
+
+        # Preserve WithModel(...) detection while requiring the receiver to
+        # be a proven langchaingo/llms package alias. This avoids treating an
+        # unrelated fake.WithModel(...) call as LangChainGo.
+        for call in result.function_calls:
+            receiver = call.receiver or ""
+            if call.function_name != _MODEL_OPTION_CALL or receiver not in aliases:
+                continue
+
+            model_name = self._resolve(
+                call,
+                0,
+            )
+            if not model_name:
+                continue
+
+            canonical = canonicalize_text(model_name.lower())
+            provider = _provider_from_import(aliases[receiver])
+
+            detections.setdefault(
+                canonical,
+                ComponentDetection(
+                    component_type=ComponentType.MODEL,
+                    canonical_name=canonical,
+                    display_name=model_name,
+                    adapter_name=self.name,
+                    priority=self.priority,
+                    confidence=0.85,
+                    metadata={
+                        "framework": "langchaingo",
+                        "language": "golang",
+                        "module": aliases[receiver],
+                        "provider": provider,
+                    },
+                    file_path=file_path,
+                    line=call.line,
+                    snippet=(call.source_snippet or f"WithModel({model_name!r})"),
+                    evidence_kind="ast_call",
                 ),
             )
 
@@ -282,6 +392,71 @@ class LangChainGoAdapter(GoFrameworkAdapter):
                 )
 
         return list(detections.values())
+
+    def _interface_tools(
+        self,
+        result: GoParseResult,
+        file_path: str,
+    ) -> list[ComponentDetection]:
+        """Detect types satisfying LangChainGo's ``tools.Tool`` interface."""
+        detections: list[ComponentDetection] = []
+        by_receiver_type: dict[
+            str,
+            list[GoFunctionDeclaration],
+        ] = {}
+
+        for declaration in result.function_declarations:
+            if declaration.receiver_type:
+                by_receiver_type.setdefault(
+                    declaration.receiver_type,
+                    [],
+                ).append(declaration)
+
+        for receiver_type, declarations in by_receiver_type.items():
+            by_name = {declaration.name: declaration for declaration in declarations}
+
+            name_declaration = by_name.get("Name")
+            description_declaration = by_name.get("Description")
+            call_declaration = by_name.get("Call")
+
+            if (
+                name_declaration is None
+                or description_declaration is None
+                or call_declaration is None
+            ):
+                continue
+
+            if not (
+                _is_no_arg_string_getter(name_declaration)
+                and _is_no_arg_string_getter(description_declaration)
+                and _is_tool_call_method(call_declaration)
+            ):
+                continue
+
+            canonical = canonicalize_text(f"langchaingo_tool:{file_path}:{receiver_type}")
+
+            detections.append(
+                ComponentDetection(
+                    component_type=ComponentType.TOOL,
+                    canonical_name=canonical,
+                    display_name=receiver_type,
+                    adapter_name=self.name,
+                    priority=self.priority,
+                    confidence=_TOOL_INTERFACE_CONFIDENCE,
+                    metadata={
+                        "framework": "langchaingo",
+                        "detection_kind": ("interface_satisfaction"),
+                        "name_source": "receiver_type",
+                        "language": "golang",
+                    },
+                    file_path=file_path,
+                    line=call_declaration.line,
+                    snippet=(f"func ({receiver_type}) Call(ctx, input) (string, error)"),
+                    evidence_kind="ast_declaration",
+                )
+            )
+
+        return detections
 
     def _add_tool(
         self,
@@ -581,3 +756,6 @@ def _top_level_spans(
     )
 
     return spans
+
+
+__all__ = ["LangChainGoAdapter"]

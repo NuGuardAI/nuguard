@@ -244,6 +244,10 @@ Module: `nuguard.common.streaming_models`
 
 Behavior and redteam streaming APIs return a typed `StreamRunHandle` that emits `StreamEvent` envelopes and resolves to the final result model.
 
+Streams emit `scenario_plan_ready`, `scenario_started`, and `scenario_progress` while scenarios execute. Progress payloads include the scenario ID, title, type, terminal status, and monotonic completion counts. `findings_delta` contains redteam findings and behavior turn reports as scenarios complete. When concurrency is greater than one, event sequence reflects execution completion order rather than scenario-plan order. The final result remains authoritative when scan-level aggregation or deduplication changes the final finding set. Under bounded queue pressure, low-priority progress updates may be dropped so lifecycle and terminal events can be delivered.
+
+Call `handle.cancel()` to request non-blocking cancellation, then `await handle.wait_closed(timeout=5.0)` to wait for worker shutdown without cancelling the worker if the wait expires. Cancellation emits a terminal `failed` event with `failure_stage="cancelled"`; `await handle.final_result()` raises `asyncio.CancelledError`.
+
 ## Target verify and session APIs
 
 Module: `nuguard.common.target_verify_public_api`
@@ -258,6 +262,29 @@ Module: `nuguard.common.target_verify_public_api`
 - `resolve_target_session_public(request, *, sbom=None)`
 
 These APIs handle endpoint selection (config/SBOM/probe/default), auth bootstrapping, and target health checks before scans.
+
+When an SBOM is supplied, `resolve_target_session_public()` resolves a static-hosting target URL to the SBOM deployment URL before endpoint probing and session bootstrap. The returned `effective_target_url` reports the URL used for the resolved session.
+
+For targets that obtain a token through a login request, set `auth_type="login_flow"` and pass the nested `LoginFlowConfig` model. Its `endpoint`, `payload`, `token_response_key`, `token_header`, and `refresh_on_401` fields configure the complete login flow. No-login callers can omit both fields; `auth_type` defaults to `"none"`.
+
+```python
+from nuguard.common.auth import LoginFlowConfig
+from nuguard.common.target_verify_public_api import TargetVerifyRequest, verify_target
+
+request = TargetVerifyRequest(
+    target_url="https://example-app",
+    chat_path="/chat",
+    auth_type="login_flow",
+    login_flow=LoginFlowConfig(
+        endpoint="/api/auth/login",
+        payload={"username": "${APP_USERNAME}", "password": "${APP_PASSWORD}"},
+        token_response_key="access_token",
+        token_header="Authorization: Bearer",
+        refresh_on_401=True,
+    ),
+)
+result = await verify_target(request)
+```
 
 ## Output report/export APIs
 
