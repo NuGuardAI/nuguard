@@ -87,7 +87,7 @@ Verify your app behaves as intended against its Cognitive Policy.
 
 Adversarial attack scenarios against a live target.
 
-[![Read the Red-Team Guide](https://img.shields.io/badge/→_Read_the_Red--Team_Guide-111111?style=for-the-badge)](red-teaming-guide.md#quick-start)
+[![Read the Red-Team Guide](https://img.shields.io/badge/→_Read_the_Red--Team_Guide-111111?style=for-the-badge)](redteam-guide.md#quick-start)
 
 ### Run Everything at Once
 

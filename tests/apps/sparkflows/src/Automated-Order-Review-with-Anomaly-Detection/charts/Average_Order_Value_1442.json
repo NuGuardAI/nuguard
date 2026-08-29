@@ -1,0 +1,90 @@
+{
+  "name": "Average Order Value",
+  "uuid": "b4632412-dc05-4fc7-a537-666798222cfb",
+  "icon": {
+    "type": "svg",
+    "icon": "assets/images/icons/actions-icon/interactive.svg"
+  },
+  "category": "",
+  "sheets": [
+    {
+      "id": 0,
+      "name": "",
+      "description": "Average revenue generated per order",
+      "type": "<CUR>",
+      "chartType": "SUMMARY_CARD",
+      "datasetUuid": "066b647a-8fe2-425f-855e-a84c2670b09a",
+      "datasetName": "",
+      "colors": [
+        "#77c8d0",
+        "#ffe3b2",
+        "#faa19b",
+        "#a1bdfd",
+        "#b6d7d0",
+        "#ffb2c8",
+        "#ffd5be",
+        "#c7d2ff",
+        "#83e3f4",
+        "#d1bfff",
+        "#649bf7",
+        "#f8c9ee",
+        "#219aad",
+        "#ffbfa3"
+      ],
+      "x": [],
+      "y": [
+        {
+          "columnName": "Average order value",
+          "category": "NUMERIC",
+          "aggregate": "SUM",
+          "compute": "NORMAL"
+        }
+      ],
+      "groupBy": [],
+      "filters": [],
+      "calculatedFields": [
+        {
+          "name": "Average order value",
+          "expression": "SUM(TotalAmount) / COUNT(OrderNumber)"
+        }
+      ],
+      "drillDown": {
+        "enabled": false,
+        "levels": []
+      },
+      "chartOptions": {
+        "legendPosition": "top",
+        "totalPosition": "bottom",
+        "tooltip": "value",
+        "xlabel": "",
+        "ylabel": "",
+        "y1label": "",
+        "total": false,
+        "label": false,
+        "horizontalBar": false,
+        "beginAtZero": true,
+        "stacked": false,
+        "hideTitleOnDashboard": true,
+        "summaryCards": {
+          "textCenter": true,
+          "lblFontSize": "22px",
+          "descFontSize": "20px",
+          "lblColor": "#19191a",
+          "descColor": "#17171c",
+          "descTop": false,
+          "divider": false,
+          "dividerColor": "#bebebe",
+          "formattedValue": 2
+        }
+      },
+      "filterDependencies": [
+        {
+          "parentColumn": "",
+          "childColumn": "",
+          "restrict": false,
+          "autoClear": false
+        }
+      ]
+    }
+  ]
+}

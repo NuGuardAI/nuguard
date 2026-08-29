@@ -1,0 +1,539 @@
+{
+  "name": "SF Validate Invoicing Fields JDBC 1",
+  "uuid": "7af4e040-af7a-4c3f-865f-9191a3415b07",
+  "category": "Order Review",
+  "description": "Validates 10 critical invoicing fields, computes no_of_issues and all_fields_ok flag. Returns result for the agent to decide Validation Failed vs Waiting Approval. Does NOT write status.",
+  "parameters": "--var order_id=${order_id} --var execution_id=${execution_id}",
+  "nodes": [
+    {
+      "id": "4",
+      "name": "Sticky Note",
+      "type": "sticky",
+      "nodeClass": "fire.nodes.doc.NodeStickyNote",
+      "x": "839px",
+      "y": "5px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "bgColor",
+          "value": "blue",
+          "widget": "textfield"
+        },
+        {
+          "name": "width",
+          "value": "479px",
+          "widget": "textfield"
+        },
+        {
+          "name": "height",
+          "value": "612px",
+          "widget": "textfield"
+        },
+        {
+          "name": "pushedToBack",
+          "value": "false",
+          "widget": "textfield"
+        },
+        {
+          "name": "comment",
+          "value": "<p><strong>PURPOSE</strong></p><p>Performs a complete quality check on an order's billing details before it is sent for human approval. Ensures every invoice-critical field is present and meets business rules.</p><p><strong>WHAT THIS WORKFLOW DOES</strong></p><p>1. Re-fetch the Order</p><p>&nbsp;&nbsp;Pulls the latest version of the order from Salesforce so validation runs against current data.</p><p>2. Run Business Rule Checks</p><p>&nbsp;&nbsp;Evaluates ten essential invoicing fields, including:</p><p>&nbsp;&nbsp;&nbsp;• Purchase Order (PO) Number</p><p>&nbsp;&nbsp;&nbsp;• Billing Address (Street, City, State, Postal Code, Country)</p><p>&nbsp;&nbsp;&nbsp;• Total Amount greater than zero</p><p>&nbsp;&nbsp;&nbsp;• Pricebook and Bill-To Contact</p><p>&nbsp;&nbsp;&nbsp;• Contract ID (required when Total Amount is over $50,000)</p><p>3. Summarize the Result</p><p>&nbsp;&nbsp;Returns the number of issues found and an all_fields_ok flag (true / false).</p><p><strong>OUTCOME</strong></p><p>The agent reads the result and routes the order to \"Waiting Approval\" if every check passes, or to \"Validation Failed\" if any issue is found.</p>",
+          "widget": "textarea_rich"
+        }
+      ],
+      "engine": "scala,pyspark,polars,agent",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "5",
+      "name": "SQL",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeSQL",
+      "x": "180.75px",
+      "y": "234.047px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "tempTable",
+          "value": "fire_temp_table",
+          "widget": "textfield"
+        },
+        {
+          "name": "sql",
+          "value": "SELECT \n    Id, \n    OrderNumber, \n    TotalAmount, \n\n    CASE WHEN COALESCE(PoNumber,'')='' THEN 0 ELSE 1 END AS has_customer_po, \n    CASE WHEN COALESCE(BillingStreet,'')='' THEN 0 ELSE 1 END AS has_billing_street, \n    CASE WHEN COALESCE(BillingCity,'')='' THEN 0 ELSE 1 END AS has_billing_city, \n    CASE WHEN COALESCE(BillingState,'')='' THEN 0 ELSE 1 END AS has_billing_state, \n    CASE WHEN COALESCE(BillingPostalCode,'')='' THEN 0 ELSE 1 END AS has_billing_zip, \n    CASE WHEN COALESCE(BillingCountry,'')='' THEN 0 ELSE 1 END AS has_billing_country, \n    CASE WHEN COALESCE(TotalAmount,0)>0 THEN 1 ELSE 0 END AS has_total_amount, \n    CASE WHEN COALESCE(Pricebook2Id,'')='' THEN 0 ELSE 1 END AS has_pricebook, \n    1 AS has_currency, \n    CASE WHEN COALESCE(BillToContactId,'')='' THEN 0 ELSE 1 END AS has_bill_to_contact, \n    CASE WHEN COALESCE(ContractId,'')='' THEN 0 ELSE 1 END AS has_contract_id, \n    CASE WHEN COALESCE(EffectiveDate,'')='' THEN 0 ELSE 1 END AS has_effective_date, \n    CASE WHEN COALESCE(EndDate,'')='' THEN 0 ELSE 1 END AS has_end_date, \n    CASE WHEN COALESCE(CustomerAuthorizedById,'')='' THEN 0 ELSE 1 END AS has_authorized_by, \n\n    /* Total validations executed */\n    10 AS num_validations_run,\n\n    /* Number of failed validations */\n    (\n        CASE WHEN COALESCE(PoNumber,'')='' THEN 1 ELSE 0 END +\n        CASE WHEN COALESCE(BillingStreet,'')='' THEN 1 ELSE 0 END +\n        CASE WHEN COALESCE(BillingCity,'')='' THEN 1 ELSE 0 END +\n        CASE WHEN COALESCE(BillingState,'')='' THEN 1 ELSE 0 END +\n        CASE WHEN COALESCE(BillingPostalCode,'')='' THEN 1 ELSE 0 END +\n        CASE WHEN COALESCE(BillingCountry,'')='' THEN 1 ELSE 0 END +\n        CASE WHEN COALESCE(TotalAmount,0)=0 THEN 1 ELSE 0 END +\n        CASE WHEN COALESCE(Pricebook2Id,'')='' THEN 1 ELSE 0 END +\n        CASE WHEN COALESCE(BillToContactId,'')='' THEN 1 ELSE 0 END +\n        CASE WHEN TotalAmount > 50000 \n                  AND COALESCE(ContractId,'')='' \n             THEN 1 ELSE 0 END\n    ) AS num_validations_failed,\n\n    /* Number of passed validations */\n    (\n        10 -\n        (\n            CASE WHEN COALESCE(PoNumber,'')='' THEN 1 ELSE 0 END +\n            CASE WHEN COALESCE(BillingStreet,'')='' THEN 1 ELSE 0 END +\n            CASE WHEN COALESCE(BillingCity,'')='' THEN 1 ELSE 0 END +\n            CASE WHEN COALESCE(BillingState,'')='' THEN 1 ELSE 0 END +\n            CASE WHEN COALESCE(BillingPostalCode,'')='' THEN 1 ELSE 0 END +\n            CASE WHEN COALESCE(BillingCountry,'')='' THEN 1 ELSE 0 END +\n            CASE WHEN COALESCE(TotalAmount,0)=0 THEN 1 ELSE 0 END +\n            CASE WHEN COALESCE(Pricebook2Id,'')='' THEN 1 ELSE 0 END +\n            CASE WHEN COALESCE(BillToContactId,'')='' THEN 1 ELSE 0 END +\n            CASE WHEN TotalAmount > 50000 \n                      AND COALESCE(ContractId,'')='' \n                 THEN 1 ELSE 0 END\n        )\n    ) AS num_validations_passed,\n    CONCAT_WS('|',\n    CASE WHEN COALESCE(PoNumber,'')='' \n         THEN 'PO Number is missing' END,\n\n    CASE WHEN COALESCE(BillingStreet,'')='' \n         THEN 'Billing Street is missing' END,\n\n    CASE WHEN COALESCE(BillingCity,'')='' \n         THEN 'Billing City is missing' END,\n\n    CASE WHEN COALESCE(BillingState,'')='' \n         THEN 'Billing State is missing' END,\n\n    CASE WHEN COALESCE(BillingPostalCode,'')='' \n         THEN 'Billing Postal Code is missing' END,\n\n    CASE WHEN COALESCE(BillingCountry,'')='' \n         THEN 'Billing Country is missing' END,\n\n    CASE WHEN COALESCE(TotalAmount,0)=0 \n         THEN 'Total Amount is missing or zero' END,\n\n    CASE WHEN COALESCE(Pricebook2Id,'')='' \n         THEN 'Pricebook2Id is missing' END,\n\n    CASE WHEN COALESCE(BillToContactId,'')='' \n         THEN 'Bill To Contact Id is missing' END,\n\n    CASE WHEN TotalAmount > 50000 \n              AND COALESCE(ContractId,'')='' \n         THEN 'Contract Id is mandatory when Total Amount > 50000' END\n    ) AS IssueDetails,\n    \n    CASE \n        WHEN COALESCE(PoNumber,'')='' \n          OR COALESCE(BillingStreet,'')='' \n          OR COALESCE(BillingCity,'')='' \n          OR COALESCE(BillingState,'')='' \n          OR COALESCE(BillingPostalCode,'')='' \n          OR COALESCE(BillingCountry,'')='' \n          OR COALESCE(TotalAmount,0)=0 \n          OR COALESCE(Pricebook2Id,'')='' \n          OR COALESCE(BillToContactId,'')='' \n          OR (TotalAmount > 50000 AND COALESCE(ContractId,'')='') \n        THEN 'false' \n        ELSE 'true' \n    END AS all_fields_ok\n\nFROM fire_temp_table;",
+          "widget": "code_editor",
+          "type": "sql_mysql"
+        },
+        {
+          "name": "schema",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "outputColNames",
+          "value": "[\"Id\",\"OrderNumber\",\"TotalAmount\",\"has_customer_po\",\"has_billing_street\",\"has_billing_city\",\"has_billing_state\",\"has_billing_zip\",\"has_billing_country\",\"has_total_amount\",\"has_pricebook\",\"has_currency\",\"has_bill_to_contact\",\"has_contract_id\",\"has_effective_date\",\"has_end_date\",\"has_authorized_by\",\"num_validations_run\",\"num_validations_failed\",\"num_validations_passed\",\"IssueDetails\",\"all_fields_ok\"]",
+          "widget": "schema_col_names"
+        },
+        {
+          "name": "outputColTypes",
+          "value": "[\"STRING\",\"STRING\",\"DOUBLE\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"STRING\",\"STRING\"]",
+          "widget": "schema_col_types"
+        },
+        {
+          "name": "outputColFormats",
+          "value": "[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"]",
+          "widget": "schema_col_formats"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "6",
+      "name": "Save JDBC",
+      "type": "transform",
+      "nodeClass": "fire.nodes.save.NodeSaveJDBC",
+      "x": "617.75px",
+      "y": "133.188px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "connection",
+          "value": "JDBC_MySQL",
+          "widget": "object_array"
+        },
+        {
+          "name": "jdbcDatabase",
+          "value": "userdb",
+          "widget": "textfield"
+        },
+        {
+          "name": "jdbctable",
+          "value": "sales_orders",
+          "widget": "textfield"
+        },
+        {
+          "name": "truncate",
+          "value": "false",
+          "widget": "array"
+        },
+        {
+          "name": "saveMode",
+          "value": "Update",
+          "widget": "array"
+        },
+        {
+          "name": "updateKeyColumn",
+          "value": "Id",
+          "widget": "variable"
+        },
+        {
+          "name": "extraOptions",
+          "widget": "tab"
+        },
+        {
+          "name": "extraOptionsKeys",
+          "value": "[]",
+          "widget": "key_array"
+        },
+        {
+          "name": "extraOptionsValues",
+          "value": "[]",
+          "widget": "value_array"
+        }
+      ],
+      "engine": "pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "7",
+      "name": "Expressions",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeExpressions",
+      "x": "282.75px",
+      "y": "231.188px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "Expressions",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "outputCols",
+          "value": "[\"Status\",\"ApprovalReason\"]",
+          "widget": "key_array",
+          "type": "sparksql"
+        },
+        {
+          "name": "expressions",
+          "value": "[\"'Validating'\",\"''\"]",
+          "widget": "value_array",
+          "type": "sparksql"
+        },
+        {
+          "name": "propagation",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "inputColumnPropagation",
+          "value": "true",
+          "widget": "array_single"
+        },
+        {
+          "name": "outputSchema",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "outputColNames",
+          "value": "[\"Id\",\"OrderNumber\",\"TotalAmount\",\"has_customer_po\",\"has_billing_street\",\"has_billing_city\",\"has_billing_state\",\"has_billing_zip\",\"has_billing_country\",\"has_total_amount\",\"has_pricebook\",\"has_currency\",\"has_bill_to_contact\",\"has_contract_id\",\"has_effective_date\",\"has_end_date\",\"has_authorized_by\",\"num_validations_run\",\"num_validations_failed\",\"num_validations_passed\",\"IssueDetails\",\"all_fields_ok\",\"Status\",\"ApprovalReason\"]",
+          "widget": "schema_col_names"
+        },
+        {
+          "name": "outputColTypes",
+          "value": "[\"STRING\",\"STRING\",\"DOUBLE\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"INTEGER\",\"STRING\",\"STRING\",\"STRING\",\"STRING\"]",
+          "widget": "schema_col_types"
+        },
+        {
+          "name": "outputColFormats",
+          "value": "[\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\"]",
+          "widget": "schema_col_formats"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "8",
+      "name": "Select",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeSelect",
+      "x": "457.75px",
+      "y": "131.188px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "General",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "inputCols",
+          "value": "[\"num_validations_run\",\"num_validations_failed\",\"num_validations_passed\"]",
+          "widget": "variables_list_select"
+        },
+        {
+          "name": "renameCols",
+          "value": "[\"NumValidationsRun\",\"NumValidationsFailed\",\"NumValidationsPassed\"]",
+          "widget": "variables_list_textfield"
+        },
+        {
+          "name": "colType",
+          "value": "[\"\",\"\",\"\"]",
+          "widget": "variables_list_array"
+        },
+        {
+          "name": "drop",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "dropInputCols",
+          "value": "[\"has_customer_po\",\"has_billing_street\",\"has_billing_city\",\"has_billing_state\",\"has_billing_zip\",\"has_billing_country\",\"has_total_amount\",\"has_pricebook\",\"has_currency\",\"has_bill_to_contact\",\"has_contract_id\",\"has_effective_date\",\"has_end_date\",\"has_authorized_by\",\"all_fields_ok\",\"IssueDetails\",\"ApprovalReason\"]",
+          "widget": "variables"
+        },
+        {
+          "name": "inputColumnPropagation",
+          "value": "true",
+          "widget": "array_single"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "9",
+      "name": "Save JDBC",
+      "type": "transform",
+      "nodeClass": "fire.nodes.save.NodeSaveJDBC",
+      "x": "717.75px",
+      "y": "319.188px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "connection",
+          "value": "JDBC_MySQL",
+          "widget": "object_array"
+        },
+        {
+          "name": "jdbcDatabase",
+          "value": "userdb",
+          "widget": "textfield"
+        },
+        {
+          "name": "jdbctable",
+          "value": "orders_issues1",
+          "widget": "textfield"
+        },
+        {
+          "name": "truncate",
+          "value": "false",
+          "widget": "array"
+        },
+        {
+          "name": "saveMode",
+          "value": "Update",
+          "widget": "array"
+        },
+        {
+          "name": "updateKeyColumn",
+          "value": "Id",
+          "widget": "variable"
+        },
+        {
+          "name": "extraOptions",
+          "widget": "tab"
+        },
+        {
+          "name": "extraOptionsKeys",
+          "value": "[]",
+          "widget": "key_array"
+        },
+        {
+          "name": "extraOptionsValues",
+          "value": "[]",
+          "widget": "value_array"
+        }
+      ],
+      "engine": "pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "10",
+      "name": "Select",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeSelect",
+      "x": "588.75px",
+      "y": "319.188px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "General",
+          "value": "",
+          "widget": "tab"
+        },
+        {
+          "name": "inputCols",
+          "value": "[]",
+          "widget": "variables_list_select"
+        },
+        {
+          "name": "renameCols",
+          "value": "[]",
+          "widget": "variables_list_textfield"
+        },
+        {
+          "name": "colType",
+          "value": "[]",
+          "widget": "variables_list_array"
+        },
+        {
+          "name": "drop",
+          "widget": "tab"
+        },
+        {
+          "name": "dropInputCols",
+          "value": "[\"OrderNumber\",\"TotalAmount\",\"has_customer_po\",\"has_billing_street\",\"has_billing_city\",\"has_billing_state\",\"has_billing_zip\",\"has_billing_country\",\"has_total_amount\",\"has_pricebook\",\"has_currency\",\"has_bill_to_contact\",\"has_contract_id\",\"has_effective_date\",\"has_end_date\",\"has_authorized_by\",\"num_validations_run\",\"num_validations_failed\",\"num_validations_passed\",\"all_fields_ok\",\"Status\"]",
+          "widget": "variables"
+        },
+        {
+          "name": "inputColumnPropagation",
+          "value": "true",
+          "widget": "array_single"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "11",
+      "name": "Row Filter",
+      "type": "transform",
+      "nodeClass": "fire.nodes.etl.NodeRowFilter",
+      "x": "457.75px",
+      "y": "315.188px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "conditionExpr",
+          "value": "all_fields_ok = 'false'",
+          "widget": "code_editor",
+          "type": "sparksql"
+        }
+      ],
+      "engine": "scala,pyspark,polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    },
+    {
+      "id": "12",
+      "name": "FetchOrderFromSalesforce",
+      "type": "dataset",
+      "nodeClass": "fire.nodes.salesforce.NodeExecuteSOQLInSalesforce",
+      "x": "55.5px",
+      "y": "233.203px",
+      "fields": [
+        {
+          "name": "storageLevel",
+          "value": "DEFAULT",
+          "widget": "array"
+        },
+        {
+          "name": "connection",
+          "value": "Salesforce",
+          "widget": "object_array"
+        },
+        {
+          "name": "soqlQuery",
+          "value": "SELECT Id, OrderNumber, Account.Name, PoNumber, TotalAmount, ContractId, EffectiveDate, EndDate, Pricebook2Id, BillToContactId, BillingStreet, BillingCity, BillingState, BillingPostalCode, BillingCountry, CustomerAuthorizedById, Owner.Name, Owner.Email, CreatedBy.Name, CreatedBy.Email \nFROM Order \nWHERE Id = '${order_id}'",
+          "widget": "textarea_small"
+        },
+        {
+          "name": "outputColNames",
+          "value": "[\"Id\",\"OrderNumber\",\"Status\",\"Account\",\"PoNumber\",\"PoDate\",\"TotalAmount\",\"ContractId\",\"EffectiveDate\",\"EndDate\",\"Pricebook2Id\",\"BillToContactId\",\"BillingStreet\",\"BillingCity\",\"BillingState\",\"BillingPostalCode\",\"BillingCountry\",\"CustomerAuthorizedById\",\"OwnerId\",\"Owner\",\"CreatedById\",\"CreatedBy\",\"LastModifiedDate\"]",
+          "widget": "schema_col_names"
+        },
+        {
+          "name": "outputColTypes",
+          "value": "[\"STRING\",\"STRING\",\"STRING\",\"STRUCT\",\"STRING\",\"STRING\",\"DOUBLE\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRING\",\"STRUCT\",\"STRING\",\"STRUCT\",\"STRING\"]",
+          "widget": "schema_col_types"
+        },
+        {
+          "name": "outputColFormats",
+          "value": "[\"\",\"\",\"\",\"{\\\"Account\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"{\\\"Owner\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Email\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\",\"\",\"{\\\"CreatedBy\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"attributes\\\", \\\"type\\\": {\\\"type\\\": \\\"struct\\\", \\\"fields\\\": [{\\\"name\\\": \\\"type\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"url\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}, \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Name\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}, {\\\"name\\\": \\\"Email\\\", \\\"type\\\": \\\"string\\\", \\\"nullable\\\": true, \\\"metadata\\\": {}}]}}\",\"\"]",
+          "widget": "schema_col_formats"
+        },
+        {
+          "name": "properties",
+          "widget": "tab"
+        },
+        {
+          "name": "extraOptionsKeys",
+          "value": "[]",
+          "widget": "key_array"
+        },
+        {
+          "name": "extraOptionsValues",
+          "value": "[]",
+          "widget": "value_array"
+        }
+      ],
+      "engine": "polars",
+      "inputAnchors": [],
+      "outputAnchors": [],
+      "agentTool": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "5",
+      "target": "7",
+      "id": 5,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "7",
+      "target": "8",
+      "id": 6,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "8",
+      "target": "6",
+      "id": 7,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "7",
+      "target": "11",
+      "id": 8,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "11",
+      "target": "10",
+      "id": 9,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "10",
+      "target": "9",
+      "id": 10,
+      "sourceAnchor": "output",
+      "index": 0
+    },
+    {
+      "source": "12",
+      "target": "5",
+      "id": 11,
+      "sourceAnchor": "output",
+      "index": 0
+    }
+  ],
+  "dataSetDetails": [],
+  "engine": "polars",
+  "nodeDebugConfigs": {}
+}

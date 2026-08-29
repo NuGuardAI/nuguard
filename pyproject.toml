@@ -1,6 +1,6 @@
 [project]
 name = "nuguard"
-version = "0.9.1"
+version = "0.9.2"
 description = "AI application security — SBOM generation, vulnerability scanning, behavioral validation, and adversarial red-teaming for AI Agents"
 readme = ".github/README.md"
 license = { text = "Apache-2.0" }
@@ -57,6 +57,10 @@ spdx = [
 ]
 secrets = [
     "cryptography>=42.0",
+]
+browser = [
+    "playwright>=1.45",
+    "ruamel.yaml>=0.18",
 ]
 
 [project.urls]
