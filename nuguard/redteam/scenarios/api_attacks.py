@@ -38,8 +38,10 @@ _ID_PARAM_PATTERN = re.compile(
 _ID_LIKE = {"id", "user_id", "tenant_id", "account_id", "customer_id", "org_id"}
 
 
-def _replace_first_id_param(path: str, path_params: list[str]) -> str | None:
-    """Return *path* with the first ID-like param replaced by a probe value.
+def _replace_first_id_param(
+    path: str, path_params: list[str], probe_value: str = "99999"
+) -> str | None:
+    """Return *path* with the first ID-like param replaced by *probe_value*.
 
     Returns ``None`` when no replaceable parameter is found.
     """
@@ -48,7 +50,7 @@ def _replace_first_id_param(path: str, path_params: list[str]) -> str | None:
             # Replace both {param} and :param styles
             replaced = re.sub(
                 rf"\{{{re.escape(param)}\}}|:{re.escape(param)}\b",
-                "99999",
+                probe_value,
                 path,
             )
             if replaced != path:
@@ -311,6 +313,18 @@ def build_rate_limit_probe(
     )
 
 
+# Out-of-range sentinel first: catches endpoints that return bulk/wildcard data
+# for any unrecognised ID (missing "does this row exist" check entirely).
+# Low, likely-allocated ID second: on apps with small sequential-integer
+# primary keys (early test/seed users, first few orders/baskets, ...) a
+# huge sentinel like 99999 simply doesn't exist yet, so it can never surface
+# a *real* cross-tenant leak — it only proves the endpoint 404s/nulls on
+# garbage input, which every well-behaved app already does. Probing "1" as a
+# second, cheap fallback catches the case where a row *does* exist at that ID
+# but belongs to someone else.
+_IDOR_PROBE_VALUES: tuple[str, ...] = ("99999", "1")
+
+
 def build_idor(
     endpoint_id: str,
     endpoint_name: str,
@@ -320,37 +334,50 @@ def build_idor(
 ) -> AttackScenario | None:
     """Build an IDOR (Insecure Direct Object Reference) scenario.
 
-    Substitutes the first ID-like path parameter with a probe value (99999)
-    to test whether the server enforces object-level authorisation.
+    Substitutes the first ID-like path parameter with a sequence of probe
+    values (an out-of-range sentinel, then a low likely-allocated ID) to test
+    whether the server enforces object-level authorisation. The chain stops
+    at the first confirmed hit; a miss on one probe value falls through to
+    the next since a nonexistent-row response for one ID says nothing about
+    whether a real neighbouring row would be protected.
 
     Returns ``None`` when no substitutable ID parameter is found in *path*.
     """
-    probe_path = _replace_first_id_param(path, path_params)
-    if probe_path is None:
+    probe_paths = [
+        p
+        for p in (
+            _replace_first_id_param(path, path_params, probe_value=v)
+            for v in _IDOR_PROBE_VALUES
+        )
+        if p is not None
+    ]
+    if not probe_paths:
         return None
 
     chain_id = str(uuid.uuid4())
+    steps = [
+        ExploitStep(
+            step_id=f"{chain_id}_s{idx}",
+            step_type="INVOKE",
+            description=f"Access {endpoint_name} with a different object ID",
+            payload="",
+            target_path=probe_path,
+            http_method="GET",
+            target_node_id=endpoint_id,
+            success_signal=HTTP_2XX_SENTINEL,
+            on_failure="abort" if idx == len(probe_paths) else "skip",
+            use_llm_eval=True,
+            sensitive_fields=sensitive_fields or [],
+        )
+        for idx, probe_path in enumerate(probe_paths, start=1)
+    ]
     chain = ExploitChain(
         chain_id=chain_id,
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.IDOR,
         sbom_path=[endpoint_id],
         owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
-        steps=[
-            ExploitStep(
-                step_id=f"{chain_id}_s1",
-                step_type="INVOKE",
-                description=f"Access {endpoint_name} with a different object ID",
-                payload="",
-                target_path=probe_path,
-                http_method="GET",
-                target_node_id=endpoint_id,
-                success_signal=HTTP_2XX_SENTINEL,
-                on_failure="abort",
-                use_llm_eval=True,
-                sensitive_fields=sensitive_fields or [],
-            )
-        ],
+        steps=steps,
     )
     chain.pre_score = pre_score(chain, pii_in_path=bool(sensitive_fields))
     return AttackScenario(
@@ -359,9 +386,9 @@ def build_idor(
         scenario_type=ScenarioType.IDOR,
         title=f"IDOR — {endpoint_name}",
         description=(
-            f"Access GET {probe_path} using a different object ID.  "
-            f"A 2xx response containing another record's data (not just any "
-            f"2xx) indicates IDOR."
+            f"Access GET {path} using a different object ID "
+            f"({', '.join(_IDOR_PROBE_VALUES)}).  A 2xx response containing "
+            f"another record's data (not just any 2xx) indicates IDOR."
         ),
         target_node_ids=[endpoint_id],
         impact_score=chain.pre_score,

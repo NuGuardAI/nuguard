@@ -195,6 +195,25 @@ def test_idor_scenario_structure():
     assert step.success_signal == HTTP_2XX_SENTINEL
 
 
+def test_idor_scenario_has_low_id_fallback_probe():
+    """A miss on the 99999 sentinel falls through to a low, likely-allocated ID.
+
+    A huge out-of-range ID can never surface a real cross-tenant leak on apps
+    with small sequential-integer primary keys (e.g. Juice Shop's basket IDs)
+    since no row exists there at all — probing "1" as a second, cheap step
+    catches the case where a real neighbouring row does exist.
+    """
+    s = build_idor("ep3", "Get Record", "/records/{id}", ["id"])
+    assert s is not None
+    steps = s.chain.steps
+    assert len(steps) == 2
+    assert steps[0].target_path == "/records/99999"
+    assert steps[0].on_failure == "skip"
+    assert steps[1].target_path == "/records/1"
+    assert steps[1].on_failure == "abort"
+    assert all(step.use_llm_eval for step in steps)
+
+
 def test_idor_returns_none_when_no_id_param():
     result = build_idor("ep3", "Get Resource", "/resources/{name}", ["name"])
     assert result is None
