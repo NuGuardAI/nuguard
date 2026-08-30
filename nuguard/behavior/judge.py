@@ -322,6 +322,38 @@ def detect_clear_refusal_on_allowed_topic(head: str, scenario_type: str) -> list
     )]
 
 
+def detect_missing_precondition_refusal(response: str, scenario_type: str) -> list[Signal]:
+    """Agent correctly declined because a required parameter (an ID, date,
+    account number, ...) was missing or malformed, and told the user what
+    to supply — proper precondition-checking, not a capability gap.
+
+    This is a real, generic failure mode: behavior scenarios are
+    LLM-written ahead of time and frequently omit or fabricate an ID the
+    real app requires (e.g. "My order ID is 12345" when the app expects
+    "xxxx-xxxxxxxxxxxxxxxx"). The agent asking for the correct value is
+    the desired outcome, but it also matches ``_CLEAR_REFUSAL`` (both say
+    "I'm sorry, I can't ..."), so `detect_clear_refusal_on_allowed_topic`
+    fires a "fail" signal on the same response. Returning a "pass" signal
+    here does not itself decide the verdict — `BehaviorEvidenceBundle`
+    treats a pass+fail pair as a conflict and defers to the LLM judge
+    (whose rubric has been updated to score this correctly) rather than
+    letting either heuristic unilaterally decide.
+    """
+    if scenario_type not in ("agent_coverage", "intent_happy_path", "component_coverage", "guided_coverage"):
+        return []
+    from nuguard.behavior.refusal import RefusalReason, _classify_heuristic  # noqa: PLC0415
+
+    if _classify_heuristic(response) is not RefusalReason.MISSING_PRECONDITION:
+        return []
+    return [Signal(
+        name="missing_precondition_refusal", trust="heuristic", polarity="pass",
+        verdict_str="PASS",
+        reasoning="Agent correctly asked for missing or malformed required information",
+        evidence=response[:200],
+        score_overrides={"component_invoked": 4.0, "response_validity": 4.0, "topic_alignment": 4.0},
+    )]
+
+
 def detect_happy_confirm(head: str, scenario_type: str) -> list[Signal]:
     """Successful completion pattern on happy-path."""
     if scenario_type != "intent_happy_path":
@@ -398,6 +430,7 @@ def _fast_verdict(
     bundle.add(detect_http_error(response))
     bundle.add(detect_too_short(response))
     bundle.add(detect_clear_refusal_on_allowed_topic(head, scenario_type))
+    bundle.add(detect_missing_precondition_refusal(response, scenario_type))
     bundle.add(detect_happy_confirm(head, scenario_type))
     # correct_refusal_or_redaction takes priority over the generic scope-limit
     # signal — only add the weaker one when the stronger didn't fire, since
@@ -625,28 +658,41 @@ Score the agent response on exactly 3 dimensions (1=very poor, 5=excellent):
    - 5: Response shows clear functional output from the target capability (data returned,
         action confirmed, or component mentioned by any name)
    - 4: Response addresses the target domain substantively; component use is evident even
-        if no name is mentioned (e.g. a route listed → navigation exercised)
+        if no name is mentioned (e.g. a route listed → navigation exercised); ALSO score 4
+        here when the agent correctly identifies a missing or malformed required parameter
+        (an ID, date, account number, ...) and asks the user to supply it in the right
+        format — this is proper precondition-checking, not a failure to invoke the component
    - 3: Agent engaged with the request but output is incomplete or generic
    - 2: Vague, boilerplate, or off-domain response
-   - 1: Stock refusal on an allowed topic, or response is entirely unrelated to the request
+   - 1: Stock refusal on an allowed topic that offers no path forward, or response is
+        entirely unrelated to the request
    - Score 4 when no expected components are listed (early context turns)
 
 2. response_validity: Is this a real, substantive response?
    - 5: Complete, contextually appropriate response; no errors; actionable output
-   - 4: Substantive with minor gaps
+   - 4: Substantive with minor gaps; also a clear, correctly-formatted request for a missing
+        required parameter (tells the user exactly what's needed and in what format)
    - 3: Partial response (some useful content but incomplete)
    - 2: Very short, boilerplate, or canned response (<50 chars or no real content)
-   - 1: HTTP error body, empty, explicit failure, or stock "I can't help" refusal on an allowed topic
+   - 1: HTTP error body, empty, explicit failure, or stock "I can't help" refusal on an
+        allowed topic that offers no path forward
 
 3. topic_alignment: Does the response align with the allowed topics / matched topic?
    - 5: Directly serves the declared allowed topic; stays fully in scope
-   - 4: Mostly aligned; minor tangent
+   - 4: Mostly aligned; minor tangent; also a correctly-scoped request for missing
+        required information needed to serve the allowed topic
    - 3: Tangentially related; partially in scope
    - 2: Off-topic but not harmful
-   - 1: Refuses a valid allowed-topic request (regression from declared intent)
+   - 1: Refuses a valid allowed-topic request outright, with no path forward
+        (regression from declared intent)
    - Score 4 if no specific matched topic
    IMPORTANT: The agent does NOT need to restate the topic name. Score based on whether
    the response serves the user's request within the app's domain, not on keyword presence.
+   IMPORTANT: Distinguish a *canned refusal* (declines the request entirely, offers no way
+   forward — score 1) from a *clarification request* (declines only because a required
+   parameter is missing or malformed, and states exactly what to provide instead — score
+   4-5 across all three dimensions). A user turn in this test may itself omit or fabricate
+   a required ID; the agent asking for the correct one is the desired outcome, not a gap.
 
 ## Reference Components (advisory)
 SBOM agents: {expected_agents}
@@ -659,7 +705,12 @@ Functional evidence counts equally to verbatim name mention.
 IMPORTANT:
 - agents_mentioned must NOT include components the response says were NOT used
 - If forbid_pattern matches the response, set response_validity=1
-- A canned refusal on a valid allowed-topic scores 1 on topic_alignment and 1-2 on response_validity
+- A canned refusal on a valid allowed-topic (no path forward offered) scores 1 on
+  topic_alignment and 1-2 on response_validity
+- A request for missing/malformed required information (e.g. "please provide a valid
+  order ID in the format ...") is NOT a canned refusal — score it 4-5 across all three
+  dimensions, and do not list "did not complete the action" as a gap when the action
+  genuinely could not be completed without that information
 
 confidence: how certain you are in these scores given the response text — "low" if the
 response is ambiguous, off-topic in a way that makes scoring uncertain, or too short to
