@@ -106,6 +106,7 @@ jobs:
     timeout-minutes: 30
     needs:
       - lint
+      - public-api-contract
       - browser_login
 
     steps:
