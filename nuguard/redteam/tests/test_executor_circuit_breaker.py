@@ -32,7 +32,12 @@ class _FixedResponseClient:
     def update_default_headers(self, headers: dict[str, str] | None) -> None:
         pass
 
-    async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+    async def send(
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[str, list[dict]]:
         return self._response, []
 
 

@@ -198,6 +198,46 @@ def test_scenario_coverage_table_renders_target_unreachable_reason() -> None:
     assert "0/0 — direct-HTTP endpoint unreachable" in table_body
 
 
+def test_scenario_coverage_table_flags_idor_inconclusive_when_no_auth_configured() -> None:
+    records = [
+        SimpleNamespace(
+            title="IDOR — /Rest/Basket/:Id",
+            goal_type="API_ATTACK",
+            impact_score=8.0,
+            had_finding=False,
+            turns_used=1,
+            turns_budget=1,
+            duration_s=0.4,
+            chain_status="inconclusive:no_auth_configured",
+            steps=[],
+        )
+    ]
+    lines = _scenario_coverage_table(records)
+    table_body = "\n".join(lines)
+    assert "| no* |" in table_body
+    assert "no target authentication configured" in table_body
+
+
+def test_scenario_coverage_table_plain_miss_has_no_footnote() -> None:
+    records = [
+        SimpleNamespace(
+            title="IDOR — /Rest/Basket/:Id",
+            goal_type="API_ATTACK",
+            impact_score=8.0,
+            had_finding=False,
+            turns_used=1,
+            turns_budget=1,
+            duration_s=0.4,
+            chain_status="completed",
+            steps=[],
+        )
+    ]
+    lines = _scenario_coverage_table(records)
+    table_body = "\n".join(lines)
+    assert "| no |" in table_body
+    assert "no target authentication configured" not in table_body
+
+
 # ── Fix 4 (part 2): title truncation preserves the trailing variant suffix ───
 
 

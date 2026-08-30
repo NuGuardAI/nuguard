@@ -41,7 +41,12 @@ class _FakeClient:
         if headers:
             self.updated_headers.update(headers)
 
-    async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+    async def send(
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[str, list[dict]]:
         self.send_calls += 1
         if self.send_calls == 1:
             return "[HTTP 401]", []
@@ -130,3 +135,78 @@ async def test_direct_http_step_retries_once_after_401_refresh() -> None:
     assert client.invoke_calls == 2
     assert auth_session.refresh_calls == 1
     assert client.updated_headers.get("Authorization") == "Bearer refreshed-token"
+
+
+class _AlwaysUnauthorizedClient:
+    """A direct-HTTP endpoint that always correctly rejects with 401."""
+
+    def new_session(self, chain_id: str) -> AttackSession:
+        return AttackSession(session_id="s1", target_url="http://target", chain_id=chain_id)
+
+    def update_default_headers(self, headers: dict[str, str] | None) -> None:
+        pass
+
+    async def invoke_endpoint(
+        self,
+        path: str,
+        method: str = "POST",
+        body: dict | None = None,
+        params: dict[str, str] | None = None,
+        extra_headers: dict[str, str] | None = None,
+        strip_auth: bool = False,
+    ) -> tuple[int, str, dict]:
+        return (
+            401,
+            "<html><h1>OWASP Juice Shop (Express ^4.22.1)</h1>"
+            "<h2>401 UnauthorizedError</h2></html>",
+            {},
+        )
+
+
+class _ExplodingResponseEvaluator:
+    """Fails the test if the executor calls it — the deterministic 401 result
+    must never reach the LLM judge for an HTTP_2XX_SENTINEL step."""
+
+    async def evaluate(self, *args: Any, **kwargs: Any) -> dict:
+        raise AssertionError(
+            "LLMResponseEvaluator.evaluate() must not be called for a "
+            "definitive non-2xx HTTP_2XX_SENTINEL result"
+        )
+
+
+@pytest.mark.asyncio
+async def test_401_response_never_reaches_llm_eval_for_http_2xx_sentinel_step() -> None:
+    """Regression: a correctly-enforced 401 auth check must not be flippable
+    to 'attack succeeded' by an LLM judge misreading the error page's own
+    branding text (e.g. 'OWASP Juice Shop (Express ^4.22.1)') as PII/data
+    exposure. The LLM evaluator must not even be called once the 2xx check
+    has already definitively failed."""
+    client = _AlwaysUnauthorizedClient()
+    executor = AttackExecutor(client=cast(Any, client))
+    executor._response_evaluator = _ExplodingResponseEvaluator()  # type: ignore[assignment]
+
+    chain = ExploitChain(
+        chain_id="c3",
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.AUTH_BYPASS,
+        steps=[
+            ExploitStep(
+                step_id="s3",
+                step_type="INJECT",
+                description="direct endpoint step",
+                payload="ignored",
+                success_signal=HTTP_2XX_SENTINEL,
+                on_failure="abort",
+                use_llm_eval=True,
+                target_path="/api/basketitems",
+                http_method="POST",
+                strip_auth=True,
+            )
+        ],
+    )
+
+    _, results, _ = await executor.run(chain)
+
+    assert len(results) == 1
+    assert results[0].http_status_code == 401
+    assert results[0].success_signal_found is False
