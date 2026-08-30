@@ -20,7 +20,8 @@ API_KEY = os.environ.get("AZURE_REDTEAM_LLM_KEY", None)
 
 
 async def main() -> None:
-    print(f"Testing Azure OpenAI endpoint {ENDPOINT} with deployment {DEPLOYMENT}... and API key starting with {API_KEY if API_KEY else None}")
+    key_status = "set" if API_KEY else "not set"
+    print(f"Testing Azure OpenAI endpoint {ENDPOINT} with deployment {DEPLOYMENT}... (API key {key_status})")
     # Azure AI Foundry exposes an OpenAI-compatible v1 API, so we route
     # through LiteLLM's openai/ provider with a custom api_base instead of
     # its azure/ provider (which expects the classic .openai.azure.com shape).
