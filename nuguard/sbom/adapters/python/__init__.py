@@ -25,6 +25,7 @@ from .mcp_server import MCPServerAdapter
 from .openai_agents import OpenAIAgentsAdapter
 from .openai_function_schema import OpenAIFunctionSchemaAdapter
 from .semantic_kernel import SemanticKernelAdapter
+from .vercel_ai_sdk import VercelAISDKPythonAdapter
 
 __all__ = [
     "AgnoAdapter",
@@ -52,4 +53,5 @@ __all__ = [
     "OpenAIAgentsAdapter",
     "OpenAIFunctionSchemaAdapter",
     "SemanticKernelAdapter",
+    "VercelAISDKPythonAdapter",
 ]

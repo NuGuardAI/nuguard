@@ -29,6 +29,7 @@ from .nestjs_adapter import NestJSAdapter
 from .nestjs_tool_di import NestJSToolDIAdapter
 from .openai_agents import OpenAIAgentsTSAdapter
 from .prompts import PromptTSAdapter
+from .vercel_ai_sdk import VercelAISDKTSAdapter
 
 __all__ = [
     "AgentOrchestratorTSAdapter",
@@ -48,4 +49,5 @@ __all__ = [
     "NestJSToolDIAdapter",
     "OpenAIAgentsTSAdapter",
     "PromptTSAdapter",
+    "VercelAISDKTSAdapter",
 ]

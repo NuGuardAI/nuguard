@@ -178,6 +178,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         OpenAIFunctionSchemaAdapter,
         PythonDatastoreAdapter,
         SemanticKernelAdapter,
+        VercelAISDKPythonAdapter,
     )
     from .typescript import (
         AgentOrchestratorTSAdapter,
@@ -197,6 +198,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         NestJSToolDIAdapter,
         OpenAIAgentsTSAdapter,
         PromptTSAdapter,
+        VercelAISDKTSAdapter,
     )
 
     adapters: list[FrameworkAdapter] = [
@@ -228,6 +230,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         PythonDatastoreAdapter(),
         FastAPIAdapter(),
         FlaskAdapter(),
+        VercelAISDKPythonAdapter(),
         # TypeScript / JavaScript adapters
         LangGraphTSAdapter(),
         OpenAIAgentsTSAdapter(),
@@ -246,6 +249,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         AWSBedrockGuardrailsTSAdapter(),
         AzureContentSafetyTSAdapter(),
         GCPModelArmorTSAdapter(),
+        VercelAISDKTSAdapter(),
         # Go adapters
         MCPGoServerAdapter(),
         MCPGoClientAdapter(),
