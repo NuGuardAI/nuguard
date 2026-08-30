@@ -1105,7 +1105,29 @@ class AttackExecutor:
                 "or NUGUARD_REDTEAM_EVAL_LLM_MODEL env var to enable LLM evaluation.",
                 step.step_id,
             )
-        if step.use_llm_eval and self._response_evaluator and not is_client_error and not is_app_transient_error:
+        # For direct-HTTP steps whose success criterion is explicitly "did the
+        # server return 2xx" (AUTH_BYPASS/MASS_ASSIGNMENT/IDOR/BFLA-style
+        # scenarios via HTTP_2XX_SENTINEL), a non-2xx status is a definitive
+        # "no" — the LLM judge must not be allowed to override it. Without this
+        # gate, a 401/403 error page (e.g. a stock Express error banner) can be
+        # misread as "data exposure" and flip a correctly-enforced auth check
+        # into a false "attack succeeded" finding. Skip the (otherwise wasted)
+        # LLM call entirely rather than just discarding its verdict.
+        _http_2xx_sentinel_failed = (
+            step.target_path is not None
+            and step.success_signal == HTTP_2XX_SENTINEL
+            and not (
+                result.http_status_code is not None
+                and 200 <= result.http_status_code < 300
+            )
+        )
+        if (
+            step.use_llm_eval
+            and self._response_evaluator
+            and not is_client_error
+            and not is_app_transient_error
+            and not _http_2xx_sentinel_failed
+        ):
             # For API attack steps the text payload is empty; use method+path instead
             # so the evaluator understands what endpoint was probed.
             _eval_payload = payload
