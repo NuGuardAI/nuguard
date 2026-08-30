@@ -3198,7 +3198,16 @@ class AiSbomExtractor:
                     continue
                 if name_lower.endswith(".sbom.enriched.json"):
                     continue
-                if name_lower.startswith("redteam-prompts-"):
+                # NuGuard's own generated report/cache artifacts (redteam-prompts-*,
+                # redteam-judge-*, redteam-{run_id}.json/.md, behavior-judge-*,
+                # behavior-scenarios-*, behavior-{run_id}.json — see
+                # nuguard/redteam/llm_engine/{prompt_cache,judge_cache}.py,
+                # nuguard/behavior/{judge_cache,prompt_cache}.py, and
+                # nuguard/output/public_api.py) are tool output, not application
+                # source, and must never be scanned as SBOM evidence.
+                if suffix in {".json", ".md"} and (
+                    name_lower.startswith("redteam-") or name_lower.startswith("behavior-")
+                ):
                     continue
                 if name_lower.startswith("nuguard-sbom-") and suffix in {".yaml", ".yml"}:
                     continue

@@ -789,6 +789,12 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                     ),
                 ),
                 canonical_name="prompt:generic",
+                # .json data files (redteam/behavior report artifacts, fixtures,
+                # config) frequently *discuss* prompts/prompt injection without
+                # containing an actual application prompt — restrict this
+                # keyword-only fallback to source/doc files where a real hit is
+                # more likely a genuine prompt reference.
+                skip_extensions=frozenset({".json"}),
             ),
         ]
     )
