@@ -42,6 +42,9 @@ from nuguard.analysis.plugins.nga_rules import (
     _rule_nga024_unauthenticated_agent_delegation,
     _rule_nga025_hidden_context_secret_leak,
     _rule_nga026_endpoint_no_rate_limit,
+    _rule_nga027_missing_security_headers,
+    _rule_nga028_permissive_cors,
+    _rule_nga029_verbose_error_leak,
 )
 
 # ---------------------------------------------------------------------------
@@ -635,8 +638,11 @@ class TestRulesRegistry:
         assert "_rule_nga024_unauthenticated_agent_delegation" in " ".join(names)
         assert "_rule_nga025_hidden_context_secret_leak" in " ".join(names)
         assert "_rule_nga026_endpoint_no_rate_limit" in " ".join(names)
-        # Rules run NGA-001 to NGA-026 with no gaps
-        assert len(_RULES) == 26
+        assert "_rule_nga027_missing_security_headers" in " ".join(names)
+        assert "_rule_nga028_permissive_cors" in " ".join(names)
+        assert "_rule_nga029_verbose_error_leak" in " ".join(names)
+        # Rules run NGA-001 to NGA-029 with no gaps
+        assert len(_RULES) == 29
 
     def test_all_rules_return_list(self) -> None:
         for rule in _RULES:
@@ -1256,6 +1262,109 @@ class TestNga026:
         }
         findings = self._run([node])
         assert findings == []
+
+    def test_no_finding_no_api_endpoints(self) -> None:
+        assert self._run([_model_node("gpt-4", "openai")]) == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-027 — AI endpoint missing security headers
+# ---------------------------------------------------------------------------
+
+
+class TestNga027:
+    def _run(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return _rule_nga027_missing_security_headers(nodes=nodes)
+
+    def test_fires_when_security_headers_detail_absent(self) -> None:
+        node = _api_node("chat-completions")
+        findings = self._run([node])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-027"
+        assert "chat-completions" in findings[0]["affected"]
+
+    def test_fires_when_headers_confirmed_missing(self) -> None:
+        node = {
+            "id": "api", "name": "chat-completions", "component_type": "API_ENDPOINT",
+            "metadata": {"security_headers_detail": {"missing": ["csp"]}},
+        }
+        findings = self._run([node])
+        assert len(findings) == 1
+
+    def test_no_finding_when_headers_confirmed_present(self) -> None:
+        node = {
+            "id": "api", "name": "chat-completions", "component_type": "API_ENDPOINT",
+            "metadata": {"security_headers_detail": {"csp": True, "missing": []}},
+        }
+        assert self._run([node]) == []
+
+    def test_no_finding_no_api_endpoints(self) -> None:
+        assert self._run([_model_node("gpt-4", "openai")]) == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-028 — API endpoint has an overly permissive CORS policy
+# ---------------------------------------------------------------------------
+
+
+class TestNga028:
+    def _run(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return _rule_nga028_permissive_cors(nodes=nodes)
+
+    def test_fires_on_wildcard_origin(self) -> None:
+        node = {
+            "id": "api", "name": "chat-completions", "component_type": "API_ENDPOINT",
+            "metadata": {"cors_policy": {"origin": "*"}},
+        }
+        findings = self._run([node])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-028"
+        assert findings[0]["severity"] == "MEDIUM"
+
+    def test_high_severity_on_wildcard_with_credentials(self) -> None:
+        node = {
+            "id": "api", "name": "chat-completions", "component_type": "API_ENDPOINT",
+            "metadata": {"cors_policy": {"origin": "*", "wildcard_with_credentials": True}},
+        }
+        findings = self._run([node])
+        assert len(findings) == 1
+        assert findings[0]["severity"] == "HIGH"
+
+    def test_no_finding_on_explicit_origin(self) -> None:
+        node = {
+            "id": "api", "name": "chat-completions", "component_type": "API_ENDPOINT",
+            "metadata": {"cors_policy": {"origin": "https://example.com"}},
+        }
+        assert self._run([node]) == []
+
+    def test_no_finding_no_cors_policy(self) -> None:
+        assert self._run([_api_node("chat-completions")]) == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-029 — API endpoint's error handler leaks stack traces
+# ---------------------------------------------------------------------------
+
+
+class TestNga029:
+    def _run(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return _rule_nga029_verbose_error_leak(nodes=nodes)
+
+    def test_fires_when_debug_error_leak_true(self) -> None:
+        node = {
+            "id": "api", "name": "chat-completions", "component_type": "API_ENDPOINT",
+            "metadata": {"debug_error_leak": True},
+        }
+        findings = self._run([node])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-029"
+
+    def test_no_finding_when_debug_error_leak_false(self) -> None:
+        node = {
+            "id": "api", "name": "chat-completions", "component_type": "API_ENDPOINT",
+            "metadata": {"debug_error_leak": False},
+        }
+        assert self._run([node]) == []
 
     def test_no_finding_no_api_endpoints(self) -> None:
         assert self._run([_model_node("gpt-4", "openai")]) == []

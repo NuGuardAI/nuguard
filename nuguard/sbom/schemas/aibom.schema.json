@@ -108,6 +108,45 @@
       "title": "ComponentType",
       "type": "string"
     },
+    "CorsPolicyDetail": {
+      "description": "CORS configuration extracted from code or IaC.",
+      "properties": {
+        "origin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Configured allowed origin(s), e.g. '*' or 'https://example.com'",
+          "title": "Origin"
+        },
+        "allow_credentials": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the CORS policy allows credentialed cross-origin requests",
+          "title": "Allow Credentials"
+        },
+        "wildcard_with_credentials": {
+          "default": false,
+          "description": "True when origin is wildcarded AND credentials are allowed \u2014 the dangerous combination",
+          "title": "Wildcard With Credentials",
+          "type": "boolean"
+        }
+      },
+      "title": "CorsPolicyDetail",
+      "type": "object"
+    },
     "DataHandlingDetail": {
       "description": "Data retention, backup, anonymization, and consent configuration.",
       "properties": {
@@ -1417,6 +1456,43 @@
           "description": "LLM-generated human-readable label, e.g. 'User Authentication API'",
           "title": "Descriptive Name"
         },
+        "security_headers_detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SecurityHeaderDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "HTTP security-header posture extracted from code or IaC"
+        },
+        "cors_policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CorsPolicyDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CORS configuration extracted from code or IaC"
+        },
+        "debug_error_leak": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the app runs in a debug/verbose-error mode that leaks stack traces",
+          "title": "Debug Error Leak"
+        },
         "rate_limit_detail": {
           "anyOf": [
             {
@@ -2434,6 +2510,60 @@
         }
       },
       "title": "ScanSummary",
+      "type": "object"
+    },
+    "SecurityHeaderDetail": {
+      "description": "HTTP security-header posture extracted from code or IaC.",
+      "properties": {
+        "csp": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a Content-Security-Policy header is set",
+          "title": "Csp"
+        },
+        "x_frame_options": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when an X-Frame-Options header is set",
+          "title": "X Frame Options"
+        },
+        "hsts": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a Strict-Transport-Security header is set",
+          "title": "Hsts"
+        },
+        "missing": {
+          "description": "Security headers confirmed absent, e.g. ['csp', 'x_frame_options', 'hsts']",
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing",
+          "type": "array"
+        }
+      },
+      "title": "SecurityHeaderDetail",
       "type": "object"
     },
     "SourceLocation": {

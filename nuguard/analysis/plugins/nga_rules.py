@@ -30,6 +30,9 @@ NGA-023  Vector/embedding store without auth or encryption          HIGH
 NGA-024  Unauthenticated inter-agent delegation                     MEDIUM
 NGA-025  Credential embedded in system prompt / hidden context      HIGH
 NGA-026  AI endpoint without application-level rate limiting        MEDIUM
+NGA-027  AI endpoint missing security headers (CSP/X-Frame/HSTS)   MEDIUM
+NGA-028  API endpoint has an overly permissive CORS policy         HIGH
+NGA-029  API endpoint's error handler leaks stack traces           MEDIUM
 """
 
 from __future__ import annotations
@@ -1784,6 +1787,114 @@ def _rule_nga026_endpoint_no_rate_limit(
     ]
 
 
+# ── NGA-027 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga027_missing_security_headers(
+    nodes: list[dict[str, Any]], **_: Any
+) -> list[dict[str, Any]]:
+    """MEDIUM — AI-facing API endpoint missing HTTP security headers."""
+    unprotected = [
+        n for n in nodes
+        if n.get("component_type") in _API_ENDPOINT_TYPES
+        and (
+            not (n.get("metadata") or {}).get("security_headers_detail")
+            or ((n.get("metadata") or {}).get("security_headers_detail") or {}).get("missing")
+        )
+    ]
+    if not unprotected:
+        return []
+
+    return [
+        _finding(
+            "NGA-027", "MEDIUM",
+            "AI endpoint missing security headers (CSP/X-Frame-Options/HSTS)",
+            f"{len(unprotected)} API endpoint(s) serving AI traffic have no confirmed "
+            "Content-Security-Policy, X-Frame-Options, or Strict-Transport-Security "
+            "header. Missing security headers widen the blast radius of any XSS or "
+            "clickjacking flaw elsewhere in the app, and allow traffic to be "
+            "downgraded to plaintext HTTP.",
+            [n.get("name", "") for n in unprotected],
+            "Set Content-Security-Policy, X-Frame-Options (or frame-ancestors), and "
+            "Strict-Transport-Security on every response, e.g. via a headers "
+            "middleware (helmet, flask-talisman, the `secure` package) applied "
+            "globally rather than per-route.",
+        )
+    ]
+
+
+# ── NGA-028 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga028_permissive_cors(
+    nodes: list[dict[str, Any]], **_: Any
+) -> list[dict[str, Any]]:
+    """HIGH — API endpoint has an overly permissive CORS policy."""
+    permissive = [
+        n for n in nodes
+        if n.get("component_type") in _API_ENDPOINT_TYPES
+        and ((n.get("metadata") or {}).get("cors_policy") or {}).get("origin") == "*"
+    ]
+    if not permissive:
+        return []
+
+    wildcard_with_creds = [
+        n for n in permissive
+        if ((n.get("metadata") or {}).get("cors_policy") or {}).get("wildcard_with_credentials")
+    ]
+    severity = "HIGH" if wildcard_with_creds else "MEDIUM"
+
+    return [
+        _finding(
+            "NGA-028", severity,
+            "API endpoint has an overly permissive CORS policy",
+            f"{len(permissive)} API endpoint(s) allow requests from any origin (`*`)"
+            + (
+                f", and {len(wildcard_with_creds)} of them also allow credentialed "
+                "cross-origin requests — the dangerous combination that lets any "
+                "website read authenticated responses on behalf of a logged-in user."
+                if wildcard_with_creds
+                else "."
+            ),
+            [n.get("name", "") for n in permissive],
+            "Restrict CORS `allow_origins`/`origins` to an explicit allow-list of "
+            "trusted origins. Never combine a wildcard origin with "
+            "`allow_credentials=True` / `supports_credentials=True`.",
+        )
+    ]
+
+
+# ── NGA-029 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga029_verbose_error_leak(
+    nodes: list[dict[str, Any]], **_: Any
+) -> list[dict[str, Any]]:
+    """MEDIUM — API endpoint's error handler leaks stack traces."""
+    leaking = [
+        n for n in nodes
+        if n.get("component_type") in _API_ENDPOINT_TYPES
+        and (n.get("metadata") or {}).get("debug_error_leak") is True
+    ]
+    if not leaking:
+        return []
+
+    return [
+        _finding(
+            "NGA-029", "MEDIUM",
+            "API endpoint's error handler leaks stack traces",
+            f"{len(leaking)} API endpoint(s) are served by an application running in "
+            "debug/verbose-error mode. Unhandled exceptions in this mode return raw "
+            "stack traces, file paths, and framework internals to the client — "
+            "information an attacker can use to map the app and craft further attacks.",
+            [n.get("name", "") for n in leaking],
+            "Disable debug/verbose-error mode in production (e.g. `debug=False`, "
+            "unset `FLASK_DEBUG`); return a generic error body and log the full "
+            "traceback server-side instead.",
+        )
+    ]
+
+
 # ── Rule registry ─────────────────────────────────────────────────────────────
 
 _RULES: list[Callable[..., list[dict[str, Any]]]] = [
@@ -1813,6 +1924,9 @@ _RULES: list[Callable[..., list[dict[str, Any]]]] = [
     _rule_nga024_unauthenticated_agent_delegation,   # NGA-024 MEDIUM
     _rule_nga025_hidden_context_secret_leak,         # NGA-025 HIGH
     _rule_nga026_endpoint_no_rate_limit,             # NGA-026 MEDIUM
+    _rule_nga027_missing_security_headers,           # NGA-027 MEDIUM
+    _rule_nga028_permissive_cors,                    # NGA-028 HIGH
+    _rule_nga029_verbose_error_leak,                 # NGA-029 MEDIUM
 ]
 
 # Per-rule metadata used by verbose audit mode (parallel to _RULES).
@@ -1972,6 +2086,24 @@ _RULE_META: list[dict[str, str]] = [
         "title": "AI endpoint without application-level rate limiting",
         "checks": "API_ENDPOINT nodes vs. rate_limited / rate_limit_detail",
         "pass_reason": "No AI-facing endpoints found, or all have rate limiting configured",
+    },
+    {
+        "rule_id": "NGA-027", "severity": "MEDIUM",
+        "title": "AI endpoint missing security headers (CSP/X-Frame-Options/HSTS)",
+        "checks": "API_ENDPOINT nodes vs. security_headers_detail",
+        "pass_reason": "No AI-facing endpoints found, or all confirm CSP/X-Frame-Options/HSTS",
+    },
+    {
+        "rule_id": "NGA-028", "severity": "HIGH",
+        "title": "API endpoint has an overly permissive CORS policy",
+        "checks": "API_ENDPOINT nodes vs. cors_policy.origin / wildcard_with_credentials",
+        "pass_reason": "No AI-facing endpoints found, or none allow a wildcard CORS origin",
+    },
+    {
+        "rule_id": "NGA-029", "severity": "MEDIUM",
+        "title": "API endpoint's error handler leaks stack traces",
+        "checks": "API_ENDPOINT nodes vs. debug_error_leak",
+        "pass_reason": "No AI-facing endpoints found, or none run in debug/verbose-error mode",
     },
 ]
 
@@ -2185,6 +2317,11 @@ def _build_pass_evidence(
         }
 
     if rule_id == "NGA-026":
+        return {
+            "api_endpoint_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES],
+        }
+
+    if rule_id in ("NGA-027", "NGA-028", "NGA-029"):
         return {
             "api_endpoint_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES],
         }

@@ -130,6 +130,33 @@ class RateLimitDetail(BaseModel):
     )
 
 
+class SecurityHeaderDetail(BaseModel):
+    """HTTP security-header posture extracted from code or IaC."""
+
+    csp: bool | None = Field(default=None, description="True when a Content-Security-Policy header is set")
+    x_frame_options: bool | None = Field(default=None, description="True when an X-Frame-Options header is set")
+    hsts: bool | None = Field(default=None, description="True when a Strict-Transport-Security header is set")
+    missing: list[str] = Field(
+        default_factory=list,
+        description="Security headers confirmed absent, e.g. ['csp', 'x_frame_options', 'hsts']",
+    )
+
+
+class CorsPolicyDetail(BaseModel):
+    """CORS configuration extracted from code or IaC."""
+
+    origin: str | None = Field(
+        default=None, description="Configured allowed origin(s), e.g. '*' or 'https://example.com'"
+    )
+    allow_credentials: bool | None = Field(
+        default=None, description="True when the CORS policy allows credentialed cross-origin requests"
+    )
+    wildcard_with_credentials: bool = Field(
+        default=False,
+        description="True when origin is wildcarded AND credentials are allowed — the dangerous combination",
+    )
+
+
 class AuthDetail(BaseModel):
     """Detailed authentication and authorization posture for a component."""
 
@@ -571,6 +598,18 @@ class NodeMetadata(BaseModel):
     descriptive_name: str | None = Field(
         default=None,
         description="LLM-generated human-readable label, e.g. 'User Authentication API'",
+    )
+    security_headers_detail: SecurityHeaderDetail | None = Field(
+        default=None,
+        description="HTTP security-header posture extracted from code or IaC",
+    )
+    cors_policy: CorsPolicyDetail | None = Field(
+        default=None,
+        description="CORS configuration extracted from code or IaC",
+    )
+    debug_error_leak: bool | None = Field(
+        default=None,
+        description="True when the app runs in a debug/verbose-error mode that leaks stack traces",
     )
     rate_limit_detail: RateLimitDetail | None = Field(
         default=None,

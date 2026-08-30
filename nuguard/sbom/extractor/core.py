@@ -91,6 +91,7 @@ from ..deps import DependencyScanner
 from ..models import (
     AiSbomDocument,
     AuthDetail,
+    CorsPolicyDetail,
     DataHandlingDetail,
     Edge,
     EncryptionDetail,
@@ -98,6 +99,7 @@ from ..models import (
     Node,
     NodeMetadata,
     RateLimitDetail,
+    SecurityHeaderDetail,
     SourceLocation,
 )
 from ..normalization import canonicalize_text
@@ -1696,6 +1698,9 @@ class AiSbomExtractor:
                 _rl = acc.metadata.get("rate_limited")
                 if _rl is not None:
                     node.metadata.rate_limited = bool(_rl)
+                _del = acc.metadata.get("debug_error_leak")
+                if _del is not None:
+                    node.metadata.debug_error_leak = bool(_del)
                 _ids = acc.metadata.get("idor_surface")
                 if _ids is not None:
                     node.metadata.idor_surface = bool(_ids)
@@ -1842,6 +1847,16 @@ class AiSbomExtractor:
             if isinstance(_ad, dict) and _ad and node.metadata.auth_detail is None:
                 node.metadata.auth_detail = AuthDetail(
                     **{k: v for k, v in _ad.items() if v is not None}
+                )
+            _shd = acc.metadata.get("security_headers_detail")
+            if isinstance(_shd, dict) and _shd and node.metadata.security_headers_detail is None:
+                node.metadata.security_headers_detail = SecurityHeaderDetail(
+                    **{k: v for k, v in _shd.items() if v is not None}
+                )
+            _cors = acc.metadata.get("cors_policy")
+            if isinstance(_cors, dict) and _cors and node.metadata.cors_policy is None:
+                node.metadata.cors_policy = CorsPolicyDetail(
+                    **{k: v for k, v in _cors.items() if v is not None}
                 )
             _ed = acc.metadata.get("encryption_detail")
             if isinstance(_ed, dict) and _ed and node.metadata.encryption_detail is None:
