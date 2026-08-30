@@ -321,6 +321,7 @@ def redteam(
         codegen_escalation_enabled=cfg.redteam_codegen_escalation_enabled,
         mode=cfg.redteam_mode,
         progressive_halt_on_severity=cfg.redteam_progressive_halt_on_severity,
+        probe_llm=cfg.probe_llm_enabled,
     )
 
     try:
@@ -556,6 +557,7 @@ async def _run_redteam(
     codegen_escalation_enabled: bool = True,
     mode: str = "concurrent",
     progressive_halt_on_severity: str = "none",
+    probe_llm: bool = False,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -698,6 +700,7 @@ async def _run_redteam(
                 codegen_escalation_enabled=codegen_escalation_enabled,
                 mode=mode,
                 progressive_halt_on_severity=progressive_halt_on_severity,
+                probe_llm=probe_llm,
             )
 
     # App already running — just scan
@@ -755,6 +758,7 @@ async def _run_redteam(
         codegen_escalation_enabled=codegen_escalation_enabled,
         mode=mode,
         progressive_halt_on_severity=progressive_halt_on_severity,
+        probe_llm=probe_llm,
     )
 
 
@@ -873,6 +877,7 @@ async def _run_orchestrator(  # noqa: C901
         codegen_escalation_enabled=codegen_escalation_enabled,
         mode=mode,
         progressive_halt_on_severity=progressive_halt_on_severity,
+        probe_llm=probe_llm,
     )
 
     result = await run_redteam(

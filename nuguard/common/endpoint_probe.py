@@ -23,6 +23,7 @@ import httpx
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
+    from nuguard.common.llm_client import LLMClient
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
@@ -428,6 +429,7 @@ async def _try_openapi_detection(
     timeout: float,
     known_response_key: str | None,
     probe_payload_extras: "dict[str, object] | None",
+    llm: "LLMClient | None" = None,
 ) -> "ProbeResult | None":
     """Option 1: fetch OpenAPI/Swagger spec and verify the discovered endpoint.
 
@@ -456,9 +458,15 @@ async def _try_openapi_detection(
 
     config = _chat_config_from_openapi(schema)
     if config is None:
-        return None
-
-    oa_path, oa_key, oa_list, oa_template = config
+        if llm is None:
+            return None
+        llm_res = await _llm_chat_key_from_openapi(schema, llm)
+        if llm_res is None:
+            return None
+        oa_path, oa_key, oa_list = llm_res
+        oa_template: "dict | None" = None
+    else:
+        oa_path, oa_key, oa_list, oa_template = config
     _log.info("endpoint_probe: OpenAPI config — path=%s key=%r list=%s template=%s",
               oa_path, oa_key, oa_list, bool(oa_template))
 
@@ -543,6 +551,79 @@ def _try_read_first_streaming_json(resp: "httpx.Response") -> "dict | None":
     return None
 
 
+async def _llm_extract_error_field_names(body_text: str, llm: "LLMClient") -> list[str]:
+    """Use LLM to extract a required field name from a non-standard 4xx error body."""
+    try:
+        prompt = (
+            "An HTTP endpoint returned this error when sent a chat probe:\n"
+            f"{body_text[:800]}\n\n"
+            "What JSON field name does the request body need for the user message?\n"
+            "Reply with ONLY the field name (e.g. 'query'). If unknown, reply: none"
+        )
+        text = (await llm.complete(prompt, label="probe-error-field")).strip().strip('"\' ').lower()
+        if text and text != "none" and len(text) <= 64 and text.replace("_", "").replace("-", "").isalnum():
+            return [text]
+    except Exception:  # noqa: BLE001
+        pass
+    return []
+
+
+async def _llm_chat_key_from_openapi(
+    schema: dict, llm: "LLMClient"
+) -> "tuple[str, str, bool] | None":
+    """Use LLM to find a chat endpoint/key in an OpenAPI schema when structural parsing fails."""
+    try:
+        schema_text = json.dumps(schema, separators=(",", ":"))[:3000]
+        prompt = (
+            "Find the POST endpoint for chat/conversation in this OpenAPI schema:\n"
+            f"{schema_text}\n\n"
+            'Reply as JSON: {"path": "/endpoint", "key": "fieldName", "is_list": false}\n'
+            "key = the request body field that holds the user message. Reply null if none."
+        )
+        text = (await llm.complete(prompt, label="probe-openapi-key")).strip()
+        if text.lower() == "null":
+            return None
+        obj = json.loads(text)
+        path = str(obj.get("path", ""))
+        key = str(obj.get("key", ""))
+        is_list = bool(obj.get("is_list", False))
+        if path.startswith("/") and key:
+            return path, key, is_list
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+async def _llm_confirms_chat_response(data: dict, llm: "LLMClient") -> bool:
+    """Ask LLM whether an ambiguous or non-standard response body is from a chat endpoint."""
+    try:
+        resp_text = json.dumps(data, separators=(",", ":"))[:600]
+        prompt = (
+            'A probe sent "hello" to an endpoint and got:\n'
+            f"{resp_text}\n\n"
+            "Is this from a chat/conversation AI endpoint? Reply: yes or no"
+        )
+        text = (await llm.complete(prompt, label="probe-chat-confirm")).strip().lower()
+        return text.startswith("y")
+    except Exception:  # noqa: BLE001
+        return True  # safe default: don't block on LLM failure
+
+
+def _has_known_chat_key(data: dict, response_key: str | None) -> bool:
+    """True when *data* contains an explicit chat-response key (not just the ≥2-keys rule)."""
+    if response_key and response_key in data:
+        return True
+    for key in (
+        "response", "content", "prognosis", "text", "output",
+        "answer", "result", "reply", "choices", "messages",
+        "bot_response", "assistant_message", "assistant_reply",
+        "generated_text", "completion", "delta", "llm_output", "llm_response", "data",
+    ):
+        if key in data:
+            return True
+    return False
+
+
 def _extract_422_field_names(resp: "httpx.Response") -> list[str]:
     """Extract required body field names from a FastAPI/Pydantic 422 response.
 
@@ -579,6 +660,7 @@ async def _blind_probe(
     probe_payload_extras: "dict[str, object] | None",
     *,
     known_payload_key: str | None = None,
+    llm: "LLMClient | None" = None,
 ) -> "ProbeResult | None":
     """Fallback: try each path with each payload shape until one responds usefully."""
     server_error_fallback: ProbeResult | None = None
@@ -621,12 +703,17 @@ async def _blind_probe(
                     data = resp.json()
                 except Exception:
                     data = _try_read_first_streaming_json(resp) or {}
-                if _looks_like_chat_response(data, known_response_key):
-                    _log.info("endpoint_probe: selected %s (key=%r, status=%d)", path, pay_key, status)
-                    return ProbeResult(path, pay_key, pay_list)
                 # Streaming endpoint: accept even when we can't parse the body content
                 if _is_streaming_response(resp):
                     _log.info("endpoint_probe: selected %s (streaming, key=%r)", path, pay_key)
+                    return ProbeResult(path, pay_key, pay_list)
+                chat_like = _looks_like_chat_response(data, known_response_key)
+                if llm is not None and isinstance(data, dict) and data:
+                    # LLM re-checks ambiguous ≥2-key matches and catches non-standard response keys
+                    if not chat_like or not _has_known_chat_key(data, known_response_key):
+                        chat_like = await _llm_confirms_chat_response(data, llm)
+                if chat_like:
+                    _log.info("endpoint_probe: selected %s (key=%r, status=%d)", path, pay_key, status)
                     return ProbeResult(path, pay_key, pay_list)
                 _log.debug("endpoint_probe: %s key=%r → %d but not chat-like", path, pay_key, status)
                 continue
@@ -638,9 +725,12 @@ async def _blind_probe(
                 _log.info("endpoint_probe: selected %s (key=%r known, status=%d)", path, pay_key, status)
                 return ProbeResult(path, pay_key, pay_list)
 
-            # 422 — FastAPI/Pydantic validation error: body tells us the correct field name
+            # 422 — body tells us the correct field name; LLM handles non-FastAPI formats
             if status == 422:
-                for hint_key in _extract_422_field_names(resp):
+                hint_keys = _extract_422_field_names(resp)
+                if not hint_keys and llm is not None:
+                    hint_keys = await _llm_extract_error_field_names(resp.text or "", llm)
+                for hint_key in hint_keys:
                     if hint_key in tried_keys:
                         continue
                     tried_keys.add(hint_key)
@@ -695,6 +785,7 @@ async def _detect_chat_endpoint(
     probe_payload_extras: "dict[str, object] | None",
     known_payload_key: str | None = None,
     known_payload_list: bool = False,
+    llm: "LLMClient | None" = None,
 ) -> "ProbeResult | None":
     """Ordered detection pipeline — smarter options first, blind probe as final fallback.
 
@@ -710,7 +801,7 @@ async def _detect_chat_endpoint(
     ) as client:
         if not known_payload_key:
             # Option 1: OpenAPI/Swagger schema
-            result = await _try_openapi_detection(client, timeout, known_response_key, probe_payload_extras)
+            result = await _try_openapi_detection(client, timeout, known_response_key, probe_payload_extras, llm=llm)
             if result is not None:
                 return result
 
@@ -724,6 +815,7 @@ async def _detect_chat_endpoint(
             client, paths, payload_shapes,
             known_response_key, probe_payload_extras,
             known_payload_key=known_payload_key,
+            llm=llm,
         )
 
 
@@ -737,6 +829,7 @@ async def probe_chat_endpoints(
     known_response_key: str | None = None,
     probe_payload_extras: "dict[str, object] | None" = None,
     hint_path: str | None = None,
+    llm: "LLMClient | None" = None,
 ) -> "ProbeResult | None":
     """Probe SBOM POST endpoints and return the first chat-capable one.
 
@@ -796,6 +889,7 @@ async def probe_chat_endpoints(
         known_response_key, probe_payload_extras,
         known_payload_key=known_payload_key,
         known_payload_list=known_payload_list,
+        llm=llm,
     )
 
 

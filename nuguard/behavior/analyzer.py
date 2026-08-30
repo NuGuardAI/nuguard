@@ -180,6 +180,7 @@ class BehaviorAnalyzer:
                             sbom=self._sbom,
                             auth_headers=auth_headers or None,
                             timeout=15.0,
+                            llm=self._llm if getattr(self._config, "probe_llm", False) else None,
                         )
                         if probe_result:
                             probed_path, probed_key, probed_list = probe_result
@@ -193,6 +194,12 @@ class BehaviorAnalyzer:
                             if probed_list != bool(getattr(self._config, "chat_payload_list", False)):
                                 probe_updates["chat_payload_list"] = probed_list
                             self._config = self._config.model_copy(update=probe_updates)
+                            if self._sbom_path is not None:
+                                try:
+                                    from nuguard.common.auto_sbom_enricher import persist_probe_result_to_sbom  # noqa: PLC0415
+                                    persist_probe_result_to_sbom(probe_result, self._sbom, self._sbom_path)
+                                except Exception as _pe:  # noqa: BLE001
+                                    _log.debug("behavior: probe result persist failed: %s", _pe)
                         else:
                             _log.warning(
                                 "BehaviorAnalyzer: endpoint auto-discovery found nothing "
