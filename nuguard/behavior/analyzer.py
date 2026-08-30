@@ -196,7 +196,9 @@ class BehaviorAnalyzer:
                             self._config = self._config.model_copy(update=probe_updates)
                             if self._sbom_path is not None:
                                 try:
-                                    from nuguard.common.auto_sbom_enricher import persist_probe_result_to_sbom  # noqa: PLC0415
+                                    from nuguard.common.auto_sbom_enricher import (
+                                        persist_probe_result_to_sbom,  # noqa: PLC0415
+                                    )
                                     persist_probe_result_to_sbom(probe_result, self._sbom, self._sbom_path)
                                 except Exception as _pe:  # noqa: BLE001
                                     _log.debug("behavior: probe result persist failed: %s", _pe)

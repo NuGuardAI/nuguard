@@ -3044,7 +3044,9 @@ class RedteamOrchestrator:
                 )
                 if self._sbom_path is not None:
                     try:
-                        from nuguard.common.auto_sbom_enricher import persist_probe_result_to_sbom  # noqa: PLC0415
+                        from nuguard.common.auto_sbom_enricher import (
+                            persist_probe_result_to_sbom,  # noqa: PLC0415
+                        )
                         persist_probe_result_to_sbom(result, self._sbom, self._sbom_path)
                     except Exception as _pe:  # noqa: BLE001
                         _log.debug("redteam: probe result persist failed: %s", _pe)
@@ -3083,7 +3085,9 @@ class RedteamOrchestrator:
             self._chat_path_source = "probe"
             if self._sbom_path is not None:
                 try:
-                    from nuguard.common.auto_sbom_enricher import persist_probe_result_to_sbom  # noqa: PLC0415
+                    from nuguard.common.auto_sbom_enricher import (
+                        persist_probe_result_to_sbom,  # noqa: PLC0415
+                    )
                     persist_probe_result_to_sbom(result, self._sbom, self._sbom_path)
                 except Exception as _pe:  # noqa: BLE001
                     _log.debug("redteam: probe result persist failed: %s", _pe)

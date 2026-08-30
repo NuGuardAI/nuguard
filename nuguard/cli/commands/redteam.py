@@ -815,6 +815,7 @@ async def _run_orchestrator(  # noqa: C901
     codegen_escalation_enabled: bool = True,
     mode: str = "concurrent",
     progressive_halt_on_severity: str = "none",
+    probe_llm: bool = False,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
