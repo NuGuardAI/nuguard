@@ -22,6 +22,8 @@ _TEMPLATE_VAR_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 # Regex fallbacks for patterns the AST parser misses (async-with, complex nested args)
 _CLAUDE_SDK_CLIENT_RE = re.compile(r"\bClaudeSDKClient\s*\(")
 _MCP_SERVERS_RE = re.compile(r"\bmcp_servers\s*=")
+_HOOKS_RE = re.compile(r"\bhooks\s*=")
+_CAN_USE_TOOL_RE = re.compile(r"\bcan_use_tool\s*=")
 
 
 class ClaudeAgentSDKAdapter(FrameworkAdapter):
@@ -41,6 +43,7 @@ class ClaudeAgentSDKAdapter(FrameworkAdapter):
             return []
 
         detected: list[ComponentDetection] = [self._framework_node(file_path)]
+        content_lines = content.splitlines()
 
         # options_vars tracks ClaudeAgentOptions instantiations by their assigned variable name
         # so that ClaudeSDKClient(options=options) can inherit model/tools/prompt metadata.
@@ -57,6 +60,14 @@ class ClaudeAgentSDKAdapter(FrameworkAdapter):
             permission_mode = _clean(args.get("permission_mode", ""))
             mcp_servers_raw = args.get("mcp_servers")
 
+            # `hooks=` and `can_use_tool=` are dict/callable kwargs the AST
+            # parser drops entirely (no ast.Dict branch in _extract_value) —
+            # same limitation mcp_servers works around above, via a
+            # line-scoped regex fallback on the raw source.
+            opts_snippet = "\n".join(content_lines[inst.line - 1 : max(inst.line_end, inst.line)])
+            has_hooks = bool(_HOOKS_RE.search(opts_snippet))
+            has_can_use_tool = bool(_CAN_USE_TOOL_RE.search(opts_snippet))
+
             # Store for cross-referencing in Pass 2
             if inst.assigned_to:
                 options_vars[inst.assigned_to] = {
@@ -64,6 +75,8 @@ class ClaudeAgentSDKAdapter(FrameworkAdapter):
                     "system_prompt": system_prompt,
                     "allowed_tools": allowed_tools,
                     "permission_mode": permission_mode,
+                    "has_hooks": has_hooks,
+                    "has_can_use_tool": has_can_use_tool,
                     "line": inst.line,
                 }
 
@@ -249,6 +262,72 @@ class ClaudeAgentSDKAdapter(FrameworkAdapter):
                                 relationship_type="CALLS",
                             )
                         )
+
+            # hooks=/can_use_tool= → GUARDRAIL nodes with an explicit PROTECTS
+            # hint. agent_canon is only reliably known here (ClaudeSDKClient
+            # names are line-number-based, not reconstructable from outside
+            # this loop) — mirrors openai_agents.py's explicit input_guardrails
+            # wiring.
+            if opts.get("has_hooks"):
+                hooks_canon = canonicalize_text(f"claude_agent_sdk:guardrail:hooks:{_line}")
+                detected.append(
+                    ComponentDetection(
+                        component_type=ComponentType.GUARDRAIL,
+                        canonical_name=hooks_canon,
+                        display_name="Claude Agent SDK Hooks",
+                        adapter_name=self.name,
+                        priority=self.priority,
+                        confidence=0.85,
+                        metadata={
+                            "framework": "claude_agent_sdk",
+                            "guardrail_type": "hooks",
+                            "detection_kind": "framework_native",
+                        },
+                        file_path=file_path,
+                        line=_line,
+                        snippet="ClaudeAgentOptions(hooks={...})",
+                        evidence_kind="regex",
+                    )
+                )
+                rels.append(
+                    RelationshipHint(
+                        source_canonical=hooks_canon,
+                        source_type=ComponentType.GUARDRAIL,
+                        target_canonical=agent_canon,
+                        target_type=ComponentType.AGENT,
+                        relationship_type="PROTECTS",
+                    )
+                )
+            if opts.get("has_can_use_tool"):
+                cut_canon = canonicalize_text(f"claude_agent_sdk:guardrail:can_use_tool:{_line}")
+                detected.append(
+                    ComponentDetection(
+                        component_type=ComponentType.GUARDRAIL,
+                        canonical_name=cut_canon,
+                        display_name="Claude Agent SDK canUseTool",
+                        adapter_name=self.name,
+                        priority=self.priority,
+                        confidence=0.80,
+                        metadata={
+                            "framework": "claude_agent_sdk",
+                            "guardrail_type": "can_use_tool",
+                            "detection_kind": "framework_native",
+                        },
+                        file_path=file_path,
+                        line=_line,
+                        snippet="ClaudeAgentOptions(can_use_tool=...)",
+                        evidence_kind="regex",
+                    )
+                )
+                rels.append(
+                    RelationshipHint(
+                        source_canonical=cut_canon,
+                        source_type=ComponentType.GUARDRAIL,
+                        target_canonical=agent_canon,
+                        target_type=ComponentType.AGENT,
+                        relationship_type="PROTECTS",
+                    )
+                )
 
             meta: dict[str, Any] = {
                 "framework": "claude_agent_sdk",

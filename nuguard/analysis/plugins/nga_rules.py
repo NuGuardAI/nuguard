@@ -114,6 +114,17 @@ def _node_extras(node: dict[str, Any]) -> dict[str, Any]:
     return node.get("metadata", {}).get("extras", {}) or {}
 
 
+def _is_soft_rejected(node: dict[str, Any]) -> bool:
+    """True when SBOM LLM verification flagged this node as a likely false positive.
+
+    Same convention as ``policy/checker.py``'s ``_is_soft_rejected`` and
+    ``behavior/runner.py``'s coverage-target filter: don't raise findings
+    against a component the SBOM's own verification step already flagged as
+    not real (e.g. a mock model/order-ID string in a unit test).
+    """
+    return bool(_node_extras(node).get("llm_soft_rejected"))
+
+
 def _depl_meta(node: dict[str, Any]) -> dict[str, Any]:
     """Return a flattened view of deployment/IaC metadata for a node."""
     meta: dict[str, Any] = node.get("metadata") or {}
@@ -345,9 +356,11 @@ def _rule_nga002_insufficient_guardrails(
     if graph is not None:
         # Sub-check A: per MODEL, check if it or any of its using agents is protected
         for model in graph.nodes_of_type("MODEL"):
+            if _is_soft_rejected(model):
+                continue
             if graph.has_protection(str(model["id"])):
                 continue
-            using_agents = graph.sources(str(model["id"]), "USES")
+            using_agents = [a for a in graph.sources(str(model["id"]), "USES") if not _is_soft_rejected(a)]
             unprotected_agents = [a for a in using_agents if not graph.has_protection(str(a["id"]))]
             if using_agents and len(unprotected_agents) < len(using_agents):
                 # At least one calling agent is protected — model is covered
@@ -372,11 +385,16 @@ def _rule_nga002_insufficient_guardrails(
 
         # Sub-check B: per unauthenticated API_ENDPOINT exposing an AGENT
         for ep in graph.nodes_of_type("API_ENDPOINT"):
+            if _is_soft_rejected(ep):
+                continue
             ep_id = str(ep["id"])
             ep_name = ep.get("name", "")
             # Find agents the endpoint protects or that call it
             exposed_agents = graph.sources(ep_id, "PROTECTS") + graph.targets(ep_id, "CALLS")
-            agent_exposed = [a for a in exposed_agents if (a.get("component_type") or "").upper() == "AGENT"]
+            agent_exposed = [
+                a for a in exposed_agents
+                if (a.get("component_type") or "").upper() == "AGENT" and not _is_soft_rejected(a)
+            ]
             if not agent_exposed:
                 continue
             # Only flag if neither endpoint nor any exposed agent has protection
@@ -403,8 +421,12 @@ def _rule_nga002_insufficient_guardrails(
 
         # Sub-check C: DELEGATES_TO edges where neither side is protected
         for src_agent in graph.nodes_of_type("AGENT"):
+            if _is_soft_rejected(src_agent):
+                continue
             src_id = str(src_agent["id"])
             for tgt_agent in graph.targets(src_id, "DELEGATES_TO"):
+                if _is_soft_rejected(tgt_agent):
+                    continue
                 tgt_id = str(tgt_agent["id"])
                 if graph.has_protection(src_id) or graph.has_protection(tgt_id):
                     continue
@@ -428,7 +450,10 @@ def _rule_nga002_insufficient_guardrails(
 
     # Fallback: flat-list checks (no graph available)
     guardrail_ids = {n["id"] for n in nodes if n.get("component_type") in _GUARDRAIL_TYPES}
-    model_nodes = [n for n in nodes if n.get("component_type") in _MODEL_TYPES]
+    model_nodes = [
+        n for n in nodes
+        if n.get("component_type") in _MODEL_TYPES and not _is_soft_rejected(n)
+    ]
     if model_nodes and not guardrail_ids:
         desc = (
             f"{len(model_nodes)} LLM model node(s) produce output with no output-validation "
@@ -454,6 +479,7 @@ def _rule_nga002_insufficient_guardrails(
             n for n in nodes
             if n.get("component_type") in _AGENT_TYPES
             and n["id"] in agents_with_outbound
+            and not _is_soft_rejected(n)
         ]
         if agent_nodes_outbound:
             desc = (

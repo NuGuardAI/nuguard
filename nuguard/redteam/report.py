@@ -623,6 +623,7 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
     total_duration = 0.0
     total_turns = 0
     findings_count = 0
+    inconclusive_no_auth_count = 0
 
     for idx, r in enumerate(records, start=1):
         title_str = _r(r, "title", "") or ""
@@ -630,7 +631,12 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         goal_type_str = _r(r, "goal_type", "") or ""
         goal = _GOAL_LABEL.get(goal_type_str, goal_type_str.replace("_", " ").title())
         had_finding = bool(_r(r, "had_finding", False))
-        finding_cell = "**YES**" if had_finding else "no"
+        chain_status_str = _r(r, "chain_status", "") or ""
+        finding_cell = (
+            "**YES**" if had_finding
+            else "no*" if chain_status_str.startswith("inconclusive:")
+            else "no"
+        )
         turns_used = _r(r, "turns_used", None)
         if turns_used is None:
             turns_used = len(_r(r, "steps", []) or [])
@@ -646,6 +652,8 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         total_turns += turns_used
         if had_finding:
             findings_count += 1
+        if finding_cell == "no*":
+            inconclusive_no_auth_count += 1
 
         lines.append(
             f"| {idx} | {title} | {goal} | {finding_cell} "
@@ -661,6 +669,15 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         f"Total: {_fmt_duration(total_duration)} | "
         f"Avg per scenario: {avg_scenario} | Avg per turn: {avg_turn}_"
     )
+    if inconclusive_no_auth_count:
+        lines.append("")
+        lines.append(
+            f"_* {inconclusive_no_auth_count} IDOR scenario(s) ran with no target "
+            f"authentication configured — a miss only confirms the endpoint "
+            f"requires auth at all, not that object-level authorization is "
+            f"enforced. Configure `target.auth` in nuguard.yaml to test these "
+            f"meaningfully._"
+        )
     lines.append("")
     return lines
 

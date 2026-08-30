@@ -588,3 +588,67 @@ def test_auth_protects_endpoint_falls_back_when_no_auth_type_signal() -> None:
 
     protects = [e for e in doc.edges if e.relationship_type == RelationshipType.PROTECTS]
     assert len(protects) == 3
+
+
+def test_guardrail_protects_agent_fallback_when_file_related() -> None:
+    """GUARDRAIL nodes with no explicit PROTECTS edge (e.g. guardrails_ai.py's
+    Guard()/register_validator/hub-import detections, which emit no
+    RelationshipHint at all) should still get wired to an AGENT that shares
+    evidence file/dir, so they aren't left orphaned in the graph."""
+    guardrail = _node("Guard", ComponentType.GUARDRAIL, evidence_paths=["agent.py"])
+    agent = _node("Support Agent", ComponentType.AGENT, evidence_paths=["agent.py"])
+
+    doc = AiSbomDocument(target=".", nodes=[guardrail, agent], summary=ScanSummary())
+    AiSbomExtractor()._resolve_edges(doc, {})
+
+    protects = {
+        (e.source, e.target) for e in doc.edges if e.relationship_type == RelationshipType.PROTECTS
+    }
+    assert protects == {(guardrail.id, agent.id)}
+
+
+def test_guardrail_protects_agent_fallback_skipped_when_unrelated() -> None:
+    """Unlike the AUTH -> API_ENDPOINT fallback, GUARDRAIL -> AGENT must NOT
+    fall back to a broad "protects everything" cross join when no AGENT
+    shares a file/dir/name token with the GUARDRAIL — these nodes are
+    file-scoped validators, not app-wide auth, so guessing here would
+    misrepresent coverage."""
+    guardrail = _node("Guard", ComponentType.GUARDRAIL, evidence_paths=["validators/guard.py"])
+    agent = _node("Billing Agent", ComponentType.AGENT, evidence_paths=["agents/billing.py"])
+
+    doc = AiSbomDocument(target=".", nodes=[guardrail, agent], summary=ScanSummary())
+    AiSbomExtractor()._resolve_edges(doc, {})
+
+    protects = [e for e in doc.edges if e.relationship_type == RelationshipType.PROTECTS]
+    assert protects == []
+
+
+def test_injection_risk_score_ignores_guardrail_protects_agent_direction() -> None:
+    """Regression: PROTECTS edges point GUARDRAIL -> AGENT (source=guardrail,
+    target=agent), so the "no guardrail coverage" penalty in
+    injection_risk_score must check the AGENT's *incoming* PROTECTS edges,
+    not outgoing ones (an agent never has an outgoing PROTECTS edge, so
+    checking outgoing always penalized every agent regardless of coverage)."""
+    from nuguard.sbom.enricher import enrich
+    from nuguard.sbom.models import Edge
+
+    guardrail = _node("Guard", ComponentType.GUARDRAIL)
+    protected_agent = _node("Protected Agent", ComponentType.AGENT)
+    unprotected_agent = _node("Unprotected Agent", ComponentType.AGENT)
+
+    doc = AiSbomDocument(
+        target=".",
+        nodes=[guardrail, protected_agent, unprotected_agent],
+        edges=[
+            Edge(
+                source=guardrail.id,
+                target=protected_agent.id,
+                relationship_type=RelationshipType.PROTECTS,
+            )
+        ],
+        summary=ScanSummary(),
+    )
+    enrich(doc)
+
+    scores = {n.name: n.metadata.injection_risk_score for n in doc.nodes}
+    assert scores["Unprotected Agent"] - scores["Protected Agent"] == pytest.approx(0.10)

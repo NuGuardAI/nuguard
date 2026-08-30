@@ -209,6 +209,26 @@ class TestNga002:
         findings = self._run([])
         assert findings == []
 
+    def test_no_finding_for_llm_soft_rejected_model(self) -> None:
+        """Regression: a MODEL node SBOM verification already flagged as a
+        likely false positive (e.g. a mock model name found only in a unit
+        test fixture, observed against OWASP Juice Shop's
+        preconditionValidation.unit.test.ts) must not raise a 'no output
+        guardrail' finding — there's no real model to guard."""
+        model = _model_node("mock-model", "test-fixture")
+        model["metadata"]["extras"]["llm_soft_rejected"] = True
+        findings = self._run([model])
+        assert findings == []
+
+    def test_real_model_still_fires_alongside_soft_rejected_one(self) -> None:
+        real = _model_node("gpt-4", "openai")
+        fake = _model_node("mock-model", "test-fixture")
+        fake["metadata"]["extras"]["llm_soft_rejected"] = True
+        findings = self._run([real, fake])
+        sub_a = [f for f in findings if "sub-check A" in f["title"]]
+        assert len(sub_a) == 1
+        assert sub_a[0]["affected"] == ["gpt-4"]
+
     def test_no_finding_guardrail_suppresses_even_multiple_models(self) -> None:
         nodes = [
             _model_node("gpt-4", "openai"),
