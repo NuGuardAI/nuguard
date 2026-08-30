@@ -1835,8 +1835,17 @@ class ScenarioGenerator:
                     )
                 )
 
-            # Rate-limit probe: when endpoint is explicitly rate-limited
-            if getattr(meta, "rate_limited", False):
+            # Rate-limit probe: fire on endpoints WITHOUT a confirmed
+            # rate-limit posture — the same population NGA-026 (static) flags
+            # as "no confirmed application-level rate limiting". Gating on
+            # `rate_limited is True` instead (the original condition) only
+            # ever probed endpoints already believed to be rate-limited,
+            # which is empirically backwards: on frameworks with no
+            # rate-limit adapter instrumentation (e.g. plain Express/Node),
+            # `rate_limited` is never set at all, so the probe never fired.
+            # Probing the unconfirmed population lets a real 429 upgrade the
+            # static finding to a false positive, and a clean burst confirm it.
+            if not getattr(meta, "rate_limited", False):
                 out.append(
                     build_rate_limit_probe(
                         endpoint_id=endpoint_id,

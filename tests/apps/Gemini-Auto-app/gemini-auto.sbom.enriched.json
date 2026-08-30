@@ -1,23 +1,86 @@
 {
   "schema_version": "1.5.0",
-  "generated_at": "2026-06-10T17:19:48Z",
+  "generated_at": "2026-08-26T20:11:48Z",
   "generator": "nuguard",
-  "target": "C:\\Uma\\Job Search\\Prospects\\NuGuard\\Code\\nuguard\\tests\\apps\\Gemini-Auto-app",
+  "target": "https://github.com/NuGuardAI/Gemini-Car-Assistant",
   "nodes": [
     {
-      "id": "0a936d4e-0840-40f1-b82e-864332d2e88a",
-      "name": "API Key Auth",
-      "component_type": "AUTH",
-      "confidence": 0.44000000000000006,
+      "id": "dd512623-496b-41bd-9db3-731b5c02f101",
+      "name": "*",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.4840000000000001,
       "metadata": {
-        "description": "Authentication component that validates requests using API keys.",
+        "endpoint": "*",
+        "method": "GET",
+        "description": "Authenticated wildcard GET API endpoint handling all matching routes in the application.",
+        "auth_required": true,
         "request_body_schema": {},
         "chat_payload_list": false,
-        "loc": 100,
+        "descriptive_name": "Wildcard API Endpoint",
+        "loc": 334,
         "extras": {
-          "canonical_name": "auth_generic",
-          "adapter": "auth_generic",
+          "canonical_name": "endpoint_get",
+          "adapter": "api_endpoint_generic",
+          "evidence_count": 2,
+          "endpoint": "*",
+          "method": "GET",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.484
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "api_endpoint_generic: app.get('*'",
+          "location": {
+            "path": "server.js",
+            "line": 29
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "api_endpoint_generic: app.get('*'",
+          "location": {
+            "path": "server.ts",
+            "line": 295
+          }
+        }
+      ]
+    },
+    {
+      "id": "f61fdfd5-fd59-4319-94ce-364489b5b86c",
+      "name": "/API/Agent/Chat",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "endpoint": "/api/agent/chat",
+        "method": "POST",
+        "description": "Authenticated POST endpoint at /api/agent/chat for agent chat requests.",
+        "auth_required": true,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Agent Chat API Endpoint",
+        "loc": 300,
+        "extras": {
+          "canonical_name": "endpoint_post_api_agent_chat",
+          "adapter": "api_endpoint_generic",
           "evidence_count": 1,
+          "endpoint": "/api/agent/chat",
+          "method": "POST",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -37,189 +100,2631 @@
         {
           "kind": "regex",
           "confidence": 0.55,
-          "detail": "auth_generic: api_key",
+          "detail": "api_endpoint_generic: app.post('/api/agent/chat'",
           "location": {
-            "path": "canary.example.json",
-            "line": 87
+            "path": "server.ts",
+            "line": 270
           }
         }
       ]
     },
     {
-      "id": "81887355-c465-5de3-b14d-c1cace8887f2",
-      "name": "/health API",
+      "id": "f60a8350-98ac-4660-b87f-c797ef3fba99",
+      "name": "/API/Auth/Login",
       "component_type": "API_ENDPOINT",
-      "confidence": 0.6,
+      "confidence": 0.44000000000000006,
       "metadata": {
-        "endpoint": "/health",
-        "method": "GET",
-        "description": "GET /health endpoint that returns application health status.",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "source": "runtime_probe",
-          "description_source": "llm_generated"
-        }
-      },
-      "evidence": []
-    },
-    {
-      "id": "808f255c-c9b1-58f2-ba71-dd1cb8ecb0f9",
-      "name": "/chat API",
-      "component_type": "API_ENDPOINT",
-      "confidence": 0.6,
-      "metadata": {
-        "endpoint": "/chat",
+        "endpoint": "/api/auth/login",
         "method": "POST",
-        "description": "HTTP POST API endpoint at /chat for submitting chat requests.",
-        "accepts_user_input": true,
+        "description": "POST /api/auth/login is an authenticated API endpoint for user login.",
+        "auth_required": true,
         "request_body_schema": {},
-        "chat_payload_key": "message",
         "chat_payload_list": false,
+        "descriptive_name": "Login API Endpoint",
+        "loc": 300,
         "extras": {
-          "source": "runtime_probe",
+          "canonical_name": "endpoint_post_api_auth_login",
+          "adapter": "api_endpoint_generic",
+          "evidence_count": 1,
+          "endpoint": "/api/auth/login",
+          "method": "POST",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
           "description_source": "llm_generated"
         }
       },
-      "evidence": []
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "api_endpoint_generic: app.post('/api/auth/login'",
+          "location": {
+            "path": "server.ts",
+            "line": 113
+          }
+        }
+      ]
     },
     {
-      "id": "5cf48a09-c0b4-5a13-8fd5-287711ff1e4a",
-      "name": "/chat/message API",
+      "id": "e2f2ad32-3271-484a-9a1d-859fe456b160",
+      "name": "/API/Auth/Logout",
       "component_type": "API_ENDPOINT",
-      "confidence": 0.6,
+      "confidence": 0.44000000000000006,
       "metadata": {
-        "endpoint": "/chat/message",
+        "endpoint": "/api/auth/logout",
         "method": "POST",
-        "description": "POST API endpoint at /chat/message for submitting chat messages.",
-        "accepts_user_input": true,
+        "description": "Authenticated POST endpoint /api/auth/logout for user logout.",
+        "auth_required": true,
         "request_body_schema": {},
-        "chat_payload_key": "message",
         "chat_payload_list": false,
+        "descriptive_name": "Logout API Endpoint",
+        "loc": 300,
         "extras": {
-          "source": "runtime_probe",
+          "canonical_name": "endpoint_post_api_auth_logout",
+          "adapter": "api_endpoint_generic",
+          "evidence_count": 1,
+          "endpoint": "/api/auth/logout",
+          "method": "POST",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
           "description_source": "llm_generated"
         }
       },
-      "evidence": []
-    },
-    {
-      "id": "f2f3d360-73b0-534a-b2be-37309f343370",
-      "name": "/api/health API",
-      "component_type": "API_ENDPOINT",
-      "confidence": 0.6,
-      "metadata": {
-        "endpoint": "/api/health",
-        "method": "GET",
-        "description": "GET /api/health endpoint that returns service health status.",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "source": "runtime_probe",
-          "description_source": "llm_generated"
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "api_endpoint_generic: app.post('/api/auth/logout'",
+          "location": {
+            "path": "server.ts",
+            "line": 217
+          }
         }
-      },
-      "evidence": []
+      ]
     },
     {
-      "id": "10b16786-3933-56e4-81b6-f0aeee505760",
-      "name": "/api/chat API",
+      "id": "2de14405-f62a-4c2c-a92f-fd4a565c62d3",
+      "name": "/API/Auth/Verify",
       "component_type": "API_ENDPOINT",
-      "confidence": 0.6,
+      "confidence": 0.44000000000000006,
       "metadata": {
-        "endpoint": "/api/chat",
+        "endpoint": "/api/auth/verify",
         "method": "POST",
-        "description": "POST API endpoint /api/chat that accepts chat requests and returns generated conversational responses.",
-        "accepts_user_input": true,
+        "description": "POST /api/auth/verify authenticated API endpoint that verifies authentication status.",
+        "auth_required": true,
         "request_body_schema": {},
-        "chat_payload_key": "message",
         "chat_payload_list": false,
+        "descriptive_name": "Verify API Endpoint",
+        "loc": 300,
         "extras": {
-          "source": "runtime_probe",
+          "canonical_name": "endpoint_post_api_auth_verify",
+          "adapter": "api_endpoint_generic",
+          "evidence_count": 1,
+          "endpoint": "/api/auth/verify",
+          "method": "POST",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
           "description_source": "llm_generated"
         }
       },
-      "evidence": []
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "api_endpoint_generic: app.post('/api/auth/verify'",
+          "location": {
+            "path": "server.ts",
+            "line": 247
+          }
+        }
+      ]
     },
     {
-      "id": "96e5cf0d-ad5e-519f-8f67-16f9ae37a40a",
-      "name": "/api/chat/message API",
-      "component_type": "API_ENDPOINT",
-      "confidence": 0.6,
+      "id": "d305c581-11ca-413a-b749-a1c692d88739",
+      "name": "Bearer Auth",
+      "component_type": "AUTH",
+      "confidence": 1.0,
       "metadata": {
-        "endpoint": "/api/chat/message",
-        "method": "POST",
-        "description": "POST API endpoint /api/chat/message that receives chat message submissions.",
-        "accepts_user_input": true,
+        "description": "Authorization component using Bearer tokens for API key and OAuth authentication.",
         "request_body_schema": {},
-        "chat_payload_key": "message",
         "chat_payload_list": false,
+        "descriptive_name": "Bearer Token Authentication",
+        "loc": 1482,
         "extras": {
-          "source": "runtime_probe",
+          "canonical_name": "auth_generic",
+          "adapter": "auth_generic",
+          "evidence_count": 18,
+          "detected_by_tiers": [
+            "code",
+            "iac"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.98,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.784,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
           "description_source": "llm_generated"
         }
       },
-      "evidence": []
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_generic: Authorization",
+          "location": {
+            "path": "server.ts",
+            "line": 19
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_apikey: Bearer",
+          "location": {
+            "path": "server.ts",
+            "line": 64
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_oauth: OAuth",
+          "location": {
+            "path": "server.ts",
+            "line": 19
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.8500000000000001,
+          "detail": "auth_generic: authentication",
+          "location": {
+            "path": "src/services/google-apis.ts",
+            "line": 24
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.8,
+          "detail": "auth_oauth: OAuth",
+          "location": {
+            "path": "src/services/google-auth.ts",
+            "line": 2
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "auth_generic: Authorization",
+          "location": {
+            "path": "agent/tools/communication.ts",
+            "line": 29
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "auth_apikey: Bearer",
+          "location": {
+            "path": "agent/tools/communication.ts",
+            "line": 29
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "auth_apikey: Bearer",
+          "location": {
+            "path": "src/services/google-apis.ts",
+            "line": 73
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "auth_apikey: Bearer",
+          "location": {
+            "path": "src/services/google-auth.ts",
+            "line": 98
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_apikey: API_KEY",
+          "location": {
+            "path": "agent/agents.ts",
+            "line": 13
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_apikey: apiKey",
+          "location": {
+            "path": "agent/tools/navigation.ts",
+            "line": 7
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_apikey: apiKey",
+          "location": {
+            "path": "agent/tools/search.ts",
+            "line": 6
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_apikey: apiKey",
+          "location": {
+            "path": "agent/tools/weather.ts",
+            "line": 16
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_apikey: API_KEY",
+          "location": {
+            "path": "src/components/RealMap.tsx",
+            "line": 5
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "auth_generic: Authorization",
+          "location": {
+            "path": "src/services/google-auth.ts",
+            "line": 98
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "auth_oauth: OAuth",
+          "location": {
+            "path": "src/services/google-apis.ts",
+            "line": 3
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_generic: Authenticate",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 25
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_oauth: OAuth",
+          "location": {
+            "path": "src/services/media.ts",
+            "line": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "e7f77b1e-578a-4464-bf9a-462ce12f13cd",
+      "name": "Insecure Default",
+      "component_type": "AUTH",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "description": "Authentication logic that reads NEW_API_KEY from environment and defaults to an empty string when unset, creating an insecure default credential state.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Insecure Default Authentication",
+        "loc": 109,
+        "extras": {
+          "canonical_name": "auth_generic_insecure_default",
+          "adapter": "auth_runtime_insecure_default",
+          "evidence_count": 1,
+          "insecure_default": true,
+          "severity_note": "Hardcoded fallback secret used if the environment variable is unset.",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This is a deployment workflow that injects environment variables, including auth-related secrets, but it is not an authentication/authorization component or AI-specific production node.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "auth_runtime_insecure_default: os.environ.get('NEW_API_KEY', '')",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 78
+          }
+        }
+      ]
+    },
+    {
+      "id": "852b943b-d67a-4a7c-a15b-735f13585de8",
+      "name": "JWT",
+      "component_type": "AUTH",
+      "confidence": 0.8360000000000001,
+      "metadata": {
+        "auth_type": "jwt",
+        "description": "Provides JWT-based authentication support using JSON Web Tokens.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "JWT Token Authentication",
+        "loc": 300,
+        "extras": {
+          "canonical_name": "auth_jwt",
+          "adapter": "auth_jwt",
+          "evidence_count": 1,
+          "auth_type": "jwt",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.836
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_jwt: jwt",
+          "location": {
+            "path": "server.ts",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "1e5696bb-d02a-487b-a432-6ed1a4d8fdf7",
+      "name": "Node:20 Slim",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.8712000000000001,
+      "metadata": {
+        "image_name": "node",
+        "image_tag": "20-slim",
+        "registry": "docker.io",
+        "base_image": "node:20-slim",
+        "description": "Official Node.js 20 slim container image used as the builder base stage.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Node 20 Slim Image",
+        "loc": 31,
+        "extras": {
+          "canonical_name": "container_image_node_20_slim",
+          "adapter": "dockerfile",
+          "evidence_count": 1,
+          "base_image": "node:20-slim",
+          "image_name": "node",
+          "image_tag": "20-slim",
+          "image_digest": null,
+          "registry": "docker.io",
+          "dockerfile": "Dockerfile",
+          "runs_as_root": null,
+          "has_health_check": null,
+          "multi_stage_build": true,
+          "security_findings": [
+            "secrets_in_build_args"
+          ],
+          "exposed_ports": [
+            {
+              "port": 3000,
+              "protocol": "tcp"
+            }
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.99,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.792,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8712
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.99,
+          "detail": "dockerfile: FROM node:20-slim AS builder",
+          "location": {
+            "path": "Dockerfile",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "e7941282-dd9b-4857-a77b-fd9fc6638256",
+      "name": "Deploy to Cloud Run",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.8360000000000001,
+      "metadata": {
+        "deployment_target": "github-actions",
+        "secret_store": "github_actions_secret",
+        "description": "GitHub Actions workflow that deploys applications to Cloud Run on push and manual workflow_dispatch events.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Cloud Run Deployment",
+        "loc": 109,
+        "extras": {
+          "canonical_name": "deployment_github_actions_deploy_to_cloud_run",
+          "adapter": "github_actions",
+          "evidence_count": 1,
+          "iac_format": "github_actions",
+          "deployment_target": "github-actions",
+          "workflow_triggers": [
+            "push",
+            "workflow_dispatch"
+          ],
+          "runners": [
+            "ubuntu-latest"
+          ],
+          "environments": [],
+          "cloud_providers": [
+            "gcp"
+          ],
+          "cloud_region": null,
+          "uses_oidc": true,
+          "secret_store": "github_actions_secret",
+          "ha_mode": null,
+          "workflow_security_findings": [],
+          "workflow_content": "name: Deploy to Cloud Run\n\non:\n  push:\n    branches: [main]\n  workflow_dispatch:\n\nenv:\n  PROJECT_ID: platform-dev-2025\n  SERVICE: gemini-auto-pilot\n  REGION: us-west2\n  IMAGE: us-west2-docker.pkg.dev/platform-dev-2025/gemini-auto-pilot/app\n\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    permissions:\n      contents: read\n      id-token: write\n\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n\n      - name: Authenticate to Google Cloud\n        uses: google-github-actions/auth@v2\n        with:\n          credentials_json: ${{ secrets.GCP_SA_KEY }}\n\n      - name: Set up Cloud SDK\n        uses: google-github-actions/setup-gcloud@v2\n\n      - name: Configure Docker for Artifact Registry\n        run: gcloud auth configure-docker us-west2-docker.pkg.dev --quiet\n\n      - name: Build Docker image\n        run: |\n          docker build \\\n            --build-arg VITE_GEMINI_API_KEY=\"${{ secrets.VITE_GEMINI_API_KEY }}\" \\\n            --build-arg VITE_GEMINI_MODEL=\"${{ vars.VITE_GEMINI_MODEL }}\" \\\n            --build-arg VITE_GOOGLE_MAPS_API_KEY=\"${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}\" \\\n            --build-arg GOOGLE_MAPS_PLATFORM_KEY=\"${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}\" \\\n            --build-arg VITE_GOOGLE_OAUTH_CLIENT_ID=\"${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}\" \\\n            --build-arg VITE_GOOGLE_PROJECT_ID=\"${{ vars.VITE_GOOGLE_PROJECT_ID }}\" \\\n            -t ${{ env.IMAGE }}:${{ github.sha }} \\\n            -t ${{ env.IMAGE }}:latest \\\n            .\n\n      - name: Push Docker image\n        run: |\n          docker push ${{ env.IMAGE }}:${{ github.sha }}\n          docker push ${{ env.IMAGE }}:latest\n\n      - name: Update Cloud Run app container\n        env:\n          NEW_IMAGE: ${{ env.IMAGE }}:${{ github.sha }}\n          NEW_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}\n          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}\n          JWT_SECRET: ${{ secrets.JWT_SECRET }}\n          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}\n          OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}\n        run: |\n          gcloud run services describe $SERVICE --region=$REGION --format=yaml > service.yaml\n\n          python3 -c \"\n          import yaml, os\n          with open('service.yaml') as f:\n              svc = yaml.safe_load(f)\n          ann = svc['spec']['template']['metadata'].get('annotations', {})\n          ann.pop('run.googleapis.com/sources', None)\n          ann.pop('run.googleapis.com/base-images', None)\n          svc['spec']['template']['spec'].pop('runtimeClassName', None)\n          for c in svc['spec']['template']['spec']['containers']:\n              if c.get('name') == 'app-container':\n                  c['image'] = os.environ['NEW_IMAGE']\n                  envs = c.get('env', [])\n                  runtime_vars = {\n                      'GEMINI_API_KEY': os.environ.get('NEW_API_KEY', ''),\n                      'VITE_GEMINI_API_KEY': os.environ.get('NEW_API_KEY', ''),\n                      'OPENWEATHER_API_KEY': os.environ.get('OPENWEATHER_API_KEY', ''),\n                      'JWT_SECRET': os.environ.get('JWT_SECRET', ''),\n                      'OAUTH_CLIENT_ID': os.environ.get('OAUTH_CLIENT_ID', ''),\n                      'OAUTH_CLIENT_SECRET': os.environ.get('OAUTH_CLIENT_SECRET', ''),\n                  }\n                  # Update existing env vars or append new ones\n                  existing = {e['name'] for e in envs}\n                  for name, value in runtime_vars.items():\n                      if not value:\n                          continue\n                      if name in existing:\n                          for e in envs:\n                              if e['name'] == name:\n                                  e['value'] = value\n                      else:\n                          envs.append({'name': name, 'value': value})\n                  c['env'] = envs\n                  break\n          with open('service.yaml', 'w') as f:\n              yaml.dump(svc, f)\n          \"\n\n          gcloud run services replace service.yaml --region=$REGION\n\n      - name: Show service URL\n        run: |\n          gcloud run services describe $SERVICE \\\n            --region $REGION \\\n            --format \"value(status.url)\"\n",
+          "runs_as_root": null,
+          "has_health_check": null,
+          "has_resource_limits": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.836
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "iac",
+          "confidence": 0.95,
+          "detail": "github_actions: GitHub Actions: Deploy to Cloud Run triggers=['push', 'workflow_dispatch']",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "da5f633a-a773-44a4-b40a-2beb23050aee",
+      "name": "Docker",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.9119999999999999,
+      "metadata": {
+        "description": "Docker is a container platform used to build, package, and run applications in isolated environments.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Docker Container Deployment",
+        "loc": 157,
+        "extras": {
+          "canonical_name": "docker",
+          "adapter": "deployment_generic",
+          "evidence_count": 2,
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.912
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "deployment_generic: docker",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 12
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "deployment_generic: docker",
+          "location": {
+            "path": "cloudbuild.yaml",
+            "line": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "e6cec09d-7810-4f4b-8583-6703f1c94323",
+      "name": "Gcloud",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.4840000000000001,
+      "metadata": {
+        "description": "Google Cloud CLI used to deploy and manage cloud resources.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Google Cloud CLI",
+        "loc": 157,
+        "extras": {
+          "canonical_name": "gcloud",
+          "adapter": "deployment_generic",
+          "evidence_count": 2,
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This is a GitHub Actions deployment step for Google Cloud authentication and Docker configuration, not an AI model, agent, prompt, datastore, or framework. It is infrastructure/deployment code rather than a verified AI-related asset.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.484
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "deployment_generic: gcloud",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 31
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "deployment_generic: gcloud",
+          "location": {
+            "path": "cloudbuild.yaml",
+            "line": 19
+          }
+        }
+      ]
+    },
+    {
+      "id": "b8e6e94d-855a-4c60-b7b7-4343a018bd9b",
+      "name": "Google Adk Ts",
+      "component_type": "FRAMEWORK",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "google_adk_ts",
+        "description": "Google ADK TS is a TypeScript framework imported as google_adk_ts.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Google ADK TypeScript Framework",
+        "loc": 729,
+        "extras": {
+          "canonical_name": "framework_google_adk_ts",
+          "adapter": "google_adk_ts",
+          "evidence_count": 8,
+          "framework": "google_adk_ts",
+          "language": "typescript",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 7,
+            "evidence_sources": [
+              "framework:google_adk_ts",
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/agents.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/runner.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/climate.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/communication.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/media.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/navigation.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/search.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/weather.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "adb48bbc-357e-46c8-b2b6-a70be07e54ea",
+      "name": "LLM Clients Ts",
+      "component_type": "FRAMEWORK",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "google",
+        "description": "TypeScript framework for creating GoogleGenAI clients using an API key to access Google's LLM services.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "LLM Client Library Framework",
+        "loc": 153,
+        "extras": {
+          "canonical_name": "framework_llm_clients_ts",
+          "adapter": "llm_clients_ts",
+          "evidence_count": 2,
+          "framework": "google",
+          "client_class": "GoogleGenAI",
+          "language": "typescript",
+          "description": "Creates a Google GenAI client from environment API keys and uses it in navigation logic to turn vague place queries into a single full address; also imports Google ADK FunctionTool for AI tool integration.",
+          "llm_verified": true,
+          "llm_verification_reason": "Production application code imports and uses Google AI SDK/ADK to instantiate a Gemini client and resolve locations with an LLM prompt; not a test or mock.",
+          "llm_confidence": 0.91,
+          "confidence_breakdown": {
+            "regex_confidence": 0.91,
+            "llm_confidence": 0.91,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "llm:verified",
+              "framework:google",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.91,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "llm_clients_ts: new GoogleGenAI({ apiKey })",
+          "location": {
+            "path": "agent/tools/navigation.ts",
+            "line": 9
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "llm_clients_ts: new GoogleGenAI({ apiKey })",
+          "location": {
+            "path": "agent/tools/search.ts",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "4bc77f9b-debc-43b1-aa3a-21fe6b344fdb",
+      "name": "Gcp Identity Deploy",
+      "component_type": "IAM",
+      "confidence": 0.8184000000000001,
+      "metadata": {
+        "iam_type": "service_account",
+        "principal": "gcp-identity-deploy",
+        "permissions": [
+          "contents:read",
+          "id-token:write"
+        ],
+        "iam_scope": "project",
+        "trust_principals": [
+          "github-actions"
+        ],
+        "description": "GitHub Actions OIDC-based IAM identity used to deploy and authenticate workloads in Google Cloud.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "GCP Deployment Service Account",
+        "loc": 109,
+        "extras": {
+          "canonical_name": "iam_gha_gcp_gcp_identity_deploy",
+          "adapter": "github_actions",
+          "evidence_count": 1,
+          "iac_format": "github_actions",
+          "iam_type": "service_account",
+          "principal": "gcp-identity-deploy",
+          "iam_scope": "project",
+          "permissions": [
+            "contents:read",
+            "id-token:write"
+          ],
+          "trust_principals": [
+            "github-actions"
+          ],
+          "cloud_provider": "gcp",
+          "step_action": "google-github-actions/auth",
+          "confidence_breakdown": {
+            "regex_confidence": 0.93,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.744,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8184
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "iac",
+          "confidence": 0.93,
+          "detail": "github_actions: GHA OIDC gcp: gcp-identity-deploy",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "425c9613-8fed-4d65-9e48-fa382c76b144",
+      "name": "gemini-2.0-flash",
+      "component_type": "MODEL",
+      "confidence": 0.9152000000000001,
+      "metadata": {
+        "framework": "google",
+        "description": "Google Gemini 2.0 Flash is a generative language model used for content generation via Google\u2019s Gemini API.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Gemini 2 Flash Model",
+        "loc": 106,
+        "extras": {
+          "canonical_name": "gemini_2_0_flash",
+          "adapter": "llm_clients_ts",
+          "evidence_count": 2,
+          "framework": "google",
+          "api_call": "ai.models.generateContent",
+          "provider": "google",
+          "model_card_url": "https://ai.google.dev/gemini-api/docs/models",
+          "api_endpoint": "https://generativelanguage.googleapis.com",
+          "language": "typescript",
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:google",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.9152
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.88,
+          "detail": "llm_clients_ts: ai.models.generateContent({\n      model: process.env.VITE_GEMINI_MODEL || 'gemini-2.0-flash',\n      ",
+          "location": {
+            "path": "agent/tools/navigation.ts",
+            "line": 21
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "agent/tools/navigation.ts",
+            "line": 22
+          }
+        }
+      ]
+    },
+    {
+      "id": "14f796c3-bf2b-4eb4-9846-9b6719abe623",
+      "name": "gemini-3.1",
+      "component_type": "MODEL",
+      "confidence": 0.6032000000000001,
+      "metadata": {
+        "description": "gemini-3.1 is a machine learning model component identified by the generic model name gemini-3.1.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Gemini 3.1 Model",
+        "loc": 270,
+        "extras": {
+          "canonical_name": "gemini_3_1",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "detected_by_tiers": [
+            "code",
+            "iac"
+          ],
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.58,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3"
+            ],
+            "base_confidence": 0.464,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.6032
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-3.1",
+          "location": {
+            "path": "cloudbuild.yaml",
+            "line": 38
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-3.1",
+          "location": {
+            "path": "vite.config.ts",
+            "line": 13
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-3.1",
+          "location": {
+            "path": "agent/agents.ts",
+            "line": 12
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-3.1",
+          "location": {
+            "path": "agent/tools/search.ts",
+            "line": 13
+          }
+        }
+      ]
+    },
+    {
+      "id": "97d1b65e-99fe-4f6f-92fc-849bba6e24a2",
+      "name": "Email Out",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.4840000000000001,
+      "metadata": {
+        "privilege_scope": "email_out",
+        "description": "Permission allowing the application to send EmailMessage objects as outbound email.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Outbound Email Privilege",
+        "loc": 251,
+        "extras": {
+          "canonical_name": "privilege_email_out",
+          "adapter": "privilege_email_out",
+          "evidence_count": 2,
+          "privilege_scope": "email_out",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The provided context shows an email-reading data model and inbox-fetching logic, not outbound email sending. No concrete production email-send capability is evidenced here.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.484
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "privilege_email_out: EmailMessage",
+          "location": {
+            "path": "src/services/google-apis.ts",
+            "line": 134
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_email_out: EmailMessage",
+          "location": {
+            "path": "src/services/agent-types.ts",
+            "line": 23
+          }
+        }
+      ]
+    },
+    {
+      "id": "948d3c2f-51e5-453f-ab5c-37274844b841",
+      "name": "Filesystem Write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "privilege_scope": "filesystem_write",
+        "description": "Grants the ability to create or modify files on the filesystem, evidenced by opening service.yaml in write mode.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Filesystem Write Privilege",
+        "loc": 109,
+        "extras": {
+          "canonical_name": "privilege_filesystem_write",
+          "adapter": "privilege_filesystem_write",
+          "evidence_count": 1,
+          "privilege_scope": "filesystem_write",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_filesystem_write: open('service.yaml', 'w')",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 98
+          }
+        }
+      ]
+    },
+    {
+      "id": "91fce179-5b07-4874-b1e6-120fa03f43c1",
+      "name": "System Instruction",
+      "component_type": "PROMPT",
+      "confidence": 0.52,
+      "metadata": {
+        "description": "System-level prompt string literal that defines instructions for the model.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "System Instruction Prompt",
+        "loc": 47,
+        "extras": {
+          "canonical_name": "system_instruction",
+          "adapter": "prompt_ts",
+          "evidence_count": 1,
+          "is_template": false,
+          "is_template_literal": false,
+          "template_variables": [],
+          "injection_risk_score": 0.0,
+          "role": "system",
+          "context": "systemInstruction",
+          "enclosing_function": null,
+          "content": "You are a concise web search assistant. Summarize the answer in 2-3 sentences. Driver-safe: no markdown, no bullet points.",
+          "language": "typescript",
+          "confidence_breakdown": {
+            "regex_confidence": 0.65,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.52,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.52
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_string_literal",
+          "confidence": 0.65,
+          "detail": "prompt_ts: ast_string_literal",
+          "location": {
+            "path": "agent/tools/search.ts",
+            "line": 34
+          }
+        }
+      ]
+    },
+    {
+      "id": "e2d0f04c-bd93-442e-812c-01e3f909c346",
+      "name": "climate tools",
+      "component_type": "TOOL",
+      "confidence": 0.4840000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "Provides access to climate-related data and functions, such as environmental conditions, long-term trends, and region-specific climate information for analysis or reporting.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Climate Data Tools",
+        "loc": 138,
+        "extras": {
+          "canonical_name": "climate_tools",
+          "adapter": "google_adk_ts",
+          "evidence_count": 1,
+          "creation_method": "createClimateTools",
+          "framework": "google-adk",
+          "language": "typescript",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This is only an import statement in application code, with no evidence of concrete instantiation or runtime use of the tool.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.484
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.8,
+          "detail": "google_adk_ts: import { createClimateTools } from './tools/climate.js'",
+          "location": {
+            "path": "agent/agents.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "c7d49b81-93f1-40ed-bcbf-d7213b4982ba",
+      "name": "communication tools",
+      "component_type": "TOOL",
+      "confidence": 0.4840000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "Enables messaging and interaction capabilities, including sending notifications, coordinating conversations, and handling communication workflows across users or systems.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Communication Tools Module",
+        "loc": 138,
+        "extras": {
+          "canonical_name": "communication_tools",
+          "adapter": "google_adk_ts",
+          "evidence_count": 1,
+          "creation_method": "createCommunicationTools",
+          "framework": "google-adk",
+          "language": "typescript",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This is only an import statement with no evidence of concrete usage or instantiation in production code, so it does not confirm a real TOOL node.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.484
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.8,
+          "detail": "google_adk_ts: import { createCommunicationTools } from './tools/communication.js'",
+          "location": {
+            "path": "agent/agents.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "e52be3e4-ded8-43f8-b454-01484827b289",
+      "name": "media tools",
+      "component_type": "TOOL",
+      "confidence": 0.4840000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "Handles media content operations such as creating, retrieving, transforming, or managing images, audio, video, and related metadata.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Media Processing Tools",
+        "loc": 138,
+        "extras": {
+          "canonical_name": "media_tools",
+          "adapter": "google_adk_ts",
+          "evidence_count": 1,
+          "creation_method": "createMediaTools",
+          "framework": "google-adk",
+          "language": "typescript",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This is only an import statement with no evidence of concrete usage or production AI functionality in the provided context.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.484
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.8,
+          "detail": "google_adk_ts: import { createMediaTools } from './tools/media.js'",
+          "location": {
+            "path": "agent/agents.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "626bbebe-e57a-4e76-ab0d-5116e06d01ad",
+      "name": "navigation tools",
+      "component_type": "TOOL",
+      "confidence": 0.4840000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "Supports location-based navigation by resolving places, calculating routes, estimating travel times, and providing directional guidance between destinations.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Navigation Routing Tools",
+        "loc": 138,
+        "extras": {
+          "canonical_name": "navigation_tools",
+          "adapter": "google_adk_ts",
+          "evidence_count": 1,
+          "creation_method": "createNavigationTools",
+          "framework": "google-adk",
+          "language": "typescript",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This appears to be only an import statement with no shown instantiation or usage, so it does not confirm a real production TOOL node.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.484
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.8,
+          "detail": "google_adk_ts: import { createNavigationTools } from './tools/navigation.js'",
+          "location": {
+            "path": "agent/agents.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "29e75f79-ea59-462f-b1a7-7f5ddf03bd18",
+      "name": "search tools",
+      "component_type": "TOOL",
+      "confidence": 0.4840000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "Performs information retrieval across indexed sources or the web, helping locate relevant documents, facts, entities, or answers from queries.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Search Retrieval Tools",
+        "loc": 138,
+        "extras": {
+          "canonical_name": "search_tools",
+          "adapter": "google_adk_ts",
+          "evidence_count": 1,
+          "creation_method": "createSearchTools",
+          "framework": "google-adk",
+          "language": "typescript",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "Only an import statement is shown; no concrete tool definition or usage is visible, so this is not enough to verify a production AI-related node.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.484
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.8,
+          "detail": "google_adk_ts: import { createSearchTools } from './tools/search.js'",
+          "location": {
+            "path": "agent/agents.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "4c622777-07e5-4987-b076-38de5173c4e4",
+      "name": "weather tools",
+      "component_type": "TOOL",
+      "confidence": 0.4840000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "Provides weather forecasts and current atmospheric conditions, including temperature, precipitation, wind, and alerts for specified locations and times.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Weather Forecast Tools",
+        "loc": 138,
+        "extras": {
+          "canonical_name": "weather_tools",
+          "adapter": "google_adk_ts",
+          "evidence_count": 1,
+          "creation_method": "createWeatherTools",
+          "framework": "google-adk",
+          "language": "typescript",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This is only an import statement with no shown concrete usage or instantiation, so it does not verify as a production TOOL node.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.484
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.8,
+          "detail": "google_adk_ts: import { createWeatherTools } from './tools/weather.js'",
+          "location": {
+            "path": "agent/agents.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "name": "Gemini Car Assistant Assistant",
+      "component_type": "AGENT",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "description": "An AI agent that assists with in-car tasks and interactions for Gemini Car Assistant.",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "I am the Gemini AI assistant integrated into your vehicle. My core instructions are to act as the root orchestrator for your car's systems, ensuring a safe and seamless driving experience by managing navigation, climate, media, communication, and vehicle diagnostics through specialized sub-agents. I am here to assist you with your vehicle's needs while you are on the road.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Gemini Car Assistant Agent",
+        "extras": {
+          "source": "auto_enrichment",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "detection:pattern"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: system_prompt probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "3d161a76-86ee-4480-85b5-8d4456ac261a",
+      "name": ".github/workflows/deploy.yml",
+      "component_type": "GITHUB_WORKFLOW",
+      "confidence": 0.7200000000000001,
+      "metadata": {
+        "description": "GitHub Actions workflow for deployment automation.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "GitHub Deploy Workflow",
+        "workflow_has_unpinned_global_install": false,
+        "workflow_has_cred_access": false,
+        "workflow_triggers": [
+          "push",
+          "workflow_dispatch"
+        ],
+        "uses_oidc": true,
+        "action_refs": [
+          "actions/checkout@v4",
+          "google-github-actions/auth@v2",
+          "google-github-actions/setup-gcloud@v2"
+        ],
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.72
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.9,
+          "detail": "github_workflow: .github/workflows/deploy.yml",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "7e06914a-746c-4999-9029-3a3c7ceffbfd",
+      "name": "package.json:dev",
+      "component_type": "LIFECYCLE_SCRIPT",
+      "confidence": 0.7200000000000001,
+      "metadata": {
+        "description": "Defines the development lifecycle script in package.json.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Development Script",
+        "script_phase": "dev",
+        "script_body": "concurrently -n vite,server -c cyan,green \"vite --port=4001 --host=0.0.0.0\" \"PORT=3001 tsx server.ts\"",
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.72
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "lifecycle_script: dev in package.json",
+          "location": {
+            "path": "package.json",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "decc56ec-f9dc-4838-985b-b332b38fabed",
+      "name": "package.json:dev:server",
+      "component_type": "LIFECYCLE_SCRIPT",
+      "confidence": 0.7200000000000001,
+      "metadata": {
+        "description": "Lifecycle script named dev:server defined in package.json.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Server Development Script",
+        "script_phase": "dev:server",
+        "script_body": "PORT=3001 tsx server.ts",
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.72
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "lifecycle_script: dev:server in package.json",
+          "location": {
+            "path": "package.json",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "97308af2-5c04-4c94-8f68-ee2c14f38236",
+      "name": "package.json:build",
+      "component_type": "LIFECYCLE_SCRIPT",
+      "confidence": 0.7200000000000001,
+      "metadata": {
+        "description": "Build lifecycle script defined in package.json for running project build tasks.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Build Script",
+        "script_phase": "build",
+        "script_body": "vite build",
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.72
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "lifecycle_script: build in package.json",
+          "location": {
+            "path": "package.json",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "cd8bc90f-78f3-4fe7-b937-d17a999fef30",
+      "name": "package.json:start",
+      "component_type": "LIFECYCLE_SCRIPT",
+      "confidence": 0.7200000000000001,
+      "metadata": {
+        "description": "Defines the npm start lifecycle script in package.json for launching the application.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Start Script",
+        "script_phase": "start",
+        "script_body": "tsx server.ts",
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.72
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "lifecycle_script: start in package.json",
+          "location": {
+            "path": "package.json",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "bc9a9e96-51f7-4cdf-b98a-9f8dfc445a11",
+      "name": "package.json:preview",
+      "component_type": "LIFECYCLE_SCRIPT",
+      "confidence": 0.7200000000000001,
+      "metadata": {
+        "description": "Package.json lifecycle script that runs the project's preview command.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Preview Script",
+        "script_phase": "preview",
+        "script_body": "vite preview",
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.72
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "lifecycle_script: preview in package.json",
+          "location": {
+            "path": "package.json",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "49ce2515-9502-40b7-ae16-09856afa7af7",
+      "name": "package.json:clean",
+      "component_type": "LIFECYCLE_SCRIPT",
+      "confidence": 0.7200000000000001,
+      "metadata": {
+        "description": "Defines the npm clean lifecycle script in package.json for running cleanup commands during package maintenance.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Clean Script",
+        "script_phase": "clean",
+        "script_body": "rm -rf dist",
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.72
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "lifecycle_script: clean in package.json",
+          "location": {
+            "path": "package.json",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "35bf5679-5b13-4b06-ac01-53f8b0e81041",
+      "name": "package.json:lint",
+      "component_type": "LIFECYCLE_SCRIPT",
+      "confidence": 0.7200000000000001,
+      "metadata": {
+        "description": "Lifecycle script defined in package.json for running lint checks.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Lint Script",
+        "script_phase": "lint",
+        "script_body": "tsc --noEmit",
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.72
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "lifecycle_script: lint in package.json",
+          "location": {
+            "path": "package.json",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "8e782abc-61d5-42b7-8f47-b059b48031b2",
+      "name": "**`navigation_agent`**",
+      "component_type": "TOOL",
+      "confidence": 0.5,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: tools probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "7845cb91-4580-471f-8d54-c40928b42701",
+      "name": "**`climate_agent`**",
+      "component_type": "TOOL",
+      "confidence": 0.5,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: tools probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "c4d9898f-98b5-4957-85de-2411bbef2348",
+      "name": "**`media_agent`**",
+      "component_type": "TOOL",
+      "confidence": 0.5,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: tools probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "27f4fec1-5a40-47d7-b82a-a51da667bcdc",
+      "name": "**`communication_agent`**",
+      "component_type": "TOOL",
+      "confidence": 0.5,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: tools probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "63828398-ea39-4b8d-a892-79256cc74089",
+      "name": "**`weather_agent`**",
+      "component_type": "TOOL",
+      "confidence": 0.5,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: tools probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fd195f01-d9c6-41ac-ad9a-7b79481e7f89",
+      "name": "**`webSearch`**",
+      "component_type": "TOOL",
+      "confidence": 0.5,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: tools probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "e7aee07a-4bc5-42dc-b9bf-c58a7d96922c",
+      "name": "**navigation_agent**",
+      "component_type": "AGENT",
+      "confidence": 0.5,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: subagents probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fd32f06a-a9e2-43bc-b281-1e57eec005ab",
+      "name": "**climate_agent**",
+      "component_type": "AGENT",
+      "confidence": 0.5,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: subagents probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "7f495b3f-68b2-4779-8d29-b7e7abf0204d",
+      "name": "**media_agent**",
+      "component_type": "AGENT",
+      "confidence": 0.5,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: subagents probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "10ad87bf-24e6-491d-8591-b89828f4ae29",
+      "name": "**communication_agent**",
+      "component_type": "AGENT",
+      "confidence": 0.5,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: subagents probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "df544a7e-3937-4739-9bf5-982abf599c3d",
+      "name": "**weather_agent**",
+      "component_type": "AGENT",
+      "confidence": 0.5,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: subagents probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
     }
   ],
-  "edges": [],
-  "deps": [],
+  "edges": [
+    {
+      "source": "b8e6e94d-855a-4c60-b7b7-4343a018bd9b",
+      "target": "425c9613-8fed-4d65-9e48-fa382c76b144",
+      "relationship_type": "USES",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.5
+    },
+    {
+      "source": "b8e6e94d-855a-4c60-b7b7-4343a018bd9b",
+      "target": "14f796c3-bf2b-4eb4-9846-9b6719abe623",
+      "relationship_type": "USES",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.5
+    },
+    {
+      "source": "adb48bbc-357e-46c8-b2b6-a70be07e54ea",
+      "target": "425c9613-8fed-4d65-9e48-fa382c76b144",
+      "relationship_type": "USES",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.5
+    },
+    {
+      "source": "adb48bbc-357e-46c8-b2b6-a70be07e54ea",
+      "target": "14f796c3-bf2b-4eb4-9846-9b6719abe623",
+      "relationship_type": "USES",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.5
+    },
+    {
+      "source": "4bc77f9b-debc-43b1-aa3a-21fe6b344fdb",
+      "target": "e7941282-dd9b-4857-a77b-fd9fc6638256",
+      "relationship_type": "USES",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.6
+    },
+    {
+      "source": "4bc77f9b-debc-43b1-aa3a-21fe6b344fdb",
+      "target": "da5f633a-a773-44a4-b40a-2beb23050aee",
+      "relationship_type": "USES",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.6
+    },
+    {
+      "source": "4bc77f9b-debc-43b1-aa3a-21fe6b344fdb",
+      "target": "e6cec09d-7810-4f4b-8583-6703f1c94323",
+      "relationship_type": "USES",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.6
+    },
+    {
+      "source": "d305c581-11ca-413a-b749-a1c692d88739",
+      "target": "dd512623-496b-41bd-9db3-731b5c02f101",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "d305c581-11ca-413a-b749-a1c692d88739",
+      "target": "f61fdfd5-fd59-4319-94ce-364489b5b86c",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "d305c581-11ca-413a-b749-a1c692d88739",
+      "target": "f60a8350-98ac-4660-b87f-c797ef3fba99",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "d305c581-11ca-413a-b749-a1c692d88739",
+      "target": "e2f2ad32-3271-484a-9a1d-859fe456b160",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "d305c581-11ca-413a-b749-a1c692d88739",
+      "target": "2de14405-f62a-4c2c-a92f-fd4a565c62d3",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "e7f77b1e-578a-4464-bf9a-462ce12f13cd",
+      "target": "dd512623-496b-41bd-9db3-731b5c02f101",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "e7f77b1e-578a-4464-bf9a-462ce12f13cd",
+      "target": "f61fdfd5-fd59-4319-94ce-364489b5b86c",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "e7f77b1e-578a-4464-bf9a-462ce12f13cd",
+      "target": "f60a8350-98ac-4660-b87f-c797ef3fba99",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "e7f77b1e-578a-4464-bf9a-462ce12f13cd",
+      "target": "e2f2ad32-3271-484a-9a1d-859fe456b160",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "e7f77b1e-578a-4464-bf9a-462ce12f13cd",
+      "target": "2de14405-f62a-4c2c-a92f-fd4a565c62d3",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "852b943b-d67a-4a7c-a15b-735f13585de8",
+      "target": "dd512623-496b-41bd-9db3-731b5c02f101",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "852b943b-d67a-4a7c-a15b-735f13585de8",
+      "target": "f61fdfd5-fd59-4319-94ce-364489b5b86c",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "852b943b-d67a-4a7c-a15b-735f13585de8",
+      "target": "f60a8350-98ac-4660-b87f-c797ef3fba99",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "852b943b-d67a-4a7c-a15b-735f13585de8",
+      "target": "e2f2ad32-3271-484a-9a1d-859fe456b160",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "852b943b-d67a-4a7c-a15b-735f13585de8",
+      "target": "2de14405-f62a-4c2c-a92f-fd4a565c62d3",
+      "relationship_type": "PROTECTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.4
+    },
+    {
+      "source": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "target": "8e782abc-61d5-42b7-8f47-b059b48031b2",
+      "relationship_type": "CALLS",
+      "derivation": "hint"
+    },
+    {
+      "source": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "target": "7845cb91-4580-471f-8d54-c40928b42701",
+      "relationship_type": "CALLS",
+      "derivation": "hint"
+    },
+    {
+      "source": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "target": "c4d9898f-98b5-4957-85de-2411bbef2348",
+      "relationship_type": "CALLS",
+      "derivation": "hint"
+    },
+    {
+      "source": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "target": "27f4fec1-5a40-47d7-b82a-a51da667bcdc",
+      "relationship_type": "CALLS",
+      "derivation": "hint"
+    },
+    {
+      "source": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "target": "63828398-ea39-4b8d-a892-79256cc74089",
+      "relationship_type": "CALLS",
+      "derivation": "hint"
+    },
+    {
+      "source": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "target": "fd195f01-d9c6-41ac-ad9a-7b79481e7f89",
+      "relationship_type": "CALLS",
+      "derivation": "hint"
+    },
+    {
+      "source": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "target": "e7aee07a-4bc5-42dc-b9bf-c58a7d96922c",
+      "relationship_type": "DELEGATES_TO",
+      "derivation": "hint"
+    },
+    {
+      "source": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "target": "fd32f06a-a9e2-43bc-b281-1e57eec005ab",
+      "relationship_type": "DELEGATES_TO",
+      "derivation": "hint"
+    },
+    {
+      "source": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "target": "7f495b3f-68b2-4779-8d29-b7e7abf0204d",
+      "relationship_type": "DELEGATES_TO",
+      "derivation": "hint"
+    },
+    {
+      "source": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "target": "10ad87bf-24e6-491d-8591-b89828f4ae29",
+      "relationship_type": "DELEGATES_TO",
+      "derivation": "hint"
+    },
+    {
+      "source": "7e668463-fd94-4e4f-92e0-6874771acdc5",
+      "target": "df544a7e-3937-4739-9bf5-982abf599c3d",
+      "relationship_type": "DELEGATES_TO",
+      "derivation": "hint"
+    }
+  ],
+  "deps": [
+    {
+      "name": "@google/adk",
+      "version_spec": "^1.1.0",
+      "purl": "pkg:npm/%40google/adk@1.1.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@google/genai",
+      "version_spec": "^1.29.0",
+      "purl": "pkg:npm/%40google/genai@1.29.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@tailwindcss/vite",
+      "version_spec": "^4.1.14",
+      "purl": "pkg:npm/%40tailwindcss/vite@4.1.14",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@vis.gl/react-google-maps",
+      "version_spec": "^1.8.3",
+      "purl": "pkg:npm/%40vis.gl/react-google-maps@1.8.3",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@vitejs/plugin-react",
+      "version_spec": "^5.0.4",
+      "purl": "pkg:npm/%40vitejs/plugin-react@5.0.4",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "dotenv",
+      "version_spec": "^17.2.3",
+      "purl": "pkg:npm/dotenv@17.2.3",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "express",
+      "version_spec": "^4.21.2",
+      "purl": "pkg:npm/express@4.21.2",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "jsonwebtoken",
+      "version_spec": "^9.0.3",
+      "purl": "pkg:npm/jsonwebtoken@9.0.3",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "lucide-react",
+      "version_spec": "^0.546.0",
+      "purl": "pkg:npm/lucide-react@0.546.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "motion",
+      "version_spec": "^12.23.24",
+      "purl": "pkg:npm/motion@12.23.24",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "react",
+      "version_spec": "^19.0.1",
+      "purl": "pkg:npm/react@19.0.1",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "react-dom",
+      "version_spec": "^19.0.1",
+      "purl": "pkg:npm/react-dom@19.0.1",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "tsx",
+      "version_spec": "^4.21.0",
+      "purl": "pkg:npm/tsx@4.21.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "vite",
+      "version_spec": "^6.2.3",
+      "purl": "pkg:npm/vite@6.2.3",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "zod",
+      "version_spec": "^4.4.3",
+      "purl": "pkg:npm/zod@4.4.3",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@types/express",
+      "version_spec": "^4.17.21",
+      "purl": "pkg:npm/%40types/express@4.17.21",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@types/jsonwebtoken",
+      "version_spec": "^9.0.10",
+      "purl": "pkg:npm/%40types/jsonwebtoken@9.0.10",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@types/node",
+      "version_spec": "^22.14.0",
+      "purl": "pkg:npm/%40types/node@22.14.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "autoprefixer",
+      "version_spec": "^10.4.21",
+      "purl": "pkg:npm/autoprefixer@10.4.21",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "concurrently",
+      "version_spec": "^9.2.1",
+      "purl": "pkg:npm/concurrently@9.2.1",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "tailwindcss",
+      "version_spec": "^4.1.14",
+      "purl": "pkg:npm/tailwindcss@4.1.14",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "typescript",
+      "version_spec": "~5.8.2",
+      "purl": "pkg:npm/typescript@5.8.2",
+      "group": "dev",
+      "source_file": "package.json"
+    }
+  ],
   "summary": {
-    "use_case": "This application implements an agentic AI workflow with 0 agent(s), 0 tool integration(s), and 0 guardrail control(s). Detected use cases include general agentic task orchestration. Multi-modal support: Voice not supported, Images not supported, Video not supported.",
-    "frameworks": [],
+    "use_case": "This is an agentic Gemini car assistant that serves users through a chat API and integrates search, navigation, weather, climate, communication, and media tools for search-based retrieval and related assistance. It supports text and voice interactions, but not image or video input, and exposes chat/auth endpoints using JWT/Bearer authentication.",
+    "frameworks": [
+      "google_adk_ts",
+      "google-adk"
+    ],
     "modalities": [
-      "TEXT"
+      "TEXT",
+      "VOICE"
     ],
     "modality_support": {
       "text": true,
-      "voice": false,
+      "voice": true,
       "image": false,
       "video": false
     },
-    "api_endpoints": [],
-    "deployment_platforms": [
-      "Azure"
+    "api_endpoints": [
+      "*",
+      "/api/agent/chat",
+      "/api/auth/login",
+      "/api/auth/logout",
+      "/api/auth/verify"
     ],
-    "regions": [],
+    "deployment_platforms": [
+      "GCP",
+      "Azure",
+      "AWS",
+      "Cloud Run",
+      "GitHub Actions"
+    ],
+    "regions": [
+      "us-central1",
+      "us-west2",
+      "us-west2-docker"
+    ],
     "environments": [
-      "test",
-      "dev"
+      "dev",
+      "development",
+      "production",
+      "test"
     ],
     "deployment_urls": [],
-    "iac_accounts": [],
+    "iac_accounts": [
+      "platform-dev-2025"
+    ],
     "node_counts": {
-      "AUTH": 1,
-      "API_ENDPOINT": 6
+      "AGENT": 1,
+      "FRAMEWORK": 2,
+      "MODEL": 2,
+      "TOOL": 6,
+      "AUTH": 3,
+      "PRIVILEGE": 2,
+      "API_ENDPOINT": 5,
+      "DEPLOYMENT": 3,
+      "PROMPT": 1,
+      "CONTAINER_IMAGE": 1,
+      "IAM": 1,
+      "LIFECYCLE_SCRIPT": 7,
+      "GITHUB_WORKFLOW": 1
     },
-    "secret_stores": [],
+    "secret_stores": [
+      "github_actions_secret"
+    ],
     "availability_zones": [],
     "encryption_at_rest_coverage": false,
-    "security_findings": [],
-    "iam_principals": [],
-    "service_accounts": [],
+    "security_findings": [
+      "secrets_in_build_args"
+    ],
+    "iam_principals": [
+      "gcp-identity-deploy"
+    ],
+    "service_accounts": [
+      "gcp-identity-deploy"
+    ],
+    "iac_security_summary": "## Security briefing\n\n### 1) Deployment posture\n- **Cloud provider / runtime:** GCP; deployment target is `github-actions` with Cloud Run, runners are `ubuntu-latest`.\n- **Regions / HA / resilience:** Not evidenced.\n- **Assessment:** The deployment path is defined, but resilience and regional posture are not evidenced in the provided configuration.\n\n### 2) Secret management\n- **Secret stores:** `github_actions_secret`.\n- **Credential handling:** `uses_oidc: true`; security finding includes `secrets_in_build_args`.\n- **Assessment:** Secret storage is present and OIDC is enabled, but the build process shows a secrets-in-build-args finding that should be remediated.\n\n### 3) Encryption\n- **Encryption at rest:** `false`.\n- **Key management:** Not evidenced.\n- **Assessment:** Encryption at rest is explicitly not covered in the provided signals.\n\n### 4) IAM / least privilege\n- **Principals / service accounts:** `gcp-identity-deploy`.\n- **Scope / permissions / trust:** `iam_scope: project`; permissions `contents:read`, `id-token:write`; trust principal `github-actions`.\n- **Assessment:** A project-scoped service account is used with limited listed permissions, but broader least-privilege validation is not evidenced.\n\n### 5) CI/CD security\n- **Runners / triggers:** `ubuntu-latest`; triggers `push` and `workflow_dispatch`.\n- **OIDC / credential flow:** `uses_oidc: true`; trust principal is `github-actions`.\n- **Assessment:** The workflow uses OIDC for federated access, but the trigger surface includes both push and manual dispatch.\n\n### 6) Container security\n- **Images / root user:** Base image `node:20-slim`; root/non-root user is not evidenced.\n- **Health checks / resource limits:** Not evidenced.\n- **Assessment:** The base image is identified, but container hardening details are not provided.\n\n### 7) Top 3 prioritized actions\n1. Remove `secrets_in_build_args` by refactoring the build to use secret references from `github_actions_secret` and OIDC-based access only.\n2. Validate and tighten the `gcp-identity-deploy` trust and project-scoped access so it remains limited to the intended `github-actions` workflow.\n3. Add explicit encryption-at-rest and container hardening evidence, including health checks, resource limits, and non-root execution settings.",
     "data_classification": [],
     "classified_tables": [],
-    "startup_commands": [],
+    "startup_commands": [
+      {
+        "command": "npm run dev",
+        "source": "package.json",
+        "label": "dev"
+      },
+      {
+        "command": "npm run start",
+        "source": "package.json",
+        "label": "start"
+      },
+      {
+        "command": "npm run preview",
+        "source": "package.json",
+        "label": "start"
+      }
+    ],
     "env_files": [],
     "env_var_keys": [],
+    "local_url": "http://localhost:3000",
     "staging_urls": [],
     "production_urls": [],
-    "log_paths": [
-      "$SCRIPT_DIR/reports/agentic-test-$(date +%Y%m%dT%H%M%S).log"
+    "log_paths": [],
+    "uses_streaming": true,
+    "streaming_endpoints": [
+      "/run_sse"
     ],
-    "uses_streaming": false,
-    "streaming_endpoints": [],
-    "total_loc": 289,
-    "tokens_used_for_enrichment": 0,
-    "input_tokens_used": 0,
-    "output_tokens_used": 0,
-    "llm_model_used": "gemini/gemini-2.0-flash",
+    "total_loc": 14378,
+    "tokens_used_for_enrichment": 25737,
+    "input_tokens_used": 18744,
+    "output_tokens_used": 6993,
+    "llm_model_used": "azure/gpt-5.4-mini",
+    "testing": {
+      "test_frameworks": [],
+      "ci_cd_pipeline": "github_actions",
+      "quality_gates": []
+    },
     "github_actions_content": "",
     "workflow_security_findings": [],
     "k8s_network_policy_namespaces": [],
-    "has_package_json": false,
-    "has_lockfile": false,
+    "has_package_json": true,
+    "has_lockfile": true,
     "minified_js_files": []
   },
-  "_enrichment_cache_key": "725c86a87422ec61bdd97fc3b3d9733e2b822e86e6a8b6181c2419316affa514"
+  "relationship_graph_md": "## Component Relationship Graph\n\n- **Model/framework layer:**  \n  - `Google Adk Ts` and `LLM Clients Ts` **likely** call both `gemini-2.0-flash` and `gemini-3.1` (the links are marked **heuristic**, so this is inferred rather than confirmed).\n\n- **Agent/orchestration:**  \n  - `Gemini Car Assistant Assistant` is shown, but **no connections** are drawn from it, so the graph does not show how it is wired to models or tools.\n\n- **Tools:**  \n  - `climate`, `communication`, `media`, `navigation`, `search`, and `weather` tools are all present, but **none have any connections**.  \n  - That means the graph shows **no confirmed tool usage/orchestration** and no tool guardrails in the captured relationships.\n\n- **API/auth flow:**  \n  - `Bearer Auth` and `JWT` are both **suggested** to protect `*`, `/API/Agent/Chat`, `/API/Auth/Login`, `/API/Auth/Logout`, and `/API/Auth/Verify`.  \n  - `Insecure Default` is also shown as protecting the same endpoints, which suggests **overlapping or inconsistent auth coverage** in the graph.\n\n- **Guardrails / data access:**  \n  - `System Instruction` has **no connections**, so no prompt-to-tool or prompt-to-endpoint enforcement is visible here.  \n  - The graph shows **no datastores** or external storage access.\n\n```mermaid\nflowchart LR\n    __dd5126([\"\ud83c\udf10 *\"])\n    _API_Agent_Chat_f61fdf([\"\ud83c\udf10 /API/Agent/Chat\"])\n    _API_Auth_Login_f60a83([\"\ud83c\udf10 /API/Auth/Login\"])\n    _API_Auth_Logout_e2f2ad([\"\ud83c\udf10 /API/Auth/Logout\"])\n    _API_Auth_Verify_2de144([\"\ud83c\udf10 /API/Auth/Verify\"])\n    Google_Adk_Ts_b8e6e9[/\"\u2699 Google Adk Ts\"/]\n    LLM_Clients_Ts_adb48b[/\"\u2699 LLM Clients Ts\"/]\n    gemini_2_0_flash_425c96[(\"\ud83e\udde0 gemini-2.0-flash\")]\n    gemini_3_1_14f796[(\"\ud83e\udde0 gemini-3.1\")]\n    System_Instruction_91fce1>\"\ud83d\udcac System Instruction\"]\n    climate_tools_e2d0f0(\"\ud83d\udd27 climate tools\")\n    communication_tools_c7d49b(\"\ud83d\udd27 communication tools\")\n    media_tools_e52be3(\"\ud83d\udd27 media tools\")\n    navigation_tools_626bbe(\"\ud83d\udd27 navigation tools\")\n    search_tools_29e75f(\"\ud83d\udd27 search tools\")\n    weather_tools_4c6227(\"\ud83d\udd27 weather tools\")\n    Gemini_Car_Assistant_Assistant_7e6684[\"\ud83e\udd16 Gemini Car Assistant Assistant\"]\n\n    Google_Adk_Ts_b8e6e9 -->|uses| gemini_2_0_flash_425c96\n    Google_Adk_Ts_b8e6e9 -->|uses| gemini_3_1_14f796\n    LLM_Clients_Ts_adb48b -->|uses| gemini_2_0_flash_425c96\n    LLM_Clients_Ts_adb48b -->|uses| gemini_3_1_14f796\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Gemini_Car_Assistant_Assistant_7e6684 agent\n    class climate_tools_e2d0f0,communication_tools_c7d49b,media_tools_e52be3,navigation_tools_626bbe,search_tools_29e75f,weather_tools_4c6227 tool\n    class gemini_2_0_flash_425c96,gemini_3_1_14f796 model\n    class System_Instruction_91fce1 prompt\n    class Google_Adk_Ts_b8e6e9,LLM_Clients_Ts_adb48b fw\n    class __dd5126,_API_Agent_Chat_f61fdf,_API_Auth_Login_f60a83,_API_Auth_Logout_e2f2ad,_API_Auth_Verify_2de144 endpoint\n```"
 }

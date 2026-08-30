@@ -51,6 +51,7 @@ def _api_node(
     auth_required: bool = False,
     idor_surface: bool = False,
     path_params: list[str] | None = None,
+    rate_limited: bool | None = None,
 ) -> Node:
     return Node(
         id=_uuid.uuid5(_uuid.NAMESPACE_URL, node_id),
@@ -63,6 +64,7 @@ def _api_node(
             auth_required=auth_required,
             idor_surface=idor_surface,
             path_params=path_params or [],
+            rate_limited=rate_limited,
         ),
     )
 
@@ -460,7 +462,13 @@ def test_invoke_endpoint_appends_failed_request_url_on_connect_error():
 # ---------------------------------------------------------------------------
 
 def test_generator_produces_auth_bypass_for_protected_endpoint():
-    node = _api_node("ep1", "List Users", path="/api/users", method="GET", auth_required=True)
+    # rate_limited=True keeps this isolated to auth-bypass — build_rate_limit_probe
+    # shares ScenarioType.AUTH_BYPASS and would otherwise also fire here now that
+    # it targets endpoints WITHOUT a confirmed rate-limit posture.
+    node = _api_node(
+        "ep1", "List Users", path="/api/users", method="GET",
+        auth_required=True, rate_limited=True,
+    )
     sbom = _make_sbom([node])
     gen = ScenarioGenerator(sbom)
     scenarios = gen.generate()
@@ -582,6 +590,27 @@ def test_generator_skips_reflected_xss_probe_when_no_params():
     scenarios = gen.generate()
     xss = [s for s in scenarios if s.scenario_type == ScenarioType.REFLECTED_XSS]
     assert len(xss) == 0
+
+
+def test_generator_produces_rate_limit_probe_when_not_confirmed_rate_limited():
+    # No rate_limited metadata at all (the common case for un-instrumented
+    # frameworks like plain Express/Node) — the probe should fire to
+    # empirically test the same population NGA-026 flags statically.
+    node = _api_node("ep16", "Login", path="/login", rate_limited=None)
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    rate_limit = [s for s in scenarios if "Rate-Limit Probe" in s.title]
+    assert len(rate_limit) == 1
+
+
+def test_generator_skips_rate_limit_probe_when_already_confirmed_rate_limited():
+    node = _api_node("ep17", "Login", path="/login", rate_limited=True)
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    rate_limit = [s for s in scenarios if "Rate-Limit Probe" in s.title]
+    assert len(rate_limit) == 0
 
 
 def test_generator_no_api_scenarios_without_api_endpoint_nodes():
