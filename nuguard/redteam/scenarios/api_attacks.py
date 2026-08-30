@@ -4,6 +4,10 @@ These scenarios probe REST endpoints discovered in the SBOM by sending raw HTTP
 requests — completely bypassing the agent chat interface.  Each step carries
 ``target_path`` so the executor routes to ``TargetAppClient.invoke_endpoint``
 instead of the chat endpoint.
+
+``build_injection_probe`` is the raw-HTTP counterpart to the chat-mediated
+SQL-injection scenario in ``sbom_driven.py``: it fuzzes path/body parameters
+directly, with no LLM/tool layer required in front of the database.
 """
 from __future__ import annotations
 
@@ -389,6 +393,148 @@ def build_idor(
             f"Access GET {path} using a different object ID "
             f"({', '.join(_IDOR_PROBE_VALUES)}).  A 2xx response containing "
             f"another record's data (not just any 2xx) indicates IDOR."
+        ),
+        target_node_ids=[endpoint_id],
+        impact_score=chain.pre_score,
+        chain=chain,
+    )
+
+
+def _replace_path_param(path: str, param: str, value: str) -> str | None:
+    """Return *path* with *param* replaced by *value*, or ``None`` if absent.
+
+    Unlike :func:`_replace_first_id_param`, this substitutes any named path
+    parameter — injection candidates aren't limited to ID-like names.
+    """
+    replaced = re.sub(
+        rf"\{{{re.escape(param)}\}}|:{re.escape(param)}\b",
+        value,
+        path,
+    )
+    return replaced if replaced != path else None
+
+
+# Classic error-based SQL injection payloads — designed to break out of a
+# naively-interpolated string/numeric literal and surface a DB driver error.
+_INJECTION_PAYLOADS: tuple[str, ...] = (
+    "' OR '1'='1",
+    "'; DROP TABLE x;--",
+)
+
+# NoSQL operator-injection payloads (MongoDB-style). Only meaningful as a
+# JSON body field value — a dict can't be substituted into a path segment.
+_NOSQL_PAYLOADS: tuple[object, ...] = (
+    {"$ne": None},
+    {"$gt": ""},
+)
+
+# Case-insensitive substrings of common DB driver/ORM error messages. A 5xx
+# response containing one of these is strong evidence the payload reached a
+# database layer unsanitised, regardless of which of the queried
+# path/body candidates triggered it.
+_DB_ERROR_SIGNATURES: tuple[str, ...] = (
+    "you have an error in your sql syntax",
+    "unclosed quotation mark",
+    "quoted string not properly terminated",
+    "sqlite3.operationalerror",
+    "sqlstate",
+    "pg_query()",
+    "ora-00933",
+    "system.data.sqlclient",
+    "warning: mysql_",
+    "mongoerror",
+    "e11000 duplicate key",
+    "sequelizedatabaseerror",
+)
+
+_DB_ERROR_SUCCESS_SIGNAL = "|".join(_DB_ERROR_SIGNATURES)
+
+# Cap combinatorics: at most this many path params and body fields are
+# probed, each with at most this many payloads.
+_MAX_INJECTION_PARAMS = 3
+_MAX_INJECTION_PAYLOADS_PER_PARAM = 2
+
+
+def build_injection_probe(
+    endpoint_id: str,
+    endpoint_name: str,
+    path: str,
+    method: str = "GET",
+    path_params: list[str] | None = None,
+    request_body_schema: dict[str, str] | None = None,
+    sensitive_fields: list[str] | None = None,
+) -> AttackScenario | None:
+    """Build a generic SQLi/NoSQLi injection-probe scenario.
+
+    Fuzzes path parameters and request-body fields with error-inducing SQLi
+    and NoSQLi payloads, checking each response for a DB driver/ORM error
+    signature. This is the raw-HTTP counterpart to the chat-mediated
+    ``build_sql_injection`` in ``sbom_driven.py`` — it targets REST
+    endpoints with no LLM/tool layer in front of the database, following
+    the same probe-then-fall-through chain shape as :func:`build_idor`.
+
+    Returns ``None`` when there are no path or body parameters to probe.
+    """
+    candidates: list[tuple[str, dict[str, str] | None, dict | None]] = []
+
+    for param in (path_params or [])[:_MAX_INJECTION_PARAMS]:
+        for payload in _INJECTION_PAYLOADS[:_MAX_INJECTION_PAYLOADS_PER_PARAM]:
+            probe_path = _replace_path_param(path, param, payload)
+            if probe_path is not None:
+                candidates.append((probe_path, None, None))
+
+    if request_body_schema:
+        base_body = _build_realistic_body(request_body_schema)
+        for field in list(request_body_schema)[:_MAX_INJECTION_PARAMS]:
+            for str_payload in _INJECTION_PAYLOADS[:_MAX_INJECTION_PAYLOADS_PER_PARAM]:
+                body: dict = dict(base_body)
+                body[field] = str_payload
+                candidates.append((path, None, body))
+            for nosql_payload in _NOSQL_PAYLOADS:
+                body = dict(base_body)
+                body[field] = nosql_payload
+                candidates.append((path, None, body))
+
+    if not candidates:
+        return None
+
+    chain_id = str(uuid.uuid4())
+    steps = [
+        ExploitStep(
+            step_id=f"{chain_id}_s{idx}",
+            step_type="INVOKE",
+            description=f"Inject payload into {endpoint_name} and check for a DB error signature",
+            payload="",
+            target_path=probe_path,
+            http_method=method,
+            http_body=probe_body,
+            target_node_id=endpoint_id,
+            success_signal=_DB_ERROR_SUCCESS_SIGNAL,
+            success_requires_2xx=False,
+            on_failure="abort" if idx == len(candidates) else "skip",
+            use_llm_eval=True,
+            sensitive_fields=sensitive_fields or [],
+        )
+        for idx, (probe_path, _probe_params, probe_body) in enumerate(candidates, start=1)
+    ]
+    chain = ExploitChain(
+        chain_id=chain_id,
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.SQL_INJECTION,
+        sbom_path=[endpoint_id],
+        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        steps=steps,
+    )
+    chain.pre_score = pre_score(chain, pii_in_path=bool(sensitive_fields))
+    return AttackScenario(
+        scenario_id=str(uuid.uuid4()),
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.SQL_INJECTION,
+        title=f"Injection Probe — {endpoint_name}",
+        description=(
+            f"Fuzz {method} {path}'s path/body parameters with SQLi and "
+            f"NoSQLi payloads. A response containing a DB driver/ORM error "
+            f"signature indicates the payload reached an unsanitised query."
         ),
         target_node_ids=[endpoint_id],
         impact_score=chain.pre_score,

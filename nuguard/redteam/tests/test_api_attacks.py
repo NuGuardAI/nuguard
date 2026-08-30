@@ -7,9 +7,12 @@ from datetime import UTC, datetime
 from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, GoalType, ScenarioType
 from nuguard.redteam.executor.executor import StepResult
 from nuguard.redteam.scenarios.api_attacks import (
+    _DB_ERROR_SIGNATURES,
     _replace_first_id_param,
+    _replace_path_param,
     build_auth_bypass,
     build_idor,
+    build_injection_probe,
     build_mass_assignment,
 )
 from nuguard.redteam.scenarios.generator import ScenarioGenerator
@@ -225,6 +228,71 @@ def test_idor_returns_none_when_no_path_params():
 
 
 # ---------------------------------------------------------------------------
+# _replace_path_param
+# ---------------------------------------------------------------------------
+
+def test_replace_path_param_curly_brace():
+    result = _replace_path_param("/search/{query}", "query", "' OR '1'='1")
+    assert result == "/search/' OR '1'='1"
+
+
+def test_replace_path_param_non_id_name():
+    """Unlike _replace_first_id_param, any param name is a valid target."""
+    result = _replace_path_param("/products/{category}", "category", "payload")
+    assert result == "/products/payload"
+
+
+def test_replace_path_param_absent_returns_none():
+    result = _replace_path_param("/users/{id}", "name", "payload")
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# build_injection_probe
+# ---------------------------------------------------------------------------
+
+def test_injection_probe_path_param_candidates():
+    s = build_injection_probe("ep5", "Search", "/search/{query}", path_params=["query"])
+    assert s is not None
+    assert s.goal_type == GoalType.API_ATTACK
+    assert s.scenario_type == ScenarioType.SQL_INJECTION
+    assert s.chain is not None
+    assert len(s.chain.steps) == 2  # one per _INJECTION_PAYLOADS entry
+    for step in s.chain.steps:
+        assert step.target_path is not None
+        assert step.target_path.startswith("/search/")
+        assert step.success_signal == "|".join(_DB_ERROR_SIGNATURES)
+        assert step.success_requires_2xx is False
+        assert step.use_llm_eval is True
+    assert s.chain.steps[0].on_failure == "skip"
+    assert s.chain.steps[-1].on_failure == "abort"
+
+
+def test_injection_probe_body_field_candidates_include_sqli_and_nosqli():
+    s = build_injection_probe(
+        "ep6", "Login", "/login", method="POST",
+        request_body_schema={"email": "str", "password": "str"},
+    )
+    assert s is not None
+    assert s.chain is not None
+    bodies = [step.http_body for step in s.chain.steps]
+    assert any(b.get("email") == "' OR '1'='1" for b in bodies)
+    assert any(b.get("email") == {"$ne": None} for b in bodies)
+    assert any(b.get("password") == "' OR '1'='1" for b in bodies)
+
+
+def test_injection_probe_returns_none_with_no_candidates():
+    result = build_injection_probe("ep7", "List All", "/resources")
+    assert result is None
+
+
+def test_injection_probe_impact_score_matches_sql_injection_override():
+    s = build_injection_probe("ep5", "Search", "/search/{query}", path_params=["query"])
+    assert s is not None
+    assert s.impact_score == 8.5
+
+
+# ---------------------------------------------------------------------------
 # ScenarioGenerator._api_attack_scenarios integration
 # ---------------------------------------------------------------------------
 
@@ -267,6 +335,27 @@ def test_generator_skips_idor_when_no_id_params():
     scenarios = gen.generate()
     idor = [s for s in scenarios if s.scenario_type == ScenarioType.IDOR]
     assert len(idor) == 0
+
+
+def test_generator_produces_injection_probe_for_endpoint_with_path_params():
+    node = _api_node(
+        "ep5", "Search", path="/search/{query}",
+        method="GET", path_params=["query"],
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    injection = [s for s in scenarios if s.scenario_type == ScenarioType.SQL_INJECTION]
+    assert len(injection) == 1
+
+
+def test_generator_skips_injection_probe_when_no_params():
+    node = _api_node("ep6", "List All", path="/resources", path_params=[])
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    injection = [s for s in scenarios if s.scenario_type == ScenarioType.SQL_INJECTION]
+    assert len(injection) == 0
 
 
 def test_generator_no_api_scenarios_without_api_endpoint_nodes():
@@ -325,4 +414,39 @@ def test_step_result_http_2xx_sentinel_failure_on_none_status():
         success_signal=HTTP_2XX_SENTINEL,
     )
     result = StepResult(step=step, response="error", tool_calls=[], http_status_code=None)
+    assert result.success_signal_found is False
+
+
+# ---------------------------------------------------------------------------
+# StepResult DB-error-signature keyword matching (build_injection_probe)
+# ---------------------------------------------------------------------------
+
+def test_step_result_db_error_signature_match_on_500():
+    from nuguard.models.exploit_chain import ExploitStep
+    step = ExploitStep(
+        step_id="s1",
+        step_type="INVOKE",
+        description="test",
+        payload="",
+        success_signal="|".join(_DB_ERROR_SIGNATURES),
+        success_requires_2xx=False,
+    )
+    response = "Internal Server Error: SQLSTATE[42000]: Syntax error near..."
+    result = StepResult(step=step, response=response, tool_calls=[], http_status_code=500)
+    assert result.success_signal_found is True
+
+
+def test_step_result_db_error_signature_no_match_on_clean_response():
+    from nuguard.models.exploit_chain import ExploitStep
+    step = ExploitStep(
+        step_id="s1",
+        step_type="INVOKE",
+        description="test",
+        payload="",
+        success_signal="|".join(_DB_ERROR_SIGNATURES),
+        success_requires_2xx=False,
+    )
+    result = StepResult(
+        step=step, response='{"results": []}', tool_calls=[], http_status_code=200
+    )
     assert result.success_signal_found is False

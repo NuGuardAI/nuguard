@@ -29,7 +29,7 @@ Sources:
 | 4 | Cross-Site Scripting (XSS) | `build_output_xss` (`output_handling.py`) — LLM-output-echo XSS only | PARTIAL | No finding; only 3 "Improper Output Handling" scenario instances ran, and the check is scoped to markdown/HTML the *chat agent* echoes, not server-rendered HTML pages |
 | 5 | Cryptographic Issues | `NGA-005` (unencrypted PII datastore, encryption-at-rest posture) + new `generic-security.yaml` rules `nuguard-js-weak-hash-for-password`, `nuguard-js-hardcoded-secret` | PARTIAL | **YES on the new rules** — `nuguard-js-weak-hash-for-password` fires on `lib/insecurity.ts:41` (MD5 for password hashing, a real Juice Shop weakness) and `scripts/package.mjs:121`; `nuguard-js-hardcoded-secret` fires on the hardcoded JWT signing secret in `lib/insecurity.ts:54`. Still no dedicated JWT-alg-confusion (`alg: none`) check — see backlog #8 |
 | 6 | Improper Input Validation | New `generic-security.yaml` rule `nuguard-js-path-traversal` | PARTIAL | **YES** — fires on real code: `routes/videoHandler.ts:82`, `routes/vulnCodeFixes.ts:81`, `routes/vulnCodeSnippet.ts:90`, `rsn/rsnUtil.ts:66` and `:155` (5 hits total) |
-| 7 | Injection (SQL/NoSQL/command) | `build_sql_injection` (`tool_abuse.py`, LLM-tool-mediated) + new **`generic-security.yaml`** semgrep ruleset (`nuguard-js-sql-injection`, `nuguard-js-command-injection`, `nuguard-js-insecure-eval`) for direct JS/TS source patterns | **YES** | "SQL Injection via Agent Chat — Sequelize" (redteam) ran 7/7 turns, no finding — plausible true negative, Juice Shop's chatbot doesn't proxy raw SQL. But the new semgrep ruleset found **real hits on Juice Shop's actual vulnerable code**: SQLi in `routes/login.ts:34` and `routes/search.ts:23` (the classic Juice Shop login-bypass and search-injection challenges), plus 4 more in `data/static/codefixes/*.ts`; `nuguard-js-insecure-eval` in `routes/captcha.ts:22` and `routes/userProfile.ts:65`; `nuguard-js-command-injection` in `scripts/package.mjs:20` |
+| 7 | Injection (SQL/NoSQL/command) | `build_sql_injection` (`tool_abuse.py`, LLM-tool-mediated) + new **`build_injection_probe`** (`nuguard/redteam/scenarios/api_attacks.py`, direct-HTTP, `GoalType.API_ATTACK`/`ScenarioType.SQL_INJECTION`) + new **`generic-security.yaml`** semgrep ruleset (`nuguard-js-sql-injection`, `nuguard-js-command-injection`, `nuguard-js-insecure-eval`) for direct JS/TS source patterns | **YES** | "SQL Injection via Agent Chat — Sequelize" (redteam) ran 7/7 turns, no finding — plausible true negative, Juice Shop's chatbot doesn't proxy raw SQL. But the new semgrep ruleset found **real hits on Juice Shop's actual vulnerable code**: SQLi in `routes/login.ts:34` and `routes/search.ts:23` (the classic Juice Shop login-bypass and search-injection challenges), plus 4 more in `data/static/codefixes/*.ts`; `nuguard-js-insecure-eval` in `routes/captcha.ts:22` and `routes/userProfile.ts:65`; `nuguard-js-command-injection` in `scripts/package.mjs:20`. `build_injection_probe` fuzzes any endpoint's path/body parameters with SQLi/NoSQLi payloads and checks for a DB-error signature, following `build_idor`'s multi-step fallback pattern (code landed, unit-tested; **not yet validated against a live Juice Shop run** — see backlog #3) |
 | 8 | Insecure Deserialization | — | **NO** | N/A |
 | 9 | Miscellaneous | — | N/A | N/A (not a distinct vuln class) |
 | 10 | Security Misconfiguration | `trivy_scanner.py`'s built-in `misconfig` scanner + `checkov_scanner.py` (IaC) + new static rules **`NGA-027`** (missing security headers), **`NGA-028`** (permissive CORS), **`NGA-029`** (verbose error leak) in `nuguard/analysis/plugins/nga_rules.py`, fed by new `SecurityHeaderDetail`/`CorsPolicyDetail`/`debug_error_leak` extraction in `fastapi_adapter.py`/`flask_adapter.py` | **YES** | **YES, real findings on both IaC and app layers.** After installing semgrep+checkov and re-running: Trivy's misconfig scanner found 9 findings per `.tf` file (`AWS-0054`, `AWS-0104`, etc.); checkov itself now runs (`✅ ok`, 141 findings, `CKV_AWS_150`/`CKV_AWS_91`/etc. on `aws_lb.juice_shop`). `NGA-027` fired for real: 136 API endpoints flagged for no confirmed CSP/X-Frame-Options/HSTS. `NGA-028`/`NGA-029` stayed silent — Juice Shop's Express/Node endpoints aren't yet instrumented for CORS/debug-mode extraction (only FastAPI/Flask are), a known follow-up (see backlog #4) |
@@ -121,11 +121,31 @@ in this pass.
    follow-up**: extend `generic-security.yaml` to more languages
    (Python/Go currently only have AI-specific rules) if non-AI Python/Go
    targets need the same generic coverage.
-3. **Add a generic direct-HTTP injection prober** in `api_attacks.py`,
-   reusing the `target_path`-substitution pattern `build_idor` already
-   uses: fuzz path/query/body parameters with SQLi/NoSQLi payloads and
-   check for DB-error signatures or response-time/behavioral deltas.
-   Closes the Injection gap for apps with no LLM-mediated DB path.
+3. ~~**Add a generic direct-HTTP injection prober**~~ — **done (v1),
+   validation pending.** Added `build_injection_probe` to
+   `nuguard/redteam/scenarios/api_attacks.py`, following `build_idor`'s
+   `target_path`-substitution / multi-step-fallback pattern: fuzzes path
+   parameters and request-body fields with SQLi payloads
+   (`' OR '1'='1`, `'; DROP TABLE x;--`) and NoSQLi operator payloads
+   (`{"$ne": null}`, `{"$gt": ""}`), checking each response for one of 12
+   DB driver/ORM error signatures (MySQL, Postgres, SQLite, SQL Server,
+   Sequelize, MongoDB) via the existing `StepResult` OR-keyword matcher —
+   no executor changes needed. Wired into `ScenarioGenerator`'s
+   `_api_attack_scenarios` for any endpoint with a path or body parameter.
+   Reuses `ScenarioType.SQL_INJECTION` (already scored 8.5 in
+   `pre_scorer.py`), so it plugs into existing severity/compliance mapping
+   with no other changes. Unit-tested (structure, fallback chaining,
+   generator wiring, `StepResult` keyword matching) — `uv run pytest
+   nuguard/redteam/ -q` passes (343 tests). **Not yet run against a live
+   Juice Shop instance** — closes the gap in principle but real
+   findings/misses against `routes/login.ts`/`routes/search.ts` are
+   unconfirmed; do that validation in a follow-up redteam run before
+   calling the Injection row fully "confirmed real finding" in the
+   coverage matrix. **Deliberately deferred, not built**: (a)
+   response-time/behavioral-delta (blind SQLi) detection — needs new
+   timing plumbing in `TargetAppClient.invoke_endpoint`/`StepResult` that
+   doesn't exist today; (b) query-param injection — no `query_params`
+   SBOM metadata field exists yet, so only path/body params are probed.
 4. ~~**Add a security-misconfiguration prober**~~ — **done, as a static
    check.** Added `NGA-027` (missing security headers), `NGA-028`
    (permissive CORS), `NGA-029` (verbose error leak) to

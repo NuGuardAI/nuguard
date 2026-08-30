@@ -36,6 +36,7 @@ from .api_attacks import (
     build_auth_bypass,
     build_auth_scope_bypass,
     build_idor,
+    build_injection_probe,
     build_mass_assignment,
     build_open_data_exposure,
     build_rate_limit_probe,
@@ -1627,6 +1628,8 @@ class ScenarioGenerator:
         - MASS_ASSIGNMENT — for write methods (POST/PUT/PATCH)
         - IDOR          — for endpoints with ID-like path parameters (explicit
                           metadata OR path template patterns detected via regex)
+        - Injection Probe — SQLi/NoSQLi fuzzing of path/body parameters, for
+                          any endpoint with at least one parameter to probe
         - Open Endpoint Data Exposure — for endpoints that require no auth by
                           design AND are declared to return sensitive data;
                           there's no auth check to bypass, so the question is
@@ -1748,6 +1751,21 @@ class ScenarioGenerator:
                 )
                 if scenario is not None:
                     out.append(scenario)
+
+            # Injection probe: fuzz path/body params with SQLi/NoSQLi payloads
+            # whenever there's at least one candidate to substitute into.
+            if inferred_params or request_body_schema:
+                injection_scenario = build_injection_probe(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    method=method,
+                    path_params=inferred_params,
+                    request_body_schema=request_body_schema,
+                    sensitive_fields=endpoint_sensitive_fields,
+                )
+                if injection_scenario is not None:
+                    out.append(injection_scenario)
 
             # BFLA/Scope bypass: when auth_scope or auth_detail metadata is present
             auth_scope = getattr(meta, "auth_scope", None)
