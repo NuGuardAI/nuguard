@@ -8,12 +8,16 @@ from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, GoalType, ScenarioTy
 from nuguard.redteam.executor.executor import StepResult
 from nuguard.redteam.scenarios.api_attacks import (
     _DB_ERROR_SIGNATURES,
+    _TRAVERSAL_SUCCESS_SIGNATURES,
     _replace_first_id_param,
     _replace_path_param,
     build_auth_bypass,
     build_idor,
     build_injection_probe,
     build_mass_assignment,
+    build_open_redirect_probe,
+    build_path_traversal_probe,
+    build_reflected_xss_probe,
 )
 from nuguard.redteam.scenarios.generator import ScenarioGenerator
 from nuguard.sbom.models import (
@@ -293,6 +297,165 @@ def test_injection_probe_impact_score_matches_sql_injection_override():
 
 
 # ---------------------------------------------------------------------------
+# build_path_traversal_probe
+# ---------------------------------------------------------------------------
+
+def test_path_traversal_probe_path_param_candidates():
+    s = build_path_traversal_probe("ep8", "Download", "/files/{filename}", path_params=["filename"])
+    assert s is not None
+    assert s.goal_type == GoalType.API_ATTACK
+    assert s.scenario_type == ScenarioType.PATH_TRAVERSAL
+    assert s.chain is not None
+    assert len(s.chain.steps) == 2  # one per _TRAVERSAL_PAYLOADS entry
+    for step in s.chain.steps:
+        assert step.target_path is not None
+        assert "etc%2fpasswd" in step.target_path or "etc/passwd" in step.target_path
+        assert step.success_signal == "|".join(_TRAVERSAL_SUCCESS_SIGNATURES)
+        assert step.success_requires_2xx is True
+    assert s.chain.steps[-1].on_failure == "abort"
+
+
+def test_path_traversal_probe_ignores_non_file_param_names():
+    """A path param whose name doesn't suggest a file is not probed."""
+    result = build_path_traversal_probe("ep8", "Get User", "/users/{id}", path_params=["id"])
+    assert result is None
+
+
+def test_path_traversal_probe_body_field_candidate():
+    s = build_path_traversal_probe(
+        "ep9", "Preview", "/preview", method="POST",
+        request_body_schema={"template": "str", "title": "str"},
+    )
+    assert s is not None
+    assert s.chain is not None
+    bodies = [step.http_body for step in s.chain.steps]
+    assert any(b.get("template") == "../../../../etc/passwd" for b in bodies)
+    assert all("title" not in b or b["title"] != "../../../../etc/passwd" for b in bodies)
+
+
+def test_path_traversal_probe_returns_none_with_no_candidates():
+    result = build_path_traversal_probe("ep10", "List All", "/resources")
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# build_open_redirect_probe
+# ---------------------------------------------------------------------------
+
+def test_open_redirect_probe_path_param_candidate():
+    s = build_open_redirect_probe("ep11", "Login", "/login/{next}", path_params=["next"])
+    assert s is not None
+    assert s.goal_type == GoalType.API_ATTACK
+    assert s.scenario_type == ScenarioType.OPEN_REDIRECT
+    assert s.chain is not None
+    step = s.chain.steps[0]
+    assert step.target_path is not None
+    assert ".invalid" in step.target_path
+    assert step.success_signal == step.target_path.rsplit("/login/", 1)[-1]
+    assert step.success_requires_2xx is False
+
+
+def test_open_redirect_probe_ignores_non_redirect_param_names():
+    result = build_open_redirect_probe("ep11", "Get User", "/users/{id}", path_params=["id"])
+    assert result is None
+
+
+def test_open_redirect_probe_body_field_candidate():
+    s = build_open_redirect_probe(
+        "ep12", "Login", "/login", method="POST",
+        request_body_schema={"return_to": "str", "email": "str"},
+    )
+    assert s is not None
+    assert s.chain is not None
+    body = s.chain.steps[0].http_body
+    assert body is not None
+    assert ".invalid" in body["return_to"]
+
+
+def test_open_redirect_probe_marker_is_unique_per_call():
+    s1 = build_open_redirect_probe("ep11", "Login", "/login/{next}", path_params=["next"])
+    s2 = build_open_redirect_probe("ep11", "Login", "/login/{next}", path_params=["next"])
+    assert s1 is not None and s2 is not None
+    assert s1.chain.steps[0].success_signal != s2.chain.steps[0].success_signal
+
+
+def test_open_redirect_probe_returns_none_with_no_candidates():
+    result = build_open_redirect_probe("ep13", "List All", "/resources")
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# build_reflected_xss_probe
+# ---------------------------------------------------------------------------
+
+def test_reflected_xss_probe_path_param_candidate():
+    s = build_reflected_xss_probe("ep14", "Search", "/search/{query}", path_params=["query"])
+    assert s is not None
+    assert s.goal_type == GoalType.API_ATTACK
+    assert s.scenario_type == ScenarioType.REFLECTED_XSS
+    assert s.chain is not None
+    step = s.chain.steps[0]
+    assert step.target_path is not None
+    assert "<script>" in step.target_path
+    assert "nuguardxss" in step.target_path
+    assert step.success_signal == "<script>" + step.target_path.split("<script>", 1)[1]
+    assert step.success_requires_2xx is False
+
+
+def test_reflected_xss_probe_body_field_candidate():
+    s = build_reflected_xss_probe(
+        "ep15", "Comment", "/comments", method="POST",
+        request_body_schema={"body": "str", "author": "str"},
+    )
+    assert s is not None
+    assert s.chain is not None
+    bodies = [step.http_body for step in s.chain.steps]
+    assert any("<script>" in (b.get("body") or "") for b in bodies)
+    assert any("<script>" in (b.get("author") or "") for b in bodies)
+
+
+def test_reflected_xss_probe_marker_is_unique_per_call():
+    s1 = build_reflected_xss_probe("ep14", "Search", "/search/{query}", path_params=["query"])
+    s2 = build_reflected_xss_probe("ep14", "Search", "/search/{query}", path_params=["query"])
+    assert s1 is not None and s2 is not None
+    assert s1.chain.steps[0].success_signal != s2.chain.steps[0].success_signal
+
+
+def test_reflected_xss_probe_returns_none_with_no_candidates():
+    result = build_reflected_xss_probe("ep16", "List All", "/resources")
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# TargetAppClient failed-redirect URL surfacing (open-redirect detection)
+# ---------------------------------------------------------------------------
+
+def test_invoke_endpoint_appends_failed_request_url_on_connect_error():
+    """A DNS/connect failure to the redirect target must surface that URL
+    in the returned response text — this is the sole signal
+    build_open_redirect_probe relies on."""
+    import asyncio
+
+    import httpx
+
+    from nuguard.redteam.target.client import TargetAppClient
+
+    async def _run():
+        client = TargetAppClient(base_url="http://example.invalid")
+
+        async def _raise(*args, **kwargs):
+            request = httpx.Request("GET", "https://nuguard-oob-deadbeef.invalid/redirect-canary")
+            raise httpx.ConnectError("Name or service not known", request=request)
+
+        client._client.request = _raise  # type: ignore[method-assign]
+        status_code, response, _ = await client.invoke_endpoint(path="/redir", method="GET")
+        assert status_code == 0
+        assert "nuguard-oob-deadbeef.invalid" in response
+
+    asyncio.run(_run())
+
+
+# ---------------------------------------------------------------------------
 # ScenarioGenerator._api_attack_scenarios integration
 # ---------------------------------------------------------------------------
 
@@ -356,6 +519,69 @@ def test_generator_skips_injection_probe_when_no_params():
     scenarios = gen.generate()
     injection = [s for s in scenarios if s.scenario_type == ScenarioType.SQL_INJECTION]
     assert len(injection) == 0
+
+
+def test_generator_produces_path_traversal_probe_for_file_param_endpoint():
+    node = _api_node(
+        "ep8", "Download", path="/files/{filename}",
+        method="GET", path_params=["filename"],
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    traversal = [s for s in scenarios if s.scenario_type == ScenarioType.PATH_TRAVERSAL]
+    assert len(traversal) == 1
+
+
+def test_generator_skips_path_traversal_probe_when_no_file_param():
+    node = _api_node("ep9", "Get User", path="/users/{id}", path_params=["id"])
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    traversal = [s for s in scenarios if s.scenario_type == ScenarioType.PATH_TRAVERSAL]
+    assert len(traversal) == 0
+
+
+def test_generator_produces_open_redirect_probe_for_redirect_param_endpoint():
+    node = _api_node(
+        "ep10", "Login", path="/login/{next}",
+        method="GET", path_params=["next"],
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    redirect = [s for s in scenarios if s.scenario_type == ScenarioType.OPEN_REDIRECT]
+    assert len(redirect) == 1
+
+
+def test_generator_skips_open_redirect_probe_when_no_redirect_param():
+    node = _api_node("ep11", "Get User", path="/users/{id}", path_params=["id"])
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    redirect = [s for s in scenarios if s.scenario_type == ScenarioType.OPEN_REDIRECT]
+    assert len(redirect) == 0
+
+
+def test_generator_produces_reflected_xss_probe_for_param_endpoint():
+    node = _api_node(
+        "ep14", "Search", path="/search/{query}",
+        method="GET", path_params=["query"],
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    xss = [s for s in scenarios if s.scenario_type == ScenarioType.REFLECTED_XSS]
+    assert len(xss) == 1
+
+
+def test_generator_skips_reflected_xss_probe_when_no_params():
+    node = _api_node("ep15", "List All", path="/resources", path_params=[])
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    xss = [s for s in scenarios if s.scenario_type == ScenarioType.REFLECTED_XSS]
+    assert len(xss) == 0
 
 
 def test_generator_no_api_scenarios_without_api_endpoint_nodes():

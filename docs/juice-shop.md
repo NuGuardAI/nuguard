@@ -26,16 +26,16 @@ Sources:
 | 1 | Broken Access Control | `NGA-021` (IDOR-prone endpoint, static) + `build_idor`/`build_auth_bypass`/`build_mass_assignment`/`build_auth_scope_bypass` (BFLA/RBAC) in `nuguard/redteam/scenarios/api_attacks.py` | **YES** | **YES** — HIGH finding: Mass Assignment on `/API/Users` leaked a JWT + password hash with no auth check |
 | 2 | Broken Anti-Automation | `NGA-026` (missing rate limiting, static) + `build_rate_limit_probe` (`api_attacks.py`) | PARTIAL | No — no rate-limit-probe scenario appears in the 185-scenario run; the dynamic check didn't fire |
 | 3 | Broken Authentication | `NGA-006` (missing auth on endpoint) + `build_auth_bypass`, session-fixation spec `S06` (`api_schema_attacks.py`) | PARTIAL | No — no weak-password, session-fixation, or JWT-specific finding surfaced |
-| 4 | Cross-Site Scripting (XSS) | `build_output_xss` (`output_handling.py`) — LLM-output-echo XSS only | PARTIAL | No finding; only 3 "Improper Output Handling" scenario instances ran, and the check is scoped to markdown/HTML the *chat agent* echoes, not server-rendered HTML pages |
+| 4 | Cross-Site Scripting (XSS) | `build_output_xss` (`output_handling.py`, LLM-output-echo only) + new **`build_reflected_xss_probe`** (`api_attacks.py`, direct-HTTP, `ScenarioType.REFLECTED_XSS`) — fuzzes any endpoint's path/body parameters with a `<script>` payload and checks for an unescaped verbatim echo in the response, closing the server-rendered-HTML gap `build_output_xss` never covered | PARTIAL | No finding on `build_output_xss` (chat-scoped, as before). `build_reflected_xss_probe` is unit-tested but **not yet validated against a live Juice Shop run** — see backlog #6 |
 | 5 | Cryptographic Issues | `NGA-005` (unencrypted PII datastore, encryption-at-rest posture) + new `generic-security.yaml` rules `nuguard-js-weak-hash-for-password`, `nuguard-js-hardcoded-secret` | PARTIAL | **YES on the new rules** — `nuguard-js-weak-hash-for-password` fires on `lib/insecurity.ts:41` (MD5 for password hashing, a real Juice Shop weakness) and `scripts/package.mjs:121`; `nuguard-js-hardcoded-secret` fires on the hardcoded JWT signing secret in `lib/insecurity.ts:54`. Still no dedicated JWT-alg-confusion (`alg: none`) check — see backlog #8 |
-| 6 | Improper Input Validation | New `generic-security.yaml` rule `nuguard-js-path-traversal` | PARTIAL | **YES** — fires on real code: `routes/videoHandler.ts:82`, `routes/vulnCodeFixes.ts:81`, `routes/vulnCodeSnippet.ts:90`, `rsn/rsnUtil.ts:66` and `:155` (5 hits total) |
+| 6 | Improper Input Validation | New `generic-security.yaml` rule `nuguard-js-path-traversal` + new **`build_path_traversal_probe`** (`api_attacks.py`, direct-HTTP, `ScenarioType.PATH_TRAVERSAL`) — fuzzes file/path-like path/body parameters with `../` payloads and checks for `/etc/passwd`/`win.ini` content in the response | **YES** | **YES on the static rule** — fires on real code: `routes/videoHandler.ts:82`, `routes/vulnCodeFixes.ts:81`, `routes/vulnCodeSnippet.ts:90`, `rsn/rsnUtil.ts:66` and `:155` (5 hits total). `build_path_traversal_probe` is unit-tested but **not yet validated against a live Juice Shop run** — see backlog #5 |
 | 7 | Injection (SQL/NoSQL/command) | `build_sql_injection` (`tool_abuse.py`, LLM-tool-mediated) + new **`build_injection_probe`** (`nuguard/redteam/scenarios/api_attacks.py`, direct-HTTP, `GoalType.API_ATTACK`/`ScenarioType.SQL_INJECTION`) + new **`generic-security.yaml`** semgrep ruleset (`nuguard-js-sql-injection`, `nuguard-js-command-injection`, `nuguard-js-insecure-eval`) for direct JS/TS source patterns | **YES** | "SQL Injection via Agent Chat — Sequelize" (redteam) ran 7/7 turns, no finding — plausible true negative, Juice Shop's chatbot doesn't proxy raw SQL. But the new semgrep ruleset found **real hits on Juice Shop's actual vulnerable code**: SQLi in `routes/login.ts:34` and `routes/search.ts:23` (the classic Juice Shop login-bypass and search-injection challenges), plus 4 more in `data/static/codefixes/*.ts`; `nuguard-js-insecure-eval` in `routes/captcha.ts:22` and `routes/userProfile.ts:65`; `nuguard-js-command-injection` in `scripts/package.mjs:20`. `build_injection_probe` fuzzes any endpoint's path/body parameters with SQLi/NoSQLi payloads and checks for a DB-error signature, following `build_idor`'s multi-step fallback pattern (code landed, unit-tested; **not yet validated against a live Juice Shop run** — see backlog #3) |
 | 8 | Insecure Deserialization | — | **NO** | N/A |
 | 9 | Miscellaneous | — | N/A | N/A (not a distinct vuln class) |
 | 10 | Security Misconfiguration | `trivy_scanner.py`'s built-in `misconfig` scanner + `checkov_scanner.py` (IaC) + new static rules **`NGA-027`** (missing security headers), **`NGA-028`** (permissive CORS), **`NGA-029`** (verbose error leak) in `nuguard/analysis/plugins/nga_rules.py`, fed by new `SecurityHeaderDetail`/`CorsPolicyDetail`/`debug_error_leak` extraction in `fastapi_adapter.py`/`flask_adapter.py` | **YES** | **YES, real findings on both IaC and app layers.** After installing semgrep+checkov and re-running: Trivy's misconfig scanner found 9 findings per `.tf` file (`AWS-0054`, `AWS-0104`, etc.); checkov itself now runs (`✅ ok`, 141 findings, `CKV_AWS_150`/`CKV_AWS_91`/etc. on `aws_lb.juice_shop`). `NGA-027` fired for real: 136 API endpoints flagged for no confirmed CSP/X-Frame-Options/HSTS. `NGA-028`/`NGA-029` stayed silent — Juice Shop's Express/Node endpoints aren't yet instrumented for CORS/debug-mode extraction (only FastAPI/Flask are), a known follow-up (see backlog #4) |
 | 11 | Security through Obscurity | — | **NO** | N/A |
 | 12 | Sensitive Data Exposure | `NGA-001`/`NGA-003`/`NGA-005`/`NGA-025` (static: PII to external LLM, secrets, unencrypted datastore, credentials in prompts) + `build_open_data_exposure` (`api_attacks.py`) | **YES** | **YES** — same `/API/Users` Mass Assignment finding: response body contained email, password hash, role, IP without auth |
-| 13 | Unvalidated Redirects | — | **NO** | N/A |
+| 13 | Unvalidated Redirects | New **`build_open_redirect_probe`** (`api_attacks.py`, direct-HTTP, `ScenarioType.OPEN_REDIRECT`) — fuzzes redirect-target-like path/body parameters (`url`, `redirect`, `next`, `return_to`, etc.) with an attacker-controlled `.invalid`-TLD marker URL; a DNS-failure attempt to reach it is evidence of a followed redirect | PARTIAL | **NO static coverage.** `build_open_redirect_probe` is unit-tested but **not yet validated against a live Juice Shop run** — see backlog #5 |
 | 14 | Vulnerable Components | `osv_client.py` + `grype_client.py` + `trivy_scanner.py` (CVE/SCA against SBOM components) | **YES** | **YES** — 2154 findings total (55 CRITICAL, 552 HIGH), largely from these three scanners |
 | 15 | XML External Entities (XXE) | — | **NO** | N/A |
 | 16 | Observability Failures | `NGA-009` (AI application has no audit logging enabled) | PARTIAL | Finding present in static report, but it's a generic "is there any AI-app audit logging" check, not Juice-Shop-specific log-injection/insufficient-logging coverage |
@@ -45,7 +45,7 @@ check anywhere in NuGuard — neither static nor dynamic — despite being a
 classic OWASP class that overlaps with Juice Shop's Broken Access
 Control / Misconfiguration challenges.)*
 
-**Summary**: 5 of 16 categories YES, 6 PARTIAL, 4 NO, 1 N/A. Of the 11
+**Summary**: 5 of 16 categories YES, 7 PARTIAL, 3 NO, 1 N/A. Of the 12
 categories with any capability at all (YES + PARTIAL), **five** now
 produce confirmed real findings: Broken Access Control / Sensitive Data
 Exposure (the `/API/Users` Mass Assignment finding), Security
@@ -54,8 +54,12 @@ findings, and the new `NGA-027` static rule), Injection (new semgrep
 hits on Juice Shop's actual login/search SQLi and `eval()` misuse), and
 Cryptographic Issues + Improper Input Validation (new semgrep hits on
 weak password hashing, a hardcoded JWT secret, and real path-traversal
-bugs). Every other capable category ran its scenarios and came back
-clean, for reasons detailed below.
+bugs). Unvalidated Redirects moved from NO to PARTIAL with the new
+`build_open_redirect_probe`, though — like the other new redteam
+probers added this session (SQLi/NoSQLi, path traversal, reflected
+XSS) — it has not yet produced a confirmed real finding against a live
+Juice Shop run. Every other capable category ran its scenarios and
+came back clean, for reasons detailed below.
 
 ## Why coverage is thinner than the capability list suggests
 
@@ -159,11 +163,37 @@ in this pass.
    extraction (only FastAPI/Flask are). **Follow-up**: add the same
    detection to an Express/NestJS adapter so `NGA-028`/`NGA-029` can fire
    on Juice Shop itself, not just Python targets.
-5. **Add path-traversal and open-redirect direct-HTTP probes** — small,
-   cheap additions using the same parametrized-path pattern as #3.
-6. **Broaden XSS coverage** beyond `build_output_xss`'s LLM-echo scope to
-   also probe server-rendered HTML surfaces (reflected/stored params in
-   non-chat responses) — needed for non-AI or hybrid apps like Juice Shop.
+5. ~~**Add path-traversal and open-redirect direct-HTTP probes**~~ —
+   **done, validation pending.** Added `build_path_traversal_probe`
+   (`ScenarioType.PATH_TRAVERSAL`) and `build_open_redirect_probe`
+   (`ScenarioType.OPEN_REDIRECT`) to `api_attacks.py`, both following
+   `build_idor`'s parametrized-path fallback-chain pattern and gated on
+   name-hinted path/body parameters (`file`/`filename`/`path`/... for
+   traversal; `url`/`redirect`/`next`/`return_to`/... for redirect).
+   Path traversal checks the response for `/etc/passwd`/`win.ini` content
+   signatures. Open redirect uses an attacker-controlled marker URL on the
+   RFC 2606 reserved `.invalid` TLD — since `TargetAppClient` follows
+   redirects by default, a DNS-failure attempt to reach that marker
+   (surfaced via a small addition to `invoke_endpoint`'s exception handler
+   that now includes the unreachable request URL in `[REQUEST_ERROR: ...]`)
+   is proof the server issued a redirect there. Both wired into
+   `ScenarioGenerator._api_attack_scenarios` and unit-tested (structure,
+   name-filtering, fallback chaining, generator wiring, and the client's
+   new failed-URL surfacing). **Not yet validated against a live Juice
+   Shop run.**
+6. ~~**Broaden XSS coverage**~~ — **done, validation pending.** Added
+   `build_reflected_xss_probe` (`ScenarioType.REFLECTED_XSS`) to
+   `api_attacks.py`, complementing `build_output_xss`'s chat-scoped check:
+   fuzzes any endpoint's path/body parameters (broad, unlike
+   traversal/redirect — reflection isn't limited to suggestively-named
+   fields) with a `<script>` payload carrying a random per-scenario
+   marker, and checks for an exact unescaped echo in the response.
+   Unit-tested; **not yet validated against a live Juice Shop run.**
+   **Known limitation**: `TargetAppClient` doesn't expose response
+   `Content-Type`, so a value reflected verbatim in a JSON API body (not
+   itself exploitable unless a downstream page later renders it as HTML)
+   can't currently be distinguished from a directly-HTML-rendered
+   reflection — `use_llm_eval=True` is relied on as a secondary filter.
 7. **Reconcile the API_ATTACK coverage stat.** The run summary reports
    "3% (3/92)" coverage for API Attack while the detailed scenario table
    shows far more API-attack rows actually executed with results — this

@@ -39,7 +39,10 @@ from .api_attacks import (
     build_injection_probe,
     build_mass_assignment,
     build_open_data_exposure,
+    build_open_redirect_probe,
+    build_path_traversal_probe,
     build_rate_limit_probe,
+    build_reflected_xss_probe,
 )
 from .data_exfiltration import (
     build_account_id_probe,
@@ -1630,6 +1633,11 @@ class ScenarioGenerator:
                           metadata OR path template patterns detected via regex)
         - Injection Probe — SQLi/NoSQLi fuzzing of path/body parameters, for
                           any endpoint with at least one parameter to probe
+        - Path Traversal — ../ fuzzing of file/path-like path/body parameters
+        - Open Redirect  — attacker-controlled-URL fuzzing of redirect-like
+                          path/body parameters
+        - Reflected XSS  — <script> payload fuzzing of path/body parameters,
+                          checking for unescaped echo in the response
         - Open Endpoint Data Exposure — for endpoints that require no auth by
                           design AND are declared to return sensitive data;
                           there's no auth check to bypass, so the question is
@@ -1766,6 +1774,50 @@ class ScenarioGenerator:
                 )
                 if injection_scenario is not None:
                     out.append(injection_scenario)
+
+            # Path traversal probe: only fires when a file/path-like param
+            # name is actually present (checked inside the builder).
+            if inferred_params or request_body_schema:
+                traversal_scenario = build_path_traversal_probe(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    method=method,
+                    path_params=inferred_params,
+                    request_body_schema=request_body_schema,
+                )
+                if traversal_scenario is not None:
+                    out.append(traversal_scenario)
+
+            # Open redirect probe: only fires when a redirect-target-like
+            # param name is actually present (checked inside the builder).
+            if inferred_params or request_body_schema:
+                redirect_scenario = build_open_redirect_probe(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    method=method,
+                    path_params=inferred_params,
+                    request_body_schema=request_body_schema,
+                )
+                if redirect_scenario is not None:
+                    out.append(redirect_scenario)
+
+            # Reflected XSS probe: any endpoint with at least one path/body
+            # parameter to probe (matches build_injection_probe's gate —
+            # unlike path-traversal/redirect, XSS reflection isn't limited
+            # to parameters with a suggestive name).
+            if inferred_params or request_body_schema:
+                xss_scenario = build_reflected_xss_probe(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    method=method,
+                    path_params=inferred_params,
+                    request_body_schema=request_body_schema,
+                )
+                if xss_scenario is not None:
+                    out.append(xss_scenario)
 
             # BFLA/Scope bypass: when auth_scope or auth_detail metadata is present
             auth_scope = getattr(meta, "auth_scope", None)

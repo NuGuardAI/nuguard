@@ -1130,6 +1130,16 @@ class TargetAppClient:
                 return resp.status_code, strip_known_boilerplate(resp.text), json_body
             except Exception as exc:
                 label = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+                # httpx transport errors carry the request that failed (e.g. the
+                # redirect target it couldn't reach) on ``exc.request`` — surface
+                # that URL so callers can tell *what* was unreachable, not just
+                # that something was. This is what lets an open-redirect probe
+                # detect success: httpx follows redirects by default, so a
+                # connection failure to our attacker-controlled marker host
+                # proves the server actually redirected there.
+                failed_url = getattr(getattr(exc, "request", None), "url", None)
+                if failed_url is not None:
+                    label = f"{label} (url={failed_url})"
                 _log.warning("Direct request %s %s failed: %s", method, path, label)
                 # Network-level failures (connection refused, DNS error, timeout) on
                 # direct endpoint probes count toward a circuit breaker that is

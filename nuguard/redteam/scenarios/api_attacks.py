@@ -8,6 +8,8 @@ instead of the chat endpoint.
 ``build_injection_probe`` is the raw-HTTP counterpart to the chat-mediated
 SQL-injection scenario in ``sbom_driven.py``: it fuzzes path/body parameters
 directly, with no LLM/tool layer required in front of the database.
+``build_path_traversal_probe`` and ``build_open_redirect_probe`` follow the
+same shape for filesystem-read and client-controlled-redirect surfaces.
 """
 from __future__ import annotations
 
@@ -535,6 +537,304 @@ def build_injection_probe(
             f"Fuzz {method} {path}'s path/body parameters with SQLi and "
             f"NoSQLi payloads. A response containing a DB driver/ORM error "
             f"signature indicates the payload reached an unsanitised query."
+        ),
+        target_node_ids=[endpoint_id],
+        impact_score=chain.pre_score,
+        chain=chain,
+    )
+
+
+# Parameter names commonly bound to a file/path read on the server side.
+_TRAVERSAL_PARAM_HINTS = {
+    "file", "filename", "path", "filepath", "doc", "document",
+    "page", "template", "include", "attachment", "download",
+}
+
+_TRAVERSAL_PAYLOADS: tuple[str, ...] = (
+    "../../../../etc/passwd",
+    "..%2f..%2f..%2f..%2fetc%2fpasswd",
+)
+
+# Case-insensitive substrings unique to the target files' actual content —
+# not just an error message that happens to mention a path.
+_TRAVERSAL_SUCCESS_SIGNATURES: tuple[str, ...] = (
+    "root:x:0:0:",
+    "daemon:x:1:1:",
+    "for 16-bit app support",  # classic win.ini fallback payload signature
+)
+
+
+def build_path_traversal_probe(
+    endpoint_id: str,
+    endpoint_name: str,
+    path: str,
+    method: str = "GET",
+    path_params: list[str] | None = None,
+    request_body_schema: dict[str, str] | None = None,
+) -> AttackScenario | None:
+    """Build a path-traversal probe scenario.
+
+    Substitutes file/path-like path parameters and body fields with ``../``
+    traversal payloads targeting well-known OS files, checking the response
+    for content unique to those files (not just an error message that
+    happens to mention a path). This is the raw-HTTP counterpart to the
+    ``nuguard-js-path-traversal`` semgrep rule — that scans source, this
+    probes live behaviour.
+
+    Returns ``None`` when no file/path-like parameter is found.
+    """
+    candidates: list[tuple[str, dict | None]] = []
+
+    for param in (path_params or []):
+        if param.lower() not in _TRAVERSAL_PARAM_HINTS:
+            continue
+        for payload in _TRAVERSAL_PAYLOADS:
+            probe_path = _replace_path_param(path, param, payload)
+            if probe_path is not None:
+                candidates.append((probe_path, None))
+
+    if request_body_schema:
+        base_body = _build_realistic_body(request_body_schema)
+        for field in request_body_schema:
+            if field.lower() not in _TRAVERSAL_PARAM_HINTS:
+                continue
+            for payload in _TRAVERSAL_PAYLOADS:
+                body: dict = dict(base_body)
+                body[field] = payload
+                candidates.append((path, body))
+
+    if not candidates:
+        return None
+
+    chain_id = str(uuid.uuid4())
+    steps = [
+        ExploitStep(
+            step_id=f"{chain_id}_s{idx}",
+            step_type="INVOKE",
+            description=f"Probe {endpoint_name} with a path-traversal payload",
+            payload="",
+            target_path=probe_path,
+            http_method=method,
+            http_body=probe_body,
+            target_node_id=endpoint_id,
+            success_signal="|".join(_TRAVERSAL_SUCCESS_SIGNATURES),
+            success_requires_2xx=True,
+            on_failure="abort" if idx == len(candidates) else "skip",
+            use_llm_eval=True,
+        )
+        for idx, (probe_path, probe_body) in enumerate(candidates, start=1)
+    ]
+    chain = ExploitChain(
+        chain_id=chain_id,
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.PATH_TRAVERSAL,
+        sbom_path=[endpoint_id],
+        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        steps=steps,
+    )
+    chain.pre_score = pre_score(chain)
+    return AttackScenario(
+        scenario_id=str(uuid.uuid4()),
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.PATH_TRAVERSAL,
+        title=f"Path Traversal — {endpoint_name}",
+        description=(
+            f"Fuzz {method} {path}'s file/path-like parameters with ../ "
+            f"traversal payloads targeting /etc/passwd and win.ini. A "
+            f"response containing that file's content confirms traversal."
+        ),
+        target_node_ids=[endpoint_id],
+        impact_score=chain.pre_score,
+        chain=chain,
+    )
+
+
+# Parameter names commonly bound to a client-controlled redirect target.
+_REDIRECT_PARAM_HINTS = {
+    "url", "redirect", "redirect_url", "redirecturl", "next", "return",
+    "returnurl", "return_to", "dest", "destination", "target",
+    "callback", "continue", "redir", "goto",
+}
+
+
+def build_open_redirect_probe(
+    endpoint_id: str,
+    endpoint_name: str,
+    path: str,
+    method: str = "GET",
+    path_params: list[str] | None = None,
+    request_body_schema: dict[str, str] | None = None,
+) -> AttackScenario | None:
+    """Build an open-redirect probe scenario.
+
+    Substitutes redirect-target-like path parameters and body fields with
+    an attacker-controlled URL on the RFC 2606 reserved ``.invalid`` TLD
+    (guaranteed to never resolve, so the probe can never actually reach — or
+    affect — a real host). ``TargetAppClient`` follows redirects by default,
+    so if the server issues a 3xx to that marker URL, the resulting DNS
+    failure surfaces the marker in the response text (see
+    ``TargetAppClient.invoke_endpoint``'s exception handler, which appends
+    the unreachable request URL to ``[REQUEST_ERROR: ...]``) — proof the
+    endpoint redirected somewhere attacker-controlled.
+
+    Returns ``None`` when no redirect-target-like parameter is found.
+    """
+    marker = f"https://nuguard-oob-{uuid.uuid4().hex[:12]}.invalid/redirect-canary"
+    candidates: list[tuple[str, dict | None]] = []
+
+    for param in (path_params or []):
+        if param.lower() not in _REDIRECT_PARAM_HINTS:
+            continue
+        probe_path = _replace_path_param(path, param, marker)
+        if probe_path is not None:
+            candidates.append((probe_path, None))
+
+    if request_body_schema:
+        base_body = _build_realistic_body(request_body_schema)
+        for field in request_body_schema:
+            if field.lower() not in _REDIRECT_PARAM_HINTS:
+                continue
+            body: dict = dict(base_body)
+            body[field] = marker
+            candidates.append((path, body))
+
+    if not candidates:
+        return None
+
+    chain_id = str(uuid.uuid4())
+    steps = [
+        ExploitStep(
+            step_id=f"{chain_id}_s{idx}",
+            step_type="INVOKE",
+            description=f"Probe {endpoint_name} with an attacker-controlled redirect target",
+            payload="",
+            target_path=probe_path,
+            http_method=method,
+            http_body=probe_body,
+            target_node_id=endpoint_id,
+            success_signal=marker,
+            success_requires_2xx=False,
+            on_failure="abort" if idx == len(candidates) else "skip",
+            use_llm_eval=True,
+        )
+        for idx, (probe_path, probe_body) in enumerate(candidates, start=1)
+    ]
+    chain = ExploitChain(
+        chain_id=chain_id,
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.OPEN_REDIRECT,
+        sbom_path=[endpoint_id],
+        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        steps=steps,
+    )
+    chain.pre_score = pre_score(chain)
+    return AttackScenario(
+        scenario_id=str(uuid.uuid4()),
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.OPEN_REDIRECT,
+        title=f"Open Redirect — {endpoint_name}",
+        description=(
+            f"Set {method} {path}'s redirect-target parameter to an "
+            f"attacker-controlled .invalid marker URL. Evidence the server "
+            f"attempted to redirect there confirms an open redirect."
+        ),
+        target_node_ids=[endpoint_id],
+        impact_score=chain.pre_score,
+        chain=chain,
+    )
+
+
+# Unescaped-reflection XSS payload. Uses a per-scenario random marker so a
+# match can only be the payload itself, never a coincidental keyword in
+# legitimate content.
+def _xss_payload(marker: str) -> str:
+    return f"<script>/*{marker}*/</script>"
+
+
+def build_reflected_xss_probe(
+    endpoint_id: str,
+    endpoint_name: str,
+    path: str,
+    method: str = "GET",
+    path_params: list[str] | None = None,
+    request_body_schema: dict[str, str] | None = None,
+) -> AttackScenario | None:
+    """Build a reflected-XSS probe scenario for server-rendered HTML surfaces.
+
+    Substitutes path parameters and body fields with a ``<script>`` payload
+    carrying a random per-scenario marker, then checks whether the exact,
+    unescaped payload is echoed back in the response body. This is the
+    raw-HTTP counterpart to ``build_output_xss`` (``output_handling.py``),
+    which only covers XSS an LLM agent is tricked into generating — it's
+    needed for non-AI/hybrid apps like Juice Shop whose HTML pages reflect
+    request parameters (search results, error pages, form re-population)
+    entirely outside any chat surface.
+
+    Known limitation: a value reflected verbatim in a JSON API response is
+    not itself exploitable unless a downstream page later renders it as
+    HTML (stored/second-order XSS) — this probe cannot distinguish that
+    from a directly-HTML-rendered reflection, since ``TargetAppClient``
+    does not currently expose response ``Content-Type``. ``use_llm_eval``
+    is enabled as a secondary judge to help filter such cases.
+
+    Returns ``None`` when there are no path or body parameters to probe.
+    """
+    marker = f"nuguardxss{uuid.uuid4().hex[:10]}"
+    payload = _xss_payload(marker)
+    candidates: list[tuple[str, dict | None]] = []
+
+    for param in (path_params or [])[:_MAX_INJECTION_PARAMS]:
+        probe_path = _replace_path_param(path, param, payload)
+        if probe_path is not None:
+            candidates.append((probe_path, None))
+
+    if request_body_schema:
+        base_body = _build_realistic_body(request_body_schema)
+        for field in list(request_body_schema)[:_MAX_INJECTION_PARAMS]:
+            body: dict = dict(base_body)
+            body[field] = payload
+            candidates.append((path, body))
+
+    if not candidates:
+        return None
+
+    chain_id = str(uuid.uuid4())
+    steps = [
+        ExploitStep(
+            step_id=f"{chain_id}_s{idx}",
+            step_type="INVOKE",
+            description=f"Probe {endpoint_name} for unescaped reflection of an XSS payload",
+            payload="",
+            target_path=probe_path,
+            http_method=method,
+            http_body=probe_body,
+            target_node_id=endpoint_id,
+            success_signal=payload,
+            success_requires_2xx=False,
+            on_failure="abort" if idx == len(candidates) else "skip",
+            use_llm_eval=True,
+        )
+        for idx, (probe_path, probe_body) in enumerate(candidates, start=1)
+    ]
+    chain = ExploitChain(
+        chain_id=chain_id,
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.REFLECTED_XSS,
+        sbom_path=[endpoint_id],
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM05 – Improper Output Handling",
+        steps=steps,
+    )
+    chain.pre_score = pre_score(chain)
+    return AttackScenario(
+        scenario_id=str(uuid.uuid4()),
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.REFLECTED_XSS,
+        title=f"Reflected XSS — {endpoint_name}",
+        description=(
+            f"Fuzz {method} {path}'s path/body parameters with a "
+            f"<script> payload. An exact, unescaped echo of the payload in "
+            f"the response confirms unsanitized reflection."
         ),
         target_node_ids=[endpoint_id],
         impact_score=chain.pre_score,
