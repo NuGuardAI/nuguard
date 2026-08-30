@@ -56,7 +56,7 @@ A Node represents a detected AI component, service boundary, infrastructure reso
 | Value | What it represents |
 |---|---|
 | `AGENT` | An LLM-backed agent, orchestrator, sub-agent, crew member, or assistant |
-| `GUARDRAIL` | A safety check, topic filter, output validator, or content policy |
+| `GUARDRAIL` | A safety check, topic filter, output validator, or content policy — covers framework-native guardrails (OpenAI Agents SDK, `guardrails-ai`, Claude Agent SDK hooks/`can_use_tool`, LangGraph human-in-the-loop, LangChain moderation chains), cloud-native guardrail products (AWS Bedrock Guardrails, Azure AI Content Safety/Prompt Shields, GCP Model Armor and Vertex/Gemini safety settings), and third-party AI-security vendors (Palo Alto Prisma AIRS, Protect AI Guardian, Presidio, llm-guard, Rebuff, NeMo Guardrails, Lakera) |
 | `FRAMEWORK` | The agentic framework in use, such as LangGraph, CrewAI, OpenAI Agents, ADK, or MCP |
 | `MODEL` | An LLM, embedding model, or model artifact reference |
 | `TOOL` | A tool/function exposed to an agent |
@@ -131,6 +131,10 @@ All fields are optional unless marked otherwise. Fields are populated by whichev
 | `blocked_topics` | string[] | Topics this guardrail is known to block |
 | `blocked_actions` | string[] | Actions this guardrail is known to block |
 | `refusal_style` | string | How this guardrail normally refuses, e.g. `"hard_block"`, `"redirect"`, `"warn"` |
+
+In addition to the typed fields above, `extras` carries adapter-set identification fields for every GUARDRAIL node: `extras.guardrail_type` (e.g. `"bedrock_guardrails"`, `"content_safety"`, `"prompt_shields"`, `"model_armor"`, `"vertex_safety_settings"`, `"hooks"`, `"can_use_tool"`, `"human_in_the_loop"`, `"moderation_chain"`, `"prisma_airs"`, `"protect_ai_guardian"`, `"presidio"`, `"llm_guard"`, `"rebuff"`, `"nemo_guardrails"`, `"lakera_guard"`), `extras.vendor` (e.g. `"aws"`, `"azure"`, `"gcp"`) when the guardrail is a cloud product, and `extras.detection_kind` — `"framework_native"` for a real SDK class/method/import match, or `"heuristic"` for a lower-confidence match such as a REST-endpoint string (Prompt Shields, Lakera) or a kwarg-presence check (Vertex/Gemini `safety_settings`).
+
+A `GUARDRAIL` node is connected to the `AGENT` node(s) it protects via a `PROTECTS` edge — see [RelationshipType values](#relationshiptype-values) below. Most frameworks bind a guardrail to an agent explicitly (e.g. OpenAI Agents SDK's `input_guardrails=`/`output_guardrails=`, Claude Agent SDK's `hooks=`/`can_use_tool=`); when no explicit binding exists in source, a structural fallback wires the `GUARDRAIL` node to `AGENT` node(s) detected in the same file, directory, or sharing a name token, at `derivation: "fallback_heuristic"`.
 
 ### API_ENDPOINT fields
 
@@ -427,7 +431,7 @@ A directed relationship between two nodes.
 | `CALLS` | Agent calls a tool or sub-agent |
 | `ACCESSES` | Agent or tool reads from or writes to a datastore |
 | `USES` | Component depends on a framework, model, auth provider, or other component |
-| `PROTECTS` | A guardrail protects an agent or endpoint |
+| `PROTECTS` | A `GUARDRAIL` protects an `AGENT`, or an `AUTH` provider protects an `API_ENDPOINT` |
 | `DEPLOYS` | A deployment resource hosts a container or service |
 | `DELEGATES_TO` | An agent hands off a conversation or task to another agent |
 | `CONTAINS` | A parent component contains a child component; used for `DEVELOPER_TOOL_CONFIG → MCP_SERVER` and `DEVELOPER_TOOL_CONFIG → LIFECYCLE_SCRIPT` relationships |

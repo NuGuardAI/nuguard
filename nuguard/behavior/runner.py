@@ -744,8 +744,19 @@ class BehaviorRunner:
                 nt = (getattr(ct, "value", None) or str(ct) or "").upper()
                 if nt not in ("AGENT", "TOOL"):
                     continue
-                name = str(getattr(node, "name", None) or getattr(node, "id", ""))
                 meta = getattr(node, "metadata", None)
+                extras = (getattr(meta, "extras", None) or {}) if meta is not None else {}
+                if extras.get("llm_soft_rejected"):
+                    # Same convention as policy/checker.py's _is_soft_rejected(): LLM
+                    # verification flagged this candidate as a likely false positive
+                    # (e.g. a CI-only Playwright screenshot step misdetected as a
+                    # "Browser Automation" TOOL). Coverage steering must not treat it
+                    # as a real, uncoverable component — doing so drives the adaptive
+                    # follow-up generator to keep inventing increasingly contrived
+                    # (and, chasing "browser automation", exploit-flavored) prompts
+                    # trying to "exercise" something that was never actually wired up.
+                    continue
+                name = str(getattr(node, "name", None) or getattr(node, "id", ""))
                 desc = (
                     getattr(node, "description", None)
                     or getattr(meta, "server_name", None)

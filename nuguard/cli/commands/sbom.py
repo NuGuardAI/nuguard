@@ -40,8 +40,11 @@ _OPT_FROM_REPO = typer.Option(
     help="Git repository URL to clone and scan (e.g. https://github.com/org/repo).",
 )
 _OPT_REF = typer.Option(
-    "main", "--ref",
-    help="Branch, tag, or commit to check out when using --from-repo.",
+    None, "--ref",
+    help=(
+        "Branch, tag, or commit to check out when using --from-repo. "
+        "Falls back to 'ref:' in nuguard.yaml, then the repository's default branch."
+    ),
 )
 _OPT_TOKEN = typer.Option(
     None, "--token",
@@ -257,7 +260,7 @@ def _resolve_token(token: str | None) -> str | None:
 def _do_generate(
     source: Optional[Path],
     from_repo: Optional[str],
-    ref: str,
+    ref: Optional[str],
     token: Optional[str],
     output: Path,
     llm: Optional[bool],
@@ -295,6 +298,10 @@ def _do_generate(
             "Provide --source <dir> or --from-repo <url> (or set source: in nuguard.yaml)."
         )
         raise typer.Exit(code=1)
+
+    # --ref flag takes precedence; fall back to ref: in nuguard.yaml; else None
+    # (git clones the repository's default branch).
+    effective_ref = ref if ref is not None else cfg.source_ref
 
     # --llm flag takes precedence; fall back to sbom_generation.llm from nuguard.yaml;
     # else auto-enable when llm.api_key is configured
@@ -344,12 +351,12 @@ def _do_generate(
         if from_repo:
             resolved_token = _resolve_token(token)
             clone_url = _inject_token(from_repo, resolved_token) if resolved_token else from_repo
-            _console.print(f"[bold]Cloning[/bold] {from_repo} ({ref}) …")
+            _console.print(f"[bold]Cloning[/bold] {from_repo} ({effective_ref or 'default branch'}) …")
             # Pass the original URL as source_ref to avoid leaking the token
             from nuguard.sbom.extractor import AiSbomExtractor  # noqa: PLC0415
             extractor = AiSbomExtractor()
             doc = extractor.extract_from_repo(
-                clone_url, ref=ref, config=config, source_ref=from_repo
+                clone_url, ref=effective_ref, config=config, source_ref=from_repo
             )
         else:
             assert source is not None  # guarded by the exit above
@@ -404,7 +411,7 @@ def sbom_default(
     ctx: typer.Context,
     source: Optional[Path] = _OPT_SOURCE,
     from_repo: Optional[str] = _OPT_FROM_REPO,
-    ref: str = _OPT_REF,
+    ref: Optional[str] = _OPT_REF,
     token: Optional[str] = _OPT_TOKEN,
     output: Path = _OPT_OUTPUT,
     llm: Optional[bool] = _OPT_LLM,
@@ -425,7 +432,7 @@ def sbom_default(
 def generate(
     source: Optional[Path] = _OPT_SOURCE,
     from_repo: Optional[str] = _OPT_FROM_REPO,
-    ref: str = _OPT_REF,
+    ref: Optional[str] = _OPT_REF,
     token: Optional[str] = _OPT_TOKEN,
     output: Path = _OPT_OUTPUT,
     llm: Optional[bool] = _OPT_LLM,

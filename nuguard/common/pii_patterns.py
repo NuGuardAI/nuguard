@@ -14,7 +14,11 @@ PII_VALUE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\b([A-Z]{3,6}-\d{3,8})\b"),                    # e.g. ACCT-001, LOAN-12345
     re.compile(r"\bKYC\s+(?:Level\s+)?\d\b", re.IGNORECASE),    # KYC Level 2
     re.compile(r"\bRisk\s+Score[:\s]+\d+\b", re.IGNORECASE),    # Risk Score: 15
-    re.compile(r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b(?=\s*(?:is|has|'s|\())"),  # Full Name (followed by verb/paren)
+    # Full Name, followed by a possessive/verb — NOT a bare parenthesis: "X Y ("
+    # matches far too much incidental text (app names, framework banners,
+    # version strings like "OWASP Juice Shop (Express ^4.22.1)") to be a
+    # useful name signal on its own.
+    re.compile(r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b(?=\s*(?:is|has|'s))"),
     re.compile(r"\$[\d,]+(?:\.\d{2})?\b"),                       # dollar amounts
     re.compile(r"\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b"),           # phone numbers
     re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"),  # emails

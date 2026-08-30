@@ -2064,7 +2064,7 @@ class AiSbomExtractor:
     def extract_from_repo(
         self,
         url: str,
-        ref: str,
+        ref: str | None,
         config: AiSbomConfig,
         cache_dir: str | Path | None = None,
         source_ref: str | None = None,
@@ -2073,7 +2073,8 @@ class AiSbomExtractor:
 
         Args:
             url: Git repository URL to clone (may contain auth tokens).
-            ref: Branch, tag, or commit to check out.
+            ref: Branch, tag, or commit to check out. ``None`` clones the
+                repository's default branch (whatever ``HEAD`` points to).
             config: Extraction configuration.
             cache_dir: Optional path where the cloned repository should be
                 preserved after extraction.  When supplied the directory is
@@ -2609,6 +2610,27 @@ class AiSbomExtractor:
                         )
                     )
 
+        # Fallback: GUARDRAIL → AGENT (PROTECTS) for GUARDRAIL nodes with no
+        # outgoing PROTECTS edge yet (e.g. guardrails_ai.py / go/guardrails.py,
+        # which detect GUARDRAIL nodes but emit no relationship hints). Scoped
+        # to file-related agents via _structural_edge_related — unlike the AUTH
+        # fallback above, we deliberately skip an all-agents broad fallback:
+        # these GUARDRAIL nodes are file-scoped validators, not app-wide auth,
+        # so guessing a protects-relationship across unrelated files would
+        # misrepresent coverage.
+        guardrail_ids_with_protects_edges: set[Any] = {
+            e.source
+            for e in doc.edges
+            if e.relationship_type == RelationshipType.PROTECTS
+        }
+        for guardrail in by_type.get(ComponentType.GUARDRAIL, []):
+            if guardrail.id in guardrail_ids_with_protects_edges:
+                continue
+            for agent in by_type.get(ComponentType.AGENT, []):
+                if not self._structural_edge_related(guardrail, agent):
+                    continue
+                _add_edge(guardrail.id, agent.id, "PROTECTS", confidence=0.4)
+
     async def _llm_enrich(
         self,
         doc: AiSbomDocument,
@@ -3081,7 +3103,7 @@ class AiSbomExtractor:
     )
 
     @staticmethod
-    def _clone_repo(url: str, ref: str, dest: Path) -> None:
+    def _clone_repo(url: str, ref: str | None, dest: Path) -> None:
         if shutil.which("git") is None:
             raise RuntimeError("git executable not found on PATH")
         # Reject argument-injection attempts.  ``ref`` and ``url`` are passed
@@ -3089,7 +3111,7 @@ class AiSbomExtractor:
         # ``-`` git may interpret it as a flag (``--upload-pack=<cmd>``,
         # ``--config=<key>=<value>``, etc.), giving the ref provider a way to
         # run arbitrary commands on the operator's machine.
-        if not AiSbomExtractor._SAFE_REF_RE.match(ref):
+        if ref is not None and not AiSbomExtractor._SAFE_REF_RE.match(ref):
             raise ValueError(
                 f"Invalid git ref {ref!r}: must not be empty, start with '-', "
                 "or contain whitespace."
@@ -3100,18 +3122,13 @@ class AiSbomExtractor:
                 "an explicit scheme (e.g. https://...)."
             )
         # Use ``--`` to terminate option parsing so any future ref/url values
-        # that pass validation can never be reinterpreted as flags.
-        cmd = [
-            "git",
-            "clone",
-            "--depth",
-            "1",
-            "--branch",
-            ref,
-            "--",
-            url,
-            str(dest),
-        ]
+        # that pass validation can never be reinterpreted as flags. Omitting
+        # ``--branch`` entirely (ref=None) clones the repo's default branch,
+        # instead of assuming every repo uses "main".
+        cmd = ["git", "clone", "--depth", "1"]
+        if ref is not None:
+            cmd += ["--branch", ref]
+        cmd += ["--", url, str(dest)]
         _log.debug("running: %s", " ".join(cmd))
         try:
             result = subprocess.run(cmd, check=True, capture_output=True)

@@ -380,6 +380,7 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "REFUSAL_ORACLE": "policy_violation_generic",
     "FALSE_VERIFICATION": "policy_violation_generic",
     "DEBUG_ADMIN_EXPOSURE": "policy_violation_generic",
+    "DEBUG_COOKIE_BYPASS": "policy_violation_generic",
     "TOOL_DISCOVERY_LEAK": "policy_violation_generic",
     "UNEXPECTED_CODE_GENERATION": "policy_violation_generic",
     "FALSE_ACTION_CLAIM": "policy_violation_generic",
