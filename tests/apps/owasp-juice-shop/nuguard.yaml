@@ -42,6 +42,10 @@ target:
   # The backend (python-backend/api.py) only recognizes Authorization: Bearer <token>
   # obtained via /login — it does not understand HTTP Basic auth.
   auth:
+    type: basic
+    username: ${JUICE_SHOP_USERNAME}
+    password: ${JUICE_SHOP_PASSWORD}
+
   #  type: login_flow
   #  login_flow:
   #    endpoint: /login
