@@ -27,9 +27,9 @@ Sources:
 | 2 | Broken Anti-Automation | `NGA-026` (missing rate limiting, static) + `build_rate_limit_probe` (`api_attacks.py`) | PARTIAL | No — no rate-limit-probe scenario appears in the 185-scenario run; the dynamic check didn't fire |
 | 3 | Broken Authentication | `NGA-006` (missing auth on endpoint) + `build_auth_bypass`, session-fixation spec `S06` (`api_schema_attacks.py`) | PARTIAL | No — no weak-password, session-fixation, or JWT-specific finding surfaced |
 | 4 | Cross-Site Scripting (XSS) | `build_output_xss` (`output_handling.py`) — LLM-output-echo XSS only | PARTIAL | No finding; only 3 "Improper Output Handling" scenario instances ran, and the check is scoped to markdown/HTML the *chat agent* echoes, not server-rendered HTML pages |
-| 5 | Cryptographic Issues | `NGA-005` (unencrypted PII datastore) — encryption-at-rest posture only | PARTIAL | No — no crypto-implementation (weak JWT alg, guessable secret) check exists to fire |
-| 6 | Improper Input Validation | — | **NO** | N/A — no generic input-validation/fuzz prober |
-| 7 | Injection (SQL/NoSQL/command) | `build_sql_injection` (`tool_abuse.py`) + semgrep rule `nuguard-sql-injection-via-llm` — both LLM-tool-mediated only | PARTIAL | "SQL Injection via Agent Chat — Sequelize" ran 7/7 turns, no finding (plausible true negative — Juice Shop's chatbot doesn't proxy raw SQL). Semgrep now runs (`✅ ok`) but still contributes 0 findings — its rules target LLM-mediated SQLi patterns, not Juice Shop's plain Sequelize/JS code, so the Injection gap for generic (non-AI) apps remains real |
+| 5 | Cryptographic Issues | `NGA-005` (unencrypted PII datastore, encryption-at-rest posture) + new `generic-security.yaml` rules `nuguard-js-weak-hash-for-password`, `nuguard-js-hardcoded-secret` | PARTIAL | **YES on the new rules** — `nuguard-js-weak-hash-for-password` fires on `lib/insecurity.ts:41` (MD5 for password hashing, a real Juice Shop weakness) and `scripts/package.mjs:121`; `nuguard-js-hardcoded-secret` fires on the hardcoded JWT signing secret in `lib/insecurity.ts:54`. Still no dedicated JWT-alg-confusion (`alg: none`) check — see backlog #8 |
+| 6 | Improper Input Validation | New `generic-security.yaml` rule `nuguard-js-path-traversal` | PARTIAL | **YES** — fires on real code: `routes/videoHandler.ts:82`, `routes/vulnCodeFixes.ts:81`, `routes/vulnCodeSnippet.ts:90`, `rsn/rsnUtil.ts:66` and `:155` (5 hits total) |
+| 7 | Injection (SQL/NoSQL/command) | `build_sql_injection` (`tool_abuse.py`, LLM-tool-mediated) + new **`generic-security.yaml`** semgrep ruleset (`nuguard-js-sql-injection`, `nuguard-js-command-injection`, `nuguard-js-insecure-eval`) for direct JS/TS source patterns | **YES** | "SQL Injection via Agent Chat — Sequelize" (redteam) ran 7/7 turns, no finding — plausible true negative, Juice Shop's chatbot doesn't proxy raw SQL. But the new semgrep ruleset found **real hits on Juice Shop's actual vulnerable code**: SQLi in `routes/login.ts:34` and `routes/search.ts:23` (the classic Juice Shop login-bypass and search-injection challenges), plus 4 more in `data/static/codefixes/*.ts`; `nuguard-js-insecure-eval` in `routes/captcha.ts:22` and `routes/userProfile.ts:65`; `nuguard-js-command-injection` in `scripts/package.mjs:20` |
 | 8 | Insecure Deserialization | — | **NO** | N/A |
 | 9 | Miscellaneous | — | N/A | N/A (not a distinct vuln class) |
 | 10 | Security Misconfiguration | `trivy_scanner.py`'s built-in `misconfig` scanner + `checkov_scanner.py` (IaC) + new static rules **`NGA-027`** (missing security headers), **`NGA-028`** (permissive CORS), **`NGA-029`** (verbose error leak) in `nuguard/analysis/plugins/nga_rules.py`, fed by new `SecurityHeaderDetail`/`CorsPolicyDetail`/`debug_error_leak` extraction in `fastapi_adapter.py`/`flask_adapter.py` | **YES** | **YES, real findings on both IaC and app layers.** After installing semgrep+checkov and re-running: Trivy's misconfig scanner found 9 findings per `.tf` file (`AWS-0054`, `AWS-0104`, etc.); checkov itself now runs (`✅ ok`, 141 findings, `CKV_AWS_150`/`CKV_AWS_91`/etc. on `aws_lb.juice_shop`). `NGA-027` fired for real: 136 API endpoints flagged for no confirmed CSP/X-Frame-Options/HSTS. `NGA-028`/`NGA-029` stayed silent — Juice Shop's Express/Node endpoints aren't yet instrumented for CORS/debug-mode extraction (only FastAPI/Flask are), a known follow-up (see backlog #4) |
@@ -45,31 +45,40 @@ check anywhere in NuGuard — neither static nor dynamic — despite being a
 classic OWASP class that overlaps with Juice Shop's Broken Access
 Control / Misconfiguration challenges.)*
 
-**Summary**: 4 of 16 categories YES, 6 PARTIAL, 5 NO, 1 N/A. Of the 10
-categories with any capability at all (YES + PARTIAL), **two** now
+**Summary**: 5 of 16 categories YES, 6 PARTIAL, 4 NO, 1 N/A. Of the 11
+categories with any capability at all (YES + PARTIAL), **five** now
 produce confirmed real findings: Broken Access Control / Sensitive Data
-Exposure (the `/API/Users` Mass Assignment finding), and Security
+Exposure (the `/API/Users` Mass Assignment finding), Security
 Misconfiguration (checkov's 141 IaC findings, Trivy's `.tf` misconfig
-findings, and the new `NGA-027` static rule). Every other capable
-category ran its scenarios and came back clean, for reasons detailed
-below.
+findings, and the new `NGA-027` static rule), Injection (new semgrep
+hits on Juice Shop's actual login/search SQLi and `eval()` misuse), and
+Cryptographic Issues + Improper Input Validation (new semgrep hits on
+weak password hashing, a hardcoded JWT secret, and real path-traversal
+bugs). Every other capable category ran its scenarios and came back
+clean, for reasons detailed below.
 
 ## Why coverage is thinner than the capability list suggests
 
-**1. Tool-dependency gaps (now closed).** `semgrep_scanner.py` (Injection,
-XSS-adjacent, SSRF, hardcoded secrets) and `checkov_scanner.py`
-(IaC coverage) were both silently skipped in the original run because
-`semgrep`/`checkov` weren't installed — `juice-shop-analysis.md`'s Tool
-Coverage table showed this plainly (`⏭️ skipped`), easy to miss in a
-2013-finding report. Both were installed (via `pipx`, kept isolated from
-the project's own locked venv) and the analysis re-run: checkov now
-contributes 141 real IaC findings (`CKV_AWS_150`, `CKV_AWS_91`, etc.).
-Semgrep runs cleanly but contributes 0 findings against Juice Shop —
-its bundled `ai-security.yaml` ruleset targets AI/LLM-specific code
-patterns (SQLi-via-LLM, hardcoded API keys) that don't have a match in
-Juice Shop's non-AI Express/Node codebase, so the tool-dependency gap is
-closed but the *rule coverage* gap for generic (non-AI) JS/TS SAST
-remains open.
+**1. Tool-dependency and rule-coverage gaps (now closed).**
+`semgrep_scanner.py` (Injection, XSS-adjacent, SSRF, hardcoded secrets)
+and `checkov_scanner.py` (IaC coverage) were both silently skipped in the
+original run because `semgrep`/`checkov` weren't installed —
+`juice-shop-analysis.md`'s Tool Coverage table showed this plainly
+(`⏭️ skipped`), easy to miss in a 2013-finding report. Both were installed
+(via `pipx`, kept isolated from the project's own locked venv). checkov
+now contributes 141 real IaC findings (`CKV_AWS_150`, `CKV_AWS_91`, etc.).
+Semgrep initially ran cleanly but still contributed 0 findings against
+Juice Shop, because its only bundled ruleset (`ai-security.yaml`) targets
+AI/LLM-specific code patterns (SQLi-via-LLM, hardcoded API keys) with no
+match in Juice Shop's non-AI Express/Node codebase — installing the tool
+closed the tool-dependency gap but not the rule-coverage one. A second
+bundled ruleset, **`generic-security.yaml`** (10 JS/TS rules: SQL
+injection, command injection, path traversal, XSS, insecure eval,
+insecure deserialization, weak password hashing, hardcoded secrets, open
+redirect), now runs alongside `ai-security.yaml` on every scan and finds
+**17 real findings** on Juice Shop's actual source, including hits on its
+own intentionally-vulnerable challenge code (SQLi in `routes/login.ts`
+and `routes/search.ts`, a hardcoded JWT secret in `lib/insecurity.ts`).
 
 **2. Scope mismatch between attack path and target shape.** NuGuard's
 `tool_abuse.py` (SQLi, SSRF) and `output_handling.py` (XSS) builders are
@@ -99,13 +108,19 @@ in this pass.
 1. **Validate the IDOR fix.** Run a fresh red-team scan against Juice
    Shop and confirm `/Rest/Basket/:Id` (and other small-sequential-ID
    endpoints) now surface a real finding instead of a clean miss.
-2. ~~**Install semgrep and checkov**~~ — **done.** Both installed via
-   `pipx` and wired into the CI/test-app pipeline's tool resolution.
-   checkov now contributes 141 real IaC findings. Semgrep runs cleanly
-   but its current ruleset (`ai-security.yaml`) is AI/LLM-pattern-specific
-   and doesn't match Juice Shop's non-AI JS/TS code — extending semgrep
-   with generic JS/TS SAST rules (not just AI-security ones) remains open
-   if broader Injection/XSS source-level coverage is wanted.
+2. ~~**Install semgrep and checkov; extend semgrep beyond AI-security
+   patterns**~~ — **done.** Both tools installed via `pipx`. checkov now
+   contributes 141 real IaC findings. Added a second bundled ruleset,
+   `nuguard/analysis/plugins/semgrep_rules/generic-security.yaml` (10 JS/TS
+   rules covering Injection, path traversal, XSS, insecure eval, insecure
+   deserialization, weak crypto, hardcoded secrets, open redirect),
+   wired into `SemgrepScannerPlugin` alongside `ai-security.yaml` so every
+   scan now covers both AI-specific and generic non-AI code. Validated
+   against Juice Shop's real source: 17 findings, including its own
+   intentional SQLi/hardcoded-secret/path-traversal challenges. **Open
+   follow-up**: extend `generic-security.yaml` to more languages
+   (Python/Go currently only have AI-specific rules) if non-AI Python/Go
+   targets need the same generic coverage.
 3. **Add a generic direct-HTTP injection prober** in `api_attacks.py`,
    reusing the `target_path`-substitution pattern `build_idor` already
    uses: fuzz path/query/body parameters with SQLi/NoSQLi payloads and

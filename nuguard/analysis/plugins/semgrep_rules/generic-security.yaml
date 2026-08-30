@@ -1,0 +1,199 @@
+rules:
+  # -------------------------------------------------------------------------
+  # NuGuard Generic Security Semgrep Rules
+  # Classic web-application vulnerability classes (Injection, XSS, path
+  # traversal, command injection, insecure deserialization, weak crypto,
+  # hardcoded secrets) for JavaScript/TypeScript backends — complements
+  # ai-security.yaml, which is AI/LLM-pattern-specific and Python/Go only.
+  # -------------------------------------------------------------------------
+
+  - id: nuguard-js-sql-injection
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query(`...${$INPUT}...`, ...)
+          - pattern: $DB.query($A + $INPUT + $B, ...)
+          - pattern: $DB.execute(`...${$INPUT}...`, ...)
+          - pattern: $SEQUELIZE.query(`...${$INPUT}...`, ...)
+    message: >
+      Potential SQL injection: a query string is built by interpolating a
+      variable directly rather than using parameterised placeholders. Use
+      the driver's parameter-binding API (e.g. `?`/`:name` placeholders with
+      a bound-values array) instead of string interpolation or concatenation.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [nodejs, sql]
+      owasp: "A03:2021 Injection"
+      cwe: "CWE-89"
+
+  - id: nuguard-js-command-injection
+    patterns:
+      - pattern-either:
+          - pattern: child_process.exec($CMD, ...)
+          - pattern: child_process.execSync($CMD, ...)
+          - pattern: exec($CMD, ...)
+          - pattern: execSync($CMD, ...)
+      - pattern-not: child_process.exec("...", ...)
+      - pattern-not: child_process.execSync("...")
+      - pattern-not: exec("...", ...)
+      - pattern-not: execSync("...")
+    message: >
+      Potential command injection: a non-literal value is passed as the
+      command to `child_process.exec`/`execSync`. Use `execFile`/`spawn`
+      with an argument array instead of building a shell command string,
+      or strictly allow-list the input.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [nodejs]
+      owasp: "A03:2021 Injection"
+      cwe: "CWE-78"
+
+  - id: nuguard-js-path-traversal
+    patterns:
+      - pattern-either:
+          - pattern: fs.readFile(path.join($BASE, $INPUT), ...)
+          - pattern: fs.readFileSync(path.join($BASE, $INPUT), ...)
+          - pattern: fs.createReadStream(path.join($BASE, $INPUT), ...)
+          - pattern: fs.readFile($BASE + $INPUT, ...)
+          - pattern: fs.readFileSync($BASE + $INPUT, ...)
+    message: >
+      Potential path traversal: a filesystem path is built from a
+      request-derived value without validating it stays inside the intended
+      base directory. Resolve the final path and verify it is still a
+      descendant of $BASE (e.g. compare `path.resolve(...)` against
+      `path.resolve($BASE)`) before opening it.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [nodejs]
+      owasp: "A01:2021 Broken Access Control"
+      cwe: "CWE-22"
+
+  - id: nuguard-js-xss-dangerously-set-inner-html
+    pattern: "<$TAG dangerouslySetInnerHTML={{ __html: $INPUT }} />"
+    message: >
+      Potential stored/reflected XSS: `dangerouslySetInnerHTML` renders
+      $INPUT as raw HTML with no escaping. Sanitize it first (e.g. with
+      DOMPurify) or avoid raw HTML rendering entirely.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [react]
+      owasp: "A03:2021 Injection"
+      cwe: "CWE-79"
+
+  - id: nuguard-js-xss-unescaped-response
+    patterns:
+      - pattern-either:
+          - pattern: $RES.send($REQ.query.$FIELD)
+          - pattern: $RES.send($REQ.body.$FIELD)
+          - pattern: $RES.write($REQ.query.$FIELD)
+          - pattern: $RES.write($REQ.body.$FIELD)
+    message: >
+      Potential reflected XSS: a request-derived value is written directly
+      into the HTTP response body with no output encoding. HTML-escape the
+      value before writing it, or use a templating engine's auto-escaping.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [nodejs, express]
+      owasp: "A03:2021 Injection"
+      cwe: "CWE-79"
+
+  - id: nuguard-js-insecure-eval
+    patterns:
+      - pattern-either:
+          - pattern: eval($INPUT)
+          - pattern: new Function($INPUT)
+      - pattern-not: eval("...")
+      - pattern-not: new Function("...")
+    message: >
+      Dynamic code execution via `eval`/`new Function` on a non-literal
+      value. If $INPUT can be influenced by user input, this is arbitrary
+      code execution. Avoid dynamic evaluation entirely, or replace it with
+      a safe parser/allow-list for the specific operation needed.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [nodejs]
+      owasp: "A03:2021 Injection"
+      cwe: "CWE-95"
+
+  - id: nuguard-js-insecure-deserialization
+    pattern: $SERIALIZE.unserialize($INPUT)
+    message: >
+      Potential insecure deserialization: `unserialize()` on untrusted input
+      (e.g. from the `node-serialize` / `serialize-javascript` family) can
+      lead to remote code execution via crafted `_$$ND_FUNC$$_` payloads.
+      Use `JSON.parse` for plain data instead, and never deserialize
+      request-derived strings into executable objects.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [nodejs]
+      owasp: "A08:2021 Software and Data Integrity Failures"
+      cwe: "CWE-502"
+
+  - id: nuguard-js-weak-hash-for-password
+    patterns:
+      - pattern-either:
+          - pattern: crypto.createHash("md5")
+          - pattern: crypto.createHash("sha1")
+    message: >
+      MD5/SHA-1 are not suitable for password hashing (fast, unsalted by
+      default, and cryptographically broken for collision resistance). Use
+      a dedicated password-hashing function (bcrypt, scrypt, or argon2)
+      instead — this rule does not distinguish password use from other
+      hashing needs, so review each hit.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [nodejs]
+      owasp: "A02:2021 Cryptographic Failures"
+      cwe: "CWE-916"
+
+  - id: nuguard-js-hardcoded-secret
+    patterns:
+      - pattern-either:
+          - pattern: $VAR = "sk-..."
+          - pattern: $VAR = "ghp_..."
+          - pattern: $VAR = "AKIA..."
+          - pattern: jwt.sign(..., "...", ...)
+    message: >
+      Hardcoded credential or signing secret detected. Store secrets in
+      environment variables or a secrets manager, and never commit them to
+      source control. A hardcoded JWT signing secret also lets anyone who
+      reads the source forge valid tokens.
+    languages: [javascript, typescript]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [nodejs]
+      owasp: "A02:2021 Cryptographic Failures"
+      cwe: "CWE-798"
+
+  - id: nuguard-js-open-redirect
+    patterns:
+      - pattern-either:
+          - pattern: $RES.redirect($REQ.query.$FIELD)
+          - pattern: $RES.redirect($REQ.body.$FIELD)
+    message: >
+      Potential open redirect: a request-derived value is passed directly
+      to `res.redirect()`. Validate the destination against an allow-list of
+      known-safe paths/hosts before redirecting.
+    languages: [javascript, typescript]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [nodejs, express]
+      owasp: "A01:2021 Broken Access Control"
+      cwe: "CWE-601"
