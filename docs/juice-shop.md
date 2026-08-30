@@ -263,3 +263,57 @@ in this pass.
    algorithm-confusion (needs the server's real public key, which the
    SBOM doesn't capture) and brute-forcing beyond the fixed 3-secret
    dictionary.
+
+## Policy-violation false-positive fix (2026-08-30 run)
+
+Analysis of `agentic-test-20260830T211728.log` / `juice-shop-redteam.md`
+found that every one of the run's 5 chat-routed findings tagged as AI
+Top 10 / Agentic AI Top 10 vulnerabilities (2x `Covert Exfiltration`,
+`Restricted Topic Probe`, `Policy Patching`, `Memory Poisoning`) was a
+false positive: the "Agent" text in each case is a refusal that merely
+*names* the restricted topic/label while declining it (e.g. "I can't
+assist with accessing or retrieving personally identifiable information
+(PII)..."), and the keyword-based `PolicyEvaluator` detectors
+(`topic_boundary.py` Tier-1, `data_classification.py`) fired on the
+label appearing in the text with no (or insufficient) refusal-awareness.
+This meant none of the run's AI-specific findings could be trusted as
+evidence of real detection capability — every hit in that category was
+noise.
+
+Root cause: `LLMResponseEvaluator` already runs for these steps
+(`use_llm_eval=True` is set on essentially every policy_violation /
+data_exfiltration step) and already correctly classifies the response as
+a refusal (`refusal_reason` != `"none"`), but that verdict was computed
+and then discarded — `PolicyEvaluator.evaluate()` only consulted the
+separate, overloaded `step_succeeded` flag to suppress one narrow case
+(Tier-2 "no allowed-topic overlap"), never the Tier-1 keyword hit or the
+`data_classification` hit.
+
+Fix (three layers):
+1. **Thread the already-computed LLM refusal verdict through** — new
+   `PolicyEvaluator.evaluate(..., llm_judged_refusal: bool)` parameter,
+   set by `executor.py` from `result.llm_eval_refusal_reason`. Suppresses
+   topic_boundary Tier-1, `data_classification`, and
+   `restricted_action`'s text-match (HIGH) hits when the judge already
+   confirmed a refusal; tool-call-based checks (`restricted_action`
+   CRITICAL, `hitl_bypass`) are untouched — no refusal-text ambiguity
+   applies to an actual tool call. Zero additional LLM calls in the
+   common case, since the verdict already exists by the time the keyword
+   detector runs.
+2. **Refusal-aware fallback for when no judge LLM is configured** —
+   `data_classification.py` now uses
+   `refusal_patterns.find_unsuppressed_occurrence` (previously zero
+   refusal-awareness at all, per its own docstring); a couple of narrow,
+   self-referential tokens ("i must adhere to", ...) added to
+   `HARD_REFUSAL_TOKENS`.
+3. Fixed the `redteam.verify_findings` default mismatch between
+   `nuguard.yaml.example` (`false`) and the code default (`true`) so the
+   documented "on by default" re-probe safety net actually is.
+
+Unit-tested (`test_policy_engine.py`, `test_executor_auth_refresh.py`);
+`uv run pytest nuguard/ -q` — 2475 passed. **Not yet re-validated
+against a live Juice Shop run** — the next redteam scan should confirm
+these 5 findings disappear (or, if a genuine violation exists, still
+fire) while the 16 unrelated raw-HTTP findings are unaffected (the fix
+only touches chat-routed `PolicyEvaluator` calls; direct-HTTP steps
+never reach it).
