@@ -837,6 +837,7 @@ class AttackExecutor:
                 method=step.http_method,
                 body=step.http_body,
                 params=step.http_params or None,
+                extra_headers=step.extra_headers or None,
                 strip_auth=step.strip_auth,
             )
             # A 401 retry-with-refreshed-auth makes no sense for a step whose
@@ -856,6 +857,7 @@ class AttackExecutor:
                     method=step.http_method,
                     body=step.http_body,
                     params=step.http_params or None,
+                    extra_headers=step.extra_headers or None,
                     strip_auth=step.strip_auth,
                 )
             tool_calls: list[dict] = []

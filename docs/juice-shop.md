@@ -24,10 +24,10 @@ Sources:
 | # | Juice Shop Category | NuGuard Capability | Coverage | Detected in existing run? |
 |---|---|---|---|---|
 | 1 | Broken Access Control | `NGA-021` (IDOR-prone endpoint, static) + `build_idor`/`build_auth_bypass`/`build_mass_assignment`/`build_auth_scope_bypass` (BFLA/RBAC) in `nuguard/redteam/scenarios/api_attacks.py` | **YES** | **YES** — HIGH finding: Mass Assignment on `/API/Users` leaked a JWT + password hash with no auth check |
-| 2 | Broken Anti-Automation | `NGA-026` (missing rate limiting, static) + `build_rate_limit_probe` (`api_attacks.py`) | PARTIAL | No — no rate-limit-probe scenario appears in the 185-scenario run; the dynamic check didn't fire |
-| 3 | Broken Authentication | `NGA-006` (missing auth on endpoint) + `build_auth_bypass`, session-fixation spec `S06` (`api_schema_attacks.py`) | PARTIAL | No — no weak-password, session-fixation, or JWT-specific finding surfaced |
+| 2 | Broken Anti-Automation | `NGA-026` (missing rate limiting, static) + `build_rate_limit_probe` (`api_attacks.py`) | PARTIAL | Previously: No — the dynamic gate only fired on endpoints `meta.rate_limited=True`, the opposite of NGA-026's population, so it never ran on Juice Shop (see backlog #7, now fixed: the probe fires on the same unconfirmed population NGA-026 flags). **Not yet re-validated against a live run.** |
+| 3 | Broken Authentication | `NGA-006` (missing auth on endpoint) + `build_auth_bypass`, session-fixation spec `S06` (`api_schema_attacks.py`) + new **`NGA-030`** (JWT verify call with no pinned `algorithms:` allow-list, static) + new **`build_jwt_tampering_probe`** (`api_attacks.py`, direct-HTTP, `ScenarioType.JWT_TAMPERING`) — forges an `alg: none` token and HS256 tokens signed with common weak/default secrets, sent as the `Authorization: Bearer` header in place of real credentials | PARTIAL | No — no weak-password, session-fixation, or JWT-specific finding surfaced. `NGA-030`/`build_jwt_tampering_probe` are new this session (unit-tested, both live in `lib/insecurity.ts`'s JWT sign/verify pair) — **not yet validated against a live Juice Shop run**, see backlog #8 |
 | 4 | Cross-Site Scripting (XSS) | `build_output_xss` (`output_handling.py`, LLM-output-echo only) + new **`build_reflected_xss_probe`** (`api_attacks.py`, direct-HTTP, `ScenarioType.REFLECTED_XSS`) — fuzzes any endpoint's path/body parameters with a `<script>` payload and checks for an unescaped verbatim echo in the response, closing the server-rendered-HTML gap `build_output_xss` never covered | PARTIAL | No finding on `build_output_xss` (chat-scoped, as before). `build_reflected_xss_probe` is unit-tested but **not yet validated against a live Juice Shop run** — see backlog #6 |
-| 5 | Cryptographic Issues | `NGA-005` (unencrypted PII datastore, encryption-at-rest posture) + new `generic-security.yaml` rules `nuguard-js-weak-hash-for-password`, `nuguard-js-hardcoded-secret` | PARTIAL | **YES on the new rules** — `nuguard-js-weak-hash-for-password` fires on `lib/insecurity.ts:41` (MD5 for password hashing, a real Juice Shop weakness) and `scripts/package.mjs:121`; `nuguard-js-hardcoded-secret` fires on the hardcoded JWT signing secret in `lib/insecurity.ts:54`. Still no dedicated JWT-alg-confusion (`alg: none`) check — see backlog #8 |
+| 5 | Cryptographic Issues | `NGA-005` (unencrypted PII datastore, encryption-at-rest posture) + new `generic-security.yaml` rules `nuguard-js-weak-hash-for-password`, `nuguard-js-hardcoded-secret` | PARTIAL | **YES on the new rules** — `nuguard-js-weak-hash-for-password` fires on `lib/insecurity.ts:41` (MD5 for password hashing, a real Juice Shop weakness) and `scripts/package.mjs:121`; `nuguard-js-hardcoded-secret` fires on the hardcoded JWT signing secret in `lib/insecurity.ts:54`. JWT-alg-confusion (`alg: none`) is now covered by `NGA-030`/`build_jwt_tampering_probe` — see row 3 and backlog #8 |
 | 6 | Improper Input Validation | New `generic-security.yaml` rule `nuguard-js-path-traversal` + new **`build_path_traversal_probe`** (`api_attacks.py`, direct-HTTP, `ScenarioType.PATH_TRAVERSAL`) — fuzzes file/path-like path/body parameters with `../` payloads and checks for `/etc/passwd`/`win.ini` content in the response | **YES** | **YES on the static rule** — fires on real code: `routes/videoHandler.ts:82`, `routes/vulnCodeFixes.ts:81`, `routes/vulnCodeSnippet.ts:90`, `rsn/rsnUtil.ts:66` and `:155` (5 hits total). `build_path_traversal_probe` is unit-tested but **not yet validated against a live Juice Shop run** — see backlog #5 |
 | 7 | Injection (SQL/NoSQL/command) | `build_sql_injection` (`tool_abuse.py`, LLM-tool-mediated) + new **`build_injection_probe`** (`nuguard/redteam/scenarios/api_attacks.py`, direct-HTTP, `GoalType.API_ATTACK`/`ScenarioType.SQL_INJECTION`) + new **`generic-security.yaml`** semgrep ruleset (`nuguard-js-sql-injection`, `nuguard-js-command-injection`, `nuguard-js-insecure-eval`) for direct JS/TS source patterns | **YES** | "SQL Injection via Agent Chat — Sequelize" (redteam) ran 7/7 turns, no finding — plausible true negative, Juice Shop's chatbot doesn't proxy raw SQL. But the new semgrep ruleset found **real hits on Juice Shop's actual vulnerable code**: SQLi in `routes/login.ts:34` and `routes/search.ts:23` (the classic Juice Shop login-bypass and search-injection challenges), plus 4 more in `data/static/codefixes/*.ts`; `nuguard-js-insecure-eval` in `routes/captcha.ts:22` and `routes/userProfile.ts:65`; `nuguard-js-command-injection` in `scripts/package.mjs:20`. `build_injection_probe` fuzzes any endpoint's path/body parameters with SQLi/NoSQLi payloads and checks for a DB-error signature, following `build_idor`'s multi-step fallback pattern (code landed, unit-tested; **not yet validated against a live Juice Shop run** — see backlog #3) |
 | 8 | Insecure Deserialization | — | **NO** | N/A |
@@ -57,9 +57,17 @@ weak password hashing, a hardcoded JWT secret, and real path-traversal
 bugs). Unvalidated Redirects moved from NO to PARTIAL with the new
 `build_open_redirect_probe`, though — like the other new redteam
 probers added this session (SQLi/NoSQLi, path traversal, reflected
-XSS) — it has not yet produced a confirmed real finding against a live
-Juice Shop run. Every other capable category ran its scenarios and
-came back clean, for reasons detailed below.
+XSS, and now JWT tampering) — it has not yet produced a confirmed real
+finding against a live Juice Shop run. Every other capable category ran
+its scenarios and came back clean, for reasons detailed below. Two
+report/coverage bugs were also found and fixed this session (backlog
+#7): the Attack Coverage summary was miscounting real, fully-executed
+scenario misses (`chain_status="aborted"` from `on_failure="abort"`'s
+last-fallback-step-by-design pattern) as "not tested", deflating
+per-goal-type coverage percentages; and `build_rate_limit_probe`'s
+generator gate was inverted, only ever firing on endpoints already
+confirmed rate-limited rather than the unconfirmed population NGA-026
+flags — explaining why it never appeared in the 185-scenario run.
 
 ## Why coverage is thinner than the capability list suggests
 
@@ -194,13 +202,64 @@ in this pass.
    itself exploitable unless a downstream page later renders it as HTML)
    can't currently be distinguished from a directly-HTML-rendered
    reflection — `use_llm_eval=True` is relied on as a secondary filter.
-7. **Reconcile the API_ATTACK coverage stat.** The run summary reports
-   "3% (3/92)" coverage for API Attack while the detailed scenario table
-   shows far more API-attack rows actually executed with results — this
-   looks like the catalog generator's stable-ID spec count being reported
-   instead of the (larger) legacy SBOM-driven generator's actual output.
-   Investigate and fix so the summary number is trustworthy. Also
-   investigate why no rate-limit-probe scenario appears to have run at all.
-8. **Add a JWT/crypto-implementation check** — a new NGA rule plus a
-   dynamic JWT-tampering probe (alg=none, weak/guessable HMAC secret) —
-   currently only datastore-encryption-at-rest (`NGA-005`) is checked.
+7. ~~**Reconcile the API_ATTACK coverage stat.**~~ — **done.** The
+   catalog-count theory was wrong: `_attack_coverage_summary`
+   (`nuguard/redteam/report.py`) already counted real
+   `scenario_records`, not catalog spec entries. The actual bug was in
+   what counted as "not tested": `on_failure="abort"` on a chain's last
+   fallback step (`build_idor`, `build_injection_probe`,
+   `build_path_traversal_probe`, etc. all use this by design — see
+   backlog #3/#5) means a clean miss on every candidate ends the chain
+   with a bare `chain_status="aborted"` — a real, fully-executed
+   negative result, not a skip. The old `_NOT_TESTED` set counted that
+   bare `"aborted"` as not-tested while (due to Python set membership on
+   the literal string) *excluding* reason-suffixed circuit-breaker
+   aborts (`"aborted:consecutive_request_failures"`) — backwards from
+   what it should count. Fixed to treat only genuine non-executions
+   (`skipped`, `similar_miss`, `target_unreachable`, `timeout`, and any
+   `"aborted:<reason>"`) as not-tested; a bare `"aborted"` now counts as
+   completed. Also fixed `build_rate_limit_probe`'s generator gate
+   (`nuguard/redteam/scenarios/generator.py`), which required
+   `meta.rate_limited is True` — backwards, since that only probes
+   endpoints already believed to be rate-limited. On frameworks with no
+   rate-limit adapter instrumentation (plain Express/Node, Juice Shop's
+   case), `rate_limited` is never set at all, so the probe never fired
+   in the 185-scenario run. Now fires on the population NGA-026 flags
+   (`rate_limited is not True`), so a real 429 can empirically overturn
+   the static finding and a clean burst confirms it. Both fixes are
+   unit-tested (`test_report.py`, `test_api_attacks.py`);
+   **the corrected numbers have not yet been re-validated against a
+   live Juice Shop run.**
+8. ~~**Add a JWT/crypto-implementation check**~~ — **done, validation
+   pending.** Added `NGA-030` (`nuguard/analysis/plugins/nga_rules.py`)
+   — flags any JWT `AUTH` node whose verification call site doesn't
+   confirmably pin an `algorithms:` allow-list, pessimistic-by-default
+   like `NGA-027`. Backed by a new `AuthDetail.jwt_algorithm_restricted`
+   field extracted in `NestJSAuthTSAdapter`
+   (`nuguard/sbom/adapters/typescript/auth_detector.py`): scans the same
+   file as the JWT-signing call site for a `jwt.verify(...)` call and
+   checks whether its options include `algorithms:`. Added
+   `build_jwt_tampering_probe` (`api_attacks.py`,
+   `ScenarioType.JWT_TAMPERING`) — sends the request with real
+   credentials stripped and a forged `Authorization: Bearer` header in
+   their place: one `alg: none` unsigned token, then HS256 tokens signed
+   with 3 common default secrets (`"secret"`, `"changeit"`,
+   `"your-256-bit-secret"`). A 2xx response to any forged token means
+   the server accepted a token it never verified. Wired into the
+   generator on the same population as `build_auth_bypass`
+   (`auth_required=True`, or unknown and not a public-looking path).
+   Required two small supporting fixes: `TargetAppClient.invoke_endpoint`
+   (`nuguard/redteam/target/client.py`) was stripping `extra_headers` of
+   the same name as a tracked auth header (e.g. a forged `Authorization`)
+   right along with the real one when `strip_auth=True` — reordered so
+   stripping happens before `extra_headers` is applied, not after; and
+   the executor's direct-HTTP step path
+   (`nuguard/redteam/executor/executor.py`) never forwarded
+   `step.extra_headers` to `invoke_endpoint()` at all, so no builder
+   could have used per-step custom headers regardless. Unit-tested
+   (forging helpers, builder structure, generator wiring, the
+   client/executor fixes); **not yet validated against a live Juice
+   Shop run.** **Deliberately deferred, not built**: RS256→HS256
+   algorithm-confusion (needs the server's real public key, which the
+   SBOM doesn't capture) and brute-forcing beyond the fixed 3-secret
+   dictionary.

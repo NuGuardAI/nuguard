@@ -37,6 +37,7 @@ from .api_attacks import (
     build_auth_scope_bypass,
     build_idor,
     build_injection_probe,
+    build_jwt_tampering_probe,
     build_mass_assignment,
     build_open_data_exposure,
     build_open_redirect_probe,
@@ -1628,6 +1629,12 @@ class ScenarioGenerator:
         For each discovered endpoint:
         - AUTH_BYPASS   — when auth_required=True OR auth_required is unknown and
                           the endpoint does not look like a public path
+        - JWT Tampering — same population as AUTH_BYPASS; probes with a forged
+                          Authorization: Bearer token (alg=none, weak HS256
+                          secret) in place of real credentials
+        - Rate-Limit Probe — endpoints WITHOUT a confirmed rate-limit posture
+                          (same population NGA-026 flags statically); bursts
+                          the endpoint and checks whether a 429 ever shows up
         - MASS_ASSIGNMENT — for write methods (POST/PUT/PATCH)
         - IDOR          — for endpoints with ID-like path parameters (explicit
                           metadata OR path template patterns detected via regex)
@@ -1701,6 +1708,20 @@ class ScenarioGenerator:
                         method=method,
                         request_body_schema=request_body_schema,
                         sensitive_fields=endpoint_sensitive_fields,
+                    )
+                )
+
+                # JWT tampering: same population as auth bypass — a forged
+                # token accepted is a stronger, more specific claim than a
+                # plain missing-auth-check, but only meaningful where auth is
+                # actually expected to be enforced.
+                out.append(
+                    build_jwt_tampering_probe(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        request_body_schema=request_body_schema,
                     )
                 )
 

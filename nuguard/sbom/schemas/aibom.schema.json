@@ -80,6 +80,19 @@
           },
           "title": "Auth Roles",
           "type": "array"
+        },
+        "jwt_algorithm_restricted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a JWT verification call site pins an explicit expected algorithm (e.g. `algorithms: ['HS256']`); False when a verify call was found with no such restriction, which admits alg-confusion attacks (a forged token can switch the algorithm, e.g. to `none`, and be accepted); None when no verification call site was found.",
+          "title": "Jwt Algorithm Restricted"
         }
       },
       "title": "AuthDetail",

@@ -65,6 +65,7 @@ _NGA_STRUCTURAL: dict[str, RuleOwaspRefs] = {
     "NGA-027": RuleOwaspRefs(owasp_llm=("LLM02:2026",)),  # Sensitive Information Disclosure (missing security headers)
     "NGA-028": RuleOwaspRefs(owasp_llm=("LLM02:2026",)),  # Sensitive Information Disclosure (permissive CORS)
     "NGA-029": RuleOwaspRefs(owasp_llm=("LLM02:2026",)),  # Sensitive Information Disclosure (verbose error leak)
+    "NGA-030": RuleOwaspRefs(owasp_llm=("LLM03:2026",), owasp_agentic=("ASI03",)),  # Excessive Agency / Identity & Privilege Abuse (JWT alg confusion)
 }
 
 # ---------------------------------------------------------------------------

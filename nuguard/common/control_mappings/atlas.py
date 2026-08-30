@@ -401,6 +401,10 @@ NGA_TO_ATLAS: dict[str, list[tuple[str, str]]] = {
     "NGA-029": [
         ("AML.T0024", "MEDIUM"),  # Exfiltration via ML Inference API — internals leaked via error responses
     ],
+    # NGA-030: JWT verification with no pinned algorithm allow-list
+    "NGA-030": [
+        ("AML.T0040", "HIGH"),    # ML Model Inference API Access — forged token accepted as valid identity
+    ],
     # ── NGA-SC-xxx: supply-chain rules ──────────────────────────────────────
     "NGA-SC-001": [("AML.T0010", "HIGH"), ("AML.T0048", "MEDIUM")],
     "NGA-SC-002": [("AML.T0010", "HIGH"), ("AML.T0036", "MEDIUM")],

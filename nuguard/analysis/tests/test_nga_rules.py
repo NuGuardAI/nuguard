@@ -45,6 +45,7 @@ from nuguard.analysis.plugins.nga_rules import (
     _rule_nga027_missing_security_headers,
     _rule_nga028_permissive_cors,
     _rule_nga029_verbose_error_leak,
+    _rule_nga030_jwt_no_algorithm_restriction,
 )
 
 # ---------------------------------------------------------------------------
@@ -641,8 +642,9 @@ class TestRulesRegistry:
         assert "_rule_nga027_missing_security_headers" in " ".join(names)
         assert "_rule_nga028_permissive_cors" in " ".join(names)
         assert "_rule_nga029_verbose_error_leak" in " ".join(names)
-        # Rules run NGA-001 to NGA-029 with no gaps
-        assert len(_RULES) == 29
+        assert "_rule_nga030_jwt_no_algorithm_restriction" in " ".join(names)
+        # Rules run NGA-001 to NGA-030 with no gaps
+        assert len(_RULES) == 30
 
     def test_all_rules_return_list(self) -> None:
         for rule in _RULES:
@@ -1365,6 +1367,51 @@ class TestNga029:
             "metadata": {"debug_error_leak": False},
         }
         assert self._run([node]) == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-030 — JWT verification with no pinned algorithm allow-list
+# ---------------------------------------------------------------------------
+
+
+class TestNga030:
+    def _run(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return _rule_nga030_jwt_no_algorithm_restriction(nodes=nodes)
+
+    def _jwt_node(self, jwt_algorithm_restricted: bool | None) -> dict[str, Any]:
+        auth_detail: dict[str, Any] = {}
+        if jwt_algorithm_restricted is not None:
+            auth_detail["jwt_algorithm_restricted"] = jwt_algorithm_restricted
+        return {
+            "id": "auth", "name": "JWT", "component_type": "AUTH",
+            "metadata": {"auth_type": "jwt", "auth_detail": auth_detail},
+        }
+
+    def test_fires_when_algorithm_restriction_confirmed_false(self) -> None:
+        findings = self._run([self._jwt_node(False)])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-030"
+        assert findings[0]["severity"] == "HIGH"
+
+    def test_fires_when_restriction_not_confirmed(self) -> None:
+        # No verify call site found at all — pessimistic default, mirrors
+        # NGA-027's "not confirmed" treatment of missing security headers.
+        findings = self._run([self._jwt_node(None)])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-030"
+
+    def test_no_finding_when_algorithm_restriction_confirmed_true(self) -> None:
+        assert self._run([self._jwt_node(True)]) == []
+
+    def test_no_finding_on_non_jwt_auth(self) -> None:
+        node = {
+            "id": "auth", "name": "OAuth2", "component_type": "AUTH",
+            "metadata": {"auth_type": "oauth2", "auth_detail": {}},
+        }
+        assert self._run([node]) == []
+
+    def test_no_finding_on_non_auth_node(self) -> None:
+        assert self._run([_api_node("chat-completions")]) == []
 
     def test_no_finding_no_api_endpoints(self) -> None:
         assert self._run([_model_node("gpt-4", "openai")]) == []

@@ -1,6 +1,10 @@
 """Tests for direct HTTP API attack scenario builders and generator integration."""
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 import uuid as _uuid
 from datetime import UTC, datetime
 
@@ -8,12 +12,16 @@ from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, GoalType, ScenarioTy
 from nuguard.redteam.executor.executor import StepResult
 from nuguard.redteam.scenarios.api_attacks import (
     _DB_ERROR_SIGNATURES,
+    _JWT_WEAK_SECRETS,
     _TRAVERSAL_SUCCESS_SIGNATURES,
+    _forge_jwt_alg_none,
+    _forge_jwt_hs256,
     _replace_first_id_param,
     _replace_path_param,
     build_auth_bypass,
     build_idor,
     build_injection_probe,
+    build_jwt_tampering_probe,
     build_mass_assignment,
     build_open_redirect_probe,
     build_path_traversal_probe,
@@ -119,6 +127,74 @@ def test_auth_bypass_impact_score_elevated():
 def test_auth_bypass_title_contains_endpoint_name():
     s = build_auth_bypass("ep1", "Admin Panel", "/admin")
     assert "Admin Panel" in s.title
+
+
+# ---------------------------------------------------------------------------
+# JWT forging helpers
+# ---------------------------------------------------------------------------
+
+def test_forge_jwt_alg_none_has_empty_signature_segment():
+    token = _forge_jwt_alg_none()
+    header_b64, payload_b64, signature_b64 = token.split(".")
+    assert signature_b64 == ""
+    header = json.loads(base64.urlsafe_b64decode(header_b64 + "=="))
+    assert header["alg"] == "none"
+
+
+def test_forge_jwt_hs256_signature_verifies_with_the_given_secret():
+    token = _forge_jwt_hs256("secret")
+    header_b64, payload_b64, signature_b64 = token.split(".")
+    expected_sig = hmac.new(
+        b"secret", f"{header_b64}.{payload_b64}".encode(), hashlib.sha256
+    ).digest()
+    assert base64.urlsafe_b64decode(signature_b64 + "==") == expected_sig
+
+
+def test_forge_jwt_hs256_different_secrets_produce_different_signatures():
+    tokens = {_forge_jwt_hs256(secret) for secret in _JWT_WEAK_SECRETS}
+    assert len(tokens) == len(_JWT_WEAK_SECRETS)
+
+
+# ---------------------------------------------------------------------------
+# build_jwt_tampering_probe
+# ---------------------------------------------------------------------------
+
+def test_jwt_tampering_probe_structure():
+    s = build_jwt_tampering_probe("ep1", "Get User", "/api/users", method="GET")
+    assert s.goal_type == GoalType.API_ATTACK
+    assert s.scenario_type == ScenarioType.JWT_TAMPERING
+    assert s.chain is not None
+    # alg=none step plus one step per weak secret
+    assert len(s.chain.steps) == 1 + len(_JWT_WEAK_SECRETS)
+
+
+def test_jwt_tampering_probe_steps_carry_forged_bearer_tokens_and_strip_auth():
+    s = build_jwt_tampering_probe("ep1", "Get User", "/api/users", method="GET")
+    for step in s.chain.steps:
+        assert step.strip_auth is True
+        assert step.target_path == "/api/users"
+        assert step.success_signal == HTTP_2XX_SENTINEL
+        auth_header = step.extra_headers.get("Authorization", "")
+        assert auth_header.startswith("Bearer ")
+        assert len(auth_header.split(".")) == 3  # header.payload.signature
+
+
+def test_jwt_tampering_probe_first_step_is_alg_none():
+    s = build_jwt_tampering_probe("ep1", "Get User", "/api/users", method="GET")
+    first_token = s.chain.steps[0].extra_headers["Authorization"].removeprefix("Bearer ")
+    assert first_token == _forge_jwt_alg_none()
+
+
+def test_jwt_tampering_probe_only_last_step_aborts_on_failure():
+    s = build_jwt_tampering_probe("ep1", "Get User", "/api/users", method="GET")
+    for step in s.chain.steps[:-1]:
+        assert step.on_failure == "skip"
+    assert s.chain.steps[-1].on_failure == "abort"
+
+
+def test_jwt_tampering_probe_impact_score_high():
+    s = build_jwt_tampering_probe("ep1", "Get User", "/api/users")
+    assert s.impact_score >= 9.0
 
 
 # ---------------------------------------------------------------------------
@@ -590,6 +666,24 @@ def test_generator_skips_reflected_xss_probe_when_no_params():
     scenarios = gen.generate()
     xss = [s for s in scenarios if s.scenario_type == ScenarioType.REFLECTED_XSS]
     assert len(xss) == 0
+
+
+def test_generator_produces_jwt_tampering_probe_for_protected_endpoint():
+    node = _api_node("ep18", "Admin Panel", path="/admin", auth_required=True)
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    jwt_probes = [s for s in scenarios if s.scenario_type == ScenarioType.JWT_TAMPERING]
+    assert len(jwt_probes) == 1
+
+
+def test_generator_skips_jwt_tampering_probe_for_public_endpoint():
+    node = _api_node("ep19", "Public Health Check", path="/health", auth_required=False)
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    jwt_probes = [s for s in scenarios if s.scenario_type == ScenarioType.JWT_TAMPERING]
+    assert len(jwt_probes) == 0
 
 
 def test_generator_produces_rate_limit_probe_when_not_confirmed_rate_limited():

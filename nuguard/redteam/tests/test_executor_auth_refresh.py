@@ -137,6 +137,71 @@ async def test_direct_http_step_retries_once_after_401_refresh() -> None:
     assert client.updated_headers.get("Authorization") == "Bearer refreshed-token"
 
 
+class _HeaderCapturingClient:
+    """Records the kwargs invoke_endpoint() was called with — regression
+    guard for a step's extra_headers (e.g. a forged JWT for
+    build_jwt_tampering_probe) actually reaching the direct-HTTP client
+    call, which the executor previously dropped entirely."""
+
+    def __init__(self) -> None:
+        self.last_call_kwargs: dict = {}
+
+    def new_session(self, chain_id: str) -> AttackSession:
+        return AttackSession(session_id="s1", target_url="http://target", chain_id=chain_id)
+
+    def update_default_headers(self, headers: dict[str, str] | None) -> None:
+        pass
+
+    async def invoke_endpoint(
+        self,
+        path: str,
+        method: str = "POST",
+        body: dict | None = None,
+        params: dict[str, str] | None = None,
+        extra_headers: dict[str, str] | None = None,
+        strip_auth: bool = False,
+    ) -> tuple[int, str, dict]:
+        self.last_call_kwargs = {
+            "path": path, "method": method, "body": body,
+            "params": params, "extra_headers": extra_headers, "strip_auth": strip_auth,
+        }
+        return 200, "ok", {}
+
+
+@pytest.mark.asyncio
+async def test_direct_http_step_forwards_extra_headers_to_invoke_endpoint() -> None:
+    client = _HeaderCapturingClient()
+    executor = AttackExecutor(client=cast(Any, client))
+
+    forged_token = "eyJhbGciOiJub25lIn0.eyJyb2xlIjoiYWRtaW4ifQ."
+    chain = ExploitChain(
+        chain_id="c3",
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.JWT_TAMPERING,
+        steps=[
+            ExploitStep(
+                step_id="s3",
+                step_type="INJECT",
+                description="jwt tampering step",
+                payload="",
+                success_signal=HTTP_2XX_SENTINEL,
+                on_failure="abort",
+                target_path="/admin",
+                http_method="GET",
+                strip_auth=True,
+                extra_headers={"Authorization": f"Bearer {forged_token}"},
+            )
+        ],
+    )
+
+    await executor.run(chain)
+
+    assert client.last_call_kwargs["extra_headers"] == {
+        "Authorization": f"Bearer {forged_token}"
+    }
+    assert client.last_call_kwargs["strip_auth"] is True
+
+
 class _AlwaysUnauthorizedClient:
     """A direct-HTTP endpoint that always correctly rejects with 401."""
 

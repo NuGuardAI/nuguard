@@ -33,6 +33,7 @@ NGA-026  AI endpoint without application-level rate limiting        MEDIUM
 NGA-027  AI endpoint missing security headers (CSP/X-Frame/HSTS)   MEDIUM
 NGA-028  API endpoint has an overly permissive CORS policy         HIGH
 NGA-029  API endpoint's error handler leaks stack traces           MEDIUM
+NGA-030  JWT verification with no pinned algorithm allow-list      HIGH
 """
 
 from __future__ import annotations
@@ -1895,6 +1896,51 @@ def _rule_nga029_verbose_error_leak(
     ]
 
 
+# ── NGA-030 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga030_jwt_no_algorithm_restriction(
+    nodes: list[dict[str, Any]], **_: Any
+) -> list[dict[str, Any]]:
+    """HIGH — JWT verification with no pinned algorithm allow-list.
+
+    A `jwt.verify(token, secret)` call with no explicit `algorithms:`
+    allow-list trusts the `alg` header the token itself claims — including
+    `alg: none` (unsigned) or switching a server that expects RS256 to
+    HS256 (signing with the server's own public key as an HMAC secret).
+    Either lets an attacker forge a token that passes verification.
+    """
+    unrestricted = [
+        n for n in nodes
+        if n.get("component_type") == "AUTH"
+        and (n.get("metadata") or {}).get("auth_type") == "jwt"
+        and ((n.get("metadata") or {}).get("auth_detail") or {}).get(
+            "jwt_algorithm_restricted"
+        )
+        is not True
+    ]
+    if not unrestricted:
+        return []
+
+    return [
+        _finding(
+            "NGA-030", "HIGH",
+            "JWT verification with no pinned algorithm allow-list",
+            f"{len(unrestricted)} JWT auth mechanism(s) have no confirmed "
+            "`algorithms:` allow-list on their verification call. Without one, "
+            "the verifier trusts whatever algorithm the presented token "
+            "claims — including `alg: none` (unsigned) or downgrading an "
+            "asymmetric scheme (RS256) to a symmetric one (HS256) signed "
+            "with the server's own public key. Either lets an attacker forge "
+            "a token that passes verification.",
+            [n.get("name", "") for n in unrestricted],
+            "Pass an explicit `algorithms` option to every `jwt.verify()` "
+            "call (e.g. `{ algorithms: ['HS256'] }`), matching only the "
+            "single algorithm the server actually issues tokens with.",
+        )
+    ]
+
+
 # ── Rule registry ─────────────────────────────────────────────────────────────
 
 _RULES: list[Callable[..., list[dict[str, Any]]]] = [
@@ -1927,6 +1973,7 @@ _RULES: list[Callable[..., list[dict[str, Any]]]] = [
     _rule_nga027_missing_security_headers,           # NGA-027 MEDIUM
     _rule_nga028_permissive_cors,                    # NGA-028 HIGH
     _rule_nga029_verbose_error_leak,                 # NGA-029 MEDIUM
+    _rule_nga030_jwt_no_algorithm_restriction,       # NGA-030 HIGH
 ]
 
 # Per-rule metadata used by verbose audit mode (parallel to _RULES).
@@ -2104,6 +2151,12 @@ _RULE_META: list[dict[str, str]] = [
         "title": "API endpoint's error handler leaks stack traces",
         "checks": "API_ENDPOINT nodes vs. debug_error_leak",
         "pass_reason": "No AI-facing endpoints found, or none run in debug/verbose-error mode",
+    },
+    {
+        "rule_id": "NGA-030", "severity": "HIGH",
+        "title": "JWT verification with no pinned algorithm allow-list",
+        "checks": "AUTH nodes (auth_type=jwt) vs. auth_detail.jwt_algorithm_restricted",
+        "pass_reason": "No JWT auth mechanism found, or all verify calls pin an algorithms allow-list",
     },
 ]
 
@@ -2324,6 +2377,11 @@ def _build_pass_evidence(
     if rule_id in ("NGA-027", "NGA-028", "NGA-029"):
         return {
             "api_endpoint_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES],
+        }
+
+    if rule_id == "NGA-030":
+        return {
+            "auth_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") == "AUTH"],
         }
 
     return {}

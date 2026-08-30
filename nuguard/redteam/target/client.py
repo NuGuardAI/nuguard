@@ -1088,16 +1088,28 @@ class TargetAppClient:
         for attempt in range(self._max_429_retries + 1):
             try:
                 if strip_auth and self._auth_header_names:
+                    # Build without extra_headers first, strip the real auth
+                    # material, THEN layer extra_headers on top of the
+                    # already-stripped request. Doing it in the other order
+                    # (extra_headers passed to build_request, stripped after)
+                    # would delete a caller-supplied replacement header of the
+                    # same name (e.g. a forged Authorization: Bearer <token>
+                    # for JWT-tampering probes) along with the real one —
+                    # httpx merges rather than replaces per-request headers,
+                    # so both copies exist on the request object until the
+                    # strip loop below, which deletes every value for a
+                    # matched name regardless of which one supplied it.
                     request = self._client.build_request(
                         method=method.upper(),
                         url=path,
                         json=body,
                         params=params,
-                        headers=extra_headers or {},
                     )
                     for name in self._auth_header_names:
                         if name in request.headers:
                             del request.headers[name]
+                    if extra_headers:
+                        request.headers.update(extra_headers)
                     resp = await self._client.send(request)
                 else:
                     resp = await self._client.request(
