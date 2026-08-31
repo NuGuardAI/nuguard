@@ -1080,6 +1080,8 @@ def _render_markdown(
                     lines += [f"**Remediation:** {f.remediation}  ", ""]
                 if f.affected_component:
                     lines += [f"**Affected Components:** `{_component_label(f)}`  ", ""]
+                if f.evidence:
+                    lines += [f"**Evidence:** `{f.evidence}`  ", ""]
                 lines += [f"**Source:** {sources_str}  ", ""]
                 framework = _framework_mapping_text(
                     f.owasp_llm_ref, f.owasp_asi_ref, f.mitre_atlas_technique

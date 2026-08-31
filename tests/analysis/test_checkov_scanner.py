@@ -36,8 +36,18 @@ def test_resolves_real_check_name_not_rule_id():
     assert len(findings) == 1
     finding = findings[0]
     assert finding["rule_id"] == "CKV_AWS_150"
-    assert finding["title"] == "Ensure that S3 buckets are encrypted with KMS by default"
+    assert "Ensure that S3 buckets are encrypted with KMS by default" in finding["title"]
     assert finding["title"] != finding["rule_id"]
+
+
+def test_title_includes_category_and_affected_resource():
+    data = _checkov_output(_base_check_result())
+    finding = _parse_checkov_output(data, "/main.tf")[0]
+
+    assert finding["title"] == (
+        "[IaC misconfiguration] Ensure that S3 buckets are encrypted with "
+        "KMS by default — aws_s3_bucket.example"
+    )
 
 
 def test_populates_remediation_and_severity_from_top_level_fields():
@@ -57,6 +67,13 @@ def test_normal_resource_used_as_affected_component():
     assert "aws_s3_bucket.example" in finding["description"]
 
 
+def test_evidence_populated_with_file_and_line_for_normal_resource_check():
+    data = _checkov_output(_base_check_result())
+    finding = _parse_checkov_output(data, "/main.tf")[0]
+
+    assert finding["evidence"] == "/main.tf:10"
+
+
 def test_secret_hash_resource_falls_back_to_file_location():
     secret_result = _base_check_result(
         check_id="CKV_SECRET_13",
@@ -72,6 +89,8 @@ def test_secret_hash_resource_falls_back_to_file_location():
     assert finding["affected"] == ["/app/config.py:42"]
     assert "967649db3de73fc65f333fcbdf3fe58e334bcc7a" not in finding["affected"][0]
     assert "967649db3de73fc65f333fcbdf3fe58e334bcc7a" not in finding["description"]
+    # Evidence would just repeat the affected-component value here — omitted.
+    assert finding["evidence"] is None
 
 
 def test_missing_line_range_falls_back_to_bare_file_path():
@@ -94,4 +113,4 @@ def test_missing_check_name_falls_back_to_check_id():
     data = _checkov_output(check_result)
     finding = _parse_checkov_output(data, "/main.tf")[0]
 
-    assert finding["title"] == "CKV_AWS_150"
+    assert finding["title"] == "[IaC misconfiguration] CKV_AWS_150 — aws_s3_bucket.example"

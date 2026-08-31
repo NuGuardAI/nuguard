@@ -229,13 +229,17 @@ def _parse_checkov_output(data: Any, scan_path: str) -> list[dict[str, Any]]:
             line_range = check_result.get("file_line_range") or []
             location = f"{file_path}:{line_range[0]}" if line_range else file_path
             display_resource = location if _HEX_HASH_RE.match(resource) else (resource or location)
+            # Omit evidence when it would just repeat the affected-component
+            # value (the CKV_SECRET_* hash-avoidance case already shows it).
+            evidence = None if display_resource == location else location
 
             findings.append({
                 "rule_id":     check_id,
-                "title":       name,
+                "title":       f"[IaC misconfiguration] {name} — {display_resource}",
                 "description": f"IaC misconfiguration: {name} in `{display_resource}`",
                 "severity":    severity,
                 "affected":    [display_resource],
+                "evidence":    evidence,
                 "remediation": guideline,
                 "url":         guideline,
                 "source":      "checkov",
