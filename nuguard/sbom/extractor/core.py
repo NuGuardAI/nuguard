@@ -1622,6 +1622,23 @@ class AiSbomExtractor:
                 _irs = acc.metadata.get("injection_risk_score")
                 if _irs is not None:
                     node.metadata.injection_risk_score = float(_irs)
+            # PROMPT node typed fields
+            if acc.component_type == ComponentType.PROMPT:
+                if acc.metadata.get("role"):
+                    node.metadata.role = str(acc.metadata["role"])
+                if acc.metadata.get("content"):
+                    node.metadata.content = str(acc.metadata["content"])
+                _cc = acc.metadata.get("char_count")
+                if _cc is not None:
+                    node.metadata.char_count = int(_cc)
+                _it = acc.metadata.get("is_template")
+                if _it is not None:
+                    node.metadata.is_template = bool(_it)
+                _tv = acc.metadata.get("template_variables")
+                if isinstance(_tv, list) and _tv:
+                    node.metadata.template_variables = [str(v) for v in _tv]
+                if acc.metadata.get("prompt_type"):
+                    node.metadata.prompt_type = str(acc.metadata["prompt_type"])
             # GUARDRAIL node typed fields
             if acc.component_type == ComponentType.GUARDRAIL:
                 if acc.metadata.get("rules_excerpt"):

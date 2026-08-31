@@ -352,6 +352,19 @@ class TestOpenAIAgentsTriage:
     def test_detects_instructions_as_prompts(self, doc: AiSbomDocument) -> None:
         assert nodes(doc, ComponentType.PROMPT), "Expected PROMPT nodes from agent instructions"
 
+    def test_prompt_nodes_have_typed_metadata_fields(self, doc: AiSbomDocument) -> None:
+        """PROMPT content/role/char_count/is_template are typed NodeMetadata
+        fields (also mirrored to extras for backward compatibility)."""
+        prompts = nodes(doc, ComponentType.PROMPT)
+        assert prompts
+        for p in prompts:
+            assert p.metadata.role == "system"
+            assert p.metadata.content
+            assert p.metadata.char_count == len(p.metadata.content)
+            assert p.metadata.is_template is not None
+            # Backward-compat mirror in extras
+            assert p.metadata.extras.get("content") == p.metadata.content
+
     def test_prompts_connected_to_owning_agent(self, doc: AiSbomDocument) -> None:
         """Regression: PROMPT nodes must not be isolated — each agent's
         instructions should produce an AGENT --USES--> PROMPT edge."""

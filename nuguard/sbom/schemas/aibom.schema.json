@@ -1171,6 +1171,87 @@
           "description": "First 500 characters of the agent's system prompt / instructions / backstory. Used by the red-team scenario generator to craft context-authentic payloads.",
           "title": "System Prompt Excerpt"
         },
+        "role": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prompt role, e.g. 'system', 'user'. PROMPT nodes only.",
+          "title": "Role"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Full prompt/instructions text. PROMPT nodes only.",
+          "title": "Content"
+        },
+        "char_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Character count of the prompt content. PROMPT nodes only.",
+          "title": "Char Count"
+        },
+        "is_template": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the prompt content contains '{variable}' placeholders. PROMPT nodes only.",
+          "title": "Is Template"
+        },
+        "template_variables": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Template variable names found in the prompt content, e.g. ['user_name']. PROMPT nodes only.",
+          "title": "Template Variables"
+        },
+        "prompt_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Prompt kind set by some adapters, e.g. 'instructions', 'agent_input'. PROMPT nodes only.",
+          "title": "Prompt Type"
+        },
         "rules_excerpt": {
           "anyOf": [
             {

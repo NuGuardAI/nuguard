@@ -484,6 +484,31 @@ class NodeMetadata(BaseModel):
             "Used by the red-team scenario generator to craft context-authentic payloads."
         ),
     )
+    # PROMPT node attributes (populated by prompt-detecting adapters)
+    role: str | None = Field(
+        default=None,
+        description="Prompt role, e.g. 'system', 'user'. PROMPT nodes only.",
+    )
+    content: str | None = Field(
+        default=None,
+        description="Full prompt/instructions text. PROMPT nodes only.",
+    )
+    char_count: int | None = Field(
+        default=None,
+        description="Character count of the prompt content. PROMPT nodes only.",
+    )
+    is_template: bool | None = Field(
+        default=None,
+        description="True when the prompt content contains '{variable}' placeholders. PROMPT nodes only.",
+    )
+    template_variables: list[str] | None = Field(
+        default=None,
+        description="Template variable names found in the prompt content, e.g. ['user_name']. PROMPT nodes only.",
+    )
+    prompt_type: str | None = Field(
+        default=None,
+        description="Prompt kind set by some adapters, e.g. 'instructions', 'agent_input'. PROMPT nodes only.",
+    )
     # GUARDRAIL node attributes (populated by guardrail adapters / enricher)
     rules_excerpt: str | None = Field(
         default=None,
