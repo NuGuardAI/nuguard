@@ -1,6 +1,6 @@
 {
   "name": "@nuguardai/nuguard",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "description": "AI Application Security — SBOM generation, static analysis, behavioral validation, and adversarial red-team testing for AI agents and LLM-powered applications.",
   "keywords": [
     "mcp",
