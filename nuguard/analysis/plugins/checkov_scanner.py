@@ -90,6 +90,7 @@ class CheckovScannerPlugin(AnalysisPlugin):
         all_findings: list[dict[str, Any]] = []
         for path in iac_paths:
             all_findings.extend(_run_checkov(binary, path, config))
+        all_findings = _dedupe_findings(all_findings)
 
         status = "warning" if all_findings else "ok"
         message = (
@@ -105,6 +106,39 @@ class CheckovScannerPlugin(AnalysisPlugin):
             findings=all_findings,
             details={"total": len(all_findings), "scanned_paths": list(iac_paths)},
         )
+
+
+def _dedupe_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse findings for the same rule + affected component.
+
+    Checkov has no CLI flag for this (checked: no dedup/uniqueness option
+    exists). The same (rule_id, resource-address) pair can legitimately be
+    reported more than once — e.g. two different files each defining a
+    Terraform resource with the same address — which the report then
+    displays as repeated, identical-looking finding blocks since it groups
+    by the bare resource address with no file qualifier. Rather than drop
+    the duplicate (losing the fact that a second file also has the issue),
+    merge their ``evidence`` (file:line) values so a reader still sees every
+    affected location. remediation is a deterministic function of rule_id
+    alone (checkov's guideline URL doesn't vary per-resource), so rule_id
+    equality already implies remediation equality.
+    """
+    merged: dict[tuple[str, str], dict[str, Any]] = {}
+    order: list[tuple[str, str]] = []
+    for f in findings:
+        key = (f["rule_id"], f["affected"][0] if f["affected"] else "")
+        if key not in merged:
+            merged[key] = dict(f)
+            order.append(key)
+            continue
+        existing = merged[key]
+        new_evidence = f.get("evidence")
+        if new_evidence:
+            locations = existing["evidence"].split("; ") if existing.get("evidence") else []
+            if new_evidence not in locations:
+                locations.append(new_evidence)
+                existing["evidence"] = "; ".join(locations)
+    return [merged[k] for k in order]
 
 
 def _collect_iac_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:

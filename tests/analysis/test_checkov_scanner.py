@@ -7,7 +7,7 @@ output (top-level ``check_name``/``guideline``/``severity`` — no nested
 
 from __future__ import annotations
 
-from nuguard.analysis.plugins.checkov_scanner import _parse_checkov_output
+from nuguard.analysis.plugins.checkov_scanner import _dedupe_findings, _parse_checkov_output
 
 
 def _base_check_result(**overrides: object) -> dict:
@@ -114,3 +114,59 @@ def test_missing_check_name_falls_back_to_check_id():
     finding = _parse_checkov_output(data, "/main.tf")[0]
 
     assert finding["title"] == "[IaC misconfiguration] CKV_AWS_150 — aws_s3_bucket.example"
+
+
+def _finding(**overrides: object) -> dict:
+    base = {
+        "rule_id": "CKV_AWS_150",
+        "title": "[IaC misconfiguration] Ensure deletion protection — aws_lb.juice_shop",
+        "description": "IaC misconfiguration: Ensure deletion protection in `aws_lb.juice_shop`",
+        "severity": "MEDIUM",
+        "affected": ["aws_lb.juice_shop"],
+        "evidence": "terraform/networking.tf:12",
+        "remediation": "https://docs.example.com/CKV_AWS_150",
+        "url": "https://docs.example.com/CKV_AWS_150",
+        "source": "checkov",
+        "scan_target": "/repo",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_dedupe_collapses_same_rule_and_component_merging_evidence():
+    findings = [
+        _finding(evidence="terraform/networking.tf:12"),
+        _finding(evidence="infrastructure/terraform/networking.tf:12"),
+    ]
+
+    deduped = _dedupe_findings(findings)
+
+    assert len(deduped) == 1
+    assert deduped[0]["evidence"] == (
+        "terraform/networking.tf:12; infrastructure/terraform/networking.tf:12"
+    )
+
+
+def test_dedupe_leaves_distinct_components_and_rules_untouched():
+    findings = [
+        _finding(rule_id="CKV_AWS_150", affected=["aws_lb.juice_shop"]),
+        _finding(rule_id="CKV_AWS_91", affected=["aws_lb.juice_shop"]),
+        _finding(rule_id="CKV_AWS_150", affected=["aws_lb.other"]),
+    ]
+
+    deduped = _dedupe_findings(findings)
+
+    assert len(deduped) == 3
+
+
+def test_dedupe_handles_missing_or_identical_evidence_without_artifacts():
+    findings = [
+        _finding(evidence="terraform/networking.tf:12"),
+        _finding(evidence="terraform/networking.tf:12"),  # exact duplicate
+        _finding(evidence=None),
+    ]
+
+    deduped = _dedupe_findings(findings)
+
+    assert len(deduped) == 1
+    assert deduped[0]["evidence"] == "terraform/networking.tf:12"
