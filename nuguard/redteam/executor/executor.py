@@ -837,6 +837,7 @@ class AttackExecutor:
                 method=step.http_method,
                 body=step.http_body,
                 params=step.http_params or None,
+                extra_headers=step.extra_headers or None,
                 strip_auth=step.strip_auth,
             )
             # A 401 retry-with-refreshed-auth makes no sense for a step whose
@@ -856,6 +857,7 @@ class AttackExecutor:
                     method=step.http_method,
                     body=step.http_body,
                     params=step.http_params or None,
+                    extra_headers=step.extra_headers or None,
                     strip_auth=step.strip_auth,
                 )
             tool_calls: list[dict] = []
@@ -1156,6 +1158,19 @@ class AttackExecutor:
                     result.llm_eval_evidence,
                 )
 
+        # Dedicated "was this a refusal" signal for the policy evaluator below —
+        # distinct from result.success_signal_found, which reflects the ATTACK's
+        # own success criterion and can be False for reasons unrelated to
+        # refusal (e.g. a keyword success_signal that simply didn't match).
+        # refusal_reason is a closed taxonomy ("content_filter", "policy_detector",
+        # "hitl_check", ..., "none" when the target actually complied), so
+        # non-empty and not "none" is an unambiguous "the judge classified this
+        # response as a refusal" signal — only set when the judge actually ran
+        # with confidence high/medium (see the block above).
+        llm_judged_refusal = bool(
+            result.llm_eval_refusal_reason
+        ) and result.llm_eval_refusal_reason != "none"
+
         # Deterministic fallback gate for direct-HTTP HTTP_2XX_SENTINEL steps
         # (AUTH_BYPASS/BFLA/RATE_LIMIT_PROBE/IDOR) when no LLM judge actually
         # adjudicated this step (evaluator not configured, or skipped for a
@@ -1200,6 +1215,7 @@ class AttackExecutor:
                 response=response,
                 tool_calls=tool_calls,
                 step_succeeded=result.success_signal_found,
+                llm_judged_refusal=llm_judged_refusal,
             )
 
         # Log

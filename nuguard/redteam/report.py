@@ -441,9 +441,20 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
 
     Followed by a per-goal-type breakdown table with a Not Tested column.
     Goal types are derived from actual scenario records (no hardcoded universe).
-    Not Tested = chain_status in {skipped, similar_miss, failed, aborted}.
+
+    Not Tested = the scenario never actually executed against the target:
+    chain_status in {skipped, similar_miss, failed, target_unreachable,
+    timeout}, or a circuit-breaker abort (``"aborted:<reason>"``, e.g.
+    ``"aborted:consecutive_request_failures"``). A *bare* ``"aborted"`` status
+    is deliberately excluded — builders like ``build_idor``/
+    ``build_injection_probe`` mark their last fallback step
+    ``on_failure="abort"`` by design (see ``api_attacks.py``), so a clean miss
+    on every candidate ends the chain with plain ``chain.status = "aborted"``
+    after a real, completed execution. Counting that as "not tested" was
+    previously deflating goal-type coverage percentages (e.g. API Attack)
+    even though the scenario table showed those chains ran with real results.
     """
-    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted", "target_unreachable"}
+    _NOT_TESTED = {"skipped", "similar_miss", "failed", "target_unreachable", "timeout"}
 
     # Accumulate per-goal-type counts
     goal_data: dict[str, dict[str, int]] = {}
@@ -453,7 +464,7 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
         if gt not in goal_data:
             goal_data[gt] = {"total": 0, "not_tested": 0}
         goal_data[gt]["total"] += 1
-        if status in _NOT_TESTED:
+        if status in _NOT_TESTED or status.startswith("aborted:"):
             goal_data[gt]["not_tested"] += 1
 
     total_all = sum(d["total"] for d in goal_data.values())
