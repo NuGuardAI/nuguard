@@ -36,9 +36,14 @@ from .api_attacks import (
     build_auth_bypass,
     build_auth_scope_bypass,
     build_idor,
+    build_injection_probe,
+    build_jwt_tampering_probe,
     build_mass_assignment,
     build_open_data_exposure,
+    build_open_redirect_probe,
+    build_path_traversal_probe,
     build_rate_limit_probe,
+    build_reflected_xss_probe,
 )
 from .data_exfiltration import (
     build_account_id_probe,
@@ -1624,9 +1629,22 @@ class ScenarioGenerator:
         For each discovered endpoint:
         - AUTH_BYPASS   — when auth_required=True OR auth_required is unknown and
                           the endpoint does not look like a public path
+        - JWT Tampering — same population as AUTH_BYPASS; probes with a forged
+                          Authorization: Bearer token (alg=none, weak HS256
+                          secret) in place of real credentials
+        - Rate-Limit Probe — endpoints WITHOUT a confirmed rate-limit posture
+                          (same population NGA-026 flags statically); bursts
+                          the endpoint and checks whether a 429 ever shows up
         - MASS_ASSIGNMENT — for write methods (POST/PUT/PATCH)
         - IDOR          — for endpoints with ID-like path parameters (explicit
                           metadata OR path template patterns detected via regex)
+        - Injection Probe — SQLi/NoSQLi fuzzing of path/body parameters, for
+                          any endpoint with at least one parameter to probe
+        - Path Traversal — ../ fuzzing of file/path-like path/body parameters
+        - Open Redirect  — attacker-controlled-URL fuzzing of redirect-like
+                          path/body parameters
+        - Reflected XSS  — <script> payload fuzzing of path/body parameters,
+                          checking for unescaped echo in the response
         - Open Endpoint Data Exposure — for endpoints that require no auth by
                           design AND are declared to return sensitive data;
                           there's no auth check to bypass, so the question is
@@ -1693,6 +1711,20 @@ class ScenarioGenerator:
                     )
                 )
 
+                # JWT tampering: same population as auth bypass — a forged
+                # token accepted is a stronger, more specific claim than a
+                # plain missing-auth-check, but only meaningful where auth is
+                # actually expected to be enforced.
+                out.append(
+                    build_jwt_tampering_probe(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        request_body_schema=request_body_schema,
+                    )
+                )
+
             # Open Endpoint Data Exposure: no auth is required by design (either
             # explicitly or by public-path match), but the endpoint is declared
             # to return sensitive data — there's no auth bypass to test, just
@@ -1749,6 +1781,65 @@ class ScenarioGenerator:
                 if scenario is not None:
                     out.append(scenario)
 
+            # Injection probe: fuzz path/body params with SQLi/NoSQLi payloads
+            # whenever there's at least one candidate to substitute into.
+            if inferred_params or request_body_schema:
+                injection_scenario = build_injection_probe(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    method=method,
+                    path_params=inferred_params,
+                    request_body_schema=request_body_schema,
+                    sensitive_fields=endpoint_sensitive_fields,
+                )
+                if injection_scenario is not None:
+                    out.append(injection_scenario)
+
+            # Path traversal probe: only fires when a file/path-like param
+            # name is actually present (checked inside the builder).
+            if inferred_params or request_body_schema:
+                traversal_scenario = build_path_traversal_probe(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    method=method,
+                    path_params=inferred_params,
+                    request_body_schema=request_body_schema,
+                )
+                if traversal_scenario is not None:
+                    out.append(traversal_scenario)
+
+            # Open redirect probe: only fires when a redirect-target-like
+            # param name is actually present (checked inside the builder).
+            if inferred_params or request_body_schema:
+                redirect_scenario = build_open_redirect_probe(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    method=method,
+                    path_params=inferred_params,
+                    request_body_schema=request_body_schema,
+                )
+                if redirect_scenario is not None:
+                    out.append(redirect_scenario)
+
+            # Reflected XSS probe: any endpoint with at least one path/body
+            # parameter to probe (matches build_injection_probe's gate —
+            # unlike path-traversal/redirect, XSS reflection isn't limited
+            # to parameters with a suggestive name).
+            if inferred_params or request_body_schema:
+                xss_scenario = build_reflected_xss_probe(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    method=method,
+                    path_params=inferred_params,
+                    request_body_schema=request_body_schema,
+                )
+                if xss_scenario is not None:
+                    out.append(xss_scenario)
+
             # BFLA/Scope bypass: when auth_scope or auth_detail metadata is present
             auth_scope = getattr(meta, "auth_scope", None)
             auth_detail = getattr(meta, "auth_detail", None)
@@ -1765,8 +1856,17 @@ class ScenarioGenerator:
                     )
                 )
 
-            # Rate-limit probe: when endpoint is explicitly rate-limited
-            if getattr(meta, "rate_limited", False):
+            # Rate-limit probe: fire on endpoints WITHOUT a confirmed
+            # rate-limit posture — the same population NGA-026 (static) flags
+            # as "no confirmed application-level rate limiting". Gating on
+            # `rate_limited is True` instead (the original condition) only
+            # ever probed endpoints already believed to be rate-limited,
+            # which is empirically backwards: on frameworks with no
+            # rate-limit adapter instrumentation (e.g. plain Express/Node),
+            # `rate_limited` is never set at all, so the probe never fired.
+            # Probing the unconfirmed population lets a real 429 upgrade the
+            # static finding to a false positive, and a clean burst confirm it.
+            if not getattr(meta, "rate_limited", False):
                 out.append(
                     build_rate_limit_probe(
                         endpoint_id=endpoint_id,

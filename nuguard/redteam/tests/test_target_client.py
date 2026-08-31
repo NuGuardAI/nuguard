@@ -378,6 +378,56 @@ async def test_default_headers_sent_with_invoke_endpoint():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_strip_auth_removes_real_auth_but_extra_headers_of_same_name_survive():
+    """A caller-supplied extra_headers entry (e.g. a forged
+    Authorization: Bearer <token> for JWT-tampering probes) must survive
+    strip_auth=True — regression guard for the bug where strip_auth deleted
+    ANY header matching a tracked auth-header name, including one the
+    caller had just supplied via extra_headers, not just the real default."""
+    route = respx.post(f"{BASE}/api/resource").mock(
+        return_value=httpx.Response(200, json={"id": 1})
+    )
+    client = TargetAppClient(
+        base_url=BASE,
+        chat_path=CHAT,
+        timeout=5.0,
+        default_headers={"Authorization": "Bearer real-token"},
+    )
+    async with client:
+        status, _text, _json = await client.invoke_endpoint(
+            "/api/resource",
+            method="POST",
+            extra_headers={"Authorization": "Bearer forged-token"},
+            strip_auth=True,
+        )
+    assert status == 200
+    sent_request = route.calls[0].request
+    assert sent_request.headers.get("authorization") == "Bearer forged-token"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_strip_auth_with_no_extra_headers_removes_auth_entirely():
+    route = respx.post(f"{BASE}/api/resource").mock(
+        return_value=httpx.Response(200, json={"id": 1})
+    )
+    client = TargetAppClient(
+        base_url=BASE,
+        chat_path=CHAT,
+        timeout=5.0,
+        default_headers={"Authorization": "Bearer real-token"},
+    )
+    async with client:
+        status, _text, _json = await client.invoke_endpoint(
+            "/api/resource", method="POST", strip_auth=True,
+        )
+    assert status == 200
+    sent_request = route.calls[0].request
+    assert "authorization" not in sent_request.headers
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_no_default_headers_backward_compatible():
     """When no default_headers are supplied the client still works as before."""
     respx.post(f"{BASE}{CHAT}").mock(

@@ -91,6 +91,7 @@ from ..deps import DependencyScanner
 from ..models import (
     AiSbomDocument,
     AuthDetail,
+    CorsPolicyDetail,
     DataHandlingDetail,
     Edge,
     EncryptionDetail,
@@ -98,6 +99,7 @@ from ..models import (
     Node,
     NodeMetadata,
     RateLimitDetail,
+    SecurityHeaderDetail,
     SourceLocation,
 )
 from ..normalization import canonicalize_text
@@ -1620,6 +1622,23 @@ class AiSbomExtractor:
                 _irs = acc.metadata.get("injection_risk_score")
                 if _irs is not None:
                     node.metadata.injection_risk_score = float(_irs)
+            # PROMPT node typed fields
+            if acc.component_type == ComponentType.PROMPT:
+                if acc.metadata.get("role"):
+                    node.metadata.role = str(acc.metadata["role"])
+                if acc.metadata.get("content"):
+                    node.metadata.content = str(acc.metadata["content"])
+                _cc = acc.metadata.get("char_count")
+                if _cc is not None:
+                    node.metadata.char_count = int(_cc)
+                _it = acc.metadata.get("is_template")
+                if _it is not None:
+                    node.metadata.is_template = bool(_it)
+                _tv = acc.metadata.get("template_variables")
+                if isinstance(_tv, list) and _tv:
+                    node.metadata.template_variables = [str(v) for v in _tv]
+                if acc.metadata.get("prompt_type"):
+                    node.metadata.prompt_type = str(acc.metadata["prompt_type"])
             # GUARDRAIL node typed fields
             if acc.component_type == ComponentType.GUARDRAIL:
                 if acc.metadata.get("rules_excerpt"):
@@ -1696,6 +1715,9 @@ class AiSbomExtractor:
                 _rl = acc.metadata.get("rate_limited")
                 if _rl is not None:
                     node.metadata.rate_limited = bool(_rl)
+                _del = acc.metadata.get("debug_error_leak")
+                if _del is not None:
+                    node.metadata.debug_error_leak = bool(_del)
                 _ids = acc.metadata.get("idor_surface")
                 if _ids is not None:
                     node.metadata.idor_surface = bool(_ids)
@@ -1842,6 +1864,16 @@ class AiSbomExtractor:
             if isinstance(_ad, dict) and _ad and node.metadata.auth_detail is None:
                 node.metadata.auth_detail = AuthDetail(
                     **{k: v for k, v in _ad.items() if v is not None}
+                )
+            _shd = acc.metadata.get("security_headers_detail")
+            if isinstance(_shd, dict) and _shd and node.metadata.security_headers_detail is None:
+                node.metadata.security_headers_detail = SecurityHeaderDetail(
+                    **{k: v for k, v in _shd.items() if v is not None}
+                )
+            _cors = acc.metadata.get("cors_policy")
+            if isinstance(_cors, dict) and _cors and node.metadata.cors_policy is None:
+                node.metadata.cors_policy = CorsPolicyDetail(
+                    **{k: v for k, v in _cors.items() if v is not None}
                 )
             _ed = acc.metadata.get("encryption_detail")
             if isinstance(_ed, dict) and _ed and node.metadata.encryption_detail is None:
@@ -3183,7 +3215,16 @@ class AiSbomExtractor:
                     continue
                 if name_lower.endswith(".sbom.enriched.json"):
                     continue
-                if name_lower.startswith("redteam-prompts-"):
+                # NuGuard's own generated report/cache artifacts (redteam-prompts-*,
+                # redteam-judge-*, redteam-{run_id}.json/.md, behavior-judge-*,
+                # behavior-scenarios-*, behavior-{run_id}.json — see
+                # nuguard/redteam/llm_engine/{prompt_cache,judge_cache}.py,
+                # nuguard/behavior/{judge_cache,prompt_cache}.py, and
+                # nuguard/output/public_api.py) are tool output, not application
+                # source, and must never be scanned as SBOM evidence.
+                if suffix in {".json", ".md"} and (
+                    name_lower.startswith("redteam-") or name_lower.startswith("behavior-")
+                ):
                     continue
                 if name_lower.startswith("nuguard-sbom-") and suffix in {".yaml", ".yml"}:
                     continue
