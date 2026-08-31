@@ -20,6 +20,7 @@ Usage
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -39,6 +40,11 @@ _SEV_MAP: dict[str, str] = {
     "LOW":      "LOW",
     "UNKNOWN":  "LOW",
 }
+
+# Checkov's secrets runner sets `resource` to a hex hash of the detected
+# secret rather than a real resource address; matched so we can fall back
+# to the file location instead of surfacing the hash as a display name.
+_HEX_HASH_RE = re.compile(r"^[0-9a-f]{20,}(:[0-9a-f]{20,})?$", re.IGNORECASE)
 
 
 def _checkov_path() -> str | None:
@@ -211,22 +217,25 @@ def _parse_checkov_output(data: Any, scan_path: str) -> list[dict[str, Any]]:
             continue
         for check_result in (entry.get("results", {}).get("failed_checks") or []):
             check_id  = check_result.get("check_id", "")
-            check_obj = check_result.get("check", {})
-            name      = check_obj.get("name", check_id)
+            name      = check_result.get("check_name", check_id)
             resource  = check_result.get("resource", "")
             file_path = check_result.get("file_path", scan_path)
-            guideline = check_obj.get("guideline", "")
+            guideline = check_result.get("guideline", "")
             severity  = _SEV_MAP.get(
-                str(check_result.get("severity") or check_obj.get("severity") or "MEDIUM").upper(),
+                str(check_result.get("severity") or "MEDIUM").upper(),
                 "MEDIUM",
             )
+
+            line_range = check_result.get("file_line_range") or []
+            location = f"{file_path}:{line_range[0]}" if line_range else file_path
+            display_resource = location if _HEX_HASH_RE.match(resource) else (resource or location)
 
             findings.append({
                 "rule_id":     check_id,
                 "title":       name,
-                "description": f"IaC misconfiguration: {name} in `{resource}`",
+                "description": f"IaC misconfiguration: {name} in `{display_resource}`",
                 "severity":    severity,
-                "affected":    [resource] if resource else [file_path],
+                "affected":    [display_resource],
                 "remediation": guideline,
                 "url":         guideline,
                 "source":      "checkov",
