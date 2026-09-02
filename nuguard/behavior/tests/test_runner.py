@@ -129,6 +129,42 @@ def test_runner_construction():
     assert runner is not None
 
 
+def test_llm_soft_rejected_tool_excluded_from_coverage_targets():
+    """Regression: a TOOL/AGENT node that LLM verification flagged as a likely
+    false positive (e.g. a CI-only Playwright screenshot step misdetected as a
+    "Browser Automation" tool, observed against OWASP Juice Shop) must not be
+    tracked as an uncovered coverage target — otherwise the adaptive follow-up
+    generator keeps trying to invent prompts to "exercise" a capability that
+    was never actually wired up, and drifts into contrived, off-topic (in the
+    observed case, exploit-flavored) requests chasing it."""
+    real_tool = Node(
+        id=uuid.uuid5(_NS, "TOOL/real_tool"),
+        name="Real Tool",
+        component_type=ComponentType.TOOL,
+        confidence=0.9,
+        metadata=NodeMetadata(),
+    )
+    fake_tool = Node(
+        id=uuid.uuid5(_NS, "TOOL/browser_automation"),
+        name="Browser Automation",
+        component_type=ComponentType.TOOL,
+        confidence=0.44,
+        metadata=NodeMetadata(extras={"llm_soft_rejected": True}),
+    )
+    sbom = MagicMock()
+    sbom.nodes = [real_tool, fake_tool]
+    sbom.edges = []
+
+    runner = BehaviorRunner(
+        config=_make_config(),
+        sbom=sbom,
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    assert runner._tool_names == ["Real Tool"]
+
+
 # ---------------------------------------------------------------------------
 # run() with mocked infrastructure via patch.object
 # ---------------------------------------------------------------------------

@@ -441,9 +441,20 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
 
     Followed by a per-goal-type breakdown table with a Not Tested column.
     Goal types are derived from actual scenario records (no hardcoded universe).
-    Not Tested = chain_status in {skipped, similar_miss, failed, aborted}.
+
+    Not Tested = the scenario never actually executed against the target:
+    chain_status in {skipped, similar_miss, failed, target_unreachable,
+    timeout}, or a circuit-breaker abort (``"aborted:<reason>"``, e.g.
+    ``"aborted:consecutive_request_failures"``). A *bare* ``"aborted"`` status
+    is deliberately excluded — builders like ``build_idor``/
+    ``build_injection_probe`` mark their last fallback step
+    ``on_failure="abort"`` by design (see ``api_attacks.py``), so a clean miss
+    on every candidate ends the chain with plain ``chain.status = "aborted"``
+    after a real, completed execution. Counting that as "not tested" was
+    previously deflating goal-type coverage percentages (e.g. API Attack)
+    even though the scenario table showed those chains ran with real results.
     """
-    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted", "target_unreachable"}
+    _NOT_TESTED = {"skipped", "similar_miss", "failed", "target_unreachable", "timeout"}
 
     # Accumulate per-goal-type counts
     goal_data: dict[str, dict[str, int]] = {}
@@ -453,7 +464,7 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
         if gt not in goal_data:
             goal_data[gt] = {"total": 0, "not_tested": 0}
         goal_data[gt]["total"] += 1
-        if status in _NOT_TESTED:
+        if status in _NOT_TESTED or status.startswith("aborted:"):
             goal_data[gt]["not_tested"] += 1
 
     total_all = sum(d["total"] for d in goal_data.values())
@@ -623,6 +634,7 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
     total_duration = 0.0
     total_turns = 0
     findings_count = 0
+    inconclusive_no_auth_count = 0
 
     for idx, r in enumerate(records, start=1):
         title_str = _r(r, "title", "") or ""
@@ -630,7 +642,12 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         goal_type_str = _r(r, "goal_type", "") or ""
         goal = _GOAL_LABEL.get(goal_type_str, goal_type_str.replace("_", " ").title())
         had_finding = bool(_r(r, "had_finding", False))
-        finding_cell = "**YES**" if had_finding else "no"
+        chain_status_str = _r(r, "chain_status", "") or ""
+        finding_cell = (
+            "**YES**" if had_finding
+            else "no*" if chain_status_str.startswith("inconclusive:")
+            else "no"
+        )
         turns_used = _r(r, "turns_used", None)
         if turns_used is None:
             turns_used = len(_r(r, "steps", []) or [])
@@ -646,6 +663,8 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         total_turns += turns_used
         if had_finding:
             findings_count += 1
+        if finding_cell == "no*":
+            inconclusive_no_auth_count += 1
 
         lines.append(
             f"| {idx} | {title} | {goal} | {finding_cell} "
@@ -661,6 +680,15 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         f"Total: {_fmt_duration(total_duration)} | "
         f"Avg per scenario: {avg_scenario} | Avg per turn: {avg_turn}_"
     )
+    if inconclusive_no_auth_count:
+        lines.append("")
+        lines.append(
+            f"_* {inconclusive_no_auth_count} IDOR scenario(s) ran with no target "
+            f"authentication configured — a miss only confirms the endpoint "
+            f"requires auth at all, not that object-level authorization is "
+            f"enforced. Configure `target.auth` in nuguard.yaml to test these "
+            f"meaningfully._"
+        )
     lines.append("")
     return lines
 

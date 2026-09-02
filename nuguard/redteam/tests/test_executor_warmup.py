@@ -25,7 +25,12 @@ class _FakeClient:
     def update_default_headers(self, headers: dict[str, str] | None) -> None:
         pass
 
-    async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+    async def send(
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[str, list[dict]]:
         self.sent_payloads.append(payload)
         return f"echo: {payload}", []
 

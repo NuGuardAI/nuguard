@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from nuguard.cli.report_meta import ReportMeta
 from nuguard.models.finding import Finding, Severity
 from nuguard.redteam.report import (
+    _attack_coverage_summary,
     _scenario_coverage_table,
     _truncate_title_for_table,
     _turns_cell_with_reason,
@@ -229,6 +230,46 @@ def test_scenario_coverage_table_renders_target_unreachable_reason() -> None:
     assert "0/0 — direct-HTTP endpoint unreachable" in table_body
 
 
+def test_scenario_coverage_table_flags_idor_inconclusive_when_no_auth_configured() -> None:
+    records = [
+        SimpleNamespace(
+            title="IDOR — /Rest/Basket/:Id",
+            goal_type="API_ATTACK",
+            impact_score=8.0,
+            had_finding=False,
+            turns_used=1,
+            turns_budget=1,
+            duration_s=0.4,
+            chain_status="inconclusive:no_auth_configured",
+            steps=[],
+        )
+    ]
+    lines = _scenario_coverage_table(records)
+    table_body = "\n".join(lines)
+    assert "| no* |" in table_body
+    assert "no target authentication configured" in table_body
+
+
+def test_scenario_coverage_table_plain_miss_has_no_footnote() -> None:
+    records = [
+        SimpleNamespace(
+            title="IDOR — /Rest/Basket/:Id",
+            goal_type="API_ATTACK",
+            impact_score=8.0,
+            had_finding=False,
+            turns_used=1,
+            turns_budget=1,
+            duration_s=0.4,
+            chain_status="completed",
+            steps=[],
+        )
+    ]
+    lines = _scenario_coverage_table(records)
+    table_body = "\n".join(lines)
+    assert "| no |" in table_body
+    assert "no target authentication configured" not in table_body
+
+
 # ── Fix 4 (part 2): title truncation preserves the trailing variant suffix ───
 
 
@@ -254,3 +295,46 @@ def test_truncate_title_distinguishes_variants_that_flat_truncation_would_collid
     t1 = f"{base} — explicit"
     t2 = f"{base} — implicit (curious)"
     assert _truncate_title_for_table(t1) != _truncate_title_for_table(t2)
+
+
+def test_attack_coverage_summary_counts_bare_aborted_as_tested() -> None:
+    """A plain "aborted" status is a real, completed execution — the last
+    fallback step of build_idor/build_injection_probe-style chains uses
+    on_failure="abort" by design, so a clean miss on every candidate ends
+    the chain with chain.status="aborted" after actually running. Counting
+    that as "not tested" was deflating coverage percentages like the
+    previously-reported "API Attack — 3% (3/92)"."""
+    records = [
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="aborted"),
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="completed"),
+    ]
+    lines = _attack_coverage_summary(records)
+    table_line = next(line for line in lines if line.startswith("| API Attack"))
+    assert table_line == "| API Attack | 2 | 0 | 100% |"
+
+
+def test_attack_coverage_summary_counts_circuit_breaker_abort_as_not_tested() -> None:
+    """A reason-suffixed "aborted:<reason>" status (circuit-breaker trip,
+    consecutive request failures) means the scenario never got a real shot
+    at the target, unlike a bare "aborted"."""
+    records = [
+        SimpleNamespace(
+            goal_type="API_ATTACK", chain_status="aborted:consecutive_request_failures"
+        ),
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="completed"),
+    ]
+    lines = _attack_coverage_summary(records)
+    table_line = next(line for line in lines if line.startswith("| API Attack"))
+    assert table_line == "| API Attack | 2 | 1 | 50% |"
+
+
+def test_attack_coverage_summary_still_excludes_skipped_and_similar_miss() -> None:
+    records = [
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="skipped"),
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="similar_miss"),
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="target_unreachable"),
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="completed"),
+    ]
+    lines = _attack_coverage_summary(records)
+    table_line = next(line for line in lines if line.startswith("| API Attack"))
+    assert table_line == "| API Attack | 4 | 3 | 25% |"

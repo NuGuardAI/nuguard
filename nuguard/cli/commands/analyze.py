@@ -2,8 +2,8 @@
 
 Exit codes
 ----------
-0  No findings at or above ``--min-severity``
-1  One or more findings at or above ``--min-severity``
+0  No findings at or above ``--fail-on`` threshold (default: high)
+1  One or more findings at or above ``--fail-on`` threshold
 2  Analysis error (SBOM could not be read / parsed)
 3  Not implemented / reserved
 """
@@ -38,7 +38,7 @@ _SEV_ORDER: dict[str, int] = {
     "info":     4,
 }
 
-def _clone_remote_source_for_analysis(url: str) -> str | None:
+def _clone_remote_source_for_analysis(url: str, ref: str | None = None) -> str | None:
     """Best-effort shallow clone of *url* into a fresh temp dir for local-file scans.
 
     ``nuguard analyze`` run standalone (the common ``sbom generate`` then
@@ -63,11 +63,12 @@ def _clone_remote_source_for_analysis(url: str) -> str | None:
         token = _resolve_token(None)
         clone_url = _inject_token(url, token) if token else url
         typer.echo(
-            f"Cloning {url} for local-file scans (supply-chain/Checkov/Trivy/Semgrep)…"
+            f"Cloning {url} ({ref or 'default branch'}) for local-file scans "
+            "(supply-chain/Checkov/Trivy/Semgrep)…"
         )
         repo_dir = Path(clone_dir) / "repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
-        AiSbomExtractor._clone_repo(url=clone_url, ref="main", dest=repo_dir)
+        AiSbomExtractor._clone_repo(url=clone_url, ref=ref, dest=repo_dir)
         return str(repo_dir)
     except Exception as exc:
         _log.warning("_clone_remote_source_for_analysis: clone of %s failed: %s", url, exc)
@@ -140,6 +141,13 @@ def analyze(
         None, "--source", "-s",
         help="Path to app source directory for supply-chain, Checkov, Trivy, and Semgrep scans. Falls back to 'source:' in nuguard.yaml.",
     ),
+    ref: Optional[str] = typer.Option(
+        None, "--ref",
+        help=(
+            "Branch, tag, or commit to check out when 'source:' is a remote repo URL. "
+            "Falls back to 'ref:' in nuguard.yaml, then the repository's default branch."
+        ),
+    ),
     supply_chain: bool = typer.Option(True, "--supply-chain/--no-supply-chain",
                                       help="Run supply-chain threat pack (NGA-SC-001–025)."),
     supply_chain_profile: Optional[str] = typer.Option(
@@ -166,6 +174,10 @@ def analyze(
     output: str = typer.Option(
         None, "--output", "-o",
         help="Write report to this file instead of stdout.",
+    ),
+    fail_on: Optional[str] = typer.Option(
+        None, "--fail-on",
+        help="Exit non-zero when any finding meets this severity: critical | high | medium | low. [default: high]",
     ),
 ) -> None:
     """Run static analysis against the AI-SBOM.
@@ -202,6 +214,9 @@ def analyze(
     # --min-severity: CLI wins when explicitly set (non-None); else use config default
     min_severity = min_severity or cfg.analyze_min_severity
 
+    # --fail-on: CLI wins when explicitly set; else use output.fail_on from config
+    effective_fail_on = fail_on or cfg.fail_on
+
     # --source: CLI wins; fall back to top-level source: in nuguard.yaml.
     # A remote GitHub URL in `source:` can't be passed to local-scan tools
     # (supply-chain, Semgrep, Checkov) as-is — it's cloned to a temp dir below,
@@ -214,6 +229,10 @@ def analyze(
             _remote_source_url = _cfg_source
         else:
             source = _cfg_source
+
+    # --ref: CLI wins; fall back to ref: in nuguard.yaml; else None (clone
+    # the repository's default branch instead of assuming "main").
+    effective_ref = ref if ref is not None else cfg.source_ref
 
     # Local source root for manifest line-number lookups in remediation text
     # (best-effort; None for remote URLs, since the clone dir is removed
@@ -317,7 +336,7 @@ def analyze(
     # `finally` below regardless of how the analysis attempt below finishes.
     _clone_dir: str | None = None
     if _remote_source_url:
-        _clone_dir = _clone_remote_source_for_analysis(_remote_source_url)
+        _clone_dir = _clone_remote_source_for_analysis(_remote_source_url, ref=effective_ref)
         if _clone_dir:
             source = _clone_dir
 
@@ -420,8 +439,13 @@ def analyze(
     else:
         typer.echo(_render(formats[0]))
 
-    # Exit 1 if any findings at or above threshold
-    raise typer.Exit(code=1 if visible else 0)
+    # Exit 1 if any findings meet the fail-on severity threshold
+    fail_threshold = _SEV_ORDER.get(effective_fail_on.lower(), 1)
+    worst = min(
+        (_SEV_ORDER.get(f.severity.value.lower(), 4) for f in visible),
+        default=99,
+    )
+    raise typer.Exit(code=1 if worst <= fail_threshold else 0)
 
 
 # ---------------------------------------------------------------------------

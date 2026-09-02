@@ -582,6 +582,7 @@ async def _blind_probe(
 ) -> "ProbeResult | None":
     """Fallback: try each path with each payload shape until one responds usefully."""
     server_error_fallback: ProbeResult | None = None
+    streaming_error_fallback: ProbeResult | None = None
     base = str(client.base_url).rstrip("/")
 
     for path in paths:
@@ -624,8 +625,27 @@ async def _blind_probe(
                 if _looks_like_chat_response(data, known_response_key):
                     _log.info("endpoint_probe: selected %s (key=%r, status=%d)", path, pay_key, status)
                     return ProbeResult(path, pay_key, pay_list)
-                # Streaming endpoint: accept even when we can't parse the body content
+                # A parsed body that is *only* an error envelope (e.g. a streaming
+                # LLM backend's "messages must not be empty"/"invalid prompt" error
+                # for the wrong payload shape) means this shape was rejected by the
+                # app logic even though transport-level status/content-type look
+                # fine. Don't accept it — keep trying other shapes, but remember it
+                # as a last-resort fallback in case every shape errors out.
+                is_error_envelope = (
+                    isinstance(data, dict)
+                    and bool(data)
+                    and set(data.keys()) <= {"error", "detail", "message", "code", "status"}
+                )
                 if _is_streaming_response(resp):
+                    if is_error_envelope:
+                        _log.debug(
+                            "endpoint_probe: %s key=%r → streaming but error envelope %r, trying next shape",
+                            path, pay_key, data,
+                        )
+                        if streaming_error_fallback is None:
+                            streaming_error_fallback = ProbeResult(path, pay_key, pay_list)
+                        continue
+                    # Streaming endpoint: accept even when we can't parse the body content
                     _log.info("endpoint_probe: selected %s (streaming, key=%r)", path, pay_key)
                     return ProbeResult(path, pay_key, pay_list)
                 _log.debug("endpoint_probe: %s key=%r → %d but not chat-like", path, pay_key, status)
@@ -683,6 +703,12 @@ async def _blind_probe(
             server_error_fallback.path, server_error_fallback.key,
         )
         return server_error_fallback
+    if streaming_error_fallback:
+        _log.info(
+            "endpoint_probe: selected %s as fallback (streaming error envelope every shape — payload_key=%r)",
+            streaming_error_fallback.path, streaming_error_fallback.key,
+        )
+        return streaming_error_fallback
     return None
 
 

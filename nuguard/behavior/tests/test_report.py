@@ -450,6 +450,132 @@ def test_to_markdown_uses_llm_authored_deviation_remediation_over_template():
     assert "Review the agent's system prompt and tool configuration" not in md
 
 
+def test_to_markdown_gap_summary_renders_remediation_and_fallback():
+    result = _make_result(
+        dynamic_findings=[
+            {
+                "finding_id": "G-1",
+                "severity": "medium",
+                "title": "Capability Gap: faq_retriever",
+                "description": "desc",
+                "finding_type": "CAPABILITY_GAP",
+                "affected_component": "faq_retriever",
+                "occurrence_count": 3,
+                "remediation": "Add a wheelchair-assistance entry to the FAQ knowledge base.",
+            },
+            {
+                "finding_id": "G-2",
+                "severity": "medium",
+                "title": "Intent Misalignment: doc_agent",
+                "description": "desc",
+                "finding_type": "INTENT_MISALIGNMENT",
+                "affected_component": "doc_agent",
+                "occurrence_count": 2,
+            },
+        ],
+        gap_aggregation_stats={
+            "raw_gap_observations": 5,
+            "unique_gap_observations": 4,
+            "min_occurrences_threshold": 1,
+        },
+    )
+    md = to_markdown(result)
+    assert "## Behavioral Gap Summary" in md
+    assert "| Component | Occurrences | Sample Gaps | Remediation |" in md
+    # Explicit remediation is rendered verbatim.
+    assert "Add a wheelchair-assistance entry to the FAQ knowledge base." in md
+    # Missing remediation falls back to the per-type guidance template.
+    assert "Align doc_agent system prompt with application's stated purpose" in md
+
+
+def test_to_markdown_gap_summary_empty_remediation_falls_back():
+    result = _make_result(
+        dynamic_findings=[
+            {
+                "finding_id": "G-3",
+                "severity": "medium",
+                "title": "Tool Chain Broken: scraper",
+                "description": "desc",
+                "finding_type": "TOOL_CHAIN_BROKEN",
+                "affected_component": "scraper",
+                "occurrence_count": 1,
+                "remediation": "",
+            }
+        ],
+        gap_aggregation_stats={"min_occurrences_threshold": 1},
+    )
+    md = to_markdown(result)
+    assert "Repair broken tool invocation chain in scraper" in md
+
+
+def test_to_markdown_gap_summary_escapes_pipe_in_remediation():
+    """Remediation text containing | must not break the Markdown table."""
+    result = _make_result(
+        dynamic_findings=[
+            {
+                "finding_id": "G-4",
+                "severity": "medium",
+                "title": "Capability Gap: router",
+                "description": "desc",
+                "finding_type": "CAPABILITY_GAP",
+                "affected_component": "router",
+                "occurrence_count": 1,
+                "remediation": "Route A | Route B | Route C",
+            }
+        ],
+        gap_aggregation_stats={"min_occurrences_threshold": 1},
+    )
+    md = to_markdown(result)
+    # The pipe must be escaped so the table stays valid (4 columns).
+    assert "Route A \\| Route B \\| Route C" in md
+
+
+def test_to_markdown_gap_summary_escapes_newline_in_remediation():
+    """Remediation text containing newlines must not produce extra table rows."""
+    result = _make_result(
+        dynamic_findings=[
+            {
+                "finding_id": "G-5",
+                "severity": "medium",
+                "title": "Intent Misalignment: agent",
+                "description": "desc",
+                "finding_type": "INTENT_MISALIGNMENT",
+                "affected_component": "agent",
+                "occurrence_count": 1,
+                "remediation": "Step one.\nStep two.\nStep three.",
+            }
+        ],
+        gap_aggregation_stats={"min_occurrences_threshold": 1},
+    )
+    md = to_markdown(result)
+    # Newlines should be collapsed into the cell, not create extra rows.
+    assert "Step one. Step two. Step three." in md
+    # Ensure no bare newline split the remediation across table rows.
+    assert "Step one.\n" not in md.split("## Dynamic")[0]
+
+
+def test_to_markdown_gap_summary_handles_non_string_remediation():
+    """Non-string remediation values (dict/list) must not crash the renderer."""
+    result = _make_result(
+        dynamic_findings=[
+            {
+                "finding_id": "G-6",
+                "severity": "medium",
+                "title": "Tool Chain Broken: svc",
+                "description": "desc",
+                "finding_type": "TOOL_CHAIN_BROKEN",
+                "affected_component": "svc",
+                "occurrence_count": 1,
+                "remediation": {"step": "fix the chain"},
+            }
+        ],
+        gap_aggregation_stats={"min_occurrences_threshold": 1},
+    )
+    # Must not raise AttributeError from .strip() on a dict.
+    md = to_markdown(result)
+    assert "Behavioral Gap Summary" in md
+
+
 def test_to_markdown_covered_components_tagged_matched_unmatched():
     verdicts = [
         {

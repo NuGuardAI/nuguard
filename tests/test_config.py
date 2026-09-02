@@ -857,3 +857,37 @@ class TestUnsetEnvVarScalarFields:
               emit_pytest_dir: ${EPD}
         """)
         assert "emit_pytest_dir" not in flat
+
+
+class TestToolTraceHitsConfig:
+    """Verify tool_trace_hits is parsed from YAML and wired to RedteamFindingTriggers."""
+
+    def test_flatten_yaml_tool_trace_hits_true(self) -> None:
+        flat = _flatten("""
+            redteam:
+              finding_triggers:
+                tool_trace_hits: true
+        """)
+        assert flat["redteam_trigger_tool_trace_hits"] is True
+
+    def test_flatten_yaml_tool_trace_hits_false(self) -> None:
+        flat = _flatten("""
+            redteam:
+              finding_triggers:
+                tool_trace_hits: false
+        """)
+        assert flat["redteam_trigger_tool_trace_hits"] is False
+
+    def test_default_tool_trace_hits_is_true(self) -> None:
+        cfg = NuGuardConfig()
+        assert cfg.redteam_trigger_tool_trace_hits is True
+
+    def test_resolved_triggers_passes_tool_trace_hits(self) -> None:
+        cfg = NuGuardConfig(redteam_trigger_tool_trace_hits=False)
+        triggers = cfg.resolved_redteam_finding_triggers()
+        assert triggers.tool_trace_hits is False
+
+    def test_resolved_triggers_default_tool_trace_hits(self) -> None:
+        cfg = NuGuardConfig()
+        triggers = cfg.resolved_redteam_finding_triggers()
+        assert triggers.tool_trace_hits is True

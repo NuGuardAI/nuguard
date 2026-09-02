@@ -1,0 +1,8 @@
+# Mounted into the Juice Shop container / checkout at config/local.yml.
+# node-config applies local.yml last (highest precedence), regardless of NODE_ENV,
+# so this overrides config/default.yml's Ollama-pointing chatBot defaults.
+# See https://pwning.owasp-juice.shop/companion-guide/latest/part4/customization.html#_chatbot_subsection
+application:
+  chatBot:
+    model: 'gpt-4o-mini'
+    llmApiUrl: 'https://api.openai.com/v1'

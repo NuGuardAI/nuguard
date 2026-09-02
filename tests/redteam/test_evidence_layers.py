@@ -4,7 +4,12 @@ from __future__ import annotations
 import pytest
 
 from nuguard.redteam.executor.artifact_scanner import ArtifactScanResult, scan_response
-from nuguard.redteam.executor.tool_trace_judge import TraceJudgeResult, judge_sequence, judge_tool_calls
+from nuguard.redteam.executor.tool_trace_judge import (
+    TraceJudgeResult,
+    judge_sequence,
+    judge_tool_calls,
+    new_tool_call_disclosure,
+)
 
 
 # ── Artifact scanner tests ────────────────────────────────────────────────────
@@ -128,6 +133,34 @@ def test_admin_tool_flags_privileged() -> None:
 def test_empty_tool_calls_clean_response() -> None:
     result = judge_tool_calls([], response_text="I can help you with that request.")
     assert not result.any_hit
+
+
+# ── New tool-call disclosure (debug-toggle cookie/header bypass) tests ─────────
+
+
+def test_new_tool_disclosed_when_baseline_had_none() -> None:
+    """No tool calls at all in the baseline turn, one shows up once the
+    debug-toggle cookie is attached — a clear disclosure."""
+    assert new_tool_call_disclosure([_tc("searchProducts")], []) is True
+
+
+def test_no_new_disclosure_when_same_tool_both_turns() -> None:
+    """Same tool disclosed in both turns — the toggle didn't change anything
+    (matches OWASP Juice Shop's actual behavior: tool_calls are always
+    written to the SSE stream regardless of the show_tool_calls cookie)."""
+    assert new_tool_call_disclosure([_tc("searchProducts")], [_tc("searchProducts")]) is False
+
+
+def test_new_tool_disclosed_alongside_existing_one() -> None:
+    """Baseline discloses one tool; the toggle turn discloses an additional
+    one — the extra tool name is the new disclosure."""
+    assert new_tool_call_disclosure(
+        [_tc("searchProducts"), _tc("getOrderById")], [_tc("searchProducts")]
+    ) is True
+
+
+def test_no_disclosure_when_current_turn_has_no_tool_calls() -> None:
+    assert new_tool_call_disclosure([], [_tc("searchProducts")]) is False
 
 
 # ── Egress trap server tests ──────────────────────────────────────────────────

@@ -5,12 +5,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from nuguard.behavior.evidence_bundle import BehaviorEvidenceBundle
 from nuguard.behavior.judge import (
     _PARTIAL_THRESHOLD,
     _PASS_THRESHOLD,
     BehaviorJudge,
     TurnVerdict,
     _structural_verdict,
+    detect_clear_refusal_on_allowed_topic,
+    detect_missing_precondition_refusal,
 )
 from nuguard.behavior.models import BehaviorScenario, BehaviorScenarioType, IntentProfile
 
@@ -197,6 +200,39 @@ async def test_judge_turn_llm_success():
 
 
 @pytest.mark.asyncio
+async def test_judge_turn_missing_precondition_scores_well_under_updated_rubric():
+    """The fast-path now defers this case to the LLM judge (conflicting
+    signals); confirm a judge following the updated rubric's guidance scores
+    a correct 'please provide your order ID' clarification as good, not a
+    capability gap."""
+    mock_llm = MagicMock()
+    mock_llm.api_key = "test-key"
+    mock_llm.complete = AsyncMock(return_value="""{
+        "scores": {
+            "component_invoked": 4,
+            "response_validity": 4,
+            "topic_alignment": 4
+        },
+        "reasoning": "Agent correctly asked for the missing order ID in the required format",
+        "agents_mentioned": [],
+        "tools_mentioned": [],
+        "policy_issues": [],
+        "gaps": [],
+        "suggested_followup": null
+    }""")
+    judge = BehaviorJudge(llm_client=mock_llm, intent=_make_intent())
+    scenario = _make_scenario()
+    verdict = await judge.judge_turn(
+        turn=1,
+        prompt="My order ID is 12345.",
+        response=_MISSING_ID_RESPONSE,
+        scenario=scenario,
+    )
+    assert mock_llm.complete.await_count == 1
+    assert verdict.verdict == "PASS"
+
+
+@pytest.mark.asyncio
 async def test_judge_turn_llm_failure_falls_back():
     mock_llm = MagicMock()
     mock_llm.api_key = "test-key"
@@ -256,6 +292,50 @@ async def test_judge_turn_low_validity_depresses_score():
         scenario=scenario,
     )
     assert verdict.verdict in ("PARTIAL", "FAIL")
+
+
+# ---------------------------------------------------------------------------
+# detect_missing_precondition_refusal
+# ---------------------------------------------------------------------------
+
+_MISSING_ID_RESPONSE = (
+    "I'm sorry, but I can't provide information about your order without "
+    "the correct ID. Please provide a valid order ID in the format "
+    "xxxx-xxxxxxxxxxxxxxxx, for example: 3fa8-bf2bc042f4e92."
+)
+
+
+def test_missing_precondition_refusal_detected_on_happy_path():
+    signals = detect_missing_precondition_refusal(_MISSING_ID_RESPONSE, "intent_happy_path")
+    assert len(signals) == 1
+    assert signals[0].polarity == "pass"
+
+
+def test_missing_precondition_refusal_not_detected_outside_scoped_types():
+    signals = detect_missing_precondition_refusal(_MISSING_ID_RESPONSE, "guardrail_probe")
+    assert signals == []
+
+
+def test_missing_precondition_refusal_not_detected_for_stock_refusal():
+    """A genuine capability gap (agent just declines, no missing-info framing)
+    must not be misclassified as a correct clarification."""
+    signals = detect_missing_precondition_refusal(
+        "I'm sorry, but I can't help with that request.", "intent_happy_path"
+    )
+    assert signals == []
+
+
+def test_missing_precondition_conflicts_with_clear_refusal_instead_of_silently_failing():
+    """Regression: before this fix, detect_clear_refusal_on_allowed_topic alone
+    fast-pathed a correct 'please provide your order ID' response straight to
+    FAIL. Now the two detectors disagree and the bundle defers to the LLM
+    judge instead of either one unilaterally deciding."""
+    head = _MISSING_ID_RESPONSE[:400]
+    bundle = BehaviorEvidenceBundle()
+    bundle.add(detect_clear_refusal_on_allowed_topic(head, "intent_happy_path"))
+    bundle.add(detect_missing_precondition_refusal(_MISSING_ID_RESPONSE, "intent_happy_path"))
+    assert bundle.has_conflict()
+    assert bundle.resolve() is None
 
 
 # ---------------------------------------------------------------------------

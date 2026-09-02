@@ -120,6 +120,12 @@ _TEMPLATE_VAR_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 # Graph-internal node names that should never be emitted as AGENT nodes
 _LANGGRAPH_INTERNAL_NODES = {"__start__", "__end__", "tools", "END", "START"}
 
+# langgraph.types.interrupt() — human-in-the-loop pause inside a graph node,
+# treated as a guardrail-equivalent control. Relies on the generic file-level
+# GUARDRAIL->AGENT fallback for wiring (a node function isn't itself an AGENT
+# canonical name in this adapter's model, so no explicit hint is resolvable).
+_INTERRUPT_FUNC_NAME = "interrupt"
+
 
 class LangGraphAdapter(FrameworkAdapter):
     """Adapter for LangGraph / LangChain framework detection."""
@@ -675,6 +681,16 @@ class LangGraphAdapter(FrameworkAdapter):
             )
             # Canonical matches the display name for clean, readable output
             canon = canonicalize_text(dname.lower())
+            prompt_rels: list[RelationshipHint] = [
+                RelationshipHint(
+                    source_canonical=agent_canon,
+                    source_type=ComponentType.AGENT,
+                    target_canonical=canon,
+                    target_type=ComponentType.PROMPT,
+                    relationship_type="USES",
+                )
+                for agent_canon in agent_canonicals
+            ]
             detected.append(
                 ComponentDetection(
                     component_type=ComponentType.PROMPT,
@@ -696,6 +712,7 @@ class LangGraphAdapter(FrameworkAdapter):
                     line=inst.line,
                     snippet=f"{inst.class_name}(content=...)",
                     evidence_kind="ast_instantiation",
+                    relationships=prompt_rels,
                 )
             )
 
@@ -717,6 +734,16 @@ class LangGraphAdapter(FrameworkAdapter):
                 if content
                 else f"ChatPromptTemplate.{call.function_name}(...)"
             )
+            prompt_rels = [
+                RelationshipHint(
+                    source_canonical=agent_canon,
+                    source_type=ComponentType.AGENT,
+                    target_canonical=canon,
+                    target_type=ComponentType.PROMPT,
+                    relationship_type="USES",
+                )
+                for agent_canon in agent_canonicals
+            ]
             detected.append(
                 ComponentDetection(
                     component_type=ComponentType.PROMPT,
@@ -738,6 +765,7 @@ class LangGraphAdapter(FrameworkAdapter):
                     line=call.line,
                     snippet=snippet,
                     evidence_kind="ast_call",
+                    relationships=prompt_rels,
                 )
             )
 
@@ -828,6 +856,35 @@ class LangGraphAdapter(FrameworkAdapter):
                         )
                     )
 
+        # 9. langgraph.types.interrupt() calls → GUARDRAIL (human-in-the-loop)
+        interrupt_imported = any(
+            "interrupt" in (imp.names or []) and (imp.module or "").startswith("langgraph")
+            for imp in parse_result.imports
+        )
+        if interrupt_imported or has_langgraph:
+            for call in parse_result.function_calls:
+                if call.function_name != _INTERRUPT_FUNC_NAME or call.receiver is not None:
+                    continue
+                detected.append(
+                    ComponentDetection(
+                        component_type=ComponentType.GUARDRAIL,
+                        canonical_name=canonicalize_text(f"langgraph:guardrail:interrupt:{file_path}:{call.line}"),
+                        display_name="LangGraph Human-in-the-Loop",
+                        adapter_name=self.name,
+                        priority=self.priority,
+                        confidence=0.75,
+                        metadata={
+                            "framework": "langgraph",
+                            "guardrail_type": "human_in_the_loop",
+                            "detection_kind": "framework_native",
+                        },
+                        file_path=file_path,
+                        line=call.line,
+                        snippet="interrupt(...)",
+                        evidence_kind="ast_call",
+                    )
+                )
+
         # Large string literals that look like prompts
         for lit in parse_result.string_literals:
             if lit.is_docstring or len(lit.value) < 200:
@@ -837,6 +894,16 @@ class LangGraphAdapter(FrameworkAdapter):
             template_vars = _TEMPLATE_VAR_RE.findall(lit.value)
             dname = _prompt_display_name(lit.value, lit.context or "", lit.line)
             canon = canonicalize_text(dname.lower())
+            prompt_rels = [
+                RelationshipHint(
+                    source_canonical=agent_canon,
+                    source_type=ComponentType.AGENT,
+                    target_canonical=canon,
+                    target_type=ComponentType.PROMPT,
+                    relationship_type="USES",
+                )
+                for agent_canon in agent_canonicals
+            ]
             detected.append(
                 ComponentDetection(
                     component_type=ComponentType.PROMPT,
@@ -857,6 +924,7 @@ class LangGraphAdapter(FrameworkAdapter):
                     line=lit.line,
                     snippet=lit.value[:80] + ("..." if len(lit.value) > 80 else ""),
                     evidence_kind="ast_call",
+                    relationships=prompt_rels,
                 )
             )
 

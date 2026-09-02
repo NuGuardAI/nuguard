@@ -154,7 +154,7 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     flat: dict[str, Any] = {}
 
     # Top-level file-path keys
-    for key in ("sbom", "source"):
+    for key in ("sbom", "source", "ref"):
         if key in data:
             flat[key] = data[key]
 
@@ -405,6 +405,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         if "any_inject_success" in finding_triggers:
             flat["redteam_trigger_any_inject_success"] = bool(
                 finding_triggers["any_inject_success"]
+            )
+        if "tool_trace_hits" in finding_triggers:
+            flat["redteam_trigger_tool_trace_hits"] = bool(
+                finding_triggers["tool_trace_hits"]
             )
 
     # Redteam LLM section — skip keys whose env-var interpolation produced None
@@ -961,6 +965,15 @@ class NuGuardConfig(BaseSettings):
         alias="source",
         description="Default application source path for SBOM generation (yaml: source).",
     )
+    source_ref: str | None = Field(
+        default=None,
+        alias="ref",
+        description=(
+            "Branch, tag, or commit to check out when 'source:' is a remote repo URL "
+            "(yaml: ref). Overridden by --ref on the CLI; falls back to the "
+            "repository's default branch when unset."
+        ),
+    )
     policy_path: str | None = Field(
         default=None,
         alias="policy",
@@ -1425,6 +1438,13 @@ class NuGuardConfig(BaseSettings):
             "signals (yaml: redteam.finding_triggers.any_inject_success)."
         ),
     )
+    redteam_trigger_tool_trace_hits: bool = Field(
+        default=True,
+        description=(
+            "Emit findings when tool-call traces reveal destructive actions "
+            "(yaml: redteam.finding_triggers.tool_trace_hits)."
+        ),
+    )
     redteam_pre_run_warmup: int = Field(
         default=0,
         ge=0,
@@ -1656,6 +1676,7 @@ class NuGuardConfig(BaseSettings):
             policy_violations=self.redteam_trigger_policy_violations,
             critical_success_hits=self.redteam_trigger_critical_success_hits,
             any_inject_success=self.redteam_trigger_any_inject_success,
+            tool_trace_hits=self.redteam_trigger_tool_trace_hits,
         )
 
     model_config = SettingsConfigDict(

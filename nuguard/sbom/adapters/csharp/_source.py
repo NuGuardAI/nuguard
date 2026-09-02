@@ -86,7 +86,7 @@ def find_calls(
 ) -> list[CSharpCall]:
     """Return call expressions whose simple name is in *names*, if supplied."""
     masked = mask_non_code(source)
-    all_calls: list[CSharpCall] = []
+    calls_by_end: dict[int, CSharpCall] = {}
     selected_calls: list[CSharpCall] = []
 
     for match in _CALL_RE.finditer(masked):
@@ -118,10 +118,16 @@ def find_calls(
             continue
 
         args_text = source[open_paren + 1 : close_paren]
-        named, positional = parse_arguments(args_text)
+        selected = names is None or name in names
+
+        if selected:
+            named, positional = parse_arguments(args_text)
+        else:
+            named, positional = {}, []
+
         receiver = ".".join(simple_parts[:-1]) or None
         chain_parent = _chained_parent(
-            all_calls,
+            calls_by_end,
             masked,
             match.start(),
         )
@@ -166,33 +172,36 @@ def find_calls(
             end=end,
             snippet=snippet,
         )
-        all_calls.append(call)
+        calls_by_end[call.end] = call
 
-        if names is None or name in names:
+        if selected:
             selected_calls.append(call)
 
     return selected_calls
 
 
 def _chained_parent(
-    calls: list[CSharpCall],
+    calls_by_end: dict[int, CSharpCall],
     masked: str,
     position: int,
 ) -> CSharpCall | None:
     """Return the immediately preceding call in a fluent chain."""
-    for call in reversed(calls):
-        if call.end > position:
-            continue
+    cursor = position
 
-        separator = masked[call.end : position]
+    while cursor > 0 and masked[cursor - 1].isspace():
+        cursor -= 1
 
-        if re.fullmatch(
-            r"\s*(?:\?\.|\.)\s*",
-            separator,
-        ):
-            return call
+    if cursor >= 2 and masked[cursor - 2 : cursor] == "?.":
+        cursor -= 2
+    elif cursor >= 1 and masked[cursor - 1] == ".":
+        cursor -= 1
+    else:
+        return None
 
-    return None
+    while cursor > 0 and masked[cursor - 1].isspace():
+        cursor -= 1
+
+    return calls_by_end.get(cursor)
 
 
 def parse_arguments(

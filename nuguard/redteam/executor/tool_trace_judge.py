@@ -177,3 +177,23 @@ def _is_sensitive(tool_name: str) -> bool:
         if pat.search(tool_name):
             return True
     return False
+
+
+def new_tool_call_disclosure(
+    current_tool_calls: list[dict],
+    baseline_tool_calls: list[dict],
+) -> bool:
+    """True when *current_tool_calls* discloses a tool name absent from
+    *baseline_tool_calls* — or any tool call at all when the baseline had
+    none. Used by ``ExploitStep.success_requires_new_tool_disclosure`` to
+    prove a debug/observability toggle (e.g. a cookie) actually changes what
+    the target discloses, rather than treating tool-call presence alone as
+    evidence (many apps legitimately expose tool calls to every caller).
+    """
+    if not current_tool_calls:
+        return False
+    if not baseline_tool_calls:
+        return True
+    baseline_names = set(_extract_tool_names(baseline_tool_calls))
+    current_names = set(_extract_tool_names(current_tool_calls))
+    return bool(current_names - baseline_names)

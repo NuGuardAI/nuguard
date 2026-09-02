@@ -725,6 +725,7 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "hitl_bypass":          _build_hitl_bypass,
     "mass_assignment":      _build_mass_assignment,
     "debug_admin":          _simple("nuguard.redteam.scenarios.authorization", "build_debug_admin_exposure"),
+    "debug_cookie_bypass":  _simple("nuguard.redteam.scenarios.authorization", "build_debug_cookie_bypass"),
     # ── Indirect injection ────────────────────────────────────────────────
     "indirect_injection":   _build_indirect_injection,
     # ── MCP / tool poisoning ──────────────────────────────────────────────

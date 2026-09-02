@@ -20,6 +20,7 @@ from typing import Any, Iterable
 
 import httpx
 
+from nuguard.common.endpoint_probe import _HAS_PATH_PARAM_RE
 from nuguard.common.logging import get_logger
 from nuguard.sbom.models import AiSbomDocument, Edge, Node, NodeMetadata
 from nuguard.sbom.types import AccessType, ComponentType, RelationshipType
@@ -579,14 +580,28 @@ def _enrich_static(sbom: AiSbomDocument) -> AiSbomDocument:
 
 
 def _collect_probe_candidates(sbom: AiSbomDocument) -> list[str]:
+    """Collect distinct GET-probeable endpoint paths from the SBOM.
+
+    Paths with an unresolved path-parameter placeholder (``:id``, ``{id}``,
+    ``<id>``) are skipped entirely — this is a lightweight liveness/confidence
+    probe with no real parameter values to substitute, and sending the
+    placeholder literally as the path segment (e.g. GET /api/Recycles/:id)
+    can reach a route handler that tries to parse it as real data and crashes
+    the target (observed against OWASP Juice Shop's /api/Recycles/:id, which
+    JSON.parse()s the id param and throws on the literal string ":id").
+    """
     candidates: list[str] = []
     for node in sbom.nodes:
-        if node.component_type == ComponentType.API_ENDPOINT and node.metadata.endpoint:
+        if (
+            node.component_type == ComponentType.API_ENDPOINT
+            and node.metadata.endpoint
+            and not _HAS_PATH_PARAM_RE.search(node.metadata.endpoint)
+        ):
             if node.metadata.endpoint not in candidates:
                 candidates.append(node.metadata.endpoint)
     if sbom.summary:
         for path in sbom.summary.api_endpoints:
-            if path and path not in candidates:
+            if path and not _HAS_PATH_PARAM_RE.search(path) and path not in candidates:
                 candidates.append(path)
     for fallback in ("/health", "/chat", "/chat/message"):
         if fallback not in candidates:
