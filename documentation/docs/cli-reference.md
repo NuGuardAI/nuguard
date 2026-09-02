@@ -723,7 +723,7 @@ target:
     send_button_selector: "button#send"
 ```
 
-> ⚠️ The captured session cookie is short-lived (apps commonly expire it within ~24h) — there is no automatic refresh yet. If `nuguard target verify` starts reporting `auth_failed` again after working previously, re-run `nuguard target discover-browser --write --yes`.
+> ⚠️ The captured session cookie is short-lived (apps commonly expire it within ~24h) — there is no automatic refresh yet. When `nuguard target verify` receives HTTP 401 or 403 for the saved default cookie session, it prints a refresh hint; re-run `nuguard target discover-browser --write --yes`.
 
 </details>
 
