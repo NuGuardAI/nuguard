@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
+    from nuguard.common.target_client_builder import TargetClient
     from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
     from nuguard.redteam.target.action_logger import ActionLogger
     from nuguard.redteam.target.canary import CanaryScanner
@@ -27,7 +28,7 @@ from nuguard.redteam.executor.attribution import (
 from nuguard.redteam.executor.executor import _substitute_golden_tokens
 from nuguard.redteam.llm_engine.response_extractor import TurnFacts, extract_turn_facts
 from nuguard.redteam.models.guided_conversation import GuidedConversation, TurnRecord
-from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
+from nuguard.redteam.target.client import TargetUnavailableError
 from nuguard.redteam.target.session import AttackSession
 
 _log = get_logger(__name__)
@@ -93,7 +94,7 @@ class GuidedAttackExecutor:
 
     def __init__(
         self,
-        client: TargetAppClient,
+        client: "TargetClient",
         director: "ConversationDirector",
         logger: "ActionLogger | None" = None,
         canary: "CanaryScanner | None" = None,

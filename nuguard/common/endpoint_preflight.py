@@ -25,7 +25,7 @@ from nuguard.common.logging import get_logger
 from nuguard.common.response_extraction import build_minimal_payload, extract_response_id
 
 if TYPE_CHECKING:
-    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.common.target_client_builder import TargetClient
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
@@ -60,7 +60,7 @@ class PreflightOutcome(BaseModel):
 
 
 async def _bootstrap_path_params(
-    client: "TargetAppClient",
+    client: "TargetClient",
     sbom: "AiSbomDocument",
     chat_path: str,
     notes: list[str],
@@ -141,7 +141,7 @@ async def _bootstrap_path_params(
 
 
 async def validate_and_rotate_chat_endpoint(
-    client: "TargetAppClient",
+    client: "TargetClient",
     sbom: "AiSbomDocument | None",
     *,
     has_explicit_endpoint: bool,

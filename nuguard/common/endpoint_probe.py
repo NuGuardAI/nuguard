@@ -862,10 +862,12 @@ async def probe_chat_endpoints(
             ws_paths.append(ws_fallback)
 
     # Option B: caller provided a specific path — probe only that path to detect
-    # the payload key, ignoring SBOM paths and fallbacks entirely.
+    # the payload key, ignoring SBOM paths and fallbacks entirely. Still check
+    # it as a WS candidate (a user-configured target_endpoint may itself be a
+    # WebSocket route) instead of dropping WS detection altogether.
     if hint_path:
         paths = [hint_path]
-        ws_paths = []
+        ws_paths = [hint_path]
     if not paths:
         _log.debug("endpoint_probe: no probe-eligible paths")
         return None
@@ -1032,6 +1034,31 @@ def discover_chat_candidates_from_sbom(
         [(c[1], c[2]) for c in candidates[:5]],
     )
     return [(c[1], c[2], c[3], c[5]) for c in candidates]
+
+
+def sbom_indicates_websocket(
+    sbom: "AiSbomDocument | None",
+    chat_path: str = "",
+    chat_payload_key: str = "message",
+) -> bool:
+    """Return True if *chat_path* (or the top SBOM candidate, when unset) is a WebSocket route.
+
+    Zero-I/O — used to decide, *before* any bootstrap/live-probe network call,
+    whether to open a WS handshake or send an HTTP POST. Errors are swallowed
+    (treated as "not WebSocket") since this is a best-effort pre-check; the
+    fuller live-probe-based discovery elsewhere still applies afterwards.
+    """
+    if chat_payload_key == "__websocket__":
+        return True
+    if sbom is None:
+        return False
+    try:
+        candidates = discover_chat_candidates_from_sbom(sbom, chat_path=chat_path)
+    except Exception:
+        return False
+    if chat_path:
+        return any(path == chat_path and key == "__websocket__" for path, key, _l, _r in candidates)
+    return bool(candidates) and candidates[0][1] == "__websocket__"
 
 
 def discover_chat_config_from_sbom(

@@ -29,6 +29,10 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.ws_client import WebSocketTargetClient
     from nuguard.sbom.models import AiSbomDocument
 
+    # Shared type for either concrete client build_target_app_client() may return.
+    # Both expose the same send()/new_session()/invoke_endpoint()/aclose() surface.
+    TargetClient = TargetAppClient | WebSocketTargetClient
+
 _log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -350,7 +354,7 @@ def build_target_app_client(
     # WebSocket-only options (ignored for HTTP targets) — see ws_client.WebSocketTargetClient.
     ws_auth_message: "dict[str, Any] | None" = None,
     ws_response_complete_key: str | None = None,
-) -> "TargetAppClient | WebSocketTargetClient":
+) -> "TargetClient":
     """Build a :class:`TargetAppClient` (or :class:`WebSocketTargetClient`) with SBOM-assisted config resolution.
 
     Args:

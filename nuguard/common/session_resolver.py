@@ -322,10 +322,10 @@ async def resolve_target_session(
         resolve_auth_runtime,
     )
     from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-        discover_chat_candidates_from_sbom,
         discover_chat_config_from_sbom,
         is_empty_session_response,
         probe_chat_endpoints,
+        sbom_indicates_websocket,
     )
     from nuguard.common.target_client_builder import (  # noqa: PLC0415
         resolve_auth_config_with_sbom_fallback,
@@ -362,18 +362,7 @@ async def resolve_target_session(
     # WS detection must happen before bootstrap (it decides handshake vs POST),
     # so it runs zero-I/O against whatever the SBOM already knows — the fuller
     # live-probe-based discovery in steps 6/7 below still applies afterwards.
-    is_websocket = chat_payload_key == "__websocket__"
-    if not is_websocket:
-        try:
-            ws_candidates = discover_chat_candidates_from_sbom(sbom, chat_path=chat_path)
-            if chat_path:
-                is_websocket = any(
-                    path == chat_path and key == "__websocket__" for path, key, _l, _r in ws_candidates
-                )
-            else:
-                is_websocket = bool(ws_candidates) and ws_candidates[0][1] == "__websocket__"
-        except Exception as exc:
-            _log.debug("resolve_target_session: WS pre-detection failed: %s", exc)
+    is_websocket = sbom_indicates_websocket(sbom, chat_path=chat_path, chat_payload_key=chat_payload_key)
 
     _probe_extras = probe_payload_extras if probe_payload_extras is not None else chat_payload_extras
     bootstrapper, health_report = await bootstrap_auth_runtime(
