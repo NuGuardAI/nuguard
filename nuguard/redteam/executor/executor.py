@@ -837,6 +837,7 @@ class AttackExecutor:
                 method=step.http_method,
                 body=step.http_body,
                 params=step.http_params or None,
+                extra_headers=step.extra_headers or None,
                 strip_auth=step.strip_auth,
             )
             # A 401 retry-with-refreshed-auth makes no sense for a step whose
@@ -856,6 +857,7 @@ class AttackExecutor:
                     method=step.http_method,
                     body=step.http_body,
                     params=step.http_params or None,
+                    extra_headers=step.extra_headers or None,
                     strip_auth=step.strip_auth,
                 )
             tool_calls: list[dict] = []
@@ -901,14 +903,15 @@ class AttackExecutor:
         else:
             if self._app_log_reader:
                 self._app_log_reader.mark()
-            response, tool_calls = await self._client.send(payload, session)
+            _extra_headers = step.extra_headers or None
+            response, tool_calls = await self._client.send(payload, session, _extra_headers)
             if response.startswith("[HTTP 401]") and await _refresh_auth_headers():
                 _log.info(
                     "Chain %s step %s: 401 received on chat endpoint, retrying after auth refresh",
                     chain.chain_id,
                     step.step_id,
                 )
-                response, tool_calls = await self._client.send(payload, session)
+                response, tool_calls = await self._client.send(payload, session, _extra_headers)
             # 429 scenario-level retry — on top of TargetAppClient's per-request
             # retries.  Back off and retry the same step payload; the target is
             # alive and functioning, so this must NOT count as a chain failure.
@@ -919,7 +922,7 @@ class AttackExecutor:
                     _rl_attempt,
                     context=f"chain={chain.chain_id} step={step.step_id}",
                 )
-                response, tool_calls = await self._client.send(payload, session)
+                response, tool_calls = await self._client.send(payload, session, _extra_headers)
             # Mid-turn interrupts: the target may ask for a credential or ask
             # a confirmation/clarification question (e.g. "I can send an OTP —
             # let me know if you'd like me to send it now") instead of
@@ -940,6 +943,16 @@ class AttackExecutor:
             session.add_turn(payload, response, tool_calls)
             result = StepResult(step=step, response=response, tool_calls=tool_calls)
             result.resolved_payload = _resolved_payload
+            if step.success_requires_new_tool_disclosure:
+                from nuguard.redteam.executor.tool_trace_judge import (
+                    new_tool_call_disclosure,
+                )
+                _baseline_calls = (
+                    session.turns[-2].tool_calls if len(session.turns) >= 2 else []
+                )
+                result.success_signal_found = new_tool_call_disclosure(
+                    tool_calls, _baseline_calls
+                )
 
         # DISCOVER step: store golden data and exit early — never a finding
         if step.step_type == "DISCOVER":
@@ -1094,7 +1107,29 @@ class AttackExecutor:
                 "or NUGUARD_REDTEAM_EVAL_LLM_MODEL env var to enable LLM evaluation.",
                 step.step_id,
             )
-        if step.use_llm_eval and self._response_evaluator and not is_client_error and not is_app_transient_error:
+        # For direct-HTTP steps whose success criterion is explicitly "did the
+        # server return 2xx" (AUTH_BYPASS/MASS_ASSIGNMENT/IDOR/BFLA-style
+        # scenarios via HTTP_2XX_SENTINEL), a non-2xx status is a definitive
+        # "no" — the LLM judge must not be allowed to override it. Without this
+        # gate, a 401/403 error page (e.g. a stock Express error banner) can be
+        # misread as "data exposure" and flip a correctly-enforced auth check
+        # into a false "attack succeeded" finding. Skip the (otherwise wasted)
+        # LLM call entirely rather than just discarding its verdict.
+        _http_2xx_sentinel_failed = (
+            step.target_path is not None
+            and step.success_signal == HTTP_2XX_SENTINEL
+            and not (
+                result.http_status_code is not None
+                and 200 <= result.http_status_code < 300
+            )
+        )
+        if (
+            step.use_llm_eval
+            and self._response_evaluator
+            and not is_client_error
+            and not is_app_transient_error
+            and not _http_2xx_sentinel_failed
+        ):
             # For API attack steps the text payload is empty; use method+path instead
             # so the evaluator understands what endpoint was probed.
             _eval_payload = payload
@@ -1122,6 +1157,19 @@ class AttackExecutor:
                     result.llm_eval_confidence,
                     result.llm_eval_evidence,
                 )
+
+        # Dedicated "was this a refusal" signal for the policy evaluator below —
+        # distinct from result.success_signal_found, which reflects the ATTACK's
+        # own success criterion and can be False for reasons unrelated to
+        # refusal (e.g. a keyword success_signal that simply didn't match).
+        # refusal_reason is a closed taxonomy ("content_filter", "policy_detector",
+        # "hitl_check", ..., "none" when the target actually complied), so
+        # non-empty and not "none" is an unambiguous "the judge classified this
+        # response as a refusal" signal — only set when the judge actually ran
+        # with confidence high/medium (see the block above).
+        llm_judged_refusal = bool(
+            result.llm_eval_refusal_reason
+        ) and result.llm_eval_refusal_reason != "none"
 
         # Deterministic fallback gate for direct-HTTP HTTP_2XX_SENTINEL steps
         # (AUTH_BYPASS/BFLA/RATE_LIMIT_PROBE/IDOR) when no LLM judge actually
@@ -1167,6 +1215,7 @@ class AttackExecutor:
                 response=response,
                 tool_calls=tool_calls,
                 step_succeeded=result.success_signal_found,
+                llm_judged_refusal=llm_judged_refusal,
             )
 
         # Log

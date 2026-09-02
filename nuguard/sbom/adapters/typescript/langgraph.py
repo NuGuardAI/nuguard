@@ -329,6 +329,37 @@ class LangGraphTSAdapter(TSFrameworkAdapter):
                 )
             )
 
+        # --- interrupt(...) calls → GUARDRAIL (human-in-the-loop) ---
+        # Relies on the generic file-level GUARDRAIL->AGENT fallback for
+        # wiring — a graph node function isn't itself an AGENT canonical
+        # name in this adapter's model, so no explicit hint is resolvable.
+        for call in result.function_calls:
+            method = call.method_name or call.function_name.split(".")[-1]
+            if method != "interrupt" or call.receiver_chain:
+                continue
+            detected.append(
+                ComponentDetection(
+                    component_type=ComponentType.GUARDRAIL,
+                    canonical_name=canonicalize_text(
+                        f"langgraph:guardrail:interrupt:{file_path}:{call.line_start}"
+                    ),
+                    display_name="LangGraph Human-in-the-Loop",
+                    adapter_name=self.name,
+                    priority=self.priority,
+                    confidence=0.75,
+                    metadata={
+                        "framework": "langgraph-js",
+                        "guardrail_type": "human_in_the_loop",
+                        "detection_kind": "framework_native",
+                        "language": "typescript",
+                    },
+                    file_path=file_path,
+                    line=call.line_start,
+                    snippet=call.source_snippet or "interrupt(...)",
+                    evidence_kind="ast_call",
+                )
+            )
+
         return detected
 
 

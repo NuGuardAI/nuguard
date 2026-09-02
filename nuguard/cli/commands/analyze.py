@@ -38,7 +38,7 @@ _SEV_ORDER: dict[str, int] = {
     "info":     4,
 }
 
-def _clone_remote_source_for_analysis(url: str) -> str | None:
+def _clone_remote_source_for_analysis(url: str, ref: str | None = None) -> str | None:
     """Best-effort shallow clone of *url* into a fresh temp dir for local-file scans.
 
     ``nuguard analyze`` run standalone (the common ``sbom generate`` then
@@ -63,11 +63,12 @@ def _clone_remote_source_for_analysis(url: str) -> str | None:
         token = _resolve_token(None)
         clone_url = _inject_token(url, token) if token else url
         typer.echo(
-            f"Cloning {url} for local-file scans (supply-chain/Checkov/Trivy/Semgrep)…"
+            f"Cloning {url} ({ref or 'default branch'}) for local-file scans "
+            "(supply-chain/Checkov/Trivy/Semgrep)…"
         )
         repo_dir = Path(clone_dir) / "repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
-        AiSbomExtractor._clone_repo(url=clone_url, ref="main", dest=repo_dir)
+        AiSbomExtractor._clone_repo(url=clone_url, ref=ref, dest=repo_dir)
         return str(repo_dir)
     except Exception as exc:
         _log.warning("_clone_remote_source_for_analysis: clone of %s failed: %s", url, exc)
@@ -139,6 +140,13 @@ def analyze(
     source: Optional[str] = typer.Option(
         None, "--source", "-s",
         help="Path to app source directory for supply-chain, Checkov, Trivy, and Semgrep scans. Falls back to 'source:' in nuguard.yaml.",
+    ),
+    ref: Optional[str] = typer.Option(
+        None, "--ref",
+        help=(
+            "Branch, tag, or commit to check out when 'source:' is a remote repo URL. "
+            "Falls back to 'ref:' in nuguard.yaml, then the repository's default branch."
+        ),
     ),
     supply_chain: bool = typer.Option(True, "--supply-chain/--no-supply-chain",
                                       help="Run supply-chain threat pack (NGA-SC-001–025)."),
@@ -221,6 +229,10 @@ def analyze(
             _remote_source_url = _cfg_source
         else:
             source = _cfg_source
+
+    # --ref: CLI wins; fall back to ref: in nuguard.yaml; else None (clone
+    # the repository's default branch instead of assuming "main").
+    effective_ref = ref if ref is not None else cfg.source_ref
 
     # Local source root for manifest line-number lookups in remediation text
     # (best-effort; None for remote URLs, since the clone dir is removed
@@ -324,7 +336,7 @@ def analyze(
     # `finally` below regardless of how the analysis attempt below finishes.
     _clone_dir: str | None = None
     if _remote_source_url:
-        _clone_dir = _clone_remote_source_for_analysis(_remote_source_url)
+        _clone_dir = _clone_remote_source_for_analysis(_remote_source_url, ref=effective_ref)
         if _clone_dir:
             source = _clone_dir
 

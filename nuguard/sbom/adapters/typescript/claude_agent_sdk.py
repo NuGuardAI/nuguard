@@ -11,6 +11,7 @@ Supports:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...core.ts_parser import TSParseResult, parse_typescript
@@ -23,6 +24,18 @@ _CLAUDE_CODE_PACKAGES = ["@anthropic-ai/claude-code"]
 
 _AGENT_CLASSES = {"ClaudeCode", "ClaudeCodeClient", "ClaudeSDKClient"}
 _QUERY_FN_NAMES = {"query"}
+
+# hooks:/canUseTool: are object/callable fields the shared TS parser does not
+# reliably resolve nested keys for — detected via a line-scoped regex on the
+# raw source instead, same rationale as the Python twin's ast.Dict gap.
+_HOOKS_RE = re.compile(r"\bhooks\s*:")
+_CAN_USE_TOOL_RE = re.compile(r"\bcanUseTool\s*:")
+
+
+def _guardrail_flags(source: str, line_start: int, line_end: int) -> tuple[bool, bool]:
+    lines = source.splitlines()
+    snippet = "\n".join(lines[max(line_start - 1, 0) : max(line_end, line_start)])
+    return bool(_HOOKS_RE.search(snippet)), bool(_CAN_USE_TOOL_RE.search(snippet))
 
 
 class ClaudeAgentSDKTSAdapter(TSFrameworkAdapter):
@@ -161,6 +174,13 @@ class ClaudeAgentSDKTSAdapter(TSFrameworkAdapter):
                             )
                         )
 
+            has_hooks, has_can_use_tool = _guardrail_flags(source, call.line_start, call.line_end)
+            rels.extend(
+                self._guardrail_hints(file_path, call.line_start, agent_canon, has_hooks, has_can_use_tool)
+            )
+            for det in self._guardrail_detections(file_path, call.line_start, has_hooks, has_can_use_tool):
+                detected.append(det)
+
             detected.append(
                 ComponentDetection(
                     component_type=ComponentType.AGENT,
@@ -291,6 +311,13 @@ class ClaudeAgentSDKTSAdapter(TSFrameworkAdapter):
                             )
                         )
 
+            has_hooks, has_can_use_tool = _guardrail_flags(source, inst.line_start, inst.line_end)
+            rels.extend(
+                self._guardrail_hints(file_path, inst.line_start, agent_canon, has_hooks, has_can_use_tool)
+            )
+            for det in self._guardrail_detections(file_path, inst.line_start, has_hooks, has_can_use_tool):
+                detected.append(det)
+
             detected.append(
                 ComponentDetection(
                     component_type=ComponentType.AGENT,
@@ -318,6 +345,89 @@ class ClaudeAgentSDKTSAdapter(TSFrameworkAdapter):
             )
 
         return detected
+
+    @staticmethod
+    def _guardrail_hints(
+        file_path: str,
+        line: int,
+        agent_canon: str,
+        has_hooks: bool,
+        has_can_use_tool: bool,
+    ) -> list[RelationshipHint]:
+        hints: list[RelationshipHint] = []
+        if has_hooks:
+            hints.append(
+                RelationshipHint(
+                    source_canonical=canonicalize_text(f"claude_agent_sdk:guardrail:hooks:{line}"),
+                    source_type=ComponentType.GUARDRAIL,
+                    target_canonical=agent_canon,
+                    target_type=ComponentType.AGENT,
+                    relationship_type="PROTECTS",
+                )
+            )
+        if has_can_use_tool:
+            hints.append(
+                RelationshipHint(
+                    source_canonical=canonicalize_text(f"claude_agent_sdk:guardrail:can_use_tool:{line}"),
+                    source_type=ComponentType.GUARDRAIL,
+                    target_canonical=agent_canon,
+                    target_type=ComponentType.AGENT,
+                    relationship_type="PROTECTS",
+                )
+            )
+        return hints
+
+    @staticmethod
+    def _guardrail_detections(
+        file_path: str,
+        line: int,
+        has_hooks: bool,
+        has_can_use_tool: bool,
+    ) -> list[ComponentDetection]:
+        dets: list[ComponentDetection] = []
+        if has_hooks:
+            dets.append(
+                ComponentDetection(
+                    component_type=ComponentType.GUARDRAIL,
+                    canonical_name=canonicalize_text(f"claude_agent_sdk:guardrail:hooks:{line}"),
+                    display_name="Claude Agent SDK Hooks",
+                    adapter_name="claude_agent_sdk_ts",
+                    priority=20,
+                    confidence=0.85,
+                    metadata={
+                        "framework": "@anthropic-ai/claude-code",
+                        "guardrail_type": "hooks",
+                        "detection_kind": "framework_native",
+                        "language": "typescript",
+                    },
+                    file_path=file_path,
+                    line=line,
+                    snippet="hooks: { PreToolUse: [...] }",
+                    evidence_kind="regex",
+                )
+            )
+        if has_can_use_tool:
+            dets.append(
+                ComponentDetection(
+                    component_type=ComponentType.GUARDRAIL,
+                    canonical_name=canonicalize_text(f"claude_agent_sdk:guardrail:can_use_tool:{line}"),
+                    display_name="Claude Agent SDK canUseTool",
+                    adapter_name="claude_agent_sdk_ts",
+                    priority=20,
+                    confidence=0.80,
+                    metadata={
+                        "framework": "@anthropic-ai/claude-code",
+                        "guardrail_type": "can_use_tool",
+                        "detection_kind": "framework_native",
+                        "language": "typescript",
+                    },
+                    file_path=file_path,
+                    line=line,
+                    snippet="canUseTool: ...",
+                    evidence_kind="regex",
+                )
+            )
+        return dets
 
 
 CLAUDE_AGENT_SDK_TS_PACKAGES = _CLAUDE_CODE_PACKAGES

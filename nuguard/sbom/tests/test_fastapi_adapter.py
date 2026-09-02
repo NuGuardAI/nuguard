@@ -123,6 +123,89 @@ class TestEndpointMetadata:
         assert eps[0].metadata["endpoint"] == "/status"
 
 
+class TestSecurityMisconfigDetection:
+    def test_wildcard_cors_with_credentials_flagged(self) -> None:
+        code = (
+            "from fastapi import FastAPI\n"
+            "from fastapi.middleware.cors import CORSMiddleware\n"
+            "app = FastAPI()\n"
+            "app.add_middleware(\n"
+            "    CORSMiddleware, allow_origins=['*'], allow_credentials=True,\n"
+            ")\n\n"
+            "@app.get('/status')\n"
+            "async def status():\n"
+            "    return {}\n"
+        )
+        eps = _endpoints(_extract(code))
+        cors = eps[0].metadata["cors_policy"]
+        assert cors["origin"] == "*"
+        assert cors["wildcard_with_credentials"] is True
+
+    def test_explicit_origin_not_flagged_as_wildcard(self) -> None:
+        code = (
+            "from fastapi import FastAPI\n"
+            "from fastapi.middleware.cors import CORSMiddleware\n"
+            "app = FastAPI()\n"
+            "app.add_middleware(\n"
+            "    CORSMiddleware, allow_origins=['https://example.com'],\n"
+            ")\n\n"
+            "@app.get('/status')\n"
+            "async def status():\n"
+            "    return {}\n"
+        )
+        eps = _endpoints(_extract(code))
+        cors = eps[0].metadata["cors_policy"]
+        assert cors["wildcard_with_credentials"] is False
+
+    def test_debug_true_flagged(self) -> None:
+        code = (
+            "from fastapi import FastAPI\n"
+            "app = FastAPI(debug=True)\n\n"
+            "@app.get('/status')\n"
+            "async def status():\n"
+            "    return {}\n"
+        )
+        eps = _endpoints(_extract(code))
+        assert eps[0].metadata["debug_error_leak"] is True
+
+    def test_no_debug_flag_not_set(self) -> None:
+        code = (
+            "from fastapi import FastAPI\n"
+            "app = FastAPI()\n\n"
+            "@app.get('/status')\n"
+            "async def status():\n"
+            "    return {}\n"
+        )
+        eps = _endpoints(_extract(code))
+        assert "debug_error_leak" not in eps[0].metadata
+
+    def test_missing_security_headers_flagged_by_default(self) -> None:
+        code = (
+            "from fastapi import FastAPI\n"
+            "app = FastAPI()\n\n"
+            "@app.get('/status')\n"
+            "async def status():\n"
+            "    return {}\n"
+        )
+        eps = _endpoints(_extract(code))
+        assert eps[0].metadata["security_headers_detail"]["missing"] == [
+            "csp", "x_frame_options", "hsts",
+        ]
+
+    def test_recognized_header_middleware_clears_missing_headers(self) -> None:
+        code = (
+            "from fastapi import FastAPI\n"
+            "from secure import SecureHeaders\n"
+            "app = FastAPI()\n"
+            "app.add_middleware(SecureHeaders)\n\n"
+            "@app.get('/status')\n"
+            "async def status():\n"
+            "    return {}\n"
+        )
+        eps = _endpoints(_extract(code))
+        assert "security_headers_detail" not in eps[0].metadata
+
+
 class TestWebSocketRoutes:
     """WebSocket routes (@router.websocket / @app.websocket) must be detected as
     API_ENDPOINT nodes with method='WEBSOCKET', not silently dropped."""

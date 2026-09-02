@@ -154,16 +154,21 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
     )
     from .python import (
         AgnoAdapter,
+        AISecurityVendorsAdapter,
         AutoGenAdapter,
+        AWSBedrockGuardrailsAdapter,
         AzureAIAgentsAdapter,
+        AzureContentSafetyAdapter,
         BedrockAgentCoreAdapter,
         ClaudeAgentSDKAdapter,
         CrewAIAdapter,
         FastAPIAdapter,
         FlaskAdapter,
+        GCPModelArmorAdapter,
         GoogleADKPythonAdapter,
         GuardrailHeuristicAdapter,
         GuardrailsAIAdapter,
+        LangChainModerationAdapter,
         LangGraphAdapter,
         LlamaIndexAdapter,
         LLMClientsAdapter,
@@ -173,14 +178,18 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         OpenAIFunctionSchemaAdapter,
         PythonDatastoreAdapter,
         SemanticKernelAdapter,
+        VercelAISDKPythonAdapter,
     )
     from .typescript import (
         AgentOrchestratorTSAdapter,
         AgnoTSAdapter,
+        AWSBedrockGuardrailsTSAdapter,
         AzureAIAgentsTSAdapter,
+        AzureContentSafetyTSAdapter,
         BedrockAgentsTSAdapter,
         ClaudeAgentSDKTSAdapter,
         DatastoreTSAdapter,
+        GCPModelArmorTSAdapter,
         GoogleADKAdapter,
         LangGraphTSAdapter,
         LLMClientTSAdapter,
@@ -189,6 +198,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         NestJSToolDIAdapter,
         OpenAIAgentsTSAdapter,
         PromptTSAdapter,
+        VercelAISDKTSAdapter,
     )
 
     adapters: list[FrameworkAdapter] = [
@@ -200,6 +210,11 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         AutoGenAdapter(),
         GuardrailsAIAdapter(),
         GuardrailHeuristicAdapter(),
+        AISecurityVendorsAdapter(),
+        AWSBedrockGuardrailsAdapter(),
+        AzureContentSafetyAdapter(),
+        GCPModelArmorAdapter(),
+        LangChainModerationAdapter(),
         SemanticKernelAdapter(),
         CrewAIAdapter(),
         LlamaIndexAdapter(),
@@ -215,6 +230,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         PythonDatastoreAdapter(),
         FastAPIAdapter(),
         FlaskAdapter(),
+        VercelAISDKPythonAdapter(),
         # TypeScript / JavaScript adapters
         LangGraphTSAdapter(),
         OpenAIAgentsTSAdapter(),
@@ -230,6 +246,10 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         AgnoTSAdapter(),
         AzureAIAgentsTSAdapter(),
         AgentOrchestratorTSAdapter(),
+        AWSBedrockGuardrailsTSAdapter(),
+        AzureContentSafetyTSAdapter(),
+        GCPModelArmorTSAdapter(),
+        VercelAISDKTSAdapter(),
         # Go adapters
         MCPGoServerAdapter(),
         MCPGoClientAdapter(),
@@ -769,6 +789,12 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                     ),
                 ),
                 canonical_name="prompt:generic",
+                # .json data files (redteam/behavior report artifacts, fixtures,
+                # config) frequently *discuss* prompts/prompt injection without
+                # containing an actual application prompt — restrict this
+                # keyword-only fallback to source/doc files where a real hit is
+                # more likely a genuine prompt reference.
+                skip_extensions=frozenset({".json"}),
             ),
         ]
     )

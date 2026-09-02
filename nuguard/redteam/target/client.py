@@ -186,6 +186,30 @@ def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
     return current
 
 
+def _extract_sse_event_text(event: dict[str, Any]) -> str:
+    """Extract incremental text from one generic (non-framework-adapter) SSE event.
+
+    Covers the plain ``{"text"|"content"|"message": "..."}`` shapes as well as
+    the OpenAI/Vercel-AI-SDK streaming-completion shape
+    ``{"choices": [{"delta": {"content": "..."}}]}`` used by e.g. OWASP Juice
+    Shop's ``/rest/chat`` and any other ``ai`` package / OpenAI-compatible
+    streaming chat backend. An ``{"error": "..."}`` event is deliberately
+    *not* treated as text here — surfacing it as if it were assistant output
+    would poison the transcript with the app's own error message.
+    """
+    if not isinstance(event, dict) or "error" in event:
+        return ""
+    text = event.get("text") or event.get("content") or event.get("message") or ""
+    if text:
+        return str(text)
+    choices = event.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        delta = choices[0].get("delta")
+        if isinstance(delta, dict):
+            return str(delta.get("content") or "")
+    return ""
+
+
 def _extract_common_response_text(data: Any) -> str:
     """Try the common generic response shapes shared by chat/streaming clients.
 
@@ -624,8 +648,17 @@ class TargetAppClient:
         self._client.headers.update(headers)
         self._auth_header_names.update(headers)
 
-    async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+    async def send(
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[str, list[dict]]:
         """Send a prompt payload to the target and return (response_text, tool_calls).
+
+        ``extra_headers`` (e.g. ``{"Cookie": "show_tool_calls=true"}``) is merged
+        on top of the client's default headers for this request only — used to
+        test client-controlled debug/observability toggles.
 
         When ``max_concurrent_requests`` is set (semaphore mode), transient app
         errors ("having difficulty connecting") are retried **inside** the semaphore
@@ -641,9 +674,9 @@ class TargetAppClient:
         """
         if self._request_sem is not None:
             async with self._request_sem:
-                text, calls = await self._send_with_transient_retry(payload, session)
+                text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
         else:
-            text, calls = await self._send_impl(payload, session)
+            text, calls = await self._send_impl(payload, session, extra_headers)
         # Single choke point: strip known app-generated response-wrapper
         # boilerplate (see nuguard.common.transport.strip_known_boilerplate)
         # once, here, so every downstream consumer (LLM judge, topic-refusal
@@ -651,7 +684,10 @@ class TargetAppClient:
         return strip_known_boilerplate(text), calls
 
     async def _send_with_transient_retry(
-        self, payload: str, session: AttackSession
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
     ) -> tuple[str, list[dict]]:
         """Send with in-semaphore transient-error retries (holds the semaphore during waits).
 
@@ -686,7 +722,7 @@ class TargetAppClient:
         calls: list[dict] = []
 
         while True:
-            text, calls = await self._send_impl(payload, session)
+            text, calls = await self._send_impl(payload, session, extra_headers)
             outcome = classify_transport(text)
             if outcome not in RETRIABLE_OUTCOMES:
                 return text, calls
@@ -802,7 +838,12 @@ class TargetAppClient:
         history.append({"role": "user", "content": payload})
         return history
 
-    async def _send_impl(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+    async def _send_impl(
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[str, list[dict]]:
         """Inner send implementation (called with or without the request semaphore)."""
         data: dict | list | str = {}
         body: dict | None = None
@@ -883,9 +924,9 @@ class TargetAppClient:
                         return f"[CONFIG_ERROR: unresolved path param {_missing_params[0]!r}]", []
 
                 if self._chat_payload_format == "form":
-                    resp = await self._client.post(chat_path, data=body)
+                    resp = await self._client.post(chat_path, data=body, headers=extra_headers)
                 else:
-                    resp = await self._client.post(chat_path, json=body)
+                    resp = await self._client.post(chat_path, json=body, headers=extra_headers)
                 resp.raise_for_status()
                 _content_type = resp.headers.get("content-type", "")
                 if "text/event-stream" in _content_type and self._framework_adapter is None:
@@ -899,10 +940,7 @@ class TargetAppClient:
                     from nuguard.redteam.target.sse import parse_sse_events  # noqa: PLC0415
 
                     _sse_events = parse_sse_events(resp.text)
-                    _sse_text = "".join(
-                        str(_ev.get("text") or _ev.get("content") or _ev.get("message") or "")
-                        for _ev in _sse_events
-                    )
+                    _sse_text = "".join(_extract_sse_event_text(_ev) for _ev in _sse_events)
                     data = _sse_text or json.dumps(_sse_events)
                 else:
                     data = resp.json()
@@ -1050,16 +1088,28 @@ class TargetAppClient:
         for attempt in range(self._max_429_retries + 1):
             try:
                 if strip_auth and self._auth_header_names:
+                    # Build without extra_headers first, strip the real auth
+                    # material, THEN layer extra_headers on top of the
+                    # already-stripped request. Doing it in the other order
+                    # (extra_headers passed to build_request, stripped after)
+                    # would delete a caller-supplied replacement header of the
+                    # same name (e.g. a forged Authorization: Bearer <token>
+                    # for JWT-tampering probes) along with the real one —
+                    # httpx merges rather than replaces per-request headers,
+                    # so both copies exist on the request object until the
+                    # strip loop below, which deletes every value for a
+                    # matched name regardless of which one supplied it.
                     request = self._client.build_request(
                         method=method.upper(),
                         url=path,
                         json=body,
                         params=params,
-                        headers=extra_headers or {},
                     )
                     for name in self._auth_header_names:
                         if name in request.headers:
                             del request.headers[name]
+                    if extra_headers:
+                        request.headers.update(extra_headers)
                     resp = await self._client.send(request)
                 else:
                     resp = await self._client.request(
@@ -1092,6 +1142,16 @@ class TargetAppClient:
                 return resp.status_code, strip_known_boilerplate(resp.text), json_body
             except Exception as exc:
                 label = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+                # httpx transport errors carry the request that failed (e.g. the
+                # redirect target it couldn't reach) on ``exc.request`` — surface
+                # that URL so callers can tell *what* was unreachable, not just
+                # that something was. This is what lets an open-redirect probe
+                # detect success: httpx follows redirects by default, so a
+                # connection failure to our attacker-controlled marker host
+                # proves the server actually redirected there.
+                failed_url = getattr(getattr(exc, "request", None), "url", None)
+                if failed_url is not None:
+                    label = f"{label} (url={failed_url})"
                 _log.warning("Direct request %s %s failed: %s", method, path, label)
                 # Network-level failures (connection refused, DNS error, timeout) on
                 # direct endpoint probes count toward a circuit breaker that is
@@ -1200,12 +1260,7 @@ class TargetAppClient:
                                 tool_calls.extend(chunk_tools)
                         else:
                             # Generic: look for content/text in the event dict
-                            chunk_text = (
-                                event.get("text")
-                                or event.get("content")
-                                or event.get("message", "")
-                                or ""
-                            )
+                            chunk_text = _extract_sse_event_text(event)
                             tool_calls = []
                         if chunk_text:
                             accumulated_text_parts.append(chunk_text)

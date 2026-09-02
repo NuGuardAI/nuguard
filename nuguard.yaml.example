@@ -374,8 +374,9 @@ redteam:
 
   # Re-probe the target with the successful payload after a finding is emitted to
   # confirm it reproduces. Adds a verified/unconfirmed badge to each finding.
-  # Off by default to keep runs fast; enable for high-stakes audits.
-  verify_findings: false
+  # On by default (one extra request per CONFIRMED finding, not per scenario);
+  # set to false to skip it.
+  verify_findings: true
 
   # Suppress HTTP-2xx auth-bypass findings when the response body is an SPA HTML shell.
   # Single-page applications return 200 + HTML for every path, so a 2xx on a non-API

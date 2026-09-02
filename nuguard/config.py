@@ -154,7 +154,7 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     flat: dict[str, Any] = {}
 
     # Top-level file-path keys
-    for key in ("sbom", "source"):
+    for key in ("sbom", "source", "ref"):
         if key in data:
             flat[key] = data[key]
 
@@ -972,6 +972,15 @@ class NuGuardConfig(BaseSettings):
         default=None,
         alias="source",
         description="Default application source path for SBOM generation (yaml: source).",
+    )
+    source_ref: str | None = Field(
+        default=None,
+        alias="ref",
+        description=(
+            "Branch, tag, or commit to check out when 'source:' is a remote repo URL "
+            "(yaml: ref). Overridden by --ref on the CLI; falls back to the "
+            "repository's default branch when unset."
+        ),
     )
     policy_path: str | None = Field(
         default=None,

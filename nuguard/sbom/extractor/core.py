@@ -91,6 +91,7 @@ from ..deps import DependencyScanner
 from ..models import (
     AiSbomDocument,
     AuthDetail,
+    CorsPolicyDetail,
     DataHandlingDetail,
     Edge,
     EncryptionDetail,
@@ -98,6 +99,7 @@ from ..models import (
     Node,
     NodeMetadata,
     RateLimitDetail,
+    SecurityHeaderDetail,
     SourceLocation,
 )
 from ..normalization import canonicalize_text
@@ -1620,6 +1622,23 @@ class AiSbomExtractor:
                 _irs = acc.metadata.get("injection_risk_score")
                 if _irs is not None:
                     node.metadata.injection_risk_score = float(_irs)
+            # PROMPT node typed fields
+            if acc.component_type == ComponentType.PROMPT:
+                if acc.metadata.get("role"):
+                    node.metadata.role = str(acc.metadata["role"])
+                if acc.metadata.get("content"):
+                    node.metadata.content = str(acc.metadata["content"])
+                _cc = acc.metadata.get("char_count")
+                if _cc is not None:
+                    node.metadata.char_count = int(_cc)
+                _it = acc.metadata.get("is_template")
+                if _it is not None:
+                    node.metadata.is_template = bool(_it)
+                _tv = acc.metadata.get("template_variables")
+                if isinstance(_tv, list) and _tv:
+                    node.metadata.template_variables = [str(v) for v in _tv]
+                if acc.metadata.get("prompt_type"):
+                    node.metadata.prompt_type = str(acc.metadata["prompt_type"])
             # GUARDRAIL node typed fields
             if acc.component_type == ComponentType.GUARDRAIL:
                 if acc.metadata.get("rules_excerpt"):
@@ -1696,6 +1715,9 @@ class AiSbomExtractor:
                 _rl = acc.metadata.get("rate_limited")
                 if _rl is not None:
                     node.metadata.rate_limited = bool(_rl)
+                _del = acc.metadata.get("debug_error_leak")
+                if _del is not None:
+                    node.metadata.debug_error_leak = bool(_del)
                 _ids = acc.metadata.get("idor_surface")
                 if _ids is not None:
                     node.metadata.idor_surface = bool(_ids)
@@ -1842,6 +1864,16 @@ class AiSbomExtractor:
             if isinstance(_ad, dict) and _ad and node.metadata.auth_detail is None:
                 node.metadata.auth_detail = AuthDetail(
                     **{k: v for k, v in _ad.items() if v is not None}
+                )
+            _shd = acc.metadata.get("security_headers_detail")
+            if isinstance(_shd, dict) and _shd and node.metadata.security_headers_detail is None:
+                node.metadata.security_headers_detail = SecurityHeaderDetail(
+                    **{k: v for k, v in _shd.items() if v is not None}
+                )
+            _cors = acc.metadata.get("cors_policy")
+            if isinstance(_cors, dict) and _cors and node.metadata.cors_policy is None:
+                node.metadata.cors_policy = CorsPolicyDetail(
+                    **{k: v for k, v in _cors.items() if v is not None}
                 )
             _ed = acc.metadata.get("encryption_detail")
             if isinstance(_ed, dict) and _ed and node.metadata.encryption_detail is None:
@@ -2064,7 +2096,7 @@ class AiSbomExtractor:
     def extract_from_repo(
         self,
         url: str,
-        ref: str,
+        ref: str | None,
         config: AiSbomConfig,
         cache_dir: str | Path | None = None,
         source_ref: str | None = None,
@@ -2073,7 +2105,8 @@ class AiSbomExtractor:
 
         Args:
             url: Git repository URL to clone (may contain auth tokens).
-            ref: Branch, tag, or commit to check out.
+            ref: Branch, tag, or commit to check out. ``None`` clones the
+                repository's default branch (whatever ``HEAD`` points to).
             config: Extraction configuration.
             cache_dir: Optional path where the cloned repository should be
                 preserved after extraction.  When supplied the directory is
@@ -2609,6 +2642,27 @@ class AiSbomExtractor:
                         )
                     )
 
+        # Fallback: GUARDRAIL → AGENT (PROTECTS) for GUARDRAIL nodes with no
+        # outgoing PROTECTS edge yet (e.g. guardrails_ai.py / go/guardrails.py,
+        # which detect GUARDRAIL nodes but emit no relationship hints). Scoped
+        # to file-related agents via _structural_edge_related — unlike the AUTH
+        # fallback above, we deliberately skip an all-agents broad fallback:
+        # these GUARDRAIL nodes are file-scoped validators, not app-wide auth,
+        # so guessing a protects-relationship across unrelated files would
+        # misrepresent coverage.
+        guardrail_ids_with_protects_edges: set[Any] = {
+            e.source
+            for e in doc.edges
+            if e.relationship_type == RelationshipType.PROTECTS
+        }
+        for guardrail in by_type.get(ComponentType.GUARDRAIL, []):
+            if guardrail.id in guardrail_ids_with_protects_edges:
+                continue
+            for agent in by_type.get(ComponentType.AGENT, []):
+                if not self._structural_edge_related(guardrail, agent):
+                    continue
+                _add_edge(guardrail.id, agent.id, "PROTECTS", confidence=0.4)
+
     async def _llm_enrich(
         self,
         doc: AiSbomDocument,
@@ -3081,7 +3135,7 @@ class AiSbomExtractor:
     )
 
     @staticmethod
-    def _clone_repo(url: str, ref: str, dest: Path) -> None:
+    def _clone_repo(url: str, ref: str | None, dest: Path) -> None:
         if shutil.which("git") is None:
             raise RuntimeError("git executable not found on PATH")
         # Reject argument-injection attempts.  ``ref`` and ``url`` are passed
@@ -3089,7 +3143,7 @@ class AiSbomExtractor:
         # ``-`` git may interpret it as a flag (``--upload-pack=<cmd>``,
         # ``--config=<key>=<value>``, etc.), giving the ref provider a way to
         # run arbitrary commands on the operator's machine.
-        if not AiSbomExtractor._SAFE_REF_RE.match(ref):
+        if ref is not None and not AiSbomExtractor._SAFE_REF_RE.match(ref):
             raise ValueError(
                 f"Invalid git ref {ref!r}: must not be empty, start with '-', "
                 "or contain whitespace."
@@ -3100,18 +3154,13 @@ class AiSbomExtractor:
                 "an explicit scheme (e.g. https://...)."
             )
         # Use ``--`` to terminate option parsing so any future ref/url values
-        # that pass validation can never be reinterpreted as flags.
-        cmd = [
-            "git",
-            "clone",
-            "--depth",
-            "1",
-            "--branch",
-            ref,
-            "--",
-            url,
-            str(dest),
-        ]
+        # that pass validation can never be reinterpreted as flags. Omitting
+        # ``--branch`` entirely (ref=None) clones the repo's default branch,
+        # instead of assuming every repo uses "main".
+        cmd = ["git", "clone", "--depth", "1"]
+        if ref is not None:
+            cmd += ["--branch", ref]
+        cmd += ["--", url, str(dest)]
         _log.debug("running: %s", " ".join(cmd))
         try:
             result = subprocess.run(cmd, check=True, capture_output=True)
@@ -3166,7 +3215,16 @@ class AiSbomExtractor:
                     continue
                 if name_lower.endswith(".sbom.enriched.json"):
                     continue
-                if name_lower.startswith("redteam-prompts-"):
+                # NuGuard's own generated report/cache artifacts (redteam-prompts-*,
+                # redteam-judge-*, redteam-{run_id}.json/.md, behavior-judge-*,
+                # behavior-scenarios-*, behavior-{run_id}.json — see
+                # nuguard/redteam/llm_engine/{prompt_cache,judge_cache}.py,
+                # nuguard/behavior/{judge_cache,prompt_cache}.py, and
+                # nuguard/output/public_api.py) are tool output, not application
+                # source, and must never be scanned as SBOM evidence.
+                if suffix in {".json", ".md"} and (
+                    name_lower.startswith("redteam-") or name_lower.startswith("behavior-")
+                ):
                     continue
                 if name_lower.startswith("nuguard-sbom-") and suffix in {".yaml", ".yml"}:
                     continue

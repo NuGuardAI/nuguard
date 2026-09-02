@@ -301,6 +301,30 @@ def _is_direct_http_only_scenario(scenario: AttackScenario) -> bool:
     return all(step.target_path for step in scenario.chain.steps)
 
 
+def _idor_chain_status_with_auth_caveat(
+    scenario: AttackScenario, had_finding: bool, no_target_auth: bool, chain_status: str
+) -> str:
+    """Downgrade a clean IDOR miss to inconclusive when no target auth was configured.
+
+    A direct-HTTP IDOR probe (``build_idor`` in ``scenarios/api_attacks.py``)
+    only demonstrates that object-level authorization is enforced when it runs
+    under a real authenticated identity. With no ``target.auth`` configured at
+    all, the probe carries no auth headers, so a miss just re-confirms the
+    endpoint requires authentication — a different, weaker claim than "ownership
+    is checked". Reporting that as a plain clean "no" would read as "verified
+    secure" when it never actually tested the thing IDOR scenarios exist to
+    test. Findings are left untouched — a hit is a hit regardless of auth.
+    """
+    if (
+        not had_finding
+        and no_target_auth
+        and scenario.scenario_type == ScenarioType.IDOR
+        and _is_direct_http_only_scenario(scenario)
+    ):
+        return "inconclusive:no_auth_configured"
+    return chain_status
+
+
 def _tally_transport(record: ScenarioRecord, step_results: list) -> None:
     """Accumulate transport health counters into *record* from *step_results*."""
     for sr in step_results:
@@ -682,6 +706,9 @@ class RedteamOrchestrator:
         self._auth_config = auth_config
         # Default HTTP headers propagated to every request (e.g. auth header)
         self._extra_headers: dict[str, str] = extra_headers or {}
+        # Set once auth is resolved during run() — see its use in IDOR chain-status
+        # reporting below.
+        self._no_target_auth = False
         # Outcome semantics: when True, a scan with predominantly transport errors
         # is reported as inconclusive rather than no_findings.
         self._strict_outcome = strict_outcome
@@ -991,6 +1018,12 @@ class RedteamOrchestrator:
             auth_config=_effective_auth,
             headers_override=self._extra_headers if _effective_auth is None else None,
         )
+        # Direct-HTTP IDOR probes only prove object-level authorization when run
+        # under a real authenticated identity — with no auth configured, a probe
+        # to another object's ID just re-confirms the endpoint requires auth at
+        # all (a different, weaker claim). Tracked so such scenarios can be
+        # reported as inconclusive rather than a silent "no finding".
+        self._no_target_auth = auth_runtime.auth_config.type == "none"
         bootstrapper, health_report = await bootstrap_auth_runtime(
             target_url=self._target_url,
             endpoint=self._chat_path,
@@ -1787,17 +1820,26 @@ class RedteamOrchestrator:
                         return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("failed")
                     chain, step_results, session = await executor.run(scenario.chain)
                     if self._verbose:
-                        target_url = self._target_url + self._chat_path
+                        chat_target_url = self._target_url + self._chat_path
                         for step_idx, sr in enumerate(step_results, 1):
+                            # Direct-HTTP steps (target_path set) hit their own
+                            # path via invoke_endpoint, not the chat endpoint —
+                            # show that real URL rather than mislabeling every
+                            # turn as a /rest/chat request.
                             request_text = (
                                 sr.resolved_payload
                                 if not sr.step.target_path
                                 else f"{sr.step.http_method or 'POST'} {sr.step.target_path}"
                             )
+                            turn_url = (
+                                chat_target_url
+                                if not sr.step.target_path
+                                else self._target_url + sr.step.target_path
+                            )
                             _print_redteam_turn(
                                 scenario_title=scenario.title,
                                 turn_idx=step_idx,
-                                url=target_url,
+                                url=turn_url,
                                 request=request_text,
                                 response=sr.response,
                                 succeeded=sr.success_signal_found,
@@ -1816,6 +1858,9 @@ class RedteamOrchestrator:
                         f"aborted:{chain.abort_reason}"
                         if chain.status == "aborted" and chain.abort_reason
                         else chain.status
+                    )
+                    _chain_status = _idor_chain_status_with_auth_caveat(
+                        scenario, had_finding, self._no_target_auth, _chain_status
                     )
                     record = ScenarioRecord(
                         title=scenario.title,

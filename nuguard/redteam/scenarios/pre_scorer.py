@@ -23,6 +23,10 @@ _SCENARIO_SCORE_OVERRIDES: dict[str, float] = {
     ScenarioType.RESTRICTED_ACTION.value: 7.5,
     ScenarioType.DATASTORE_PROBE.value: 7.5,   # recon; lower than direct extraction
     ScenarioType.ACCOUNT_ID_PROBE.value: 9.0,  # IDOR with real account IDs — high severity
+    ScenarioType.PATH_TRAVERSAL.value: 8.0,    # arbitrary file read, same class as SSRF
+    ScenarioType.OPEN_REDIRECT.value: 6.5,     # phishing/token-theft vector, lower than a direct read
+    ScenarioType.REFLECTED_XSS.value: 7.0,     # client-side compromise, session/token theft
+    ScenarioType.JWT_TAMPERING.value: 9.0,     # forged token accepted = full auth bypass, any identity
 }
 
 
