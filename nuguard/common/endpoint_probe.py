@@ -13,7 +13,9 @@ docs, callbacks) are skipped regardless of HTTP status.
 """
 from __future__ import annotations
 
+import base64
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -95,6 +97,9 @@ _OPENAPI_SCHEMA_PATHS: tuple[str, ...] = (
     "/swagger.json",
     "/swagger/v1/swagger.json",
 )
+
+# Fallback WebSocket paths tried when the SBOM has no declared WS endpoints.
+_WS_FALLBACK_PATHS: tuple[str, ...] = ("/ws", "/ws/chat", "/socket", "/realtime")
 
 # Chat-signal tokens used to score OpenAPI endpoint paths.
 _OPENAPI_CHAT_TOKENS: frozenset[str] = frozenset({
@@ -304,6 +309,31 @@ def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool, dict | Non
         value_template = _build_object_template(raw_prop, schema)
 
     return path, key, is_list, value_template
+
+
+def _sbom_websocket_paths(sbom: "AiSbomDocument") -> list[str]:
+    """Return WebSocket endpoint paths declared in the SBOM.
+
+    These come from API_ENDPOINT nodes with ``metadata.method == "WEBSOCKET"``
+    (e.g. FastAPI ``@app.websocket(...)`` routes detected by the SBOM adapter).
+    """
+    from nuguard.sbom.models import NodeType  # noqa: PLC0415
+
+    paths: list[str] = []
+    for node in sbom.nodes:
+        if node.component_type != NodeType.API_ENDPOINT:
+            continue
+        meta = node.metadata
+        if not meta or not meta.method or meta.method.upper() != "WEBSOCKET":
+            continue
+        path: str = (meta.endpoint or "").strip()
+        if not path or not path.startswith("/"):
+            continue
+        if _HAS_PATH_PARAM_RE.search(path):
+            continue
+        if path not in paths:
+            paths.append(path)
+    return paths
 
 
 def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
@@ -712,6 +742,26 @@ async def _blind_probe(
     return None
 
 
+async def _probe_websocket_upgrade(client: httpx.AsyncClient, path: str) -> bool:
+    """Return True if *path* answers an HTTP Upgrade request as a WebSocket endpoint.
+
+    httpx cannot complete a real WS handshake, but a 101 (Switching Protocols)
+    or 426 (Upgrade Required) response confirms the server treats this path as
+    a WebSocket route rather than a plain HTTP one.
+    """
+    headers = {
+        "Connection": "Upgrade",
+        "Upgrade": "websocket",
+        "Sec-WebSocket-Version": "13",
+        "Sec-WebSocket-Key": base64.b64encode(os.urandom(16)).decode(),
+    }
+    try:
+        resp = await client.get(path, headers=headers)
+    except Exception:  # noqa: BLE001 — any transport failure means "not WS here"
+        return False
+    return resp.status_code in (101, 426)
+
+
 async def _detect_chat_endpoint(
     base: str,
     paths: list[str],
@@ -721,6 +771,7 @@ async def _detect_chat_endpoint(
     probe_payload_extras: "dict[str, object] | None",
     known_payload_key: str | None = None,
     known_payload_list: bool = False,
+    ws_paths: list[str] | None = None,
 ) -> "ProbeResult | None":
     """Ordered detection pipeline — smarter options first, blind probe as final fallback.
 
@@ -740,7 +791,12 @@ async def _detect_chat_endpoint(
             if result is not None:
                 return result
 
-            # Option 2+: future detection options go here
+            # Option 2: WebSocket upgrade probe — confirms WS-candidate paths via
+            # a 101/426 response before falling back to the blind HTTP probe.
+            for ws_path in ws_paths or ():
+                if await _probe_websocket_upgrade(client, ws_path):
+                    _log.info("endpoint_probe: detected WebSocket endpoint at %s", ws_path)
+                    return ProbeResult(ws_path, "__websocket__", False)
 
         # Final: blind multi-shape probe (or single-shape when key is known)
         payload_shapes = (
@@ -778,6 +834,7 @@ async def probe_chat_endpoints(
     the probe verifies paths with that key only.
     """
     paths = _sbom_post_paths(sbom)
+    ws_paths = _sbom_websocket_paths(sbom)
 
     # ── ADK fast-path (framework shortcut — skip all detection) ──────────────
     # Google ADK uses a fixed RunAgentRequest protocol; the generic payload
@@ -800,11 +857,15 @@ async def probe_chat_endpoints(
     for fallback in ("/chat", "/run", "/api/chat", "/v1/chat", "/query", "/agent"):
         if fallback not in paths:
             paths.append(fallback)
+    for ws_fallback in _WS_FALLBACK_PATHS:
+        if ws_fallback not in ws_paths:
+            ws_paths.append(ws_fallback)
 
     # Option B: caller provided a specific path — probe only that path to detect
     # the payload key, ignoring SBOM paths and fallbacks entirely.
     if hint_path:
         paths = [hint_path]
+        ws_paths = []
     if not paths:
         _log.debug("endpoint_probe: no probe-eligible paths")
         return None
@@ -822,6 +883,7 @@ async def probe_chat_endpoints(
         known_response_key, probe_payload_extras,
         known_payload_key=known_payload_key,
         known_payload_list=known_payload_list,
+        ws_paths=ws_paths,
     )
 
 
@@ -858,7 +920,15 @@ def discover_chat_candidates_from_sbom(
         meta = node.metadata
         if not meta:
             continue
-        if meta.method and meta.method.upper() != "POST":
+        method_u = (meta.method or "").upper()
+        if method_u == "WEBSOCKET":
+            ws_path = (meta.endpoint or "").strip()
+            if not ws_path or not ws_path.startswith("/") or _HAS_PATH_PARAM_RE.search(ws_path):
+                continue
+            ws_score = 3 if node.confidence >= 0.9 else 1
+            candidates.append((ws_score, ws_path, "__websocket__", False, node.name, None))
+            continue
+        if method_u and method_u != "POST":
             continue
 
         discovered_path = meta.endpoint or chat_path

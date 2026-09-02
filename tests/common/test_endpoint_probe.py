@@ -98,3 +98,38 @@ def test_discover_chat_candidates_excludes_camelcase_domain_key() -> None:
     paths = [c[0] for c in candidates]
     assert "/api/letter/generate" not in paths
     assert "/api/chat" in paths
+
+
+def _websocket_node(path: str, *, confidence: float = 0.99) -> Node:
+    node_id = uuid.uuid5(_NS, f"API_ENDPOINT/WEBSOCKET/{path}")
+    return Node(
+        id=node_id,
+        name=path,
+        component_type=ComponentType.API_ENDPOINT,
+        confidence=confidence,
+        metadata=NodeMetadata(endpoint=path, method="WEBSOCKET"),
+    )
+
+
+def test_discover_chat_candidates_includes_websocket_node() -> None:
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[_websocket_node("/ws/chat")],
+        edges=[],
+    )
+
+    candidates = discover_chat_candidates_from_sbom(sbom)
+
+    assert candidates == [("/ws/chat", "__websocket__", False, None)]
+
+
+def test_discover_chat_candidates_skips_websocket_path_param_route() -> None:
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[_websocket_node("/ws/{token}")],
+        edges=[],
+    )
+
+    candidates = discover_chat_candidates_from_sbom(sbom)
+
+    assert candidates == []
