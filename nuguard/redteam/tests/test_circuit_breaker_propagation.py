@@ -65,7 +65,12 @@ class _DeadClient:
         self.reset_count += 1
         self._consecutive_errors = 0
 
-    async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+    async def send(
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[str, list[dict]]:
         self._consecutive_errors += 1
         if self._consecutive_errors >= self.threshold:
             raise TargetUnavailableError(
@@ -308,7 +313,12 @@ async def test_codegen_escalation_propagates_target_unavailable() -> None:
     # codegen branch triggers; the SECOND send (first escalation chain) raises
     # TUE to simulate the target dying mid-escalation.
     class _TwoPhaseClient(_DeadClient):
-        async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+        async def send(
+            self,
+            payload: str,
+            session: AttackSession,
+            extra_headers: dict[str, str] | None = None,
+        ) -> tuple[str, list[dict]]:
             self._consecutive_errors += 1
             if self._consecutive_errors >= self.threshold:
                 raise TargetUnavailableError(

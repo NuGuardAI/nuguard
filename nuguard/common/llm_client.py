@@ -423,6 +423,7 @@ class LLMClient:
         _stripped_unsupported = False  # guard: strip-and-retry only once
 
         for _attempt in range(_MAX_RETRIES + 1):
+            _yielded_this_attempt = False
             try:
                 # Request usage in the final streaming chunk for providers that support it.
                 if any(self.model.startswith(p) for p in _OPENAI_PREFIXES + _ANTHROPIC_PREFIXES):
@@ -454,10 +455,28 @@ class LLMClient:
                     if chunk.choices:
                         delta: str = chunk.choices[0].delta.content or ""
                         if delta:
+                            _yielded_this_attempt = True
                             yield delta
                 return
 
             except (litellm.RateLimitError, litellm.ServiceUnavailableError, litellm.APIConnectionError) as exc:
+                # MidStreamFallbackError (a ServiceUnavailableError subclass) fires
+                # *after* real content has already been streamed to the caller —
+                # e.g. an Azure socket timeout partway through generation. Retrying
+                # by re-issuing the whole request would re-yield the completion from
+                # scratch, and accumulator-style callers (result += chunk) would end
+                # up with the partial first attempt's text followed by the full
+                # second attempt's text concatenated together — silently corrupted
+                # output rather than a clean retry. Once any content has been
+                # yielded this attempt, stop instead of restarting.
+                if _yielded_this_attempt:
+                    _log.warning(
+                        "LLM transient error mid-stream after partial output "
+                        "(model=%s label=%s) — not retrying (would duplicate "
+                        "already-yielded content): %s",
+                        self.model, label or "-", exc,
+                    )
+                    return
                 if _attempt < _MAX_RETRIES:
                     delay = min(_BASE_DELAY * (2 ** _attempt) + random.uniform(0, 1), _MAX_DELAY)
                     _log.warning(

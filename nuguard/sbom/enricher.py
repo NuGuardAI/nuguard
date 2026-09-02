@@ -194,7 +194,7 @@ def enrich(doc: AiSbomDocument) -> None:
 
     _enrich_api_endpoints(doc, targets, sources_of_type, post_endpoints_by_path)
     _enrich_tools(doc, tool_frameworks, framework_auth, privilege_node_ids, targets)
-    _enrich_agents(doc, targets, node_by_id)
+    _enrich_agents(doc, targets, sources_of_type, node_by_id)
     _backfill_descriptions(doc)
     _enrich_instrumentation(doc)
     _enrich_testing(doc)
@@ -386,6 +386,7 @@ def _is_ssrf_possible(desc: str, param_names: list[str]) -> bool:
 def _enrich_agents(
     doc: AiSbomDocument,
     targets: Callable[[UUID, str], set[UUID]],
+    sources_of_type: Callable[[UUID, str, str], list[Node]],
     node_by_id: dict[UUID, Node],
 ) -> None:
     # DATASTORE nodes with PII or PHI
@@ -434,7 +435,9 @@ def _enrich_agents(
             score += 0.20
 
         # Absence of guardrail coverage
-        protecting_guardrails = targets(node.id, RelationshipType.PROTECTS)
+        protecting_guardrails = sources_of_type(
+            node.id, RelationshipType.PROTECTS, ComponentType.GUARDRAIL
+        )
         if not protecting_guardrails:
             score += 0.10
 

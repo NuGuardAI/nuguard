@@ -179,6 +179,16 @@ class SemanticKernelAdapter(FrameworkAdapter):
                     or inst.class_name
                 )
                 canon = canonicalize_text(display_name.lower())
+                prompt_rels: list[RelationshipHint] = [
+                    RelationshipHint(
+                        source_canonical=kc,
+                        source_type=ComponentType.FRAMEWORK,
+                        target_canonical=canon,
+                        target_type=ComponentType.PROMPT,
+                        relationship_type="USES",
+                    )
+                    for kc in kernel_canonicals
+                ]
                 detected.append(
                     ComponentDetection(
                         component_type=ComponentType.PROMPT,
@@ -199,6 +209,7 @@ class SemanticKernelAdapter(FrameworkAdapter):
                         line=inst.line,
                         snippet=f"{inst.class_name}(...)",
                         evidence_kind="ast_instantiation",
+                        relationships=prompt_rels,
                     )
                 )
 

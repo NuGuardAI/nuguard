@@ -130,6 +130,33 @@ class RateLimitDetail(BaseModel):
     )
 
 
+class SecurityHeaderDetail(BaseModel):
+    """HTTP security-header posture extracted from code or IaC."""
+
+    csp: bool | None = Field(default=None, description="True when a Content-Security-Policy header is set")
+    x_frame_options: bool | None = Field(default=None, description="True when an X-Frame-Options header is set")
+    hsts: bool | None = Field(default=None, description="True when a Strict-Transport-Security header is set")
+    missing: list[str] = Field(
+        default_factory=list,
+        description="Security headers confirmed absent, e.g. ['csp', 'x_frame_options', 'hsts']",
+    )
+
+
+class CorsPolicyDetail(BaseModel):
+    """CORS configuration extracted from code or IaC."""
+
+    origin: str | None = Field(
+        default=None, description="Configured allowed origin(s), e.g. '*' or 'https://example.com'"
+    )
+    allow_credentials: bool | None = Field(
+        default=None, description="True when the CORS policy allows credentialed cross-origin requests"
+    )
+    wildcard_with_credentials: bool = Field(
+        default=False,
+        description="True when origin is wildcarded AND credentials are allowed — the dangerous combination",
+    )
+
+
 class AuthDetail(BaseModel):
     """Detailed authentication and authorization posture for a component."""
 
@@ -148,6 +175,16 @@ class AuthDetail(BaseModel):
     auth_roles: list[str] = Field(
         default_factory=list,
         description="Roles or scopes required for access, e.g. ['admin', 'read:users']",
+    )
+    jwt_algorithm_restricted: bool | None = Field(
+        default=None,
+        description=(
+            "True when a JWT verification call site pins an explicit expected "
+            "algorithm (e.g. `algorithms: ['HS256']`); False when a verify call "
+            "was found with no such restriction, which admits alg-confusion "
+            "attacks (a forged token can switch the algorithm, e.g. to `none`, "
+            "and be accepted); None when no verification call site was found."
+        ),
     )
 
 
@@ -447,6 +484,31 @@ class NodeMetadata(BaseModel):
             "Used by the red-team scenario generator to craft context-authentic payloads."
         ),
     )
+    # PROMPT node attributes (populated by prompt-detecting adapters)
+    role: str | None = Field(
+        default=None,
+        description="Prompt role, e.g. 'system', 'user'. PROMPT nodes only.",
+    )
+    content: str | None = Field(
+        default=None,
+        description="Full prompt/instructions text. PROMPT nodes only.",
+    )
+    char_count: int | None = Field(
+        default=None,
+        description="Character count of the prompt content. PROMPT nodes only.",
+    )
+    is_template: bool | None = Field(
+        default=None,
+        description="True when the prompt content contains '{variable}' placeholders. PROMPT nodes only.",
+    )
+    template_variables: list[str] | None = Field(
+        default=None,
+        description="Template variable names found in the prompt content, e.g. ['user_name']. PROMPT nodes only.",
+    )
+    prompt_type: str | None = Field(
+        default=None,
+        description="Prompt kind set by some adapters, e.g. 'instructions', 'agent_input'. PROMPT nodes only.",
+    )
     # GUARDRAIL node attributes (populated by guardrail adapters / enricher)
     rules_excerpt: str | None = Field(
         default=None,
@@ -571,6 +633,18 @@ class NodeMetadata(BaseModel):
     descriptive_name: str | None = Field(
         default=None,
         description="LLM-generated human-readable label, e.g. 'User Authentication API'",
+    )
+    security_headers_detail: SecurityHeaderDetail | None = Field(
+        default=None,
+        description="HTTP security-header posture extracted from code or IaC",
+    )
+    cors_policy: CorsPolicyDetail | None = Field(
+        default=None,
+        description="CORS configuration extracted from code or IaC",
+    )
+    debug_error_leak: bool | None = Field(
+        default=None,
+        description="True when the app runs in a debug/verbose-error mode that leaks stack traces",
     )
     rate_limit_detail: RateLimitDetail | None = Field(
         default=None,

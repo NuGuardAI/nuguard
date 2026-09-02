@@ -51,6 +51,25 @@ async def test_send_2xx_returns_immediately():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_send_extra_headers_merged_on_request_only_when_passed():
+    """extra_headers (e.g. a debug-toggle Cookie) must appear on the outgoing
+    request when supplied, and must not leak into a subsequent call that
+    doesn't pass any — each call's extra_headers are per-request, not
+    client-wide state (unlike update_default_headers())."""
+    route = respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(200, json={"response": "ok"})
+    )
+    client = await _client()
+    async with client:
+        await client.send("hi", _session(), extra_headers={"Cookie": "show_tool_calls=true"})
+        assert route.calls.last.request.headers.get("cookie") == "show_tool_calls=true"
+
+        await client.send("hi", _session())
+        assert "cookie" not in route.calls.last.request.headers
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_send_form_payload_mode_uses_form_encoded_body():
     """Form payload mode should send message in request.form-style body."""
     route = respx.post(f"{BASE}{CHAT}").mock(
@@ -359,6 +378,56 @@ async def test_default_headers_sent_with_invoke_endpoint():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_strip_auth_removes_real_auth_but_extra_headers_of_same_name_survive():
+    """A caller-supplied extra_headers entry (e.g. a forged
+    Authorization: Bearer <token> for JWT-tampering probes) must survive
+    strip_auth=True — regression guard for the bug where strip_auth deleted
+    ANY header matching a tracked auth-header name, including one the
+    caller had just supplied via extra_headers, not just the real default."""
+    route = respx.post(f"{BASE}/api/resource").mock(
+        return_value=httpx.Response(200, json={"id": 1})
+    )
+    client = TargetAppClient(
+        base_url=BASE,
+        chat_path=CHAT,
+        timeout=5.0,
+        default_headers={"Authorization": "Bearer real-token"},
+    )
+    async with client:
+        status, _text, _json = await client.invoke_endpoint(
+            "/api/resource",
+            method="POST",
+            extra_headers={"Authorization": "Bearer forged-token"},
+            strip_auth=True,
+        )
+    assert status == 200
+    sent_request = route.calls[0].request
+    assert sent_request.headers.get("authorization") == "Bearer forged-token"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_strip_auth_with_no_extra_headers_removes_auth_entirely():
+    route = respx.post(f"{BASE}/api/resource").mock(
+        return_value=httpx.Response(200, json={"id": 1})
+    )
+    client = TargetAppClient(
+        base_url=BASE,
+        chat_path=CHAT,
+        timeout=5.0,
+        default_headers={"Authorization": "Bearer real-token"},
+    )
+    async with client:
+        status, _text, _json = await client.invoke_endpoint(
+            "/api/resource", method="POST", strip_auth=True,
+        )
+    assert status == 200
+    sent_request = route.calls[0].request
+    assert "authorization" not in sent_request.headers
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_no_default_headers_backward_compatible():
     """When no default_headers are supplied the client still works as before."""
     respx.post(f"{BASE}{CHAT}").mock(
@@ -394,6 +463,54 @@ async def test_send_sse_response_extracts_text_without_error():
         text, tool_calls = await client.send("hi", _session())
     assert text == "Hello world"
     assert tool_calls == []
+    assert client._consecutive_errors == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_sse_openai_delta_shape_extracts_text():
+    """Regression: OWASP Juice Shop's /rest/chat (Vercel AI SDK ``streamText``)
+    emits ``data: {"choices":[{"delta":{"content": "..."}}]}`` chunks — the
+    OpenAI streaming-completion shape — not the flat ``{"content": ...}``
+    shape covered above. Before the fix these chunks were invisible to the
+    generic SSE join, and the client fell back to json-dumping the raw event
+    list as the "response text"."""
+    sse_body = (
+        'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n'
+        'data: {"choices": [{"delta": {"content": " world"}}]}\n\n'
+        'data: {"choices": [{"finish_reason": "stop"}]}\n\n'
+        "data: [DONE]\n\n"
+    )
+    respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(
+            200, content=sse_body, headers={"content-type": "text/event-stream"}
+        )
+    )
+    client = await _client()
+    async with client:
+        text, tool_calls = await client.send("hi", _session())
+    assert text == "Hello world"
+    assert tool_calls == []
+    assert client._consecutive_errors == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_sse_error_event_not_treated_as_response_text():
+    """An SSE stream whose only event is an app-level error (e.g. juice-shop's
+    "messages must not be empty") must not have that error string extracted as
+    if it were assistant text — it should fall through to the raw-event-list
+    JSON so callers/judges can still see and flag it as a failure."""
+    sse_body = 'data: {"error": "LLM error: messages must not be empty"}\n\ndata: [DONE]\n\n'
+    respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(
+            200, content=sse_body, headers={"content-type": "text/event-stream"}
+        )
+    )
+    client = await _client()
+    async with client:
+        text, _ = await client.send("hi", _session())
+    assert "messages must not be empty" in text
     assert client._consecutive_errors == 0
 
 

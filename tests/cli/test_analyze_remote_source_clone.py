@@ -28,9 +28,12 @@ _FIXTURE_SBOM = (
 )
 
 
-def _write_config(tmp_path: Path, source_url: str) -> Path:
+def _write_config(tmp_path: Path, source_url: str, ref: str | None = None) -> Path:
     cfg_path = tmp_path / "nuguard.yaml"
-    cfg_path.write_text(f"source: {source_url}\n", encoding="utf-8")
+    body = f"source: {source_url}\n"
+    if ref is not None:
+        body += f"ref: {ref}\n"
+    cfg_path.write_text(body, encoding="utf-8")
     return cfg_path
 
 
@@ -69,8 +72,43 @@ def test_analyze_clones_remote_source_and_passes_it_through(tmp_path: Path) -> N
         )
 
     assert result.exit_code == 0, result.output
-    clone_mock.assert_called_once_with("https://github.com/example/repo")
+    clone_mock.assert_called_once_with("https://github.com/example/repo", ref=None)
     assert captured["source_path"] == str(cloned_dir)
+
+
+def test_analyze_clones_configured_ref_instead_of_hardcoded_main(tmp_path: Path) -> None:
+    """nuguard.yaml's ref: is forwarded to the clone, not a hardcoded "main"."""
+    cfg_path = _write_config(tmp_path, "https://github.com/example/repo", ref="v2")
+    cloned_dir = tmp_path / "cloned_repo"
+    cloned_dir.mkdir()
+
+    async def fake_run_analysis(request, sbom=None, llm_client=None):  # noqa: ANN001
+        from nuguard.analysis.public_api import AnalysisRunResult
+
+        return AnalysisRunResult(findings=[])
+
+    with (
+        patch(
+            "nuguard.cli.commands.analyze._clone_remote_source_for_analysis",
+            return_value=str(cloned_dir),
+        ) as clone_mock,
+        patch("nuguard.analysis.public_api.run_analysis", new=AsyncMock(side_effect=fake_run_analysis)),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "analyze",
+                "--sbom", str(_FIXTURE_SBOM),
+                "--config", str(cfg_path),
+                "--no-atlas",
+                "--no-osv",
+                "--no-supply-chain",
+            ],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 0, result.output
+    clone_mock.assert_called_once_with("https://github.com/example/repo", ref="v2")
 
 
 def test_analyze_falls_back_gracefully_when_clone_fails(tmp_path: Path) -> None:
