@@ -380,6 +380,7 @@ def _compute_scan_outcome(
         "skipped",
         "aborted:target_unavailable",
         "aborted:consecutive_request_failures",
+        "target_unreachable",
     )
     if findings:
         def _sev(f: object) -> str:
