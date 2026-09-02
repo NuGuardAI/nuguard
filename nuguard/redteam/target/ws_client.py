@@ -32,7 +32,7 @@ MAX_CONSECUTIVE_ERRORS = 3
 MAX_DRAIN_MESSAGES = 50
 
 
-def _to_ws_url(base_url: str) -> str:
+def to_ws_url(base_url: str) -> str:
     """Convert an http(s):// base URL to its ws(s):// equivalent."""
     if base_url.startswith("https://"):
         return "wss://" + base_url[len("https://"):]
@@ -95,7 +95,7 @@ class WebSocketTargetClient:
     async def _connect(self) -> None:
         import websockets  # noqa: PLC0415 — optional dep, imported lazily
 
-        url = _to_ws_url(self.base_url) + self._chat_path
+        url = to_ws_url(self.base_url) + self._chat_path
         self._ws = await websockets.connect(
             url,
             additional_headers=self._default_headers or None,

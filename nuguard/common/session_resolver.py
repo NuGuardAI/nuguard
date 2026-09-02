@@ -272,6 +272,7 @@ async def resolve_target_session(
     canary_config: Any = None,
     probe_payload_extras: dict[str, Any] | None = None,
     run_id: str | None = None,
+    ws_auth_message: dict[str, Any] | None = None,
 ) -> tuple[TargetSessionConfig, "TargetHealthReport"]:
     """Resolve all target-connection config and return a :class:`TargetSessionConfig`.
 
@@ -280,7 +281,8 @@ async def resolve_target_session(
 
     1. Static-hosting URL resolution (falls back to SBOM ``deployment_urls``)
     2. Basic → login_flow auth upgrade when SBOM has a login endpoint
-    3. Auth bootstrap (live login + credential probe)
+    3. Auth bootstrap (live login + credential probe) — a WebSocket handshake
+       when the target is detected as a WS endpoint, HTTP POST otherwise
     4. Login-response extras merge (auto-inject ``user_id`` etc.)
     5. SBOM context-field hints (identity auto-inject or config note; session UUID)
     6. SBOM static endpoint discovery (zero I/O)
@@ -306,6 +308,9 @@ async def resolve_target_session(
             Defaults to *chat_payload_extras* when ``None``.
         run_id: Optional UUID string for the bootstrap health check; auto-generated
             when ``None``.
+        ws_auth_message: First-message auth payload for WebSocket targets that
+            authenticate over the first frame instead of headers (e.g.
+            ``{"type": "auth", "token": "..."}``); ignored for HTTP targets.
 
     Returns:
         ``(TargetSessionConfig, TargetHealthReport)``
@@ -317,6 +322,7 @@ async def resolve_target_session(
         resolve_auth_runtime,
     )
     from nuguard.common.endpoint_probe import (  # noqa: PLC0415
+        discover_chat_candidates_from_sbom,
         discover_chat_config_from_sbom,
         is_empty_session_response,
         probe_chat_endpoints,
@@ -353,14 +359,32 @@ async def resolve_target_session(
     )
 
     # ── 3. Auth bootstrap ────────────────────────────────────────────────────
+    # WS detection must happen before bootstrap (it decides handshake vs POST),
+    # so it runs zero-I/O against whatever the SBOM already knows — the fuller
+    # live-probe-based discovery in steps 6/7 below still applies afterwards.
+    is_websocket = chat_payload_key == "__websocket__"
+    if not is_websocket:
+        try:
+            ws_candidates = discover_chat_candidates_from_sbom(sbom, chat_path=chat_path)
+            if chat_path:
+                is_websocket = any(
+                    path == chat_path and key == "__websocket__" for path, key, _l, _r in ws_candidates
+                )
+            else:
+                is_websocket = bool(ws_candidates) and ws_candidates[0][1] == "__websocket__"
+        except Exception as exc:
+            _log.debug("resolve_target_session: WS pre-detection failed: %s", exc)
+
     _probe_extras = probe_payload_extras if probe_payload_extras is not None else chat_payload_extras
     bootstrapper, health_report = await bootstrap_auth_runtime(
         target_url=target_url,
-        endpoint=chat_path or "/chat",
+        endpoint=chat_path or ("/ws" if is_websocket else "/chat"),
         auth_config=auth_runtime.auth_config,
         canary_config=canary_config,
         run_id=_run_id,
         probe_payload_extras=_probe_extras or None,
+        is_websocket=is_websocket,
+        ws_auth_message=ws_auth_message,
     )
     bootstrap_headers = bootstrapper.session.headers()
     effective_headers = dict(extra_headers)
@@ -466,6 +490,7 @@ async def resolve_target_session(
             sbom=sbom,
             payload_extras=merged_extras or None,
             chat_payload_value_template=chat_payload_value_template,
+            ws_auth_message=ws_auth_message,
         )
         async with _wu_client:
             from nuguard.redteam.target.session import AttackSession as _WS  # noqa: PLC0415
