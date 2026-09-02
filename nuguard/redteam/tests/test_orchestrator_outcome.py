@@ -300,3 +300,34 @@ def test_outcome_mixed_aborted_and_completed():
     ]
     outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
     assert outcome == "no_findings"
+
+
+def test_outcome_all_target_unreachable():
+    """All direct-HTTP scenarios skipped with target_unreachable → aborted_target_unavailable.
+
+    Regression: the endpoint-probe circuit breaker (source='endpoint_probe')
+    produces chain_status='target_unreachable' which was previously not in
+    _HEALTH_ABORT_STATUSES, causing _compute_scan_outcome to fall through to
+    'no_findings' instead of correctly reporting the target as unavailable.
+    """
+    records = [
+        _record_with_counters(chain_status="target_unreachable"),
+        _record_with_counters(chain_status="target_unreachable"),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome == "aborted_target_unavailable"
+
+
+def test_outcome_target_unreachable_mixed_with_completed():
+    """Target_unreachable records alongside completed records → not aborted.
+
+    When some scenarios (chat-routed) complete successfully while others
+    (direct-HTTP-only) are target_unreachable, the scan did partially run,
+    so the outcome is no_findings, not aborted_target_unavailable.
+    """
+    records = [
+        _record_with_counters(chain_status="target_unreachable"),
+        _record_with_counters(chain_status="completed", http_2xx=3),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome == "no_findings"
