@@ -257,6 +257,9 @@ class PromptDetector:
             component_type=NodeType.PROMPT,
             confidence=_CONFIDENCE,
             metadata=NodeMetadata(
+                content=content,
+                char_count=len(content),
+                is_template=is_template,
                 extras={
                     "injection_risk_score": risk_score,
                     "is_template": is_template,
@@ -301,10 +304,15 @@ class PromptDetector:
             component_type=NodeType.PROMPT,
             confidence=_CONFIDENCE,
             metadata=NodeMetadata(
+                role="system",
+                content=content,
+                char_count=len(content),
+                is_template=False,
                 extras={
                     "injection_risk_score": 0.0,
                     "is_template": False,
                     "content": content,
+                    "role": "system",
                 },
             ),
         )

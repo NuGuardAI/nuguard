@@ -1088,16 +1088,28 @@ class TargetAppClient:
         for attempt in range(self._max_429_retries + 1):
             try:
                 if strip_auth and self._auth_header_names:
+                    # Build without extra_headers first, strip the real auth
+                    # material, THEN layer extra_headers on top of the
+                    # already-stripped request. Doing it in the other order
+                    # (extra_headers passed to build_request, stripped after)
+                    # would delete a caller-supplied replacement header of the
+                    # same name (e.g. a forged Authorization: Bearer <token>
+                    # for JWT-tampering probes) along with the real one —
+                    # httpx merges rather than replaces per-request headers,
+                    # so both copies exist on the request object until the
+                    # strip loop below, which deletes every value for a
+                    # matched name regardless of which one supplied it.
                     request = self._client.build_request(
                         method=method.upper(),
                         url=path,
                         json=body,
                         params=params,
-                        headers=extra_headers or {},
                     )
                     for name in self._auth_header_names:
                         if name in request.headers:
                             del request.headers[name]
+                    if extra_headers:
+                        request.headers.update(extra_headers)
                     resp = await self._client.send(request)
                 else:
                     resp = await self._client.request(
@@ -1130,6 +1142,16 @@ class TargetAppClient:
                 return resp.status_code, strip_known_boilerplate(resp.text), json_body
             except Exception as exc:
                 label = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+                # httpx transport errors carry the request that failed (e.g. the
+                # redirect target it couldn't reach) on ``exc.request`` — surface
+                # that URL so callers can tell *what* was unreachable, not just
+                # that something was. This is what lets an open-redirect probe
+                # detect success: httpx follows redirects by default, so a
+                # connection failure to our attacker-controlled marker host
+                # proves the server actually redirected there.
+                failed_url = getattr(getattr(exc, "request", None), "url", None)
+                if failed_url is not None:
+                    label = f"{label} (url={failed_url})"
                 _log.warning("Direct request %s %s failed: %s", method, path, label)
                 # Network-level failures (connection refused, DNS error, timeout) on
                 # direct endpoint probes count toward a circuit breaker that is

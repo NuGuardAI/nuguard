@@ -1818,17 +1818,26 @@ class RedteamOrchestrator:
                         return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("failed")
                     chain, step_results, session = await executor.run(scenario.chain)
                     if self._verbose:
-                        target_url = self._target_url + self._chat_path
+                        chat_target_url = self._target_url + self._chat_path
                         for step_idx, sr in enumerate(step_results, 1):
+                            # Direct-HTTP steps (target_path set) hit their own
+                            # path via invoke_endpoint, not the chat endpoint —
+                            # show that real URL rather than mislabeling every
+                            # turn as a /rest/chat request.
                             request_text = (
                                 sr.resolved_payload
                                 if not sr.step.target_path
                                 else f"{sr.step.http_method or 'POST'} {sr.step.target_path}"
                             )
+                            turn_url = (
+                                chat_target_url
+                                if not sr.step.target_path
+                                else self._target_url + sr.step.target_path
+                            )
                             _print_redteam_turn(
                                 scenario_title=scenario.title,
                                 turn_idx=step_idx,
-                                url=target_url,
+                                url=turn_url,
                                 request=request_text,
                                 response=sr.response,
                                 succeeded=sr.success_signal_found,

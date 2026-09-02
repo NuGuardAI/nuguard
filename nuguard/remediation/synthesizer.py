@@ -318,6 +318,7 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "SCHEMA_IDENTITY_OVERRIDE": "privilege_escalation",
     "SCRIPTED_IDENTITY_ESCALATION": "privilege_escalation",
     "SCRIPTED_ROLE_ESCALATION": "privilege_escalation",
+    "JWT_TAMPERING": "privilege_escalation",
     # -- data_leak: data/PII exfiltration, including covert channels
     "DIRECT_PII_EXTRACTION": "data_leak",
     "CROSS_TENANT_EXFILTRATION": "data_leak",
@@ -372,6 +373,9 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "DATASTORE_SQL_INJECTION": "risky_tool",
     "SHELL_INJECTION": "risky_tool",
     "SANDBOX_ESCAPE": "risky_tool",
+    "PATH_TRAVERSAL": "risky_tool",
+    "OPEN_REDIRECT": "risky_tool",
+    "REFLECTED_XSS": "risky_tool",
     # -- policy_violation_generic: safe default — no confident domain-specific
     # fit yet (mostly RAG-pipeline/architectural and reconnaissance/oracle
     # techniques); _patch_generic_violation embeds the finding's own
