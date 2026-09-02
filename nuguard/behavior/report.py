@@ -175,7 +175,8 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     lines.append(f"- **Intent**: {result.intent.app_purpose or 'not determined'}")
     lines.append(f"- **Analysis Mode**: {mode}")
     lines.append(f"- **Scan Outcome**: `{result.scan_outcome}`")
-    lines.append(f"- **Run ID**: `{result.run_id}`")
+    if meta is not None and meta.verbose:
+        lines.append(f"- **Run ID**: `{result.run_id}`")
     _dyn_outcome = getattr(result, "dynamic_scan_outcome", None)
     if result.static_findings and _dyn_outcome in (
         "aborted_target_unavailable",

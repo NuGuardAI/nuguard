@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from nuguard.models.finding import Finding
@@ -41,7 +42,7 @@ def write_remediation_plan(
     plan: dict = {
         "schema_version": "1.0",
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
-        "scan_id": scan_id or "",
+        "scan_id": scan_id or str(uuid4()),
         "target": target_url or "",
         "total_findings": len(findings),
         "findings": [_finding_to_dict(f) for f in findings],

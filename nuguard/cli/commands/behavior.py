@@ -330,6 +330,7 @@ async def _run_behavior(
 
     llm_models = [m for m in [cfg.litellm_model] if m]
     meta = ReportMeta(
+        run_id=result.run_id,
         llm_models=llm_models,
         verbose=bool(getattr(bc, "verbose", False)),
         target_url=str(getattr(bc, "target", "") or ""),

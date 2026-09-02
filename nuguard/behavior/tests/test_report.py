@@ -80,24 +80,22 @@ def test_to_json_top_level_keys():
 def test_to_markdown_meta_run_id_hidden_by_default_shown_in_verbose():
     """The run id lives in the machine-readable _meta; the default markdown
     report must not surface it, while verbose mode may show it."""
+    result = _make_result()
     meta = ReportMeta()
-    default_md = to_markdown(_make_result(), meta=meta)
-    verbose_md = to_markdown(_make_result(), meta=ReportMeta(verbose=True, run_id=meta.run_id))
-    assert meta.run_id not in default_md
-    assert meta.run_id in verbose_md
+    default_md = to_markdown(result, meta=meta)
+    verbose_md = to_markdown(result, meta=ReportMeta(verbose=True, run_id=result.run_id))
+    assert result.run_id not in default_md
+    assert result.run_id in verbose_md
 
 
 def test_to_json_meta_run_id_present_and_consistent():
-    """The machine-readable _meta must carry the stable run id, and both the
-    top-level result.run_id and _meta.run_id must be populated (non-empty) so
-    downstream tooling can correlate the two representations."""
+    """The result and metadata use one canonical run identifier."""
     result = _make_result()
-    meta = ReportMeta()
+    meta = ReportMeta(run_id=result.run_id)
     payload = json.loads(to_json(result, meta=meta))
-    assert payload["meta"]["run_id"] == meta.run_id
-    assert payload["run_id"]
-    assert payload["_meta"] if "_meta" in payload else True  # key naming varies; run_id is what matters
-    assert isinstance(payload["meta"]["run_id"], str) and len(payload["meta"]["run_id"]) > 0
+    assert payload["run_id"] == result.run_id
+    assert payload["meta"]["run_id"] == result.run_id
+    assert isinstance(payload["run_id"], str) and payload["run_id"]
 
 
 def test_to_json_with_findings():
@@ -598,6 +596,12 @@ def test_to_markdown_covered_components_tagged_matched_unmatched():
     md = to_markdown(result)
     assert "Loan Application Agent (matched)" in md
     assert "UnknownTool (unmatched)" in md
+
+
+def test_to_markdown_run_id_shown_only_in_verbose():
+    result = _make_result()
+    assert result.run_id not in to_markdown(result, meta=ReportMeta(verbose=False))
+    assert result.run_id in to_markdown(result, meta=ReportMeta(verbose=True, run_id=result.run_id))
 
 
 def test_to_markdown_renders_effective_endpoint_per_scenario():
