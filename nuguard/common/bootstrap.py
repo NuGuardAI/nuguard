@@ -68,6 +68,8 @@ class AuthBootstrapper:
         timeout: float | None = None,
         probe_payload_extras: dict[str, object] | None = None,
         startup_retries: int | None = None,
+        is_websocket: bool = False,
+        ws_auth_message: dict[str, object] | None = None,
     ) -> None:
         self._target_url = target_url.rstrip("/")
         self._endpoint = endpoint
@@ -77,6 +79,10 @@ class AuthBootstrapper:
         self._timeout = timeout if timeout is not None else BOOTSTRAP_TIMEOUT
         self._startup_retries = startup_retries if startup_retries is not None else BOOTSTRAP_STARTUP_RETRIES
         self._probe_payload_extras: dict[str, object] = probe_payload_extras or {}
+        # When True, _probe_once() opens a WebSocket handshake instead of sending
+        # an HTTP POST — see resolve_target_session()'s pre-bootstrap WS detection.
+        self._is_websocket = is_websocket
+        self._ws_auth_message = ws_auth_message
         # Initialised during run() — exposed so behavior/redteam can share it
         self._session: AuthSession | None = None
 
@@ -272,13 +278,15 @@ class AuthBootstrapper:
         headers: dict[str, str],
         auth_type: str,
     ) -> CredentialCheckResult:
-        """Send a single health-check POST to the endpoint and record the result.
+        """Send a single health-check probe to the endpoint and record the result.
 
         Args:
             identity: Human-readable name for the credential being checked.
             headers: Resolved auth headers (from AuthSession or AuthConfig).
             auth_type: Auth type string for reporting (bearer/basic/login_flow/…).
         """
+        if self._is_websocket:
+            return await self._probe_websocket_once(identity, headers, auth_type)
         request_headers = {
             "User-Agent": "nuguard-bootstrap/1.0",
             "Content-Type": "application/json",
@@ -426,6 +434,88 @@ class AuthBootstrapper:
                 identity=identity,
                 auth_type=auth_type,
                 endpoint=self.full_url,
+                status="target_unavailable",
+                response_time_ms=elapsed_ms,
+                error_detail=str(exc),
+            )
+
+    async def _probe_websocket_once(
+        self,
+        identity: str,
+        headers: dict[str, str],
+        auth_type: str,
+    ) -> CredentialCheckResult:
+        """Confirm the target is reachable by opening (and closing) a WebSocket handshake.
+
+        Header auth is forwarded via the Upgrade request headers (same
+        ``AuthSession.headers()`` values as the HTTP path); first-message auth
+        (``ws_auth_message``) is sent immediately after the handshake succeeds.
+        A successful connect with no immediate rejection counts as "target
+        reachable and auth accepted" — mirrors the HTTP probe's 2xx/format-mismatch
+        handling since we don't need a meaningful chat response here.
+        """
+        import websockets  # noqa: PLC0415
+
+        from nuguard.redteam.target.ws_client import to_ws_url  # noqa: PLC0415
+
+        request_headers = {"User-Agent": "nuguard-bootstrap/1.0", **headers}
+        ws_url = to_ws_url(self._target_url) + self._endpoint
+        start = time.monotonic()
+        try:
+            async with websockets.connect(
+                ws_url,
+                additional_headers=request_headers,
+                open_timeout=self._timeout,
+            ) as ws:
+                if self._ws_auth_message is not None:
+                    import json  # noqa: PLC0415
+
+                    await ws.send(json.dumps(self._ws_auth_message))
+            elapsed_ms = (time.monotonic() - start) * 1000
+            logger.debug("bootstrap ok (websocket): identity=%s", identity)
+            return CredentialCheckResult(
+                identity=identity,
+                auth_type=auth_type,
+                endpoint=ws_url,
+                status="ok",
+                response_time_ms=elapsed_ms,
+            )
+        except websockets.exceptions.InvalidStatus as exc:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            status_code = exc.response.status_code
+            if status_code in (401, 403):
+                logger.warning(
+                    "bootstrap auth_failed (websocket): identity=%s status=%d",
+                    identity, status_code,
+                )
+                return CredentialCheckResult(
+                    identity=identity,
+                    auth_type=auth_type,
+                    endpoint=ws_url,
+                    status="auth_failed",
+                    http_status_code=status_code,
+                    response_time_ms=elapsed_ms,
+                    error_detail=f"HTTP {status_code} on WebSocket handshake",
+                )
+            logger.warning(
+                "bootstrap target_unavailable (websocket): identity=%s status=%d",
+                identity, status_code,
+            )
+            return CredentialCheckResult(
+                identity=identity,
+                auth_type=auth_type,
+                endpoint=ws_url,
+                status="target_unavailable",
+                http_status_code=status_code,
+                response_time_ms=elapsed_ms,
+                error_detail=f"HTTP {status_code} on WebSocket handshake",
+            )
+        except (TimeoutError, OSError, websockets.exceptions.WebSocketException) as exc:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            return CredentialCheckResult(
+                identity=identity,
+                auth_type=auth_type,
+                endpoint=ws_url,
                 status="target_unavailable",
                 response_time_ms=elapsed_ms,
                 error_detail=str(exc),

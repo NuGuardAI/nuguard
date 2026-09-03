@@ -30,9 +30,9 @@ from typing import TYPE_CHECKING
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
+    from nuguard.common.target_client_builder import TargetClient
     from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
     from nuguard.redteam.llm_engine.response_evaluator import LLMResponseEvaluator
-    from nuguard.redteam.target.client import TargetAppClient
     from nuguard.redteam.target.session import AttackSession
 
 from nuguard.redteam.executor.attribution import parse_handled_by, strip_meta_footer
@@ -77,7 +77,7 @@ class TreeExplorer:
         self,
         director: "ConversationDirector",
         evaluator: "LLMResponseEvaluator",
-        client: "TargetAppClient",
+        client: "TargetClient",
         breadth: int = 3,
         max_depth: int = 3,
         top_k: int = 1,

@@ -26,7 +26,12 @@ if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.redteam.target.ws_client import WebSocketTargetClient
     from nuguard.sbom.models import AiSbomDocument
+
+    # Shared type for either concrete client build_target_app_client() may return.
+    # Both expose the same send()/new_session()/invoke_endpoint()/aclose() surface.
+    TargetClient = TargetAppClient | WebSocketTargetClient
 
 _log = get_logger(__name__)
 
@@ -346,8 +351,11 @@ def build_target_app_client(
     heal_llm: "LLMClient | None" = None,
     # Nested value template from OpenAPI schema detection (ProbeResult.value_template).
     chat_payload_value_template: "dict[str, Any] | None" = None,
-) -> "TargetAppClient":
-    """Build a :class:`TargetAppClient` with SBOM-assisted config resolution.
+    # WebSocket-only options (ignored for HTTP targets) — see ws_client.WebSocketTargetClient.
+    ws_auth_message: "dict[str, Any] | None" = None,
+    ws_response_complete_key: str | None = None,
+) -> "TargetClient":
+    """Build a :class:`TargetAppClient` (or :class:`WebSocketTargetClient`) with SBOM-assisted config resolution.
 
     Args:
         target_url: Base URL of the target application.
@@ -355,6 +363,10 @@ def build_target_app_client(
             not yet determined — SBOM discovery and framework adapters may fill
             it in.
         payload_key: JSON body key for the chat message (default ``"message"``).
+            The special value ``"__websocket__"`` (set by SBOM/live discovery
+            when the chat endpoint is a WebSocket route) builds a
+            :class:`~nuguard.redteam.target.ws_client.WebSocketTargetClient`
+            instead of the HTTP client.
         payload_list: Whether to wrap the payload value in a list.
         payload_format: ``"json"`` or ``"form"`` encoding for the POST body.
         response_key: Explicit top-level key to extract from the JSON response.
@@ -370,10 +382,16 @@ def build_target_app_client(
             error by inferring the missing request field(s) from the error
             body (see ``TargetAppClient._attempt_422_heal``). None disables
             self-healing.
+        ws_auth_message: WebSocket-only. First message sent after connecting,
+            for targets that authenticate over the first frame instead of headers.
+        ws_response_complete_key: WebSocket-only. Key that marks a message as the
+            final chunk of a response; messages without it are drained as
+            server-push/partial content while awaiting completion.
 
     Returns:
-        A fully configured :class:`TargetAppClient` instance.  Check
-        ``client.resolution_notes`` for any automatic config adjustments.
+        A fully configured :class:`TargetAppClient` (or, for WebSocket targets,
+        :class:`WebSocketTargetClient`) instance.  Check ``client.resolution_notes``
+        for any automatic config adjustments.
     """
     from nuguard.redteam.target.client import TargetAppClient
 
@@ -446,6 +464,24 @@ def build_target_app_client(
         response_key = discovered_response_key
 
     # ── 4. Construct the client ─────────────────────────────────────────────
+    if payload_key == "__websocket__":
+        from nuguard.redteam.target.ws_client import WebSocketTargetClient
+
+        ws_client = WebSocketTargetClient(
+            base_url=target_url,
+            chat_path=endpoint or "/ws",
+            timeout=timeout,
+            default_headers=auth_headers or None,
+            chat_payload_key="message",
+            chat_payload_list=payload_list,
+            chat_response_key=response_key,
+            chat_payload_extras=payload_extras or None,
+            ws_auth_message=ws_auth_message,
+            ws_response_complete_key=ws_response_complete_key,
+        )
+        ws_client.resolution_notes = resolution_notes
+        return ws_client
+
     client = TargetAppClient(
         base_url=target_url,
         chat_path=endpoint or "/chat",

@@ -20,6 +20,7 @@ from nuguard.common.turn_helpers import handle_mid_turn_interrupts
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthSession
     from nuguard.common.discovery import DiscoveredProfile
+    from nuguard.common.target_client_builder import TargetClient
     from nuguard.redteam.llm_engine.judge_cache import JudgeCache
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
@@ -38,7 +39,7 @@ from nuguard.redteam.llm_engine.response_evaluator import LLMResponseEvaluator
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 from nuguard.redteam.target.action_logger import ActionLogger
 from nuguard.redteam.target.canary import CanaryScanner
-from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
+from nuguard.redteam.target.client import TargetUnavailableError
 from nuguard.redteam.target.session import AttackSession
 
 from .chain_assembler import ChainAssembler
@@ -360,7 +361,7 @@ class AttackExecutor:
 
     def __init__(
         self,
-        client: TargetAppClient,
+        client: "TargetClient",
         policy: CognitivePolicy | None = None,
         canary: CanaryScanner | None = None,
         logger: ActionLogger | None = None,

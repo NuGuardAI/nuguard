@@ -1019,6 +1019,7 @@ class RedteamOrchestrator:
             canary_config=self._canary_config,
             run_id=str(_uuid.uuid4()),
             probe_payload_extras=self._chat_payload_extras or None,
+            is_websocket=self._chat_payload_key == "__websocket__",
         )
         self.health_report = health_report
         for line in health_report.summary_lines():
