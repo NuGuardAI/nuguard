@@ -13,12 +13,19 @@ import httpx
 import pytest
 import respx
 
-from nuguard.common.endpoint_probe import probe_chat_endpoints
+from nuguard.common.endpoint_probe import compute_websocket_accept, probe_chat_endpoints
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
 
 BASE = "http://test-app"
 _NS = uuid.NAMESPACE_URL
+
+
+def _real_ws_upgrade_response(request: httpx.Request) -> httpx.Response:
+    """Compute a spec-compliant Sec-WebSocket-Accept from the request's key —
+    what a genuine WS server (or the real 'websockets' library) does."""
+    key = request.headers.get("sec-websocket-key", "")
+    return httpx.Response(101, headers={"Sec-WebSocket-Accept": compute_websocket_accept(key)})
 
 
 def _ws_node(path: str) -> Node:
@@ -39,7 +46,7 @@ def _empty_sbom() -> AiSbomDocument:
 @respx.mock
 async def test_probe_detects_sbom_declared_websocket_endpoint():
     sbom = AiSbomDocument(target="./app", nodes=[_ws_node("/ws/chat")])
-    respx.get(f"{BASE}/ws/chat").mock(return_value=httpx.Response(101))
+    respx.get(f"{BASE}/ws/chat").mock(side_effect=_real_ws_upgrade_response)
 
     result = await probe_chat_endpoints(BASE, sbom)
 
@@ -74,6 +81,24 @@ async def test_probe_ignores_bare_426_with_no_upgrade_header():
     respx.get(f"{BASE}/api/agent/chat").mock(return_value=httpx.Response(426))
     # Blind POST probe also rejects every shape so the only way this test could
     # pass is via the (buggy) WS upgrade probe accepting the bare 426.
+    respx.post(f"{BASE}/api/agent/chat").mock(return_value=httpx.Response(422))
+
+    result = await probe_chat_endpoints(BASE, sbom, hint_path="/api/agent/chat")
+
+    assert result is None or result.key != "__websocket__"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_probe_ignores_bare_101_with_no_matching_accept_header():
+    """Regression: some reverse-proxy/serverless front-ends (e.g. Cloud Run)
+    generically complete an HTTP/1.1 Upgrade handshake with a bare 101 for any
+    path, regardless of whether the application implements WebSocket there.
+    A 101 with no (or a wrong) Sec-WebSocket-Accept header must not count —
+    this reproduces the exact gemini-auto /api/agent/chat false positive.
+    """
+    sbom = AiSbomDocument(target="./app", nodes=[_ws_node("/api/agent/chat")])
+    respx.get(f"{BASE}/api/agent/chat").mock(return_value=httpx.Response(101))
     respx.post(f"{BASE}/api/agent/chat").mock(return_value=httpx.Response(422))
 
     result = await probe_chat_endpoints(BASE, sbom, hint_path="/api/agent/chat")

@@ -742,29 +742,50 @@ async def _blind_probe(
     return None
 
 
+def compute_websocket_accept(key: str) -> str:
+    """Compute the RFC 6455 §4.2.2 ``Sec-WebSocket-Accept`` value for *key*.
+
+    ``base64(sha1(key + "258EAFA455E4B4CE-C5B58384CD9835B4"))`` — the value a
+    genuine WebSocket server must echo back to prove it actually validated the
+    handshake, rather than just answering 101/426 unconditionally (used both
+    by the live upgrade probe and by tests that need to mock a real response).
+    """
+    import hashlib  # noqa: PLC0415
+
+    digest = hashlib.sha1((key + "258EAFA455E4B4CE-C5B58384CD9835B4").encode()).digest()
+    return base64.b64encode(digest).decode()
+
+
 async def _probe_websocket_upgrade(client: httpx.AsyncClient, path: str) -> bool:
     """Return True if *path* answers an HTTP Upgrade request as a WebSocket endpoint.
 
-    httpx cannot complete a real WS handshake, but a 101 (Switching Protocols)
-    response confirms it unambiguously. A 426 (Upgrade Required) is only
-    accepted when the response's ``Upgrade`` header explicitly names
-    ``websocket`` (RFC 9110 §15.5.22) — a bare 426 with no such header is a
-    generic "wrong method/protocol" error many frameworks and reverse proxies
-    return for any GET to a POST-only route, and produced a false positive
-    against a real deployed app (Cloud Run) that has no WebSocket route at all.
+    httpx cannot complete a real WS handshake, but the response can still be
+    verified per RFC 6455 §4.2.2: a genuine WS server responds 101 with a
+    ``Sec-WebSocket-Accept`` header equal to
+    ``compute_websocket_accept(key)``. A bare 101 (or 426) with no matching
+    Accept header is NOT trusted — some infrastructure (e.g. Cloud Run's
+    front-end proxy) performs a generic HTTP/1.1 Upgrade handshake for *any*
+    path regardless of whether the application actually implements WebSocket
+    there, which produced a false positive against a real deployed app that
+    has no WebSocket route at all. A 426 (Upgrade Required) is accepted only
+    when its ``Upgrade`` header explicitly names ``websocket`` (RFC 9110
+    §15.5.22) — still not a full guarantee, but the best signal available for
+    a rejected-but-WS-aware server.
     """
+    ws_key = base64.b64encode(os.urandom(16)).decode()
+    expected_accept = compute_websocket_accept(ws_key)
     headers = {
         "Connection": "Upgrade",
         "Upgrade": "websocket",
         "Sec-WebSocket-Version": "13",
-        "Sec-WebSocket-Key": base64.b64encode(os.urandom(16)).decode(),
+        "Sec-WebSocket-Key": ws_key,
     }
     try:
         resp = await client.get(path, headers=headers)
     except Exception:  # noqa: BLE001 — any transport failure means "not WS here"
         return False
     if resp.status_code == 101:
-        return True
+        return resp.headers.get("sec-websocket-accept", "") == expected_accept
     if resp.status_code == 426:
         return "websocket" in resp.headers.get("upgrade", "").lower()
     return False
