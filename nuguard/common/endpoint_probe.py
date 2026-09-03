@@ -925,9 +925,16 @@ def discover_chat_candidates_from_sbom(
         method_u = (meta.method or "").upper()
         if method_u == "WEBSOCKET":
             ws_path = (meta.endpoint or "").strip()
-            if not ws_path or not ws_path.startswith("/") or _HAS_PATH_PARAM_RE.search(ws_path):
+            if not ws_path or not ws_path.startswith("/"):
                 continue
             ws_score = 3 if node.confidence >= 0.9 else 1
+            # Penalise (don't drop) path-param WS routes — same treatment as
+            # the HTTP branch below: a thread/session-scoped stream route
+            # (e.g. /api/threads/{thread_id}/browser/stream) is still a valid
+            # fallback candidate when nothing parameter-free is available;
+            # path_param_sources (when declared) lets the bootstrap resolve it.
+            if _HAS_PATH_PARAM_RE.search(ws_path):
+                ws_score -= 5
             candidates.append((ws_score, ws_path, "__websocket__", False, node.name, None))
             continue
         if method_u and method_u != "POST":

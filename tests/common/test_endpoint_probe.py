@@ -123,7 +123,10 @@ def test_discover_chat_candidates_includes_websocket_node() -> None:
     assert candidates == [("/ws/chat", "__websocket__", False, None)]
 
 
-def test_discover_chat_candidates_skips_websocket_path_param_route() -> None:
+def test_discover_chat_candidates_includes_path_param_websocket_route_as_fallback() -> None:
+    """A thread/session-scoped WS route (e.g. /api/threads/{id}/stream) must
+    still surface as a candidate, penalised but not dropped — regression test
+    for the bytedance/deer-flow browser-stream route being silently excluded."""
     sbom = AiSbomDocument(
         target="./app",
         nodes=[_websocket_node("/ws/{token}")],
@@ -132,4 +135,4 @@ def test_discover_chat_candidates_skips_websocket_path_param_route() -> None:
 
     candidates = discover_chat_candidates_from_sbom(sbom)
 
-    assert candidates == []
+    assert candidates == [("/ws/{token}", "__websocket__", False, None)]
