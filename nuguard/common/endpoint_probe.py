@@ -746,8 +746,12 @@ async def _probe_websocket_upgrade(client: httpx.AsyncClient, path: str) -> bool
     """Return True if *path* answers an HTTP Upgrade request as a WebSocket endpoint.
 
     httpx cannot complete a real WS handshake, but a 101 (Switching Protocols)
-    or 426 (Upgrade Required) response confirms the server treats this path as
-    a WebSocket route rather than a plain HTTP one.
+    response confirms it unambiguously. A 426 (Upgrade Required) is only
+    accepted when the response's ``Upgrade`` header explicitly names
+    ``websocket`` (RFC 9110 §15.5.22) — a bare 426 with no such header is a
+    generic "wrong method/protocol" error many frameworks and reverse proxies
+    return for any GET to a POST-only route, and produced a false positive
+    against a real deployed app (Cloud Run) that has no WebSocket route at all.
     """
     headers = {
         "Connection": "Upgrade",
@@ -759,7 +763,11 @@ async def _probe_websocket_upgrade(client: httpx.AsyncClient, path: str) -> bool
         resp = await client.get(path, headers=headers)
     except Exception:  # noqa: BLE001 — any transport failure means "not WS here"
         return False
-    return resp.status_code in (101, 426)
+    if resp.status_code == 101:
+        return True
+    if resp.status_code == 426:
+        return "websocket" in resp.headers.get("upgrade", "").lower()
+    return False
 
 
 async def _detect_chat_endpoint(

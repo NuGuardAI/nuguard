@@ -51,10 +51,31 @@ async def test_probe_detects_sbom_declared_websocket_endpoint():
 @pytest.mark.asyncio
 @respx.mock
 async def test_probe_detects_fallback_websocket_path_when_sbom_empty():
-    respx.get(f"{BASE}/ws").mock(return_value=httpx.Response(426))
+    respx.get(f"{BASE}/ws").mock(
+        return_value=httpx.Response(426, headers={"Upgrade": "websocket"})
+    )
 
     result = await probe_chat_endpoints(BASE, _empty_sbom())
 
     assert result is not None
     assert result.path == "/ws"
     assert result.key == "__websocket__"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_probe_ignores_bare_426_with_no_upgrade_header():
+    """Regression: a plain HTTP POST-only endpoint that happens to answer a GET
+    with 426 (e.g. Cloud Run / framework generic "wrong method" error, not an
+    actual WS rejection) must NOT be misdetected as a WebSocket endpoint — this
+    broke a real deployed app's chat endpoint (gemini-auto, /api/agent/chat).
+    """
+    sbom = AiSbomDocument(target="./app", nodes=[_ws_node("/api/agent/chat")])
+    respx.get(f"{BASE}/api/agent/chat").mock(return_value=httpx.Response(426))
+    # Blind POST probe also rejects every shape so the only way this test could
+    # pass is via the (buggy) WS upgrade probe accepting the bare 426.
+    respx.post(f"{BASE}/api/agent/chat").mock(return_value=httpx.Response(422))
+
+    result = await probe_chat_endpoints(BASE, sbom, hint_path="/api/agent/chat")
+
+    assert result is None or result.key != "__websocket__"
