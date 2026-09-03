@@ -1,0 +1,121 @@
+rules:
+  - id: java-ai-prompt-injection
+    languages: [java]
+    severity: ERROR
+    message: User-controlled HTTP input reaches an LLM call without an explicit validation or sanitization step.
+    mode: taint
+    metadata:
+      category: security
+      technology: [java, llm]
+      owasp: "LLM01: Prompt Injection"
+      nuguard_rule: "NGA-001"
+      confidence: HIGH
+    pattern-sources:
+      - pattern-either:
+          - pattern: $REQUEST.getParameter(...)
+          - pattern: $REQUEST.getHeader(...)
+          - pattern: $REQUEST.getQueryString()
+          - pattern: $REQUEST.body(...)
+          - pattern: $SERVER_REQUEST.queryParam(...)
+          - pattern: $SERVER_REQUEST.headers().firstHeader(...)
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: $VALIDATOR.validate(...)
+          - pattern: $SANITIZER.sanitize(...)
+          - pattern: $POLICY.check(...)
+    pattern-sinks:
+      - pattern-either:
+          - pattern: $CLIENT.prompt($TAINTED)
+          - pattern: $MODEL.call($TAINTED)
+          - pattern: $MODEL.generate($TAINTED)
+          - pattern: $SERVICE.chat($TAINTED)
+          - pattern: $SERVICE.complete($TAINTED)
+
+  - id: java-ai-llm-response-deserialization
+    languages: [java]
+    severity: ERROR
+    message: An LLM response is deserialized into an object without output validation.
+    mode: taint
+    metadata:
+      category: security
+      technology: [java, llm, jackson]
+      owasp: "LLM05: Improper Output Handling"
+      nuguard_rule: "NGA-004"
+      confidence: HIGH
+    pattern-sources:
+      - pattern-either:
+          - pattern: $RESPONSE.content()
+          - pattern: $RESPONSE.getResult().getOutput().getContent()
+          - pattern: $RESPONSE.choices().get(...).message().content()
+          - pattern: $RESPONSE.getChoices().get(...).getMessage().getContent()
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: $VALIDATOR.validate(...)
+          - pattern: $SCHEMA.validate(...)
+          - pattern: $PARSER.parseValidated(...)
+    pattern-sinks:
+      - pattern-either:
+          - pattern: $MAPPER.readValue($TAINTED, ...)
+          - pattern: $MAPPER.treeToValue($TAINTED, ...)
+          - pattern: $GSON.fromJson($TAINTED, ...)
+          - pattern: $SERIALIZER.deserialize($TAINTED, ...)
+
+  - id: java-ai-jackson-default-typing
+    languages: [java]
+    severity: ERROR
+    message: Jackson polymorphic default typing can enable unsafe deserialization of attacker-controlled model output.
+    metadata:
+      category: security
+      technology: [java, jackson]
+      owasp: "LLM05: Improper Output Handling"
+      nuguard_rule: "NGA-004"
+      confidence: HIGH
+    pattern-either:
+      - pattern: $MAPPER.enableDefaultTyping(...)
+      - pattern: $MAPPER.enableDefaultTypingAsProperty(...)
+      - pattern: $MAPPER.activateDefaultTyping(...)
+      - pattern: $MAPPER.activateDefaultTypingAsProperty(...)
+
+  - id: java-ai-unvalidated-controller-response
+    languages: [java]
+    severity: WARNING
+    message: A Java HTTP controller returns an LLM result directly; validate, encode, and constrain the output first.
+    metadata:
+      category: security
+      technology: [java, spring, llm]
+      owasp: "LLM05: Improper Output Handling"
+      nuguard_rule: "NGA-004"
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern-inside: |
+              @GetMapping(...)
+              $RET $METHOD(...) {
+                ...
+              }
+          - pattern-inside: |
+              @PostMapping(...)
+              $RET $METHOD(...) {
+                ...
+              }
+          - pattern-inside: |
+              @RequestMapping(...)
+              $RET $METHOD(...) {
+                ...
+              }
+          - pattern-inside: |
+              @GET
+              $RET $METHOD(...) {
+                ...
+              }
+          - pattern-inside: |
+              @POST
+              $RET $METHOD(...) {
+                ...
+              }
+      - pattern-either:
+          - pattern: return $CLIENT.prompt(...).call().content();
+          - pattern: return $CLIENT.prompt(...).call();
+          - pattern: return $MODEL.call(...);
+          - pattern: return $MODEL.generate(...);
+          - pattern: return $SERVICE.chat(...);

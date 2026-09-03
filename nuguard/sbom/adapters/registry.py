@@ -122,8 +122,8 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
 
     Includes Python adapters (run against ``.py`` and ``.ipynb`` files),
     TypeScript adapters (run against ``.ts``, ``.tsx``, ``.js``, ``.jsx``
-    files), Go adapters (run against ``.go`` files), and C# adapters (run
-    against ``.cs`` files).
+    files), Go adapters (run against ``.go`` files), C# adapters (run
+    against ``.cs`` files), and Java adapters (run against ``.java`` files).
     """
     from .csharp import (
         CSharpAspNetCoreAdapter,
@@ -152,6 +152,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         MCPGoServerAdapter,
         NetHTTPAdapter,
     )
+    from .java import JavaAIAdapter, JavaWebAdapter
     from .python import (
         AgnoAdapter,
         AISecurityVendorsAdapter,
@@ -274,6 +275,9 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         CSharpLLMClientsAdapter(),
         CSharpMLNetAdapter(),
         CSharpSemanticKernelAdapter(),
+        # Java adapters
+        JavaWebAdapter(),
+        JavaAIAdapter(),
     ]
     return tuple(sorted(adapters, key=lambda a: (a.priority, canonicalize_text(a.name))))
 
@@ -406,10 +410,22 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                     skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
                 )
                 for _name, _provider, _pattern in (
-                    ("auth_aws_secrets_manager", "aws", re.compile(r"""boto3\.client\(\s*['"]secretsmanager['"]""", re.IGNORECASE)),
+                    (
+                        "auth_aws_secrets_manager",
+                        "aws",
+                        re.compile(r"""boto3\.client\(\s*['"]secretsmanager['"]""", re.IGNORECASE),
+                    ),
                     # azure-keyvault-secrets: SecretClient(vault_url=..., credential=...)
-                    ("auth_azure_key_vault", "azure", re.compile(r"""SecretClient\s*\(\s*vault_url\s*=""")),
-                    ("auth_gcp_secret_manager", "gcp", re.compile(r"""secretmanager\.SecretManagerServiceClient\s*\(""")),
+                    (
+                        "auth_azure_key_vault",
+                        "azure",
+                        re.compile(r"""SecretClient\s*\(\s*vault_url\s*="""),
+                    ),
+                    (
+                        "auth_gcp_secret_manager",
+                        "gcp",
+                        re.compile(r"""secretmanager\.SecretManagerServiceClient\s*\("""),
+                    ),
                 )
             ),
             # Tier 2 (priority 140): broader auth keyword patterns.

@@ -1,13 +1,15 @@
 """Semgrep static code analysis plugin for nuguard.
 
-Runs two bundled rulesets — ``ai-security.yaml`` (AI/LLM-specific
-anti-patterns, Python/Go) and ``generic-security.yaml`` (classic
+Runs three bundled rulesets — ``ai-security.yaml`` (AI/LLM-specific
+anti-patterns, Python/Go), ``java-ai-security.yaml`` (Java AI security),
+and ``generic-security.yaml`` (classic
 Injection/XSS/path-traversal/insecure-deserialization/weak-crypto/
 hardcoded-secret patterns, JavaScript/TypeScript) — plus any additional
 rules in ``config["semgrep_rules"]``, against source paths extracted from
-the SBOM. The two bundled rulesets are deliberately non-overlapping in
-language coverage: ``ai-security.yaml`` targets AI-application code
-(Python/Go), ``generic-security.yaml`` targets the non-AI JS/TS backends
+the SBOM. The bundled rulesets are deliberately non-overlapping in language
+coverage: ``ai-security.yaml`` targets Python/Go AI code,
+``java-ai-security.yaml`` targets Java AI code, and
+``generic-security.yaml`` targets the non-AI JS/TS backends
 NuGuard's AI-security rules don't otherwise touch.
 
 The plugin is silently skipped (returns status ``"skipped"``) when:
@@ -46,18 +48,19 @@ from nuguard.common.logging import get_logger
 
 _log = get_logger("analysis.plugins.semgrep")
 
-# Bundled rulesets (ship with nuguard): AI/LLM-specific patterns (Python/Go)
-# plus classic non-AI vulnerability classes (JavaScript/TypeScript).
+# Bundled rulesets: AI/LLM patterns for Python/Go and Java, plus classic
+# non-AI vulnerability classes for JavaScript/TypeScript.
 _BUNDLED_RULES: list[Path] = [
     Path(__file__).parent / "semgrep_rules" / "ai-security.yaml",
+    Path(__file__).parent / "semgrep_rules" / "java-ai-security.yaml",
     Path(__file__).parent / "semgrep_rules" / "generic-security.yaml",
 ]
 
 # Semgrep severity → nuguard severity label
 _SEV_MAP: dict[str, str] = {
-    "ERROR":   "HIGH",
+    "ERROR": "HIGH",
     "WARNING": "MEDIUM",
-    "INFO":    "INFO",
+    "INFO": "INFO",
 }
 
 
@@ -111,9 +114,7 @@ class SemgrepScannerPlugin(AnalysisPlugin):
 
         for src_path in sorted(src_paths):
             _log.info("semgrep: scanning %s", src_path)
-            all_findings.extend(
-                _run_semgrep(binary, src_path, rule_files, timeout, exclude_tests)
-            )
+            all_findings.extend(_run_semgrep(binary, src_path, rule_files, timeout, exclude_tests))
 
         status = "warning" if all_findings else "ok"
         message = (
@@ -192,7 +193,8 @@ def _run_semgrep(
         stderr = result.stderr.decode(errors="replace").strip()
         _log.warning(
             "semgrep exited %d for %s%s",
-            result.returncode, src_path,
+            result.returncode,
+            src_path,
             f": {stderr[:200]}" if stderr else "",
         )
         return []
@@ -209,16 +211,16 @@ def _run_semgrep(
 def _parse_semgrep_output(data: dict[str, Any], scan_path: str) -> list[dict[str, Any]]:
     """Convert semgrep JSON results into nuguard finding dicts."""
     findings: list[dict[str, Any]] = []
-    for r in (data.get("results") or []):
+    for r in data.get("results") or []:
         check_id = r.get("check_id", "")
-        msg      = r.get("extra", {}).get("message", check_id)
+        msg = r.get("extra", {}).get("message", check_id)
         severity = _SEV_MAP.get(
             str(r.get("extra", {}).get("severity") or r.get("severity", "WARNING")).upper(),
             "MEDIUM",
         )
         file_path = r.get("path", scan_path)
         start_line = r.get("start", {}).get("line")
-        location   = f"{file_path}:{start_line}" if start_line else file_path
+        location = f"{file_path}:{start_line}" if start_line else file_path
         meta = r.get("extra", {}).get("metadata") or {}
         owasp = meta.get("owasp", "")
         nga_rule = meta.get("nuguard_rule", "")
@@ -226,17 +228,19 @@ def _parse_semgrep_output(data: dict[str, Any], scan_path: str) -> list[dict[str
         # generic web-appsec labels ("A02: ...") aren't LLM Top 10 citations.
         owasp_llm_ref = owasp if owasp.upper().startswith("LLM") else ""
 
-        findings.append({
-            "rule_id":     check_id,
-            "title":       check_id.split(".")[-1].replace("-", " ").title(),
-            "description": msg,
-            "severity":    severity,
-            "affected":    [location],
-            "remediation": "",
-            "owasp_llm_ref": owasp_llm_ref,
-            "url":         "",
-            "source":      "semgrep",
-            "scan_target": scan_path,
-            "nga_rule":    nga_rule,
-        })
+        findings.append(
+            {
+                "rule_id": check_id,
+                "title": check_id.split(".")[-1].replace("-", " ").title(),
+                "description": msg,
+                "severity": severity,
+                "affected": [location],
+                "remediation": "",
+                "owasp_llm_ref": owasp_llm_ref,
+                "url": "",
+                "source": "semgrep",
+                "scan_target": scan_path,
+                "nga_rule": nga_rule,
+            }
+        )
     return findings
