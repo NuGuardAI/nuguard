@@ -1,7 +1,7 @@
 rules:
   # -------------------------------------------------------------------------
   # NuGuard AI Security Semgrep Rules
-  # Detects common AI/LLM application security anti-patterns in Python and Go.
+  # Detects common AI/LLM application security anti-patterns in Python, Go, and C#.
   # -------------------------------------------------------------------------
 
   - id: nuguard-llm-prompt-injection-fstring
@@ -1359,3 +1359,166 @@ rules:
       category: security
       technology: [go, llm, tls]
       owasp: "A02: Cryptographic Failures"
+  # -------------------------------------------------------------------------
+  # C# AI/LLM security rules (issue #214)
+  #
+  # The two input rules treat method string parameters and common ASP.NET
+  # request collections as untrusted. Calls whose names clearly indicate
+  # validation, sanitization, normalization, escaping, or allowlisting act as
+  # sanitizers for the returned value.
+  #
+  # The output rule intentionally limits downstream sinks to sensitive
+  # operations: command execution, raw SQL, and outbound HTTP destinations.
+  # -------------------------------------------------------------------------
+  - id: nuguard-csharp-llm-prompt-injection-interpolation
+    mode: taint
+    pattern-sources:
+      - label: USER
+        patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  $RET $METHOD(..., string $INPUT, ...) {
+                    ...
+                  }
+              - pattern-inside: |
+                  $RET $METHOD(..., string? $INPUT, ...) {
+                    ...
+                  }
+          - focus-metavariable: $INPUT
+      - label: USER
+        pattern-either:
+          - pattern: $REQUEST.Query[$KEY]
+          - pattern: $REQUEST.Form[$KEY]
+          - pattern: $REQUEST.RouteValues[$KEY]
+    pattern-propagators:
+      - pattern: $"...{$INPUT}..."
+        from: $INPUT
+        to: $INPUT
+        label: INTERPOLATED
+        requires: USER
+        by-side-effect: false
+      - pattern: string.Format(..., $INPUT, ...)
+        from: $INPUT
+        to: $INPUT
+        label: INTERPOLATED
+        requires: USER
+        by-side-effect: false
+      - pattern: String.Format(..., $INPUT, ...)
+        from: $INPUT
+        to: $INPUT
+        label: INTERPOLATED
+        requires: USER
+        by-side-effect: false
+    pattern-sinks:
+      - requires: INTERPOLATED
+        patterns:
+          - pattern: $CLIENT.$METHOD(..., $PROMPT, ...)
+          - focus-metavariable: $PROMPT
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(CompleteChat|CompleteChatAsync|CompleteChatStreaming|CompleteChatStreamingAsync|GetChatCompletions|GetChatCompletionsAsync|GetChatMessageContent|GetChatMessageContentAsync|GetChatMessageContents|GetChatMessageContentsAsync|InvokePrompt|InvokePromptAsync|CreateMessage|CreateMessageAsync|GenerateResponse|GenerateResponseAsync)$
+    pattern-sanitizers:
+      - patterns:
+          - pattern-either:
+              - pattern: $SANITIZER(...)
+              - pattern: $OBJECT.$SANITIZER(...)
+          - metavariable-regex:
+              metavariable: $SANITIZER
+              regex: (?i).*(sanitize|validate|allowlist|normaliz|escape).*
+    message: >
+      Potential prompt injection: untrusted C# input is interpolated into an
+      LLM prompt and passed to an AI API. Validate or sanitize the input before
+      composing the prompt, or use a structured message/template boundary.
+    languages: [csharp]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [csharp, dotnet, llm]
+      owasp: "LLM01: Prompt Injection"
+      nuguard_rule: NGA-002
+
+  - id: nuguard-csharp-llm-unsanitized-input
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  $RET $METHOD(..., string $INPUT, ...) {
+                    ...
+                  }
+              - pattern-inside: |
+                  $RET $METHOD(..., string? $INPUT, ...) {
+                    ...
+                  }
+          - focus-metavariable: $INPUT
+      - pattern-either:
+          - pattern: $REQUEST.Query[$KEY]
+          - pattern: $REQUEST.Form[$KEY]
+          - pattern: $REQUEST.RouteValues[$KEY]
+    pattern-sinks:
+      - patterns:
+          - pattern: $CLIENT.$METHOD(..., $INPUT, ...)
+          - focus-metavariable: $INPUT
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(CompleteChat|CompleteChatAsync|CompleteChatStreaming|CompleteChatStreamingAsync|GetChatCompletions|GetChatCompletionsAsync|GetChatMessageContent|GetChatMessageContentAsync|GetChatMessageContents|GetChatMessageContentsAsync|InvokePrompt|InvokePromptAsync|CreateMessage|CreateMessageAsync|GenerateResponse|GenerateResponseAsync)$
+    pattern-sanitizers:
+      - patterns:
+          - pattern-either:
+              - pattern: $SANITIZER(...)
+              - pattern: $OBJECT.$SANITIZER(...)
+          - metavariable-regex:
+              metavariable: $SANITIZER
+              regex: (?i).*(sanitize|validate|allowlist|normaliz|escape).*
+    message: >
+      Untrusted C# input reaches an AI/LLM API without an intervening
+      validation or sanitization step. Enforce length, character, and policy
+      constraints before sending user-controlled data to the model.
+    languages: [csharp]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [csharp, dotnet, llm]
+      owasp: "LLM01: Prompt Injection"
+      nuguard_rule: NGA-002
+
+  - id: nuguard-csharp-llm-unvalidated-output
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern: $CLIENT.$METHOD(...)
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(CompleteChat|CompleteChatAsync|GetChatCompletions|GetChatCompletionsAsync|GetChatMessageContent|GetChatMessageContentAsync|GetChatMessageContents|GetChatMessageContentsAsync|InvokePrompt|InvokePromptAsync|CreateMessage|CreateMessageAsync|GenerateResponse|GenerateResponseAsync)$
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: System.Diagnostics.Process.Start($OUTPUT)
+              - pattern: Process.Start($OUTPUT)
+              - pattern: new System.Data.SqlClient.SqlCommand($OUTPUT, ...)
+              - pattern: new Microsoft.Data.SqlClient.SqlCommand($OUTPUT, ...)
+              - pattern: $COMMAND.CommandText = $OUTPUT
+              - pattern: $DB.Database.ExecuteSqlRaw($OUTPUT, ...)
+              - pattern: $DB.Database.ExecuteSqlRawAsync($OUTPUT, ...)
+              - pattern: $HTTP.GetAsync($OUTPUT, ...)
+              - pattern: $HTTP.PostAsync($OUTPUT, ...)
+          - focus-metavariable: $OUTPUT
+    pattern-sanitizers:
+      - patterns:
+          - pattern-either:
+              - pattern: $SANITIZER(...)
+              - pattern: $OBJECT.$SANITIZER(...)
+          - metavariable-regex:
+              metavariable: $SANITIZER
+              regex: (?i).*(sanitize|validate|allowlist|normaliz|escape).*
+    message: >
+      LLM output is used in a sensitive downstream operation without validation
+      or sanitization. Treat model output as untrusted and validate it against
+      an allowlist or strict schema before executing commands, SQL, or requests.
+    languages: [csharp]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [csharp, dotnet, llm]
+      owasp: "LLM02: Insecure Output Handling"
+      nuguard_rule: NGA-002
