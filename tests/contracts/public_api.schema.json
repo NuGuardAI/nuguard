@@ -5261,6 +5261,115 @@
     "title": "CognitivePolicyParseResult",
     "type": "object"
   },
+  "redteam.RedteamAuthConfig": {
+    "$defs": {
+      "RedteamLoginFlowConfig": {
+        "description": "Secret-safe public login-flow configuration.",
+        "properties": {
+          "endpoint": {
+            "default": "/login",
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "enum": [
+              "POST",
+              "GET"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Url"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "token_response_key": {
+            "default": "access_token",
+            "title": "Token Response Key",
+            "type": "string"
+          },
+          "token_header": {
+            "default": "Authorization: Bearer",
+            "title": "Token Header",
+            "type": "string"
+          },
+          "refresh_on_401": {
+            "default": true,
+            "title": "Refresh On 401",
+            "type": "boolean"
+          }
+        },
+        "title": "RedteamLoginFlowConfig",
+        "type": "object"
+      }
+    },
+    "description": "Secret-safe public authentication configuration for red-team runs.",
+    "properties": {
+      "type": {
+        "default": "none",
+        "enum": [
+          "bearer",
+          "api_key",
+          "basic",
+          "none",
+          "login_flow",
+          "cookie_file"
+        ],
+        "title": "Type",
+        "type": "string"
+      },
+      "header": {
+        "format": "password",
+        "title": "Header",
+        "type": "string",
+        "writeOnly": true
+      },
+      "username": {
+        "format": "password",
+        "title": "Username",
+        "type": "string",
+        "writeOnly": true
+      },
+      "password": {
+        "format": "password",
+        "title": "Password",
+        "type": "string",
+        "writeOnly": true
+      },
+      "login_flow": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/RedteamLoginFlowConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "cookie_file": {
+        "default": "",
+        "title": "Cookie File",
+        "type": "string"
+      }
+    },
+    "title": "RedteamAuthConfig",
+    "type": "object"
+  },
   "redteam.RedteamExecutionResult": {
     "$defs": {
       "CredentialCheckResult": {
@@ -6107,59 +6216,61 @@
     "title": "RedteamExecutionResult",
     "type": "object"
   },
-  "redteam.RedteamRunRequest": {
-    "$defs": {
-      "AuthConfig": {
-        "description": "Structured auth configuration parsed from nuguard.yaml auth block.",
-        "properties": {
-          "type": {
-            "default": "none",
-            "enum": [
-              "bearer",
-              "api_key",
-              "basic",
-              "none",
-              "login_flow",
-              "cookie_file"
-            ],
-            "title": "Type",
+  "redteam.RedteamLoginFlowConfig": {
+    "description": "Secret-safe public login-flow configuration.",
+    "properties": {
+      "endpoint": {
+        "default": "/login",
+        "title": "Endpoint",
+        "type": "string"
+      },
+      "method": {
+        "default": "POST",
+        "enum": [
+          "POST",
+          "GET"
+        ],
+        "title": "Method",
+        "type": "string"
+      },
+      "base_url": {
+        "anyOf": [
+          {
             "type": "string"
           },
-          "header": {
-            "default": "",
-            "title": "Header",
-            "type": "string"
-          },
-          "username": {
-            "default": "",
-            "title": "Username",
-            "type": "string"
-          },
-          "password": {
-            "default": "",
-            "title": "Password",
-            "type": "string"
-          },
-          "login_flow": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/LoginFlowConfig"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
-          "cookie_file": {
-            "default": "",
-            "title": "Cookie File",
-            "type": "string"
+          {
+            "type": "null"
           }
-        },
-        "title": "AuthConfig",
+        ],
+        "default": null,
+        "title": "Base Url"
+      },
+      "payload": {
+        "additionalProperties": true,
+        "title": "Payload",
         "type": "object"
       },
+      "token_response_key": {
+        "default": "access_token",
+        "title": "Token Response Key",
+        "type": "string"
+      },
+      "token_header": {
+        "default": "Authorization: Bearer",
+        "title": "Token Header",
+        "type": "string"
+      },
+      "refresh_on_401": {
+        "default": true,
+        "title": "Refresh On 401",
+        "type": "boolean"
+      }
+    },
+    "title": "RedteamLoginFlowConfig",
+    "type": "object"
+  },
+  "redteam.RedteamRunRequest": {
+    "$defs": {
       "CanaryConfig": {
         "properties": {
           "global_watch_values": {
@@ -6235,8 +6346,94 @@
         "title": "CanaryTenant",
         "type": "object"
       },
-      "LoginFlowConfig": {
-        "description": "Configuration for apps that require a login request to obtain a JWT.\n\nExample nuguard.yaml block::\n\n    auth:\n      type: login_flow\n      login_flow:\n        endpoint: /login\n        payload:\n          username: ${APP_USERNAME}\n          password: ${APP_PASSWORD}\n        token_response_key: access_token\n        token_header: \"Authorization: Bearer\"\n        refresh_on_401: true",
+      "RedteamAuthConfig": {
+        "description": "Secret-safe public authentication configuration for red-team runs.",
+        "properties": {
+          "type": {
+            "default": "none",
+            "enum": [
+              "bearer",
+              "api_key",
+              "basic",
+              "none",
+              "login_flow",
+              "cookie_file"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "header": {
+            "format": "password",
+            "title": "Header",
+            "type": "string",
+            "writeOnly": true
+          },
+          "username": {
+            "format": "password",
+            "title": "Username",
+            "type": "string",
+            "writeOnly": true
+          },
+          "password": {
+            "format": "password",
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "login_flow": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RedteamLoginFlowConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "cookie_file": {
+            "default": "",
+            "title": "Cookie File",
+            "type": "string"
+          }
+        },
+        "title": "RedteamAuthConfig",
+        "type": "object"
+      },
+      "RedteamFindingTriggers": {
+        "description": "Configurable controls for when redteam findings are emitted.",
+        "properties": {
+          "canary_hits": {
+            "default": true,
+            "title": "Canary Hits",
+            "type": "boolean"
+          },
+          "policy_violations": {
+            "default": true,
+            "title": "Policy Violations",
+            "type": "boolean"
+          },
+          "critical_success_hits": {
+            "default": true,
+            "title": "Critical Success Hits",
+            "type": "boolean"
+          },
+          "any_inject_success": {
+            "default": false,
+            "title": "Any Inject Success",
+            "type": "boolean"
+          },
+          "tool_trace_hits": {
+            "default": true,
+            "title": "Tool Trace Hits",
+            "type": "boolean"
+          }
+        },
+        "title": "RedteamFindingTriggers",
+        "type": "object"
+      },
+      "RedteamLoginFlowConfig": {
+        "description": "Secret-safe public login-flow configuration.",
         "properties": {
           "endpoint": {
             "default": "/login",
@@ -6285,39 +6482,7 @@
             "type": "boolean"
           }
         },
-        "title": "LoginFlowConfig",
-        "type": "object"
-      },
-      "RedteamFindingTriggers": {
-        "description": "Configurable controls for when redteam findings are emitted.",
-        "properties": {
-          "canary_hits": {
-            "default": true,
-            "title": "Canary Hits",
-            "type": "boolean"
-          },
-          "policy_violations": {
-            "default": true,
-            "title": "Policy Violations",
-            "type": "boolean"
-          },
-          "critical_success_hits": {
-            "default": true,
-            "title": "Critical Success Hits",
-            "type": "boolean"
-          },
-          "any_inject_success": {
-            "default": false,
-            "title": "Any Inject Success",
-            "type": "boolean"
-          },
-          "tool_trace_hits": {
-            "default": true,
-            "title": "Tool Trace Hits",
-            "type": "boolean"
-          }
-        },
-        "title": "RedteamFindingTriggers",
+        "title": "RedteamLoginFlowConfig",
         "type": "object"
       }
     },
@@ -6408,7 +6573,9 @@
         "anyOf": [
           {
             "additionalProperties": {
-              "type": "string"
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
             },
             "type": "object"
           },
@@ -6453,7 +6620,7 @@
       "auth_config": {
         "anyOf": [
           {
-            "$ref": "#/$defs/AuthConfig"
+            "$ref": "#/$defs/RedteamAuthConfig"
           },
           {
             "type": "null"
@@ -6481,7 +6648,9 @@
         "anyOf": [
           {
             "additionalProperties": {
-              "type": "string"
+              "format": "password",
+              "type": "string",
+              "writeOnly": true
             },
             "type": "object"
           },

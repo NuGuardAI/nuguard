@@ -87,6 +87,7 @@ Module: `nuguard.redteam.public_api`
 
 Request model:
 - `RedteamRunRequest`
+- `RedteamAuthConfig`, with `RedteamLoginFlowConfig` for login-based authentication
 
 Response models:
 - `RedteamRunResult`
@@ -98,8 +99,12 @@ Entry points:
 
 Note:
 - This public API wraps redteam v1 orchestration. v2 is out of scope for this contract.
-- `RedteamRunRequest.auth_config` uses public `AuthConfig` and also accepts `AppAuthConfig`.
-    Bearer, API-key, basic, login-flow, cookie-file, and no-auth variants remain JSON-serializable.
+- `RedteamRunRequest.auth_config` uses secret-safe public `RedteamAuthConfig` and also accepts
+    internal `AuthConfig` and application `AppAuthConfig` values for compatibility. Bearer,
+    API-key, basic, login-flow, cookie-file, and no-auth variants remain JSON-safe, but ordinary
+    request dumps redact credentials and are diagnostic rather than replayable transport. Resolve
+    platform secret references before constructing the request; runtime values are revealed only
+    when the public wrapper invokes the internal orchestrator.
 
 ### Cognitive policy parsing
 

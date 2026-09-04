@@ -46,7 +46,9 @@ from nuguard.policy.public_api import (
     CognitivePolicyParseResult,
 )
 from nuguard.redteam.public_api import (
+    RedteamAuthConfig,
     RedteamExecutionResult,
+    RedteamLoginFlowConfig,
     RedteamRunRequest,
     RedteamRunResult,
 )
@@ -104,7 +106,9 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "policy.CognitivePolicyParseDetail": CognitivePolicyParseDetail,
     "policy.CognitivePolicyParseRequest": CognitivePolicyParseRequest,
     "policy.CognitivePolicyParseResult": CognitivePolicyParseResult,
+    "redteam.RedteamAuthConfig": RedteamAuthConfig,
     "redteam.RedteamExecutionResult": RedteamExecutionResult,
+    "redteam.RedteamLoginFlowConfig": RedteamLoginFlowConfig,
     "redteam.RedteamRunRequest": RedteamRunRequest,
     "redteam.RedteamRunResult": RedteamRunResult,
     "sbom.SbomEnrichmentLlmConfig": SbomEnrichmentLlmConfig,

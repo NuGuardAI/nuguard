@@ -230,6 +230,8 @@ result = await run_behavior_scenarios(
 
 Module: `nuguard.redteam.public_api`
 
+- `RedteamAuthConfig`
+- `RedteamLoginFlowConfig`
 - `RedteamRunRequest`
 - `RedteamRunResult`
 - `RedteamExecutionResult`
@@ -251,9 +253,12 @@ result = await run_redteam(
 )
 ```
 
-`RedteamRunRequest.auth_config` accepts the canonical public `AuthConfig` and remains compatible
-with `AppAuthConfig`. Bearer, API-key, basic, login-flow, cookie-file, and no-auth configurations
-are normalized without placing resolved credentials in result models.
+`RedteamRunRequest.auth_config` uses the secret-safe public `RedteamAuthConfig` and remains
+compatible with internal `AuthConfig` and application `AppAuthConfig` inputs. Bearer, API-key,
+basic, login-flow, cookie-file, and no-auth configurations are normalized without placing
+resolved credentials in serialized requests or result models. Request JSON dumps are redacted
+diagnostic representations and must not be persisted or replayed as executable credential
+transport. Platforms should resolve secret references server-side before constructing a request.
 
 `RedteamRunResult.scan_outcome` is one of:
 
