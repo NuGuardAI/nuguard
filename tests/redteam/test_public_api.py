@@ -19,13 +19,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
-from nuguard.common.auth import AuthConfig
-from nuguard.config import RedteamFindingTriggers
+from nuguard.common.auth import AuthConfig, LoginFlowConfig
+from nuguard.config import AppAuthConfig, RedteamFindingTriggers
 from nuguard.models.finding import Finding, Severity
 from nuguard.models.health_report import TargetHealthReport
+from nuguard.models.policy import CognitivePolicy
 from nuguard.models.token_usage import TokenUsage
+from nuguard.policy import CognitivePolicyParseResult
 from nuguard.redteam.coverage.tracker import CoverageTracker
-from nuguard.redteam.public_api import RedteamRunRequest, RedteamRunResult, run_redteam, run_redteam_stream
+from nuguard.redteam.public_api import (
+    RedteamRunRequest,
+    RedteamRunResult,
+    run_redteam,
+    run_redteam_stream,
+)
 from nuguard.redteam.target.canary import CanaryConfig
 
 
@@ -94,6 +101,28 @@ def test_redteam_run_request_json_roundtrip():
     assert restored.canary_config is not None
 
 
+@pytest.mark.parametrize(
+    "auth",
+    [
+        AppAuthConfig(type="bearer", header="Authorization: Bearer token"),
+        AppAuthConfig(type="api_key", header="X-API-Key: token"),
+        AppAuthConfig(type="basic", username="user", password="password"),
+        AppAuthConfig(
+            type="login_flow",
+            login_flow=LoginFlowConfig(payload={"username": "user", "password": "password"}),
+        ),
+        AppAuthConfig(type="cookie_file", cookie_file="cookies.txt"),
+        AppAuthConfig(type="none"),
+    ],
+)
+def test_redteam_request_accepts_app_auth_config(auth: AppAuthConfig) -> None:
+    """App-level auth models retain every value when normalized for redteam."""
+    request = RedteamRunRequest(target_url="http://localhost:9999", auth_config=auth)
+
+    assert isinstance(request.auth_config, AuthConfig)
+    assert request.auth_config.model_dump() == auth.model_dump()
+
+
 def test_redteam_run_request_defaults_match_orchestrator_constructor():
     req = RedteamRunRequest(target_url="http://x")
     assert req.profile == "ci"
@@ -142,15 +171,17 @@ def test_redteam_run_result_rejects_invalid_scan_outcome():
 
 @pytest.mark.asyncio
 async def test_run_redteam_constructs_orchestrator_and_builds_result():
+    """The orchestrator receives the policy model unwrapped from a parse result."""
     findings = [_finding("prompt_driven_threat"), _finding("data_exfiltration")]
     mock_instance = _make_mock_orchestrator(findings)
     sbom = MagicMock()
-    policy = MagicMock()
+    policy = CognitivePolicy(allowed_topics=["Support"])
+    parsed_policy = CognitivePolicyParseResult(success=True, policy=policy)
 
     with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
         mock_cls.return_value = mock_instance
         request = RedteamRunRequest(target_url="http://target", profile="standard")
-        result = await run_redteam(request, sbom=sbom, policy=policy)
+        result = await run_redteam(request, sbom=sbom, policy=parsed_policy)
 
     mock_cls.assert_called_once()
     _, kwargs = mock_cls.call_args
@@ -178,6 +209,30 @@ async def test_run_redteam_constructs_orchestrator_and_builds_result():
     assert result.catalog_coverage is None
     assert result.coverage_tracker is not None
     assert result.coverage_tracker["nodes"][0]["name"] == "Agent1"
+
+
+@pytest.mark.asyncio
+async def test_run_redteam_normalizes_parse_result_for_remediation() -> None:
+    """Remediation receives a CognitivePolicy, not the public parse envelope."""
+    policy = CognitivePolicy(restricted_topics=["Credentials"])
+    parsed_policy = CognitivePolicyParseResult(success=True, policy=policy)
+    mock_instance = _make_mock_orchestrator([_finding()])
+
+    with (
+        patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls,
+        patch(
+            "nuguard.redteam.public_api._build_remediation_plan",
+            new=AsyncMock(return_value=[]),
+        ) as remediation_mock,
+    ):
+        mock_cls.return_value = mock_instance
+        await run_redteam(
+            RedteamRunRequest(target_url="http://target"),
+            sbom=MagicMock(),
+            policy=parsed_policy,
+        )
+
+    assert remediation_mock.await_args.kwargs["policy"] is policy
 
 
 @pytest.mark.asyncio

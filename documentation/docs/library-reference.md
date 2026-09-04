@@ -75,10 +75,15 @@ Module: `nuguard.sbom.public_api`
 - `SbomRenderResult`
 - `SbomExportRequest`
 - `SbomExportResult`
+- `SbomEnrichmentLlmConfig`
+- `SbomProbeAuthConfig`
+- `SbomEnrichmentRequest`
+- `SbomEnrichmentResult`
 - `generate_sbom(request)`
 - `parse_sbom_json(request)`
 - `render_sbom(request, *, sbom)`
 - `export_sbom(request, *, sbom)`
+- `enrich_sbom(request)`
 
 `SbomRenderRequest.format` supports:
 
@@ -95,6 +100,25 @@ from nuguard.sbom.public_api import SbomGenerateRequest, SbomRenderRequest, gene
 generated = await generate_sbom(SbomGenerateRequest(source_path="./my_app"))
 rendered = await render_sbom(SbomRenderRequest(format="json"), sbom=generated.sbom)
 ```
+
+`enrich_sbom()` accepts an existing validated `AiSbomDocument`, operates on a deep copy, and
+performs no filesystem writes unless `output_path` is set. Its cache fingerprint excludes LLM
+API keys and probe authorization values; use the caller-controlled opaque `cache_version` when
+auth or external state must invalidate a platform-managed cache. Secret inputs use `SecretStr`
+and are never copied into the result.
+
+## Cognitive policy API
+
+Module: `nuguard.policy.public_api`
+
+- `CognitivePolicyParseRequest`
+- `CognitivePolicyParseDetail`
+- `CognitivePolicyParseResult`
+- `parse_cognitive_policy(request)`
+
+The parse result contains a validated policy or stable sanitized errors. Pass a successful result
+directly as `policy=` to public behavior and red-team entry points. The existing
+`parse_policy(text)` API remains supported.
 
 ## SBOM toolbox APIs
 
@@ -154,6 +178,7 @@ Module: `nuguard.behavior.public_api`
 - `run_behavior_scenarios(request, *, sbom=None, policy=None, intent=None, llm_client=None, remediation_llm_client=None, judge_cache=None)`
 - `discover_behavior_profile(config, *, sbom=None, policy=None, intent=None, llm_client=None)`
 - `analyze_behavior_stream(...)`
+- `analyze_behavior_analysis_stream(...)`
 
 Example (full analysis):
 
@@ -172,6 +197,10 @@ result = await analyze_behavior(
     llm_client=llm_client,
 )
 ```
+
+Use `analyze_behavior_analysis_stream(BehaviorAnalysisRequest(...))` for the same complete
+intent, policy, discovery, planning, execution, remediation, and final-result lifecycle with
+incremental events. Its `final_result()` is a `BehaviorAnalysisResult`.
 
 Example (scenario-level run):
 
@@ -222,6 +251,10 @@ result = await run_redteam(
 )
 ```
 
+`RedteamRunRequest.auth_config` accepts the canonical public `AuthConfig` and remains compatible
+with `AppAuthConfig`. Bearer, API-key, basic, login-flow, cookie-file, and no-auth configurations
+are normalized without placing resolved credentials in result models.
+
 `RedteamRunResult.scan_outcome` is one of:
 
 - `critical_findings`
@@ -244,9 +277,18 @@ Module: `nuguard.common.streaming_models`
 
 Behavior and redteam streaming APIs return a typed `StreamRunHandle` that emits `StreamEvent` envelopes and resolves to the final result model.
 
-Streams emit `scenario_plan_ready`, `scenario_started`, and `scenario_progress` while scenarios execute. Progress payloads include the scenario ID, title, type, terminal status, and monotonic completion counts. `findings_delta` contains redteam findings and behavior turn reports as scenarios complete. When concurrency is greater than one, event sequence reflects execution completion order rather than scenario-plan order. The final result remains authoritative when scan-level aggregation or deduplication changes the final finding set. Under bounded queue pressure, low-priority progress updates may be dropped so lifecycle and terminal events can be delivered.
+Streams emit `run_started`, `scenario_plan_ready`, `scenario_started`, `scenario_progress`,
+`findings_delta`, optional idle `heartbeat` events, and exactly one terminal `completed` or
+`failed` event. Progress payloads contain monotonic sequence and completion counts. Apply every
+event through the matching shared reducer; the final result remains authoritative. Under bounded
+queue pressure, heartbeats and progress updates may be dropped, but lifecycle and terminal events
+are retained.
 
-Call `handle.cancel()` to request non-blocking cancellation, then `await handle.wait_closed(timeout=5.0)` to wait for worker shutdown without cancelling the worker if the wait expires. Cancellation emits a terminal `failed` event with `failure_stage="cancelled"`; `await handle.final_result()` raises `asyncio.CancelledError`.
+Call `handle.cancel()` to request non-blocking cancellation, then
+`await handle.wait_closed(timeout=5.0)` to wait for shutdown without cancelling the worker if the
+wait expires. Cancellation emits sanitized stable metadata and `final_result()` raises an
+`asyncio.CancelledError` subclass. Other worker failures emit only stable public error metadata
+and raise `StreamExecutionError`; raw target responses and credentials are not exposed.
 
 ## Target verify and session APIs
 

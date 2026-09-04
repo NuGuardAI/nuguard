@@ -1,6 +1,8 @@
 """Pydantic-only public entry point for the redteam package (v1 engine only).
 
 A thin async wrapper around :class:`RedteamOrchestrator` for callers outside
+    except asyncio.CancelledError:
+        raise
 the CLI: a plain, JSON-serializable request model in, a JSON-serializable
 result model out. ``RedteamOrchestrator`` itself and its constructor and
 ``run()`` are untouched — everything here is additive. The CLI's
@@ -23,7 +25,7 @@ import dataclasses
 import uuid
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from nuguard.common.auth import AuthConfig
 from nuguard.common.logging import get_logger
@@ -33,7 +35,7 @@ from nuguard.common.streaming_models import (
     StreamProgressPayload,
     StreamTerminalPayload,
 )
-from nuguard.config import RedteamFindingTriggers
+from nuguard.config import AppAuthConfig, RedteamFindingTriggers
 from nuguard.models.finding import Finding
 from nuguard.models.health_report import TargetHealthReport
 from nuguard.models.token_usage import TokenUsage
@@ -50,6 +52,7 @@ if TYPE_CHECKING:
 
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
+    from nuguard.policy.public_api import CognitivePolicyParseResult
     from nuguard.redteam.catalog.coverage import CoverageReport
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
@@ -108,6 +111,15 @@ class RedteamRunRequest(BaseModel):
     golden_data: dict[str, Any] | None = None
     suppress_spa_html_auth_bypass: bool = True
     codegen_escalation_enabled: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_public_auth_config(cls, data: Any) -> Any:
+        if isinstance(data, dict) and isinstance(data.get("auth_config"), AppAuthConfig):
+            normalized = dict(data)
+            normalized["auth_config"] = data["auth_config"].model_dump()
+            return normalized
+        return data
     mode: str = "concurrent"
     progressive_halt_on_severity: str = "none"
 
@@ -227,7 +239,7 @@ async def run_redteam(
     *,
     sbom: "AiSbomDocument",
     sbom_path: "Path | None" = None,
-    policy: "CognitivePolicy | None" = None,
+    policy: "CognitivePolicy | CognitivePolicyParseResult | None" = None,
     policy_controls: "list | None" = None,
     redteam_llm: "LLMClient | None" = None,
     eval_llm: "LLMClient | None" = None,
@@ -247,11 +259,14 @@ async def run_redteam(
     the CLI file untouched by this change).
     """
     _log.debug("run_redteam: target_url=%s profile=%s", request.target_url, request.profile)
+    from nuguard.policy.public_api import normalize_cognitive_policy  # noqa: PLC0415
+
+    normalized_policy = normalize_cognitive_policy(policy)
     orchestrator = RedteamOrchestrator(
         sbom=sbom,
         target_url=request.target_url,
         sbom_path=sbom_path,
-        policy=policy,
+        policy=normalized_policy,
         policy_controls=policy_controls,
         canary_config=request.canary_config,
         profile=request.profile,
@@ -326,7 +341,10 @@ async def run_redteam(
         findings = [f for f in findings if finding_matches_scenario_filter(f, _filters)]
 
     remediation_plan = await _build_remediation_plan(
-        findings, sbom=sbom, policy=policy, llm_client=remediation_llm_client or eval_llm
+        findings,
+        sbom=sbom,
+        policy=normalized_policy,
+        llm_client=remediation_llm_client or eval_llm,
     )
     backfill_finding_remediation(findings, remediation_plan)
 
@@ -377,7 +395,7 @@ async def run_redteam_stream(
     request: RedteamRunRequest,
     *,
     sbom: "AiSbomDocument",
-    policy: "CognitivePolicy | None" = None,
+    policy: "CognitivePolicy | CognitivePolicyParseResult | None" = None,
     policy_controls: "list | None" = None,
     redteam_llm: "LLMClient | None" = None,
     eval_llm: "LLMClient | None" = None,
@@ -473,32 +491,7 @@ async def run_redteam_stream(
                 ).model_dump(mode="json"),
             )
             controller.set_final_result(RedteamExecutionResult.model_validate(result.model_dump(mode="json")))
-        except asyncio.CancelledError as exc:
-            controller.publish_terminal(
-                event_type="failed",
-                phase="finalize",
-                payload=StreamTerminalPayload(
-                    status="failed",
-                    failure_stage="cancelled",
-                    error_type=type(exc).__name__,
-                    error_message="Redteam stream cancelled",
-                ).model_dump(mode="json"),
-            )
-            controller.set_final_exception(exc)
+        except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
-            controller.publish_terminal(
-                event_type="failed",
-                phase="finalize",
-                payload=StreamTerminalPayload(
-                    status="failed",
-                    summary={},
-                    is_retryable=False,
-                    failure_stage="run_redteam",
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
-                ).model_dump(mode="json"),
-            )
-            controller.set_final_exception(exc)
 
     return create_stream_handle(run_id, _worker)

@@ -18,6 +18,7 @@ Use these files as the canonical public API surface:
 - `nuguard/analysis/public_api.py`
 - `nuguard/behavior/public_api.py`
 - `nuguard/redteam/public_api.py`
+- `nuguard/policy/public_api.py`
 - `nuguard/sbom/public_api.py`
 - `nuguard/sbom/toolbox/public_api.py`
 - `nuguard/output/public_api.py`
@@ -34,9 +35,10 @@ Schema lock for platform-facing models:
 | Domain | Public module | Entry points |
 |---|---|---|
 | Static analysis | `nuguard.analysis.public_api` | `run_analysis` |
-| Behavior | `nuguard.behavior.public_api` | `analyze_behavior`, `run_behavior_scenarios`, `discover_behavior_profile`, `analyze_behavior_stream`, `analyze_behavior_static` |
+| Behavior | `nuguard.behavior.public_api` | `analyze_behavior`, `analyze_behavior_analysis_stream`, `run_behavior_scenarios`, `discover_behavior_profile`, `analyze_behavior_stream`, `analyze_behavior_static` |
 | Redteam (v1) | `nuguard.redteam.public_api` | `run_redteam`, `run_redteam_stream` |
-| SBOM generation/serialization | `nuguard.sbom.public_api` | `generate_sbom`, `parse_sbom_json`, `render_sbom`, `export_sbom` |
+| Cognitive policy | `nuguard.policy.public_api` | `parse_cognitive_policy` |
+| SBOM generation/serialization | `nuguard.sbom.public_api` | `generate_sbom`, `parse_sbom_json`, `render_sbom`, `export_sbom`, `enrich_sbom` |
 | SBOM toolbox | `nuguard.sbom.toolbox.public_api` | `list_toolbox_plugins`, `run_toolbox_plugin`, `run_toolbox_all` |
 | Report rendering/export | `nuguard.output.public_api` | `render_redteam_report`, `render_behavior_report`, `export_validation_report` |
 | Target verification/session | `nuguard.common.target_verify_public_api` | `verify_target`, `resolve_target_session_public` |
@@ -74,6 +76,10 @@ Entry points:
 - `await run_behavior_scenarios(request, sbom=..., policy=..., intent=..., llm_client=...)`
 - `await discover_behavior_profile(config, sbom=..., policy=..., intent=..., llm_client=...)`
 - `await analyze_behavior_stream(request, ...)` (returns `StreamRunHandle[BehaviorRunResult]`)
+- `await analyze_behavior_analysis_stream(request, ...)` (returns `StreamRunHandle[BehaviorAnalysisResult]`)
+
+The analysis stream invokes the same complete orchestration as `analyze_behavior` exactly once;
+callers do not need to plan scenarios or combine internal results.
 
 ### Redteam (v1 engine)
 
@@ -92,6 +98,20 @@ Entry points:
 
 Note:
 - This public API wraps redteam v1 orchestration. v2 is out of scope for this contract.
+- `RedteamRunRequest.auth_config` uses public `AuthConfig` and also accepts `AppAuthConfig`.
+    Bearer, API-key, basic, login-flow, cookie-file, and no-auth variants remain JSON-serializable.
+
+### Cognitive policy parsing
+
+Module: `nuguard.policy.public_api`
+
+- Request: `CognitivePolicyParseRequest`
+- Result: `CognitivePolicyParseResult`, with `CognitivePolicyParseDetail` diagnostics
+- Entry point: `parse_cognitive_policy(request)`
+
+Successful parse results can be passed directly as `policy=` to behavior and red-team entry
+points. Failures contain stable sanitized details rather than source Markdown or raw validation
+exceptions.
 
 ### SBOM generation/serialization contracts
 
@@ -102,18 +122,27 @@ Request models:
 - `SbomParseRequest`
 - `SbomRenderRequest`
 - `SbomExportRequest`
+- `SbomEnrichmentRequest`, with `SbomEnrichmentLlmConfig` and `SbomProbeAuthConfig`
 
 Response models:
 - `SbomGenerateResult`
 - `SbomParseResult`
 - `SbomRenderResult`
 - `SbomExportResult`
+- `SbomEnrichmentResult`
 
 Entry points:
 - `await generate_sbom(request)`
 - `await parse_sbom_json(request)`
 - `await render_sbom(request, sbom=...)`
 - `await export_sbom(request, sbom=...)`
+- `await enrich_sbom(request)`
+
+Enrichment validates input and output, operates copy-on-write, and writes only when
+`output_path` is explicitly supplied. The deterministic `cache_fingerprint` supports
+platform-managed caching and excludes API keys and authorization values. Set the opaque
+`cache_version` to invalidate cached work when secret-dependent or external state changes.
+Computed and externally cached values use the same `SbomEnrichmentResult` schema.
 
 Supported render/export formats:
 - `json`
@@ -184,15 +213,22 @@ Handle contract from `nuguard.common.stream_runtime`:
 - `StreamRunHandle[T]` with stream iterator, final result retrieval, non-blocking `cancel()`, and `await wait_closed(timeout=...)`.
 
 Redteam and behavior streams emit typed events while scenarios execute:
+- `run_started` identifies the accepted run.
 - `scenario_plan_ready` establishes the initial scenario total and can revise it upward when redteam adds an escalation pass.
 - `scenario_started` identifies the scenario being executed.
 - `scenario_progress` identifies the completed scenario and reports monotonic completion counts.
 - `findings_delta` emits redteam findings and behavior turn reports as scenarios complete.
+- `heartbeat` may be emitted during idle long-running phases.
 - `completed` or `failed` is emitted once as the terminal event.
 
 `StreamProgressPayload` includes `scenario_id`, `scenario_title`, `scenario_status`, `current_scenario_type`, and progress counts. With concurrent execution, event order reflects runtime completion order rather than planned scenario order. Apply every event with the matching shared reducer; the final result remains authoritative if scan-level aggregation refines findings.
 
-Call `handle.cancel()` to request cancellation. A cancelled stream emits `failed` with `failure_stage="cancelled"`; `await handle.final_result()` raises `asyncio.CancelledError`. Use `await handle.wait_closed(timeout=...)` to bound only the caller's wait; a timeout does not cancel the underlying scan.
+Call `handle.cancel()` to request cancellation. A cancelled stream emits `failed` with stable
+sanitized metadata and `final_result()` raises an `asyncio.CancelledError` subclass. Generic
+worker failures raise `StreamExecutionError` and expose no raw exception message, target response,
+or credentials. Use `await handle.wait_closed(timeout=...)` to bound only the caller's wait; a
+timeout does not cancel the underlying scan. Heartbeats and progress updates may be dropped under
+queue pressure, while lifecycle and terminal events are retained.
 
 ## Migration map: internal calls to public contracts
 
@@ -203,6 +239,8 @@ Call `handle.cancel()` to request cancellation. A cancelled stream emits `failed
 | Constructing `BehaviorRunner` directly for external integration orchestration | Build `BehaviorRunRequest` and call `run_behavior_scenarios` |
 | Calling redteam orchestrator internals from platform code | Build `RedteamRunRequest` and call `run_redteam` |
 | Calling `SbomGenerator` or extractor internals directly from platform code | Build `SbomGenerateRequest` and call `generate_sbom` |
+| Calling `maybe_auto_enrich_sbom` or private credential resolvers | Build `SbomEnrichmentRequest` and call `enrich_sbom` |
+| Calling `parse_policy` from an implementation module | Build `CognitivePolicyParseRequest` and call `parse_cognitive_policy` |
 | Parsing/rendering SBOMs with direct serializer internals | Use `parse_sbom_json`, `render_sbom`, and `export_sbom` |
 | Running toolbox plugins through CLI wrappers | Use `list_toolbox_plugins`, `run_toolbox_plugin`, or `run_toolbox_all` |
 | Building custom report payloads via internal report modules | Use `render_redteam_report`, `render_behavior_report`, or `export_validation_report` |
