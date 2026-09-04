@@ -812,9 +812,11 @@ async def _run_orchestrator(  # noqa: C901
     mode: str = "concurrent",
     progressive_halt_on_severity: str = "none",
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
+    from pydantic import SecretStr
+
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
-    from nuguard.redteam.public_api import RedteamRunRequest, run_redteam
+    from nuguard.redteam.public_api import RedteamAuthConfig, RedteamRunRequest, run_redteam
 
     redteam_llm: LLMClient | None = None
     if redteam_llm_model:
@@ -848,14 +850,26 @@ async def _run_orchestrator(  # noqa: C901
         guided_mutation_mode=guided_mutation_mode,
         tree_breadth=tree_breadth,
         tree_max_depth=tree_max_depth,
-        extra_headers=extra_headers,
+        extra_headers=(
+            {name: SecretStr(value) for name, value in extra_headers.items()}
+            if extra_headers
+            else None
+        ),
         strict_outcome=strict_outcome,
         scenario_filter=scenario_filter,
         canary_config=canary_config,  # type: ignore[arg-type]
-        auth_config=auth_config,
+        auth_config=(
+            RedteamAuthConfig.model_validate(auth_config.model_dump())
+            if auth_config
+            else None
+        ),
         finding_triggers=finding_triggers,
         verbose=verbose,
-        credentials=credentials,
+        credentials=(
+            {name: SecretStr(value) for name, value in credentials.items()}
+            if credentials
+            else None
+        ),
         scenario_timeout=scenario_timeout,
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
