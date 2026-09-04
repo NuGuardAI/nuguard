@@ -38,6 +38,12 @@ from nuguard.models.policy import (
     PolicyAssessmentResult,
 )
 from nuguard.policy.parser import parse_policy
+from nuguard.policy.public_api import (
+    CognitivePolicyParseDetail,
+    CognitivePolicyParseRequest,
+    CognitivePolicyParseResult,
+    parse_cognitive_policy,
+)
 from nuguard.policy.validator import LintIssue, lint_policy
 
 
@@ -77,10 +83,14 @@ __all__ = [
     "PolicyGap",
     "PolicyControl",
     "PolicyCheckResult",
+    "CognitivePolicyParseDetail",
+    "CognitivePolicyParseRequest",
+    "CognitivePolicyParseResult",
     # Functions
     "build_aibom_snapshot",
     "check_policy_against_sbom",
     "lint_policy",
     "parse_policy",
+    "parse_cognitive_policy",
     "run_compliance_assessment",
 ]

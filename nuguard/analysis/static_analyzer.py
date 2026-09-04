@@ -314,7 +314,9 @@ class StaticAnalyzer:
         # skip_nga=True so the annotator does not re-run NGA rules; Step 1
         # already annotated NGA findings with ATLAS techniques directly.
         if self.enable_atlas:
-            atlas = self._run_atlas_native(sbom_dict, sbom_graph=sbom_graph)
+            atlas = await asyncio.to_thread(
+                self._run_atlas_native, sbom_dict, sbom_graph=sbom_graph
+            )
             all_findings.extend(atlas)
             self.tool_status["atlas"] = {"status": "ok", "findings": str(len(atlas))}
         else:
