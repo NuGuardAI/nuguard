@@ -234,6 +234,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_chat_response_key"] = shared_target["chat_response_key"]
         if "chat_payload_extras" in shared_target and isinstance(shared_target["chat_payload_extras"], dict):
             flat["redteam_chat_payload_extras"] = shared_target["chat_payload_extras"]
+        if "probe_llm" in shared_target:
+            flat["probe_llm_enabled"] = bool(shared_target["probe_llm"])
         if "headers" in shared_target and isinstance(shared_target["headers"], dict):
             flat["redteam_headers"] = {
                 str(k): str(v)
@@ -471,6 +473,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                     )
                 if "auth" in shared_target and isinstance(shared_target["auth"], dict):
                     _shared_for_behavior.setdefault("auth", shared_target["auth"])
+                if "probe_llm" in shared_target:
+                    _shared_for_behavior.setdefault("probe_llm", bool(shared_target["probe_llm"]))
                 # behavior.* wins — merge shared as the lower-precedence base.
                 # `endpoint:` and `target_endpoint:` are aliases in the shared
                 # block; mirror that here so a user who writes `behavior.endpoint:`
@@ -658,6 +662,10 @@ class BehaviorConfig(BaseModel):
     use_llm: bool = Field(
         default=False,
         validation_alias=AliasChoices("use_llm", "llm"),
+    )
+    probe_llm: bool = Field(
+        default=False,
+        description="Use LLM to improve endpoint probe accuracy (yaml: target.probe_llm).",
     )
     capability_discovery: bool = Field(
         default=True,
@@ -1076,6 +1084,10 @@ class NuGuardConfig(BaseSettings):
             "Agent chat endpoint path on the target (yaml: redteam.target_endpoint). "
             "Empty string = auto-discover from SBOM; falls back to /chat."
         ),
+    )
+    probe_llm_enabled: bool = Field(
+        default=False,
+        description="Use LLM to improve endpoint probe accuracy (yaml: target.probe_llm).",
     )
     redteam_chat_payload_key: str = Field(
         default="message",

@@ -16,7 +16,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 
 import httpx
 
@@ -24,6 +24,9 @@ from nuguard.common.endpoint_probe import _HAS_PATH_PARAM_RE
 from nuguard.common.logging import get_logger
 from nuguard.sbom.models import AiSbomDocument, Edge, Node, NodeMetadata
 from nuguard.sbom.types import AccessType, ComponentType, RelationshipType
+
+if TYPE_CHECKING:
+    from nuguard.common.endpoint_probe import ProbeResult
 
 _log = get_logger(__name__)
 
@@ -806,6 +809,63 @@ def _enriched_output_path(sbom_path: Path) -> Path:
 def enriched_sbom_artifact_path(sbom_path: Path) -> Path:
     """Public alias of :func:`_enriched_output_path` for callers outside this module."""
     return _enriched_output_path(sbom_path)
+
+
+def persist_probe_result_to_sbom(
+    result: "ProbeResult",
+    sbom: AiSbomDocument,
+    sbom_path: Path,
+) -> Path:
+    """Write a live probe result back to the enriched SBOM so subsequent runs reuse it.
+
+    Finds or creates a runtime_probe API_ENDPOINT node for result.path, sets
+    chat_payload_key/list/value_template, then writes to the enriched artifact.
+    Never raises — failures are logged and the original SBOM is unchanged.
+    """
+    updated = sbom.model_copy(deep=True)
+
+    target_node: Node | None = None
+    for node in updated.nodes:
+        if (
+            node.component_type == ComponentType.API_ENDPOINT
+            and node.metadata is not None
+            and node.metadata.endpoint == result.path
+        ):
+            target_node = node
+            break
+
+    if target_node is None:
+        target_node = Node(
+            id=_probe_node_id(result.path),
+            name=f"{result.path} API",
+            component_type=ComponentType.API_ENDPOINT,
+            confidence=0.95,
+            metadata=NodeMetadata(
+                endpoint=result.path,
+                method="POST",
+                accepts_user_input=True,
+            ),
+            evidence=[],
+        )
+        updated.nodes.append(target_node)
+
+    target_node.metadata.chat_payload_key = result.key
+    target_node.metadata.chat_payload_list = result.is_list
+    extras: dict = dict(target_node.metadata.extras or {})
+    extras["source"] = "runtime_probe"
+    if result.value_template is not None:
+        extras["probe_value_template"] = result.value_template
+    else:
+        extras.pop("probe_value_template", None)
+    target_node.metadata.extras = extras
+
+    out_path = _enriched_output_path(sbom_path)
+    try:
+        _write_enriched(updated, out_path, cache_key=None)
+        _log.info("probe_result_persisted: path=%s artifact=%s", result.path, out_path)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("probe_result_persist_failed: %s", exc)
+    return out_path
 
 
 def persist_capability_discovery_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:

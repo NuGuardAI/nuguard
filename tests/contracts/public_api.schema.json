@@ -908,6 +908,12 @@
             "title": "Use Llm",
             "type": "boolean"
           },
+          "probe_llm": {
+            "default": false,
+            "description": "Use LLM to improve endpoint probe accuracy (yaml: target.probe_llm).",
+            "title": "Probe Llm",
+            "type": "boolean"
+          },
           "capability_discovery": {
             "default": true,
             "description": "Probe the live agent for tools, sub-agents, and its system prompt when the AI-SBOM is missing them, and merge the findings back into the in-memory SBOM before scenario generation. Only fires for AGENT nodes with an actual gap.",
@@ -2237,6 +2243,12 @@
           "use_llm": {
             "default": false,
             "title": "Use Llm",
+            "type": "boolean"
+          },
+          "probe_llm": {
+            "default": false,
+            "description": "Use LLM to improve endpoint probe accuracy (yaml: target.probe_llm).",
+            "title": "Probe Llm",
             "type": "boolean"
           },
           "capability_discovery": {
@@ -6791,6 +6803,11 @@
         "default": "none",
         "title": "Progressive Halt On Severity",
         "type": "string"
+      },
+      "probe_llm": {
+        "default": false,
+        "title": "Probe Llm",
+        "type": "boolean"
       }
     },
     "required": [

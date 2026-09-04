@@ -209,6 +209,7 @@ class RedteamRunRequest(BaseModel):
         return data
     mode: str = "concurrent"
     progressive_halt_on_severity: str = "none"
+    probe_llm: bool = False
 
 
 class RedteamRunResult(BaseModel):
@@ -401,6 +402,7 @@ async def run_redteam(
         mode=request.mode,
         progressive_halt_on_severity=request.progressive_halt_on_severity,
         progress_sink=_progress_sink,
+        probe_llm=request.probe_llm,
     )
 
     try:

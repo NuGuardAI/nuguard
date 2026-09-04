@@ -662,6 +662,7 @@ class RedteamOrchestrator:
         mode: str = "concurrent",
         progressive_halt_on_severity: str = "none",
         progress_sink: Callable[[dict[str, Any]], None] | None = None,
+        probe_llm: bool = False,
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
@@ -745,6 +746,17 @@ class RedteamOrchestrator:
         # Circuit-open flag latched when the 3-strike abort trips; consulted by
         # the escalation pass so it skips rather than re-hitting a dead target.
         self._circuit_open = False
+        self._probe_llm = probe_llm
+        # Separate circuit-open flag for direct-HTTP endpoint-probe outages
+        # (TargetUnavailableError raised with source="endpoint_probe" — see
+        # TargetAppClient._record_endpoint_error). Kept independent of
+        # self._circuit_open so an unreachable SBOM-derived REST path (e.g.
+        # API_ATTACK auth-bypass/IDOR/mass-assignment/BFLA chains) cannot
+        # abort unrelated, still-healthy chat-routed scenarios — only the
+        # remaining not-yet-dispatched direct-HTTP-only scenarios are skipped
+        # (chain_status="target_unreachable"). Latched across passes the same
+        # way self._circuit_open is.
+        self._endpoint_circuit_open = False
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -3066,6 +3078,7 @@ class RedteamOrchestrator:
                 known_response_key=self._chat_response_key,
                 probe_payload_extras=self._chat_payload_extras or None,
                 hint_path=self._chat_path,
+                llm=self._redteam_llm if self._probe_llm else None,
             )
             if result:
                 _, pay_key, pay_list = result
@@ -3076,6 +3089,14 @@ class RedteamOrchestrator:
                     "redteam: payload structure detected for %s (key=%r list=%s template=%s)",
                     self._chat_path, pay_key, pay_list, bool(result.value_template),
                 )
+                if self._sbom_path is not None:
+                    try:
+                        from nuguard.common.auto_sbom_enricher import (
+                            persist_probe_result_to_sbom,  # noqa: PLC0415
+                        )
+                        persist_probe_result_to_sbom(result, self._sbom, self._sbom_path)
+                    except Exception as _pe:  # noqa: BLE001
+                        _log.debug("redteam: probe result persist failed: %s", _pe)
             return
 
         # Option A: no path — full endpoint + key discovery.
@@ -3096,6 +3117,7 @@ class RedteamOrchestrator:
             known_payload_list=self._chat_payload_list,
             known_response_key=self._chat_response_key,
             probe_payload_extras=self._chat_payload_extras or None,
+            llm=self._redteam_llm if self._probe_llm else None,
         )
         if result:
             path, pay_key, pay_list = result
@@ -3108,6 +3130,14 @@ class RedteamOrchestrator:
             self._chat_payload_list = pay_list
             self._chat_payload_value_template = result.value_template
             self._chat_path_source = "probe"
+            if self._sbom_path is not None:
+                try:
+                    from nuguard.common.auto_sbom_enricher import (
+                        persist_probe_result_to_sbom,  # noqa: PLC0415
+                    )
+                    persist_probe_result_to_sbom(result, self._sbom, self._sbom_path)
+                except Exception as _pe:  # noqa: BLE001
+                    _log.debug("redteam: probe result persist failed: %s", _pe)
         else:
             _log.warning(
                 "redteam: endpoint probe found nothing — keeping default %r",
