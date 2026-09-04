@@ -4069,6 +4069,21 @@
         ],
         "default": null
       },
+      "headers": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Headers"
+      },
       "chat_payload_key": {
         "default": "message",
         "title": "Chat Payload Key",
@@ -4381,6 +4396,21 @@
           }
         ],
         "default": null
+      },
+      "headers": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Headers"
       },
       "chat_payload_key": {
         "default": "message",
