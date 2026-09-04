@@ -84,6 +84,7 @@ NuGuard is a security tool — hold all code to a high security bar:
 - **LLM enrichment**: optional everywhere. Pass `--llm` or set `llm: true` in config. Default model: `gemini/gemini-2.0-flash`. API key: `LITELLM_API_KEY`.
 - **Configuration precedence**: CLI flags > `nuguard.yaml` > environment variables > built-in defaults.
 - **Shared SBOM enrichment**: both `nuguard behavior` and `nuguard redteam` call `enrich_sbom_for_run()` from `nuguard/cli/common.py` before scenario generation. Prefer this shared helper over duplicating enrichment logic.
+- **Public Pydantic interfaces**: for functionality changes or bug fixes that affect public Python or platform consumers, load and follow `.github/skills/pydantic-interface/SKILL.md`. Keep models, exports, schema snapshots, tests, docs, compatibility, and secret redaction synchronized.
 
 ## CLI Surface
 

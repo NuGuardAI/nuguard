@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from nuguard.common.url_sanitization import sanitize_repository_url
+
 from .config import AiSbomConfig
 from .extractor import AiSbomExtractor
 from .models import AiSbomDocument
@@ -26,7 +28,12 @@ class SbomGenerator:
 
     def from_repo(self, url: str, ref: str = "main", output: Path | None = None) -> AiSbomDocument:
         """Clone *url* at *ref* and return an AiSbomDocument."""
-        doc = self._extractor.extract_from_repo(url, ref, self.config)
+        doc = self._extractor.extract_from_repo(
+            url,
+            ref,
+            self.config,
+            source_ref=sanitize_repository_url(url),
+        )
         if output is not None:
             from .serializer import AiSbomSerializer
             output.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")

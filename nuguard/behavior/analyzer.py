@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import hashlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from nuguard.behavior.alignment import check_alignment
 from nuguard.behavior.intent import extract_intent
@@ -49,6 +49,7 @@ class BehaviorAnalyzer:
         controls: "list[PolicyControl] | None" = None,
         llm_client: "LLMClient | None" = None,
         remediation_llm_client: "LLMClient | None" = None,
+        progress_sink: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self._config = config
         self._sbom = sbom
@@ -57,7 +58,19 @@ class BehaviorAnalyzer:
         self._controls = controls
         self._llm = llm_client
         self._remediation_llm = remediation_llm_client or llm_client
+        self._progress_sink = progress_sink
+        self._scenario_plan_emitted = False
         self._rec_engine = RecommendationEngine()
+
+    def _emit_progress(self, update: dict[str, Any]) -> None:
+        if self._progress_sink is None:
+            return
+        if update.get("kind") == "plan":
+            self._scenario_plan_emitted = True
+        try:
+            self._progress_sink(update)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("BehaviorAnalyzer progress sink failed: %s", exc)
 
     async def analyze(
         self,
@@ -72,6 +85,7 @@ class BehaviorAnalyzer:
             Complete BehaviorAnalysisResult.
         """
         _log.info("BehaviorAnalyzer.analyze: mode=%s", mode)
+        self._scenario_plan_emitted = False
 
         # Step 1: Extract intent
         intent = await extract_intent(
@@ -79,6 +93,7 @@ class BehaviorAnalyzer:
             sbom=self._sbom,
             llm_client=self._llm,
         ) if self._policy is not None else IntentProfile(app_purpose="AI application")
+        self._emit_progress({"kind": "phase", "phase": "intent"})
 
         # Step 2: Static alignment checks
         static_findings_objs = []
@@ -87,6 +102,15 @@ class BehaviorAnalyzer:
             _log.info("BehaviorAnalyzer.analyze: %d static findings", len(static_findings_objs))
 
         static_findings = [f.model_dump(mode="json") for f in static_findings_objs]
+        self._emit_progress({"kind": "phase", "phase": "alignment"})
+        if static_findings:
+            self._emit_progress(
+                {
+                    "kind": "findings",
+                    "phase": "alignment",
+                    "findings_added": [_finding_progress_view(f) for f in static_findings],
+                }
+            )
 
         # Step 3: Dynamic analysis
         dynamic_findings: list[dict] = []
@@ -102,6 +126,7 @@ class BehaviorAnalyzer:
             if not target_url:
                 _log.warning("BehaviorAnalyzer.analyze: no target URL for dynamic mode")
             else:
+                self._emit_progress({"kind": "phase", "phase": "discovery"})
                 # ----------------------------------------------------------------
                 # v3: scenario prompt cache — skip LLM generation on warm runs
                 # ----------------------------------------------------------------
@@ -259,16 +284,19 @@ class BehaviorAnalyzer:
                 # Discovery happens BEFORE scenario generation so the
                 # discovered user profile (name + IDs) can be injected into
                 # the LLM prompts that generate scenario messages.
-                runner = BehaviorRunner(
-                    config=self._config,
-                    sbom=self._sbom,
-                    sbom_path=self._sbom_path,
-                    policy=self._policy,
-                    intent=intent,
-                    llm_client=self._llm,
-                    judge_cache=judge_cache,
-                    endpoint_explicitly_set=_user_had_explicit_endpoint,
-                )
+                runner_kwargs: dict[str, Any] = {
+                    "config": self._config,
+                    "sbom": self._sbom,
+                    "sbom_path": self._sbom_path,
+                    "policy": self._policy,
+                    "intent": intent,
+                    "llm_client": self._llm,
+                    "judge_cache": judge_cache,
+                    "endpoint_explicitly_set": _user_had_explicit_endpoint,
+                }
+                if self._progress_sink is not None:
+                    runner_kwargs["progress_sink"] = self._emit_progress
+                runner = BehaviorRunner(**runner_kwargs)
                 pre_scan_profile = await runner.discover()
 
                 # ── Optional tool-family reachability probe ──────────────
@@ -347,6 +375,14 @@ class BehaviorAnalyzer:
                 dynamic_findings = run_result.findings
                 coverage = run_result.coverage
                 scenario_results = run_result.scenario_results
+                if dynamic_findings:
+                    self._emit_progress(
+                        {
+                            "kind": "findings",
+                            "phase": "execution",
+                            "findings_added": [_finding_progress_view(f) for f in dynamic_findings],
+                        }
+                    )
 
                 # FP-2: Downgrade BA-008 HITL static findings to LOW when the
                 # corresponding dynamic guardrail probe passed.  A passing probe
@@ -369,6 +405,11 @@ class BehaviorAnalyzer:
                                 sf.get("description", "")
                                 + " [Downgraded: dynamic HITL probe passed, confirming runtime handling.]"
                             )
+
+        if not self._scenario_plan_emitted:
+            self._emit_progress(
+                {"kind": "plan", "scenarios_total": 0, "scenarios_completed": 0}
+            )
 
         # Step 4: Build analysis result
         result = BehaviorAnalysisResult(
@@ -439,6 +480,7 @@ class BehaviorAnalyzer:
         from nuguard.remediation.deviation import enrich_deviation_remediations_async
         from nuguard.remediation.synthesizer import RemediationSynthesizer
 
+        self._emit_progress({"kind": "phase", "phase": "remediation"})
         all_findings = static_findings + dynamic_findings
         result.remediation_plan = await RemediationSynthesizer(
             sbom=self._sbom,
@@ -531,4 +573,15 @@ class BehaviorAnalyzer:
             result.overall_risk_score,
             result.coverage_percentage * 100,
         )
+        self._emit_progress({"kind": "phase", "phase": "result"})
         return result
+
+
+def _finding_progress_view(finding: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "finding_id": finding.get("finding_id"),
+        "title": finding.get("title"),
+        "severity": finding.get("severity"),
+        "goal_type": finding.get("goal_type"),
+        "scenario_type": finding.get("scenario_type"),
+    }

@@ -32,8 +32,13 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from nuguard.common.logging import get_logger
+from nuguard.common.url_sanitization import (
+    redact_repository_url_from_text,
+    sanitize_repository_url,
+)
 
 from ..adapters.base import (
     AdapterMatch,
@@ -2136,8 +2141,9 @@ class AiSbomExtractor:
             for f in (cache / "repo" / app_name).rglob("*.py"):
                 print(f)
         """
-        app_name = url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git") or "repo"
-        display_url = source_ref or url
+        display_url = sanitize_repository_url(source_ref or url)
+        repository_path = urlsplit(display_url).path.rstrip("/")
+        app_name = PurePosixPath(repository_path).name.removesuffix(".git") or "repo"
 
         if cache_dir is not None:
             repo_dir = Path(cache_dir) / "repo" / app_name
@@ -3161,17 +3167,22 @@ class AiSbomExtractor:
         if ref is not None:
             cmd += ["--branch", ref]
         cmd += ["--", url, str(dest)]
-        _log.debug("running: %s", " ".join(cmd))
+        display_url = sanitize_repository_url(url)
+        display_cmd = [display_url if item == url else item for item in cmd]
+        _log.debug("running: %s", " ".join(display_cmd))
         try:
             result = subprocess.run(cmd, check=True, capture_output=True)
+            stderr = result.stderr.decode(errors="replace").strip()[:200] if result.stderr else ""
             _log.debug(
                 "git clone succeeded (stderr: %s)",
-                result.stderr.decode(errors="replace").strip()[:200] or "(none)",
+                redact_repository_url_from_text(stderr, url) or "(none)",
             )
         except subprocess.CalledProcessError as exc:
             stderr = exc.stderr.decode(errors="replace").strip() if exc.stderr else ""
+            stderr = redact_repository_url_from_text(stderr, url)
             raise RuntimeError(
-                f"git clone failed for {url!r} @ {ref!r}" + (f": {stderr}" if stderr else "")
+                f"git clone failed for {display_url!r} @ {ref!r}"
+                + (f": {stderr}" if stderr else "")
             ) from exc
 
     @staticmethod
