@@ -82,6 +82,12 @@ from ..adapters.sparkflows import (
     SparkflowsWorkflowAdapter,
 )
 from ..adapters.typescript._ts_regex import TSFrameworkAdapter
+from ..adapters.workflow_exports import (
+    CopilotStudioYAMLAdapter,
+    FlowiseWorkflowAdapter,
+    LangflowWorkflowAdapter,
+    N8nWorkflowAdapter,
+)
 from ..adapters.yaml_adapters import (
     AutoGenYAMLAdapter,
     CrewAIYAMLAdapter,
@@ -387,7 +393,11 @@ def _extract_python_prompt_dicts(
                 continue
 
             for dk, dv in zip(value.keys, value.values):
-                dict_key = dk.value if isinstance(dk, _ast.Constant) and isinstance(dk.value, str) else None
+                dict_key = (
+                    dk.value
+                    if isinstance(dk, _ast.Constant) and isinstance(dk.value, str)
+                    else None
+                )
                 if dict_key is None:
                     continue
 
@@ -483,18 +493,47 @@ _SCRIPT_EXTENSIONS = {".sh", ".bash", ".zsh", ".fish", ".ps1"}
 
 def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
     skip_dirs = {
-        ".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages",
-        ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype", "logs", "log",
-        "reports", "nuguard-test-results", "test-results",
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".tox",
+        ".claude",
+        "site-packages",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".pytype",
+        "logs",
+        "log",
+        "reports",
+        "nuguard-test-results",
+        "test-results",
         # Build/generated-output directories — large volumes of generated code
         # (bundled JS, compiled artefacts) that match include_extensions but
         # carry no AIBOM signal, and just burn the file/byte budget.
-        "dist", "build", ".next", ".nuxt", ".output", "target", "vendor",
-        ".terraform", "coverage", ".turbo", ".parcel-cache", ".serverless",
-        "bin", "obj", ".gradle", ".dvc",
+        "dist",
+        "build",
+        ".next",
+        ".nuxt",
+        ".output",
+        "target",
+        "vendor",
+        ".terraform",
+        "coverage",
+        ".turbo",
+        ".parcel-cache",
+        ".serverless",
+        "bin",
+        "obj",
+        ".gradle",
+        ".dvc",
         # Generated/vendored code and test artefacts — no AIBOM signal.
-        "generated", "third_party", "external", "__snapshots__",
-        ".ipynb_checkpoints", ".idea",
+        "generated",
+        "third_party",
+        "external",
+        "__snapshots__",
+        ".ipynb_checkpoints",
+        ".idea",
     }
     for part in parts:
         if part in skip_dirs:
@@ -512,8 +551,15 @@ def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
 # tests, Terraform state, and OS/editor cruft that can slip past the
 # directory-level skip list above.
 _SKIP_FILENAME_SUFFIXES = (
-    "_pb2.py", "_pb2_grpc.py", ".pb.go", "_grpc.py", ".pbtxt",
-    ".snap", ".tfstate", ".tfstate.backup", ".terraform.lock.hcl",
+    "_pb2.py",
+    "_pb2_grpc.py",
+    ".pb.go",
+    "_grpc.py",
+    ".pbtxt",
+    ".snap",
+    ".tfstate",
+    ".tfstate.backup",
+    ".terraform.lock.hcl",
     ".DS_Store",
 )
 _SKIP_FILENAMES = {"Thumbs.db"}
@@ -523,6 +569,8 @@ def _should_skip_filename(name: str) -> bool:
     if name in _SKIP_FILENAMES:
         return True
     return any(name.endswith(suffix) for suffix in _SKIP_FILENAME_SUFFIXES)
+
+
 _DOCS_STEMS = {
     "readme",
     "changelog",
@@ -676,7 +724,12 @@ class AiSbomExtractor:
         self.yaml_adapters = (
             yaml_adapters
             if yaml_adapters is not None
-            else (CrewAIYAMLAdapter(), AutoGenYAMLAdapter(), LLMYAMLConfigAdapter())
+            else (
+                CrewAIYAMLAdapter(),
+                AutoGenYAMLAdapter(),
+                LLMYAMLConfigAdapter(),
+                CopilotStudioYAMLAdapter(),
+            )
         )
         self.json_adapters = (
             json_adapters
@@ -688,6 +741,9 @@ class AiSbomExtractor:
                 LLMJSONConfigAdapter(),
                 PromptJSONAdapter(),
                 MCPServerJSONAdapter(),
+                N8nWorkflowAdapter(),
+                LangflowWorkflowAdapter(),
+                FlowiseWorkflowAdapter(),
                 SparkflowsProjectAdapter(),
                 SparkflowsAgentAdapter(),
                 SparkflowsWorkflowAdapter(),
@@ -837,7 +893,9 @@ class AiSbomExtractor:
                 suffix_pkg = "/".join([*base_parts, "__init__"]) + ".py"
                 for known in _all_py_rel_paths:
                     _known_norm = known.replace("\\", "/")
-                    if _known_norm.endswith("/" + suffix_module) or _known_norm.endswith("/" + suffix_pkg):
+                    if _known_norm.endswith("/" + suffix_module) or _known_norm.endswith(
+                        "/" + suffix_pkg
+                    ):
                         return known
                 return None
 
@@ -1013,8 +1071,11 @@ class AiSbomExtractor:
             if file_path.suffix.lower() == ".json" and '"generator"' in content[:512]:
                 try:
                     import json as _json
+
                     _peek = _json.loads(content)
-                    if isinstance(_peek, dict) and str(_peek.get("generator", "")).lower().startswith("nuguard"):
+                    if isinstance(_peek, dict) and str(
+                        _peek.get("generator", "")
+                    ).lower().startswith("nuguard"):
                         _log.debug("skipping nuguard-generated file: %s", file_path)
                         continue
                 except Exception:
@@ -1114,7 +1175,9 @@ class AiSbomExtractor:
                                         # provider resolution — consumed below
                                         # (after this file loop) to resolve
                                         # cross-file TOOL -> DATASTORE hints.
-                                        _ds_symbol_index[(rel_path, _ds_symbol)] = det.canonical_name
+                                        _ds_symbol_index[(rel_path, _ds_symbol)] = (
+                                            det.canonical_name
+                                        )
 
                         # Phase 1a-prime: module-level Python prompt constants.
                         # Runs on ALL .py files regardless of framework imports so that
@@ -1149,10 +1212,9 @@ class AiSbomExtractor:
                         # nodes directly; everything else (e.g. PROMPT detections
                         # from PromptSQLAdapter) goes through the normal merge path,
                         # mirroring the Python-file branch's discrimination above.
-                        if (
-                            det.component_type == ComponentType.DATASTORE
-                            and det.metadata.get("source") in ("sql_schema", "python_model")
-                        ):
+                        if det.component_type == ComponentType.DATASTORE and det.metadata.get(
+                            "source"
+                        ) in ("sql_schema", "python_model"):
                             _dc_metadata.append(det.metadata)
                         else:
                             self._merge_detection(node_map, det)
@@ -1507,7 +1569,10 @@ class AiSbomExtractor:
                     if not _ds_canon:
                         continue
                     for _fn_name in _tool_fn_names:
-                        _tool_key = (ComponentType.TOOL, canonicalize_text(f"langchain:tool:{_fn_name}"))
+                        _tool_key = (
+                            ComponentType.TOOL,
+                            canonicalize_text(f"langchain:tool:{_fn_name}"),
+                        )
                         _ds_key = (ComponentType.DATASTORE, canonicalize_text(_ds_canon))
                         _acc = node_map.get(_tool_key)
                         if _acc is None or _ds_key not in node_map:
@@ -1522,7 +1587,9 @@ class AiSbomExtractor:
                             )
                         )
         except Exception as _cross_ds_exc:
-            _log.debug("cross-file datastore ACCESSES resolution failed (non-fatal): %s", _cross_ds_exc)
+            _log.debug(
+                "cross-file datastore ACCESSES resolution failed (non-fatal): %s", _cross_ds_exc
+            )
 
         # Deduplicate nodes that share (component_type, file, line) — e.g. a
         # regex adapter and an AST adapter both firing on the same token.
@@ -1573,6 +1640,7 @@ class AiSbomExtractor:
             # Normalize display names that are raw variable identifiers
             if " " not in _raw_display:
                 from ..normalization import normalize_display_name as _norm_dn
+
                 _raw_display = _norm_dn(_raw_display, acc.component_type)
             node = Node(
                 name=_raw_display,
@@ -1617,9 +1685,9 @@ class AiSbomExtractor:
             # AGENT node typed fields
             if acc.component_type == ComponentType.AGENT:
                 _spe = (
-                    acc.metadata.get("instructions_preview")   # openai_agents
-                    or acc.metadata.get("backstory_preview")   # crewai
-                    or acc.metadata.get("goal_preview")        # crewai fallback
+                    acc.metadata.get("instructions_preview")  # openai_agents
+                    or acc.metadata.get("backstory_preview")  # crewai
+                    or acc.metadata.get("goal_preview")  # crewai fallback
                     or acc.metadata.get("system_prompt_preview")
                 )
                 if _spe:
@@ -1743,9 +1811,7 @@ class AiSbomExtractor:
                     node.metadata.response_text_key = str(_rtk)
                 _rbs = acc.metadata.get("request_body_schema")
                 if isinstance(_rbs, dict) and _rbs:
-                    node.metadata.request_body_schema = {
-                        str(k): str(v) for k, v in _rbs.items()
-                    }
+                    node.metadata.request_body_schema = {str(k): str(v) for k, v in _rbs.items()}
                     node.metadata.request_schema = dict(_rbs)
                 _resp_schema = acc.metadata.get("response_body_schema")
                 if isinstance(_resp_schema, dict) and _resp_schema:
@@ -1906,11 +1972,10 @@ class AiSbomExtractor:
         # Runs after the main AST/regex loop so CES nodes can be appended.
         try:
             from ..adapters.ces import CESScanner, build_ces_sbom_nodes  # noqa: PLC0415
+
             ces_detections = CESScanner().scan_directory(root)
             if ces_detections:
-                _log.info(
-                    "CESScanner: detected %d CES deployment(s)", len(ces_detections)
-                )
+                _log.info("CESScanner: detected %d CES deployment(s)", len(ces_detections))
                 ces_nodes = build_ces_sbom_nodes(ces_detections, doc)
                 if ces_nodes:
                     # Collect source files covered by CES endpoints
@@ -1920,8 +1985,10 @@ class AiSbomExtractor:
                     # Remove generic API_ENDPOINT nodes whose only evidence comes from the
                     # same source files — CES nodes are more specific (auth, schema, endpoint URL)
                     from ..types import ComponentType as _CT  # noqa: PLC0415
+
                     doc.nodes = [
-                        n for n in doc.nodes
+                        n
+                        for n in doc.nodes
                         if not (
                             n.component_type == _CT.API_ENDPOINT
                             and not getattr(n.metadata, "framework", None)
@@ -1968,6 +2035,7 @@ class AiSbomExtractor:
 
         # Post-extraction enrichment: derive risk attributes from graph topology
         from ..enricher import enrich as _enrich_sbom
+
         _enrich_sbom(doc)
 
         # Scan package manifest dependencies (pyproject.toml, requirements*.txt, package.json, …)
@@ -1979,9 +2047,7 @@ class AiSbomExtractor:
         for node in doc.nodes:
             # LOC: sum lines from all evidence source files for this node
             ev_paths = {
-                ev.location.path
-                for ev in node.evidence
-                if ev.location and ev.location.path
+                ev.location.path for ev in node.evidence if ev.location and ev.location.path
             }
             loc_sum = sum(file_loc.get(p, 0) for p in ev_paths)
             if loc_sum:
@@ -2025,10 +2091,7 @@ class AiSbomExtractor:
             doc.summary.minified_js_files = _minified_js_files
 
         # Ensure google-ces is listed in summary.frameworks when CES nodes exist
-        _has_ces = any(
-            getattr(n.metadata, "framework", "") == "google-ces"
-            for n in doc.nodes
-        )
+        _has_ces = any(getattr(n.metadata, "framework", "") == "google-ces" for n in doc.nodes)
         if _has_ces and doc.summary is not None:
             if "google-ces" not in doc.summary.frameworks:
                 doc.summary.frameworks.append("google-ces")
@@ -2045,13 +2108,19 @@ class AiSbomExtractor:
                     LifecycleScriptAdapter,
                 )
 
-                for adapter_cls in (DevToolConfigAdapter, GithubActionsAdapter, LifecycleScriptAdapter):
+                for adapter_cls in (
+                    DevToolConfigAdapter,
+                    GithubActionsAdapter,
+                    LifecycleScriptAdapter,
+                ):
                     sc_nodes, sc_edges = adapter_cls().scan(root)
                     doc.nodes.extend(sc_nodes)
                     doc.edges.extend(sc_edges)
                     _log.debug(
                         "supply-chain pass (%s): +%d nodes, +%d edges",
-                        adapter_cls.__name__, len(sc_nodes), len(sc_edges),
+                        adapter_cls.__name__,
+                        len(sc_nodes),
+                        len(sc_edges),
                     )
             except Exception as _sc_exc:
                 _log.warning("supply-chain second pass failed (continuing): %s", _sc_exc)
@@ -2151,7 +2220,9 @@ class AiSbomExtractor:
             self._clone_repo(url=url, ref=ref, dest=repo_dir)
             return self.extract_from_path(repo_dir, config, source_ref=display_url, branch=ref)
 
-        with tempfile.TemporaryDirectory(prefix="nuguard_clone_", ignore_cleanup_errors=True) as temp_dir:
+        with tempfile.TemporaryDirectory(
+            prefix="nuguard_clone_", ignore_cleanup_errors=True
+        ) as temp_dir:
             repo_dir = Path(temp_dir) / "repo" / app_name
             repo_dir.mkdir(parents=True, exist_ok=True)
             self._clone_repo(url=url, ref=ref, dest=repo_dir)
@@ -2527,9 +2598,9 @@ class AiSbomExtractor:
         for agent in by_type.get(ComponentType.AGENT, []):
             if agent.id in agent_ids_with_model_edges:
                 continue
-            for model in sorted(
-                by_type.get(ComponentType.MODEL, []), key=lambda n: -n.confidence
-            )[:3]:
+            for model in sorted(by_type.get(ComponentType.MODEL, []), key=lambda n: -n.confidence)[
+                :3
+            ]:
                 _add_edge(agent.id, model.id, "USES")
 
         # Fallback: FRAMEWORK → AGENT (CALLS) via shared metadata.framework
@@ -2633,7 +2704,11 @@ class AiSbomExtractor:
         for auth in by_type.get(ComponentType.AUTH, []):
             matched = [ep for ep in endpoints_with_auth_type if _auth_type(ep) == _auth_type(auth)]
             is_matched = bool(matched)
-            targets = matched if matched else sorted(endpoints_without_auth_type, key=lambda n: n.name)[:10]
+            targets = (
+                matched
+                if matched
+                else sorted(endpoints_without_auth_type, key=lambda n: n.name)[:10]
+            )
             for ep in targets:
                 key = (auth.id, ep.id, "PROTECTS")
                 if key not in seen_edges:
@@ -2657,9 +2732,7 @@ class AiSbomExtractor:
         # so guessing a protects-relationship across unrelated files would
         # misrepresent coverage.
         guardrail_ids_with_protects_edges: set[Any] = {
-            e.source
-            for e in doc.edges
-            if e.relationship_type == RelationshipType.PROTECTS
+            e.source for e in doc.edges if e.relationship_type == RelationshipType.PROTECTS
         }
         for guardrail in by_type.get(ComponentType.GUARDRAIL, []):
             if guardrail.id in guardrail_ids_with_protects_edges:
@@ -2796,6 +2869,7 @@ class AiSbomExtractor:
         # Step 5: Enrich descriptions for AGENT/TOOL nodes missing them
         try:
             from ..llm_client import enrich_node_descriptions
+
             await enrich_node_descriptions(doc.nodes, client, concurrency=config.llm_concurrency)
             _log.info("description-enrichment: completed for agent/tool nodes")
         except Exception as exc:
@@ -2804,6 +2878,7 @@ class AiSbomExtractor:
         # Step 6: Build Markdown relationship graph (Mermaid diagram + LLM narrative)
         try:
             from ..core.relationship_graph import build_relationship_graph_with_llm
+
             graph_md = await build_relationship_graph_with_llm(doc, client)
             if graph_md:
                 doc.relationship_graph_md = graph_md
@@ -2814,6 +2889,7 @@ class AiSbomExtractor:
         # Step 7: Generate LLM descriptive names for all nodes
         try:
             from ..llm_client import enrich_descriptive_names
+
             await enrich_descriptive_names(doc.nodes, client)
             _log.info("descriptive-names: completed")
         except Exception as exc:
@@ -2824,6 +2900,7 @@ class AiSbomExtractor:
         # verification later rejected, leaving the counts stale.
         if doc.summary:
             from ..types import ComponentType as _CT
+
             doc.summary.node_counts = {
                 ct.value: sum(1 for n in doc.nodes if n.component_type == ct)
                 for ct in _CT
@@ -3189,7 +3266,9 @@ class AiSbomExtractor:
     def _iter_files(root: Path, config: AiSbomConfig) -> Iterator[tuple[Path, int]]:
         import fnmatch as _fnmatch  # noqa: PLC0415
 
-        _gitignore_match = _load_gitignore_matcher(root) if getattr(config, "honor_gitignore", True) else None
+        _gitignore_match = (
+            _load_gitignore_matcher(root) if getattr(config, "honor_gitignore", True) else None
+        )
         count = 0
         for dirpath, dirnames, filenames in os.walk(root):
             # Keep traversal deterministic and prune irrelevant dirs early.
@@ -3250,9 +3329,7 @@ class AiSbomExtractor:
                     ):
                         continue
                 # .gitignore support
-                if _gitignore_match is not None and _gitignore_match(
-                    str(path.relative_to(root))
-                ):
+                if _gitignore_match is not None and _gitignore_match(str(path.relative_to(root))):
                     continue
                 try:
                     size = path.stat().st_size
@@ -3264,4 +3341,3 @@ class AiSbomExtractor:
                 count += 1
                 if config.max_files is not None and count >= config.max_files:
                     return
-
