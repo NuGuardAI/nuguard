@@ -1691,6 +1691,13 @@ class RedteamOrchestrator:
         acquired the semaphore.
         """
         sem = asyncio.Semaphore(self._concurrency)
+        # Guided multi-turn conversations (up to `guided_max_turns` turns, each
+        # doing an LLM director call + a target HTTP call + an LLM assess
+        # call) hold a slot for their entire multi-turn lifetime. Gating them
+        # under a dedicated, independently-sized semaphore keeps a handful of
+        # slow guided scenarios from starving fast static-chain scenarios out
+        # of `sem`'s slots for the whole run.
+        guided_sem = asyncio.Semaphore(self._guided_concurrency)
         abort_event = asyncio.Event()
         # Separate abort event for direct-HTTP endpoint-probe outages — only
         # consulted by direct-HTTP-only scenarios (see
@@ -1780,7 +1787,9 @@ class RedteamOrchestrator:
             if _is_direct_http and endpoint_abort_event.is_set():
                 return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("target_unreachable")
 
-            async with sem:
+            _is_guided = scenario.guided_conversation is not None and guided_executor is not None
+            _slot = guided_sem if _is_guided else sem
+            async with _slot:
                 # Re-check after acquiring the semaphore — another coroutine may
                 # have tripped the circuit while we were waiting.
                 if abort_event.is_set():
@@ -2144,77 +2153,100 @@ class RedteamOrchestrator:
             )
             return result
 
-        _log.info(
-            "Running %d scenarios across phased batches (concurrency=%d)",
-            len(active), self._concurrency,
-        )
-
-        # Hard phase gate: dispatch scenarios in ascending attack_phase
-        # batches, each batch fully completing before the next phase's batch
-        # starts. Previously the whole sorted list was fired through one
-        # asyncio.gather, so phase order was only a scheduling hint — once
-        # >= concurrency scenarios were in flight, a late-phase (e.g.
-        # destructive, phase 9) scenario could acquire a freed semaphore slot
-        # before an earlier-phase (recon/boundary-mapping) scenario elsewhere
-        # had finished. Batching by phase makes the boundary a real barrier
-        # while intra-phase concurrency (via the shared `sem`) is unchanged.
         indexed_active = list(enumerate(active))
         results: list[tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]] = []
         _progressive = self._mode == "progressive"
         _halt_order = {"critical": 0, "high": 1}
         _halt_threshold = _halt_order.get(self._progressive_halt_on_severity, None)
-        batch_start = 0
-        while batch_start < len(indexed_active):
-            phase = indexed_active[batch_start][1].attack_phase
-            batch_end = batch_start
-            while (
-                batch_end < len(indexed_active)
-                and indexed_active[batch_end][1].attack_phase == phase
-            ):
-                batch_end += 1
-            batch = indexed_active[batch_start:batch_end]
-            _log.info("Phase %d: dispatching %d scenario(s)", phase, len(batch))
-            if _progressive:
+
+        if _progressive:
+            _log.info(
+                "Running %d scenarios across phased batches (concurrency=%d, progressive mode)",
+                len(active), self._concurrency,
+            )
+            # Progressive mode keeps a real per-attack_phase barrier: each
+            # phase batch runs strictly sequentially and the run can halt
+            # between phases based on `redteam.progressive.halt_on_severity`
+            # (docs/claude-redteam-3.md §4). This is a deliberate feature —
+            # not a scheduling artifact — so it is untouched by the
+            # concurrent-mode restructuring below.
+            batch_start = 0
+            while batch_start < len(indexed_active):
+                phase = indexed_active[batch_start][1].attack_phase
+                batch_end = batch_start
+                while (
+                    batch_end < len(indexed_active)
+                    and indexed_active[batch_end][1].attack_phase == phase
+                ):
+                    batch_end += 1
+                batch = indexed_active[batch_start:batch_end]
+                _log.info("Phase %d: dispatching %d scenario(s)", phase, len(batch))
                 # Strictly sequential — no two scenarios run at once, so the
                 # target application is never asked two adversarial things
                 # "at once" within a phase either (docs/claude-redteam-3.md §4).
                 batch_results = [await _run_and_emit(s, idx) for idx, s in batch]
-            else:
-                batch_results = await asyncio.gather(*(_run_and_emit(s, idx) for idx, s in batch))
-            results.extend(batch_results)
-            batch_start = batch_end
+                results.extend(batch_results)
+                batch_start = batch_end
 
-            if _progressive and _halt_threshold is not None:
-                from nuguard.redteam.risk_engine.risk_scorer import highest_severity
+                if _halt_threshold is not None:
+                    from nuguard.redteam.risk_engine.risk_scorer import highest_severity
 
-                batch_findings = [f for new_findings, _, _ in batch_results for f in new_findings]
-                worst = highest_severity(batch_findings)
-                worst_rank = _halt_order.get(worst.value if worst else "", 99)
-                if worst_rank <= _halt_threshold:
-                    _log.info(
-                        "Progressive mode: halting after phase %d — %s finding confirmed "
-                        "(redteam.progressive.halt_on_severity=%s)",
-                        phase, worst.value if worst else "", self._progressive_halt_on_severity,
-                    )
-                    for _, s in indexed_active[batch_start:]:
-                        results.append(
-                            (
-                                [],
-                                (s.title, s.goal_type.value, False),
-                                ScenarioRecord(
-                                    title=s.title,
-                                    goal_type=s.goal_type.value,
-                                    scenario_type=s.scenario_type.value,
-                                    description=s.description,
-                                    impact_score=s.impact_score,
-                                    affected="",
-                                    chain_status="skipped:halted_on_severity",
-                                    had_finding=False,
-                                    steps=[],
-                                ),
-                            )
+                    batch_findings = [f for new_findings, _, _ in batch_results for f in new_findings]
+                    worst = highest_severity(batch_findings)
+                    worst_rank = _halt_order.get(worst.value if worst else "", 99)
+                    if worst_rank <= _halt_threshold:
+                        _log.info(
+                            "Progressive mode: halting after phase %d — %s finding confirmed "
+                            "(redteam.progressive.halt_on_severity=%s)",
+                            phase, worst.value if worst else "", self._progressive_halt_on_severity,
                         )
-                    break
+                        for _, s in indexed_active[batch_start:]:
+                            results.append(
+                                (
+                                    [],
+                                    (s.title, s.goal_type.value, False),
+                                    ScenarioRecord(
+                                        title=s.title,
+                                        goal_type=s.goal_type.value,
+                                        scenario_type=s.scenario_type.value,
+                                        description=s.description,
+                                        impact_score=s.impact_score,
+                                        affected="",
+                                        chain_status="skipped:halted_on_severity",
+                                        had_finding=False,
+                                        steps=[],
+                                    ),
+                                )
+                            )
+                        break
+        else:
+            # Concurrent mode: dispatch in two groups — all non-destructive
+            # scenarios, then all destructive scenarios — instead of a hard
+            # per-attack_phase barrier. The only correctness invariant that
+            # actually matters is that destructive scenarios (cancel, delete,
+            # close, ...) must not run before non-destructive scenarios that
+            # need intact account/data state to probe meaningfully; the
+            # finer 1-9 attack_phase numbering is a reporting/narrative
+            # order (see nuguard/redteam/scenarios/generator.py docstring),
+            # not a data dependency between phases. Gating on every phase
+            # boundary left `self._concurrency` slots mostly idle whenever a
+            # phase had fewer scenarios than the configured concurrency, and
+            # turned any single straggler's retry/backoff tail into a stall
+            # for the whole run instead of just that one scenario.
+            non_destructive = [(idx, s) for idx, s in indexed_active if not _is_destructive_scenario(s)]
+            destructive = [(idx, s) for idx, s in indexed_active if _is_destructive_scenario(s)]
+            _log.info(
+                "Running %d scenarios (%d non-destructive, %d destructive; concurrency=%d, "
+                "guided_concurrency=%d)",
+                len(active), len(non_destructive), len(destructive),
+                self._concurrency, self._guided_concurrency,
+            )
+            for group_name, group in (("non-destructive", non_destructive), ("destructive", destructive)):
+                if not group:
+                    continue
+                _log.info("Dispatching %d %s scenario(s)", len(group), group_name)
+                batch_results = await asyncio.gather(*(_run_and_emit(s, idx) for idx, s in group))
+                results.extend(batch_results)
 
         findings: list[Finding] = []
         executed: list[tuple[str, str, bool]] = []
