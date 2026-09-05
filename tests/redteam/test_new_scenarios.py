@@ -716,6 +716,162 @@ async def test_send_422_heal_skipped_without_llm() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_self_heals_400_with_flat_error_body() -> None:
+    """A hand-rolled HTTP 400 with a flat {"error": "..."} body is also self-healed."""
+    import httpx
+    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.redteam.target.session import AttackSession
+
+    heal_llm = MagicMock()
+    heal_llm.complete = AsyncMock(return_value='{"consumerID": "abc123"}')
+
+    client = TargetAppClient(
+        base_url="http://localhost:9999",
+        chat_payload_key="message",
+        heal_llm=heal_llm,
+    )
+    session = AttackSession(session_id="s1", target_url="http://localhost:9999", chain_id="c1")
+
+    req = httpx.Request("POST", "http://localhost:9999/chat")
+    err_body = json.dumps({"error": "consumerID and message are required"})
+    resp_400 = MagicMock()
+    resp_400.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "400", request=req, response=httpx.Response(400, request=req, text=err_body)
+        )
+    )
+
+    resp_ok = MagicMock()
+    resp_ok.raise_for_status = MagicMock()
+    resp_ok.json = MagicMock(return_value={"response": "ok"})
+
+    with patch.object(
+        client._client, "post", new_callable=AsyncMock, side_effect=[resp_400, resp_ok]
+    ) as post_mock:
+        text, _ = await client.send("hello", session)
+
+    assert text == "ok"
+    assert post_mock.await_count == 2
+    heal_llm.complete.assert_awaited_once()
+    assert "HTTP 400" in heal_llm.complete.await_args.args[0]
+    assert client._chat_payload_extras == {"consumerID": "abc123"}
+    assert client.resolution_notes and "HTTP 400" in client.resolution_notes[-1]
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_send_self_heals_nested_arbitrary_error_body() -> None:
+    """A deliberately nested, non-whitelisted error shape still reaches the LLM."""
+    import httpx
+    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.redteam.target.session import AttackSession
+
+    heal_llm = MagicMock()
+    heal_llm.complete = AsyncMock(return_value='{"consumerID": "abc123"}')
+
+    client = TargetAppClient(
+        base_url="http://localhost:9999",
+        chat_payload_key="message",
+        heal_llm=heal_llm,
+    )
+    session = AttackSession(session_id="s1", target_url="http://localhost:9999", chain_id="c1")
+
+    req = httpx.Request("POST", "http://localhost:9999/chat")
+    err_body = json.dumps({"error": {"details": {"missing": ["consumerID"]}}})
+    resp_400 = MagicMock()
+    resp_400.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "400", request=req, response=httpx.Response(400, request=req, text=err_body)
+        )
+    )
+
+    resp_ok = MagicMock()
+    resp_ok.raise_for_status = MagicMock()
+    resp_ok.json = MagicMock(return_value={"response": "ok"})
+
+    with patch.object(
+        client._client, "post", new_callable=AsyncMock, side_effect=[resp_400, resp_ok]
+    ) as post_mock:
+        text, _ = await client.send("hello", session)
+
+    assert text == "ok"
+    heal_llm.complete.assert_awaited_once()
+    assert "missing" in heal_llm.complete.await_args.args[0]
+    assert client._chat_payload_extras == {"consumerID": "abc123"}
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_send_heal_rejected_by_llm_for_non_schema_400() -> None:
+    """The LLM (not a regex) rejects a non-schema 400 by returning {} — no retry."""
+    import httpx
+    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.redteam.target.session import AttackSession
+
+    heal_llm = MagicMock()
+    heal_llm.complete = AsyncMock(return_value="{}")
+
+    client = TargetAppClient(
+        base_url="http://localhost:9999",
+        chat_payload_key="message",
+        heal_llm=heal_llm,
+    )
+    session = AttackSession(session_id="s1", target_url="http://localhost:9999", chain_id="c1")
+
+    req = httpx.Request("POST", "http://localhost:9999/chat")
+    err_body = json.dumps({"error": "unauthorized"})
+    resp_400 = MagicMock()
+    resp_400.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "400", request=req, response=httpx.Response(400, request=req, text=err_body)
+        )
+    )
+
+    with patch.object(client._client, "post", new_callable=AsyncMock, return_value=resp_400) as post_mock:
+        text, _ = await client.send("hello", session)
+
+    assert text == "[HTTP 400]"
+    heal_llm.complete.assert_awaited_once()
+    assert post_mock.await_count == 1
+    assert client._chat_payload_extras == {}
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_send_skips_llm_call_for_empty_error_body() -> None:
+    """An empty error body short-circuits before ever calling the LLM."""
+    import httpx
+    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.redteam.target.session import AttackSession
+
+    heal_llm = MagicMock()
+    heal_llm.complete = AsyncMock(return_value="{}")
+
+    client = TargetAppClient(
+        base_url="http://localhost:9999",
+        chat_payload_key="message",
+        heal_llm=heal_llm,
+    )
+    session = AttackSession(session_id="s1", target_url="http://localhost:9999", chain_id="c1")
+
+    req = httpx.Request("POST", "http://localhost:9999/chat")
+    resp_400 = MagicMock()
+    resp_400.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "400", request=req, response=httpx.Response(400, request=req, text="")
+        )
+    )
+
+    with patch.object(client._client, "post", new_callable=AsyncMock, return_value=resp_400) as post_mock:
+        text, _ = await client.send("hello", session)
+
+    assert text == "[HTTP 400]"
+    heal_llm.complete.assert_not_awaited()
+    assert post_mock.await_count == 1
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_invoke_endpoint_retries_429_then_succeeds() -> None:
     """invoke_endpoint() retries HTTP 429 responses before returning."""
     from nuguard.redteam.target.client import TargetAppClient

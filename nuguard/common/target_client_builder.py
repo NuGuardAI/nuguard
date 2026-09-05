@@ -366,10 +366,10 @@ def build_target_app_client(
         explicitly_set: Set of config field names that were *explicitly* provided
             by the user (e.g. Pydantic ``model_fields_set``).  Discovery only
             overrides values that are *not* in this set.
-        heal_llm: Optional LLM client used to self-heal a 422 schema-validation
-            error by inferring the missing request field(s) from the error
-            body (see ``TargetAppClient._attempt_422_heal``). None disables
-            self-healing.
+        heal_llm: Optional LLM client used to self-heal a schema-validation
+            error (HTTP 400 or 422) by inferring the missing request field(s)
+            from the error body (see ``TargetAppClient._attempt_schema_heal``).
+            None disables self-healing.
 
     Returns:
         A fully configured :class:`TargetAppClient` instance.  Check
