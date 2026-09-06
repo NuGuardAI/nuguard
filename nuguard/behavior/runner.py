@@ -2322,6 +2322,7 @@ class BehaviorRunner:
         if pre_scan_profile is not None:
             # Caller already ran discovery — reuse the profile, skip HTTP round-trip.
             self._pre_scan_profile = pre_scan_profile
+            self._judge.set_profile(pre_scan_profile)
             _console.print(
                 f"  [bold cyan]Pre-scan discovery (cached):[/bold cyan] "
                 f"name={pre_scan_profile.customer_name!r}  ids={pre_scan_profile.ids}"
@@ -2354,6 +2355,7 @@ class BehaviorRunner:
                 DiscoveryRequest(use_case=_use_case or "", max_turns=2, fallback_endpoints=_sbom_fallbacks[:4]),
             )
             self._pre_scan_profile = _outcome.profile
+            self._judge.set_profile(_outcome.profile)
             for _disc_note in _outcome.notes:
                 _console.print(f"  [dim]{_disc_note}[/dim]")
             _log.info(

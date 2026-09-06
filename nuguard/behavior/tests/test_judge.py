@@ -16,6 +16,7 @@ from nuguard.behavior.judge import (
     detect_missing_precondition_refusal,
 )
 from nuguard.behavior.models import BehaviorScenario, BehaviorScenarioType, IntentProfile
+from nuguard.common.discovery import DiscoveredProfile
 
 
 def _make_scenario(
@@ -153,6 +154,38 @@ def test_judge_structural_fallback_no_llm():
     judge = BehaviorJudge(llm_client=None, intent=_make_intent())
     # sync call won't throw — placeholder test for sync construction
     assert judge._llm is None
+
+
+def test_auth_context_block_empty_without_profile():
+    judge = BehaviorJudge(llm_client=None, intent=_make_intent())
+    assert judge._auth_context_block() == ""
+
+
+def test_auth_context_block_empty_for_empty_profile():
+    judge = BehaviorJudge(llm_client=None, intent=_make_intent())
+    judge.set_profile(DiscoveredProfile())
+    assert judge._auth_context_block() == ""
+
+
+def test_set_profile_surfaces_identity_in_judge_prompt():
+    """Regression: the judge must know the session is authenticated as a real
+    user, so it doesn't score a correct personalized answer (returning that
+    user's own real data) as fabrication/hallucination just because the raw
+    prompt text alone doesn't mention that data."""
+    judge = BehaviorJudge(llm_client=None, intent=_make_intent())
+    judge.set_profile(DiscoveredProfile(customer_name="Asha Patel", ids=["6a72f076"], source="live"))
+    scenario = _make_scenario()
+    prompt = judge._build_judge_prompt(
+        turn=1,
+        prompt="What information do you have about me?",
+        response="Here is your profile, Asha Patel...",
+        scenario=scenario,
+        expected_agents=[],
+        expected_tools=[],
+    )
+    assert "Authenticated Session" in prompt
+    assert "Asha Patel" in prompt
+    assert "NOT hallucination or fabrication" in prompt
 
 
 @pytest.mark.asyncio
