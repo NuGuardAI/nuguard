@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field, SecretStr, field_validator, model_validat
 
 from nuguard.common.auth import AuthConfig, LoginFlowConfig
 from nuguard.common.logging import get_logger
+from nuguard.common.run_checkpoint import PartialRunError, RunCheckpoint
 from nuguard.common.stream_runtime import StreamRunHandle, create_stream_handle
 from nuguard.common.streaming_models import (
     StreamDeltaPayload,
@@ -41,6 +42,7 @@ from nuguard.models.health_report import TargetHealthReport
 from nuguard.models.token_usage import TokenUsage
 from nuguard.redteam.executor.orchestrator import (
     RedteamOrchestrator,
+    _dedup_findings,
     finding_matches_scenario_filter,
 )
 from nuguard.redteam.target.canary import CanaryConfig
@@ -210,6 +212,11 @@ class RedteamRunRequest(BaseModel):
     mode: str = "concurrent"
     progressive_halt_on_severity: str = "none"
     probe_llm: bool = False
+    resume_from: str | None = None
+    """Path to a checkpoint file written by a previous aborted run (see
+    ``prompt_cache_dir``). Already-completed scenarios are skipped and the
+    final result combines the checkpointed and newly-run scenarios/findings.
+    """
 
 
 class RedteamRunResult(BaseModel):
@@ -231,6 +238,7 @@ class RedteamRunResult(BaseModel):
         "aborted_endpoint_unreachable",
         "inconclusive_target_errors",
         "no_findings",
+        "partial",
     ]
     config_notes: list[str] = Field(default_factory=list)
     llm_executive_summary: str | None = None
@@ -322,6 +330,39 @@ def _catalog_coverage_to_dict(report: "CoverageReport | None") -> dict[str, Any]
     return d
 
 
+def _build_partial_result(orchestrator: RedteamOrchestrator, exc: PartialRunError) -> RedteamRunResult:
+    """Build a JSON-safe partial :class:`RedteamRunResult` from a :class:`PartialRunError`.
+
+    Used when ``orchestrator.run()`` aborted after >=1 scenario completed —
+    see :meth:`RedteamOrchestrator.run` and issue #508. Remediation synthesis
+    and the LLM coding brief are skipped (best-effort extras, not worth the
+    extra LLM calls on an already-failed run); everything else mirrors the
+    success-path result construction below.
+    """
+    payload = exc.partial_payload
+    findings = _dedup_findings([Finding(**f) for f in payload.get("findings", [])])
+    coverage_tracker = getattr(orchestrator, "_coverage_tracker", None)
+    return RedteamRunResult(
+        findings=findings,
+        scenario_records=payload.get("scenario_records", []),
+        scan_outcome="partial",
+        config_notes=list(orchestrator.config_notes),
+        llm_executive_summary=orchestrator.llm_executive_summary,
+        llm_coding_brief=None,
+        scenarios_run=orchestrator.scenarios_run,
+        input_tokens_used=orchestrator.input_tokens_used,
+        output_tokens_used=orchestrator.output_tokens_used,
+        token_usage=orchestrator.token_usage,
+        health_report=getattr(orchestrator, "health_report", None),
+        resolved_chat_path=orchestrator.resolved_chat_path,
+        resolved_chat_path_source=orchestrator.resolved_chat_path_source,
+        catalog_coverage=_catalog_coverage_to_dict(getattr(orchestrator, "catalog_coverage", None)),
+        coverage_tracker=coverage_tracker.to_dict() if coverage_tracker is not None else None,
+        remediation_plan=[],
+        security_invariants=[i.model_dump() for i in getattr(orchestrator, "security_invariants", [])],
+    )
+
+
 async def run_redteam(
     request: RedteamRunRequest,
     *,
@@ -347,9 +388,21 @@ async def run_redteam(
     the CLI file untouched by this change).
     """
     _log.debug("run_redteam: target_url=%s profile=%s", request.target_url, request.profile)
+    from pathlib import Path as _Path  # noqa: PLC0415
+
     from nuguard.policy.public_api import normalize_cognitive_policy  # noqa: PLC0415
 
     normalized_policy = normalize_cognitive_policy(policy)
+
+    _resume_checkpoint: dict[str, Any] | None = None
+    _resume_checkpoint_path: "Path | None" = None
+    if request.resume_from:
+        _resume_checkpoint_path = _Path(request.resume_from)
+        _checkpoint_dir = prompt_cache_dir or _resume_checkpoint_path.parent
+        _resume_checkpoint = RunCheckpoint(_checkpoint_dir, "redteam").load(_resume_checkpoint_path)
+        if _resume_checkpoint is None:
+            raise ValueError(f"--resume checkpoint not found or unreadable: {request.resume_from}")
+
     orchestrator = RedteamOrchestrator(
         sbom=sbom,
         target_url=request.target_url,
@@ -403,10 +456,16 @@ async def run_redteam(
         progressive_halt_on_severity=request.progressive_halt_on_severity,
         progress_sink=_progress_sink,
         probe_llm=request.probe_llm,
+        resume_checkpoint=_resume_checkpoint,
+        resume_checkpoint_path=_resume_checkpoint_path,
     )
 
     try:
-        findings = await orchestrator.run()
+        try:
+            findings = await orchestrator.run()
+        except PartialRunError as exc:
+            exc.partial_result = _build_partial_result(orchestrator, exc)
+            raise
     finally:
         try:
             from litellm.llms.custom_httpx.async_client_cleanup import (
@@ -581,6 +640,30 @@ async def run_redteam_stream(
             )
             controller.set_final_result(RedteamExecutionResult.model_validate(result.model_dump(mode="json")))
         except asyncio.CancelledError:
+            raise
+        except PartialRunError as exc:
+            partial = exc.partial_result
+            # event_type stays "failed" (not "partial") — _StreamController.events()
+            # only closes the stream on "completed"/"failed" (nuguard/common/stream_runtime.py);
+            # "partial" is carried in the payload's status field instead, and the
+            # final_result below is still the salvaged partial RedteamExecutionResult.
+            controller.publish_terminal(
+                event_type="failed",
+                phase="finalize",
+                payload=StreamTerminalPayload(
+                    status="partial",
+                    summary={
+                        "scan_outcome": "partial",
+                        "findings_count": len(partial.findings) if partial is not None else 0,
+                        "checkpoint_path": str(exc.checkpoint_path) if exc.checkpoint_path else None,
+                        "error": str(exc.cause),
+                    },
+                ).model_dump(mode="json"),
+            )
+            if partial is not None:
+                controller.set_final_result(
+                    RedteamExecutionResult.model_validate(partial.model_dump(mode="json"))
+                )
             raise
 
     return create_stream_handle(run_id, _worker)

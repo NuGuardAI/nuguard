@@ -58,6 +58,16 @@ from nuguard.common.rate_limit import (
     is_rate_limited,
     scenario_rate_limit_backoff,
 )
+from nuguard.common.run_checkpoint import (
+    PartialRunError,
+    RunCheckpoint,
+    behavior_result_signature,
+    behavior_scenario_obj_signature,
+    validate_fingerprint,
+)
+from nuguard.common.run_checkpoint import (
+    fingerprint as _checkpoint_fingerprint,
+)
 from nuguard.config import BehaviorConfig
 from nuguard.redteam.llm_engine.refusal_patterns import APP_TRANSIENT_ERROR_PATTERNS
 
@@ -716,6 +726,15 @@ class BehaviorRunner:
 
         self._judge = BehaviorJudge(llm_client=llm_client, intent=intent, judge_cache=judge_cache)
         self._judge_cache = judge_cache
+        # Checkpoint/resume support (issue #508) — see nuguard.common.run_checkpoint.
+        # Loaded lazily in run() (from config.resume/prompt_cache_dir) once the
+        # effective sbom/policy fingerprint is known. scenario_results/all_findings
+        # accumulate on the instance (mirroring RedteamOrchestrator.scenario_records)
+        # so a PartialRunError raised mid-run can still report completed progress.
+        self._checkpoint: "RunCheckpoint | None" = None
+        self._checkpoint_path: "Path | None" = None
+        self._completed_signatures: set[str] = set()
+        self.scenario_results: list[ScenarioResult] = []
         self._auth_session: Any = None
         self._coverage_mapping_diagnostics: dict[str, Any] = {}
         # Escalation-ladder state (behavior.escalate_on_refusal): component name
@@ -2106,7 +2125,60 @@ class BehaviorRunner:
 
         return results
 
+    def _checkpoint_payload(self, *, status: str, abort_reason: str | None = None) -> dict[str, Any]:
+        """Build the JSON-safe checkpoint payload for the current in-progress state."""
+        return {
+            "cache_key": _checkpoint_fingerprint(self._sbom, self._policy),
+            "status": status,
+            "abort_reason": abort_reason,
+            "completed_signatures": sorted(
+                {behavior_result_signature(r) for r in self.scenario_results}
+            ),
+            "scenario_results": [r.model_dump(mode="json") for r in self.scenario_results],
+            "run_meta": {"target": getattr(self._config, "target", "")},
+        }
+
+    def _save_checkpoint(self, *, status: str = "in_progress", abort_reason: str | None = None) -> None:
+        if self._checkpoint is None or self._checkpoint_path is None:
+            return
+        self._checkpoint.save(self._checkpoint_path, self._checkpoint_payload(status=status, abort_reason=abort_reason))
+
     async def run(
+        self,
+        scenarios: list[BehaviorScenario],
+        pre_scan_profile: "DiscoveredProfile | None" = None,
+    ) -> BehaviorRunResult:
+        """Run all scenarios, salvaging partial progress into a checkpoint on failure.
+
+        Delegates to :meth:`_run_impl` for the actual run. On success, any
+        configured checkpoint file is deleted. On any exception, a checkpoint
+        is written with whatever ``scenario_results`` were accumulated so far,
+        and :class:`~nuguard.common.run_checkpoint.PartialRunError` is raised
+        (chained via ``from exc``) so the caller can persist/report a partial
+        result instead of losing all progress (see issue #508).
+        """
+        try:
+            result = await self._run_impl(scenarios, pre_scan_profile)
+        except PartialRunError:
+            raise
+        except (Exception, asyncio.CancelledError) as exc:
+            if self.scenario_results:
+                # Only worth a checkpoint (and a PartialRunError) when at least
+                # one scenario actually completed — an abort before that point
+                # (e.g. client/auth bootstrap failing) has nothing to resume from.
+                self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__)
+                raise PartialRunError(
+                    exc,
+                    partial_payload=self._checkpoint_payload(status="aborted", abort_reason=type(exc).__name__),
+                    checkpoint_path=self._checkpoint_path,
+                ) from exc
+            raise
+        else:
+            if self._checkpoint is not None and self._checkpoint_path is not None:
+                self._checkpoint.delete(self._checkpoint_path)
+            return result
+
+    async def _run_impl(
         self,
         scenarios: list[BehaviorScenario],
         pre_scan_profile: "DiscoveredProfile | None" = None,
@@ -2323,6 +2395,35 @@ class BehaviorRunner:
 
         policy_evaluator = self._build_policy_evaluator()
 
+        # Checkpoint/resume setup (issue #508) — see nuguard.common.run_checkpoint.
+        # Reuses prompt_cache_dir (same convention as BehaviorPromptCache) so
+        # checkpointing is active whenever that directory is configured.
+        _restored_results: list[ScenarioResult] = []
+        _cache_dir = str(getattr(self._config, "prompt_cache_dir", "") or "")
+        if _cache_dir:
+            from pathlib import Path as _Path  # noqa: PLC0415
+            self._checkpoint = RunCheckpoint(_Path(_cache_dir), "behavior")
+            _ckpt_key = _checkpoint_fingerprint(self._sbom, self._policy)
+            self._checkpoint_path = self._checkpoint.path_for(_ckpt_key)
+        _resume_path = getattr(self._config, "resume", None)
+        if _resume_path:
+            from pathlib import Path as _Path  # noqa: PLC0415
+            _resume_dir = _Path(_cache_dir) if _cache_dir else _Path(_resume_path).parent
+            _resume_checkpoint = RunCheckpoint(_resume_dir, "behavior").load(_Path(_resume_path))
+            if _resume_checkpoint is None:
+                raise ValueError(f"--resume checkpoint not found or unreadable: {_resume_path}")
+            validate_fingerprint(_resume_checkpoint, sbom=self._sbom, policy=self._policy)
+            self._checkpoint_path = _Path(_resume_path)
+            _restored_results = [
+                ScenarioResult(**r) for r in _resume_checkpoint.get("scenario_results", [])
+            ]
+            self.scenario_results = list(_restored_results)
+            self._completed_signatures = set(_resume_checkpoint.get("completed_signatures", []))
+            _log.info(
+                "BehaviorRunner: resuming from checkpoint — %d scenario(s) already completed",
+                len(_restored_results),
+            )
+
         all_findings: list[dict] = []
         all_turn_records: list[TurnRecord] = []
         scenario_results: list[ScenarioResult] = []
@@ -2350,6 +2451,20 @@ class BehaviorRunner:
             _log.info(
                 "BehaviorRunner.run: goal dedup reduced scenarios %d → %d",
                 pre_goal_dedup, len(scenarios),
+            )
+
+        # Resume (issue #508): drop scenarios already completed in a prior,
+        # aborted run — matched by a stable signature since BehaviorScenario's
+        # own scenario_id is a fresh UUID on every generation pass.
+        if self._completed_signatures:
+            _pre_resume_filter = len(scenarios)
+            scenarios = [
+                s for s in scenarios
+                if behavior_scenario_obj_signature(s) not in self._completed_signatures
+            ]
+            _log.info(
+                "BehaviorRunner: resume skipping %d already-completed scenario(s) (%d remaining)",
+                _pre_resume_filter - len(scenarios), len(scenarios),
             )
 
         sem = asyncio.Semaphore(concurrency)
@@ -2399,7 +2514,14 @@ class BehaviorRunner:
                     for _pp_name, _pp_value in self._bootstrapped_path_params.items():
                         _scenario_client.set_path_param(_pp_name, _pp_value)
                 try:
-                    result = await self._run_scenario(scenario, _scenario_client, policy_evaluator)  # type: ignore[arg-type]
+                    # Per-scenario wall-clock timeout (issue #508) — mirrors redteam's
+                    # scenario_timeout. asyncio.wait_for raises TimeoutError, already
+                    # caught by the `except Exception` below, which logs and returns
+                    # None so a single hung scenario can't stall the whole gather().
+                    result = await asyncio.wait_for(
+                        self._run_scenario(scenario, _scenario_client, policy_evaluator),  # type: ignore[arg-type]
+                        timeout=float(getattr(self._config, "scenario_timeout", 180.0)),
+                    )
                     # Check if the first verdict was a first-turn 405 failure.
                     _first_verdict = (result.verdicts if result else None or [][:1])
                     _first_v = _first_verdict[0] if _first_verdict else None
@@ -2450,6 +2572,13 @@ class BehaviorRunner:
             async with progress_lock:
                 completed += 1
                 completed_count = completed
+                if result is not None:
+                    # Checkpoint (issue #508): append as each scenario completes
+                    # (not just once after the whole gather() returns) so a
+                    # crash/timeout later in the run still leaves a resumable
+                    # file on disk with every scenario finished so far.
+                    self.scenario_results.append(result)
+                    self._save_checkpoint(status="in_progress")
             self._emit_progress(
                 {
                     "kind": "scenario_finished",
@@ -2469,6 +2598,15 @@ class BehaviorRunner:
             return result
 
         raw_results = await asyncio.gather(*(_run_and_emit(i, s) for i, s in enumerate(scenarios)))
+
+        # Resume (issue #508): fold checkpoint-restored results into the same
+        # aggregation pass below so has_critical/has_high/gap-bucketing and the
+        # final scenario_results list cover the FULL combined set in one pass —
+        # no separate merge step needed. scenario_by_id has no entry for a
+        # restored scenario_id (its original BehaviorScenario is gone), so
+        # _resolve_affected_component(None) falls back to "unknown" for those —
+        # an accepted precision loss for resumed-run finding attribution.
+        raw_results = [*_restored_results, *raw_results]
 
         seen_findings: set[tuple[str, str, str]] = set()
         raw_gap_observations = 0

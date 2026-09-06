@@ -338,6 +338,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_capability_discovery"] = bool(redteam["capability_discovery"])
     if "prompt_cache_dir" in redteam:
         flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
+    if "resume" in redteam and redteam["resume"] is not None:
+        flat["redteam_resume"] = str(redteam["resume"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
         flat["redteam_app_env"] = {
             str(k): str(v)
@@ -802,6 +804,19 @@ class BehaviorConfig(BaseModel):
         description=(
             "Directory for the cross-run judge verdict cache. "
             "Empty string disables caching."
+        ),
+    )
+    scenario_timeout: float = Field(
+        default=180.0,
+        gt=0.0,
+        description="Per-scenario wall-clock timeout in seconds.",
+    )
+    resume: str | None = Field(
+        default=None,
+        description=(
+            "Path to a checkpoint file written by a previous aborted run "
+            "(see prompt_cache_dir) — already-completed scenarios are skipped "
+            "and the final report combines the checkpointed and newly-run results."
         ),
     )
     max_scenarios: int | None = Field(
@@ -1278,6 +1293,16 @@ class NuGuardConfig(BaseSettings):
             "Include full per-scenario traces (inputs, outputs, selection rationale, "
             "risk scores) in the redteam report (yaml: redteam.verbose). "
             "Also enabled by NUGUARD_REDTEAM_VERBOSE=1 env var."
+        ),
+    )
+    redteam_resume: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("NUGUARD_REDTEAM_RESUME", "redteam_resume"),
+        description=(
+            "Path to a checkpoint file written by a previous aborted run "
+            "(yaml: redteam.resume, env: NUGUARD_REDTEAM_RESUME). Already-completed "
+            "scenarios are skipped and the final report combines the checkpointed "
+            "and newly-run results."
         ),
     )
     redteam_app_env: dict[str, str] = Field(

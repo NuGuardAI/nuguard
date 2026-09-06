@@ -17,6 +17,7 @@ import typer
 from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.cli.report_meta import ReportMeta
 from nuguard.common.logging import get_logger
+from nuguard.common.run_checkpoint import PartialRunError
 
 _log = get_logger(__name__)
 
@@ -123,6 +124,15 @@ def redteam(
         "-v/-V",
         help="Print detailed turn traces.  Overrides verbose setting in nuguard.yaml.",
     ),
+    resume: Optional[Path] = typer.Option(
+        None,
+        "--resume",
+        help=(
+            "Path to a checkpoint file from a previous aborted run (see "
+            "prompt_cache_dir) — already-completed scenarios are skipped and the "
+            "final report combines the checkpointed and newly-run results."
+        ),
+    ),
 ) -> None:
     """Run dynamic red-team testing against a live AI application.
 
@@ -184,6 +194,7 @@ def redteam(
     effective_guided_concurrency = guided_concurrency if guided_concurrency is not None else cfg.redteam_guided_concurrency
     effective_guided_mutation_mode = cfg.redteam_guided_mutation_mode
     effective_verbose = verbose if verbose is not None else cfg.redteam_verbose
+    effective_resume = str(resume) if resume is not None else cfg.redteam_resume
     # minimal profile: disable guided (bounded to 1 static chain) and strip turn delay.
     effective_turn_delay = 0.0 if effective_profile == "minimal" else cfg.redteam_turn_delay_seconds
     if effective_profile == "minimal":
@@ -322,8 +333,10 @@ def redteam(
         mode=cfg.redteam_mode,
         progressive_halt_on_severity=cfg.redteam_progressive_halt_on_severity,
         probe_llm=cfg.probe_llm_enabled,
+        resume=effective_resume,
     )
 
+    _partial_run = False
     try:
         (
             findings,
@@ -339,6 +352,28 @@ def redteam(
             resolved_chat_path_source,
             remediation_plan,
         ) = asyncio.run(runner)  # type: ignore[misc]
+    except PartialRunError as exc:
+        partial = exc.partial_result
+        typer.echo(
+            f"\n⚠ Run aborted: {exc.cause}\n"
+            f"  Checkpoint saved: {exc.checkpoint_path}\n"
+            f"  Resume with: nuguard redteam --resume {exc.checkpoint_path} "
+            "(plus your usual --sbom/--target/--config flags)\n",
+            err=True,
+        )
+        if partial is None:
+            raise typer.Exit(code=1) from exc
+        _partial_run = True
+        (
+            findings, scenario_records, scan_outcome, config_notes, catalog_coverage,
+            input_tokens_used, output_tokens_used, coverage_tracker, token_usage,
+            resolved_chat_path, resolved_chat_path_source, remediation_plan,
+        ) = (
+            partial.findings, partial.scenario_records, partial.scan_outcome, partial.config_notes,
+            partial.catalog_coverage, partial.input_tokens_used, partial.output_tokens_used,
+            partial.coverage_tracker, partial.token_usage, partial.resolved_chat_path,
+            partial.resolved_chat_path_source, partial.remediation_plan,
+        )
     except Exception as exc:
         from nuguard.common.errors import AuthError, TargetUnavailableError  # noqa: PLC0415
         if isinstance(exc, TargetUnavailableError):
@@ -482,6 +517,8 @@ def redteam(
 
     # Exit code
     _fail_on_severity(findings, effective_fail_on)
+    if _partial_run:
+        raise typer.Exit(code=1)
 
 
 def _resolve_target_url(sbom_doc: object, launch: bool = False) -> str | None:
@@ -558,6 +595,7 @@ async def _run_redteam(
     mode: str = "concurrent",
     progressive_halt_on_severity: str = "none",
     probe_llm: bool = False,
+    resume: str | None = None,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -701,6 +739,7 @@ async def _run_redteam(
                 mode=mode,
                 progressive_halt_on_severity=progressive_halt_on_severity,
                 probe_llm=probe_llm,
+                resume=resume,
             )
 
     # App already running — just scan
@@ -816,6 +855,7 @@ async def _run_orchestrator(  # noqa: C901
     mode: str = "concurrent",
     progressive_halt_on_severity: str = "none",
     probe_llm: bool = False,
+    resume: str | None = None,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from pydantic import SecretStr
 
@@ -893,6 +933,7 @@ async def _run_orchestrator(  # noqa: C901
         mode=mode,
         progressive_halt_on_severity=progressive_halt_on_severity,
         probe_llm=probe_llm,
+        resume_from=resume,
     )
 
     result = await run_redteam(

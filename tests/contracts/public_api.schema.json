@@ -1081,6 +1081,26 @@
             "title": "Judge Cache Dir",
             "type": "string"
           },
+          "scenario_timeout": {
+            "default": 180.0,
+            "description": "Per-scenario wall-clock timeout in seconds.",
+            "exclusiveMinimum": 0.0,
+            "title": "Scenario Timeout",
+            "type": "number"
+          },
+          "resume": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path to a checkpoint file written by a previous aborted run (see prompt_cache_dir) \u2014 already-completed scenarios are skipped and the final report combines the checkpointed and newly-run results.",
+            "title": "Resume"
+          },
           "max_scenarios": {
             "anyOf": [
               {
@@ -2417,6 +2437,26 @@
             "description": "Directory for the cross-run judge verdict cache. Empty string disables caching.",
             "title": "Judge Cache Dir",
             "type": "string"
+          },
+          "scenario_timeout": {
+            "default": 180.0,
+            "description": "Per-scenario wall-clock timeout in seconds.",
+            "exclusiveMinimum": 0.0,
+            "title": "Scenario Timeout",
+            "type": "number"
+          },
+          "resume": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path to a checkpoint file written by a previous aborted run (see prompt_cache_dir) \u2014 already-completed scenarios are skipped and the final report combines the checkpointed and newly-run results.",
+            "title": "Resume"
           },
           "max_scenarios": {
             "anyOf": [
@@ -3898,7 +3938,8 @@
       "status": {
         "enum": [
           "completed",
-          "failed"
+          "failed",
+          "partial"
         ],
         "title": "Status",
         "type": "string"
@@ -6132,7 +6173,8 @@
           "aborted_target_unavailable",
           "aborted_endpoint_unreachable",
           "inconclusive_target_errors",
-          "no_findings"
+          "no_findings",
+          "partial"
         ],
         "title": "Scan Outcome",
         "type": "string"
@@ -6808,6 +6850,18 @@
         "default": false,
         "title": "Probe Llm",
         "type": "boolean"
+      },
+      "resume_from": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Resume From"
       }
     },
     "required": [
@@ -7536,7 +7590,8 @@
           "aborted_target_unavailable",
           "aborted_endpoint_unreachable",
           "inconclusive_target_errors",
-          "no_findings"
+          "no_findings",
+          "partial"
         ],
         "title": "Scan Outcome",
         "type": "string"

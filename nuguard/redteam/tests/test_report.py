@@ -116,6 +116,18 @@ def test_to_json_diagnostics_turn_cap_enforced() -> None:
     assert traces[0]["turns_truncated"] == 1
 
 
+def test_to_json_renders_partial_scan_outcome() -> None:
+    """A run salvaged via PartialRunError (issue #508) reports scan_outcome='partial'."""
+    findings = _sample_findings()
+    records = _sample_scenario_records()
+
+    payload = json.loads(
+        to_json(findings, meta=ReportMeta(), scan_outcome="partial", scenario_records=records)
+    )
+
+    assert payload["scan_outcome"] == "partial"
+
+
 def _sample_remediation_plan() -> list:
     from nuguard.remediation.models import RemediationArtefact, RemediationArtefactType
 

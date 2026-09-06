@@ -5,7 +5,7 @@ import asyncio
 import hashlib
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, cast
 
@@ -23,6 +23,15 @@ if TYPE_CHECKING:
 from nuguard.common.console import print_turn as _common_print_turn
 from nuguard.common.id_extractor import extract_customer_name, extract_ids
 from nuguard.common.logging import get_logger
+from nuguard.common.run_checkpoint import (
+    PartialRunError,
+    RunCheckpoint,
+    scenario_record_signature,
+    validate_fingerprint,
+)
+from nuguard.common.run_checkpoint import (
+    fingerprint as _checkpoint_fingerprint,
+)
 from nuguard.models.exploit_chain import ExploitChain, GoalType, ScenarioType
 from nuguard.models.finding import Finding, Severity
 from nuguard.models.policy import CognitivePolicy
@@ -238,6 +247,12 @@ class ScenarioRecord:
     duration_s: float = 0.0      # wall-clock seconds for the full scenario
     turns_used: int = 0          # turns/steps actually executed
     turns_budget: int = 0        # max turns/steps available (from scenario definition)
+    # Stable catalog identity (e.g. "C01"), when this scenario came from the
+    # attack catalog rather than the legacy SBOM-driven builders — mirrors
+    # AttackScenario.catalog_id so scenario_record_signature() (see
+    # nuguard.common.run_checkpoint) matches across a resumed run's
+    # regenerated AttackScenario objects.
+    catalog_id: str | None = None
 
 
 def _classify_step_transport(response: str, http_status_code: int | None) -> str:
@@ -663,6 +678,8 @@ class RedteamOrchestrator:
         progressive_halt_on_severity: str = "none",
         progress_sink: Callable[[dict[str, Any]], None] | None = None,
         probe_llm: bool = False,
+        resume_checkpoint: dict[str, Any] | None = None,
+        resume_checkpoint_path: Path | None = None,
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
@@ -780,6 +797,20 @@ class RedteamOrchestrator:
         self._emitted_finding_keys: set[tuple[str, str, str]] = set()
         # Verbose per-scenario records — populated regardless of whether a finding was raised
         self.scenario_records: list[ScenarioRecord] = []
+        # Raw (pre-dedup) findings accumulated across passes — mirrors scenario_records'
+        # incremental-accumulation-on-self pattern so a PartialRunError raised mid-run
+        # can still report whatever findings were confirmed before the abort (see
+        # nuguard.common.run_checkpoint and issue #508).
+        self.findings: list[Finding] = []
+        # Checkpoint/resume support (issue #508) — see nuguard.common.run_checkpoint.
+        # ``_checkpoint``/``_checkpoint_path`` are set in run() once the effective
+        # policy (needed for the fingerprint) is known; ``_resume_checkpoint`` is the
+        # raw dict loaded from disk by the caller (run_redteam) for a ``--resume``.
+        self._resume_checkpoint: dict[str, Any] | None = resume_checkpoint
+        self._resume_checkpoint_path: Path | None = resume_checkpoint_path
+        self._checkpoint: "RunCheckpoint | None" = None
+        self._checkpoint_path: Path | None = None
+        self._completed_signatures: set[str] = set()
         # Node lookup: str(id) → "name (TYPE)" — use str() so UUID objects and
         # string IDs both resolve correctly against scenario.target_node_ids.
         # For narrative/diagnostic text only (log lines, sbom_path_descriptions) —
@@ -938,7 +969,86 @@ class RedteamOrchestrator:
                 budget,
             )
 
+    def _checkpoint_payload(
+        self,
+        *,
+        status: str,
+        abort_reason: str | None = None,
+        records: "list[ScenarioRecord] | None" = None,
+        findings: "list[Finding] | None" = None,
+    ) -> dict[str, Any]:
+        """Build the JSON-safe checkpoint payload for the given (or current) run state.
+
+        *records*/*findings* let a caller checkpoint an in-flight batch's
+        results without first mutating ``self.scenario_records``/``self.findings``
+        (see the per-batch save in ``_run_scenarios``) — they default to the
+        current accumulated instance state.
+        """
+        _records = self.scenario_records if records is None else records
+        _findings = self.findings if findings is None else findings
+        return {
+            "cache_key": _checkpoint_fingerprint(self._sbom, self._effective_policy),
+            "status": status,
+            "abort_reason": abort_reason,
+            "completed_signatures": sorted({scenario_record_signature(r) for r in _records}),
+            "scenario_records": [asdict(r) for r in _records],
+            "findings": [f.model_dump(mode="json") for f in _findings],
+            "run_meta": {
+                "target_url": self._target_url,
+                "config_notes": list(self.config_notes),
+            },
+        }
+
+    def _save_checkpoint(
+        self,
+        *,
+        status: str = "in_progress",
+        abort_reason: str | None = None,
+        records: "list[ScenarioRecord] | None" = None,
+        findings: "list[Finding] | None" = None,
+    ) -> None:
+        if self._checkpoint is None or self._checkpoint_path is None:
+            return
+        self._checkpoint.save(
+            self._checkpoint_path,
+            self._checkpoint_payload(status=status, abort_reason=abort_reason, records=records, findings=findings),
+        )
+
     async def run(self) -> list[Finding]:
+        """Run the full scan, salvaging partial progress into a checkpoint on failure.
+
+        Delegates to :meth:`_run_impl` for the actual scan. On success, any
+        configured checkpoint file is deleted (a completed run has no further
+        use for it). On any exception — including a scenario-level abort that
+        somehow escapes ``_run_scenarios``' own per-scenario handling — a
+        checkpoint is written with whatever ``scenario_records``/``findings``
+        were accumulated so far, and :class:`~nuguard.common.run_checkpoint.PartialRunError`
+        is raised (chained via ``from exc``) so the caller can choose to
+        persist/report a partial result instead of losing all progress
+        (see issue #508).
+        """
+        try:
+            findings = await self._run_impl()
+        except PartialRunError:
+            raise
+        except (Exception, asyncio.CancelledError) as exc:
+            if self.scenario_records:
+                # Only worth a checkpoint (and a PartialRunError) when at least
+                # one scenario actually completed — an abort before that point
+                # (e.g. auth bootstrap failing) has nothing to resume from.
+                self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__)
+                raise PartialRunError(
+                    exc,
+                    partial_payload=self._checkpoint_payload(status="aborted", abort_reason=type(exc).__name__),
+                    checkpoint_path=self._checkpoint_path,
+                ) from exc
+            raise
+        else:
+            if self._checkpoint is not None and self._checkpoint_path is not None:
+                self._checkpoint.delete(self._checkpoint_path)
+            return findings
+
+    async def _run_impl(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
         self._emitted_finding_keys.clear()
         _log.info(
@@ -1208,6 +1318,24 @@ class RedteamOrchestrator:
             effective_policy = _policy_from_controls(self._policy_controls)
         self._effective_policy = effective_policy
 
+        # Checkpoint/resume setup (issue #508) — now that the effective policy is
+        # known, the fingerprint used to name/validate checkpoint files is stable.
+        if self._prompt_cache_dir is not None:
+            self._checkpoint = RunCheckpoint(self._prompt_cache_dir, "redteam")
+            _ckpt_key = _checkpoint_fingerprint(self._sbom, self._effective_policy)
+            self._checkpoint_path = self._resume_checkpoint_path or self._checkpoint.path_for(_ckpt_key)
+        if self._resume_checkpoint is not None:
+            validate_fingerprint(self._resume_checkpoint, sbom=self._sbom, policy=self._effective_policy)
+            self.scenario_records = [
+                ScenarioRecord(**r) for r in self._resume_checkpoint.get("scenario_records", [])
+            ]
+            self.findings = [Finding(**f) for f in self._resume_checkpoint.get("findings", [])]
+            self._completed_signatures = set(self._resume_checkpoint.get("completed_signatures", []))
+            _log.info(
+                "Resuming from checkpoint: %d scenario(s) already completed, %d finding(s) carried over",
+                len(self.scenario_records), len(self.findings),
+            )
+
         # Guided conversations require an LLM — only generate when one is configured.
         _with_guided = self._guided_conversations and bool(self._redteam_llm)
         if self._guided_conversations and not _with_guided:
@@ -1315,6 +1443,23 @@ class RedteamOrchestrator:
         if self._profile == "minimal" and scenarios:
             scenarios = scenarios[:1]
 
+        # Resume (issue #508): drop scenarios already completed in a prior,
+        # aborted run — matched by a stable signature since AttackScenario's
+        # own scenario_id is a fresh UUID on every generate() call. Runs
+        # before LLM enrichment so no payload budget is wasted on scenarios
+        # that won't be dispatched. See nuguard.common.run_checkpoint.
+        if self._completed_signatures:
+            from nuguard.common.run_checkpoint import attack_scenario_signature  # noqa: PLC0415
+            _pre_resume_filter = len(scenarios)
+            scenarios = [
+                s for s in scenarios
+                if attack_scenario_signature(s) not in self._completed_signatures
+            ]
+            _log.info(
+                "Resume: skipping %d already-completed scenario(s) (%d remaining)",
+                _pre_resume_filter - len(scenarios), len(scenarios),
+            )
+
         # 3. LLM payload enrichment (opt-in — only enrich scenarios that will run)
         _llm_payloads: dict = {}
         if self._redteam_llm and scenarios:
@@ -1371,6 +1516,15 @@ class RedteamOrchestrator:
         self._publish_scenarios(scenarios)
 
         if not scenarios:
+            if self.findings:
+                # Resume (issue #508): every remaining scenario was already
+                # completed in the checkpointed pass — nothing left to run,
+                # return the carried-over findings instead of discarding them.
+                _log.info("Resume: no scenarios remaining — returning %d carried-over finding(s)", len(self.findings))
+                self.scan_outcome = _compute_scan_outcome(
+                    findings=self.findings, records=self.scenario_records, strict=self._strict_outcome,
+                )
+                return _dedup_findings(self.findings)
             _log.info(
                 "No scenarios met the impact threshold — scan complete with 0 findings"
             )
@@ -1564,6 +1718,7 @@ class RedteamOrchestrator:
             findings, executed, records = await self._run_scenarios(scenarios, executor, guided_executor)
             self.scenarios_executed.extend(executed)
             self.scenario_records.extend(records)
+            self.findings.extend(findings)
 
             # 5. Escalation pass: if no findings, run lower-scored scenarios that
             #    were filtered out in the CI pass (minimum impact lowered to 3.0)
@@ -1622,6 +1777,7 @@ class RedteamOrchestrator:
                     )
                     self.scenarios_executed.extend(escalation_executed)
                     self.scenario_records.extend(escalation_records)
+                    self.findings.extend(findings)
 
         findings = _dedup_findings(findings)
         _log.info("Scan complete: %d findings (after dedup)", len(findings))
@@ -1736,6 +1892,7 @@ class RedteamOrchestrator:
                         affected=", ".join(
                             self._node_label.get(nid, nid) for nid in s.target_node_ids[:2]
                         ),
+                        catalog_id=s.catalog_id or None,
                         chain_status="skipped",
                         had_finding=False,
                     )
@@ -1765,6 +1922,7 @@ class RedteamOrchestrator:
                     description=scenario.description,
                     impact_score=scenario.impact_score,
                     affected=affected,
+                    catalog_id=scenario.catalog_id or None,
                     chain_status=status,
                     had_finding=False,
                 )
@@ -1873,6 +2031,7 @@ class RedteamOrchestrator:
                         description=scenario.description,
                         impact_score=scenario.impact_score,
                         affected=affected,
+                        catalog_id=scenario.catalog_id or None,
                         chain_status=_chain_status,
                         had_finding=had_finding,
                         steps=step_details,
@@ -2083,6 +2242,7 @@ class RedteamOrchestrator:
                         description=scenario.description,
                         impact_score=scenario.impact_score,
                         affected=affected,
+                        catalog_id=scenario.catalog_id or None,
                         chain_status="failed",
                         had_finding=False,
                         steps=[],
@@ -2184,6 +2344,17 @@ class RedteamOrchestrator:
             results.extend(batch_results)
             batch_start = batch_end
 
+            # Checkpoint (issue #508): persist progress after each phase batch so
+            # a crash/timeout later in the run still leaves a resumable file on
+            # disk. Computed against self.scenario_records/self.findings PLUS
+            # this pass's results-so-far, without mutating instance state here —
+            # the call sites in run() are still what actually extends
+            # self.scenario_records/self.findings once this whole pass returns.
+            if self._checkpoint is not None and self._checkpoint_path is not None:
+                _batch_records = self.scenario_records + [r for _, _, r in results]
+                _batch_findings = self.findings + [f for fs, _, _ in results for f in fs]
+                self._save_checkpoint(status="in_progress", records=_batch_records, findings=_batch_findings)
+
             if _progressive and _halt_threshold is not None:
                 from nuguard.redteam.risk_engine.risk_scorer import highest_severity
 
@@ -2208,6 +2379,7 @@ class RedteamOrchestrator:
                                     description=s.description,
                                     impact_score=s.impact_score,
                                     affected="",
+                                    catalog_id=s.catalog_id or None,
                                     chain_status="skipped:halted_on_severity",
                                     had_finding=False,
                                     steps=[],
@@ -2377,6 +2549,7 @@ class RedteamOrchestrator:
             description=scenario.description,
             impact_score=scenario.impact_score,
             affected=affected,
+            catalog_id=scenario.catalog_id or None,
             chain_status=chain_status,
             had_finding=had_finding,
             steps=step_details,

@@ -69,6 +69,13 @@ def _make_config() -> BehaviorConfig:
     cfg.escalation_max_attempts = 3
     cfg.escalation_circuit_breaker_threshold = 3
     cfg.prioritize_by_probe = False
+    # Checkpoint/resume (issue #508) — real BehaviorConfig defaults to ""/None
+    # (checkpointing off); a bare MagicMock attribute is truthy, which would
+    # spuriously enable checkpoint I/O (and, for `resume`, raise on a
+    # nonexistent path) in every test using this fixture.
+    cfg.prompt_cache_dir = ""
+    cfg.resume = None
+    cfg.scenario_timeout = 30.0
     return cfg  # type: ignore[return-value]  # MagicMock duck-types as BehaviorConfig for these tests
 
 
