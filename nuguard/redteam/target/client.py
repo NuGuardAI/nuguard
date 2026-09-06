@@ -1027,17 +1027,31 @@ class TargetAppClient:
             self._record_chat_success()
             return str(text), tool_calls
 
-        # Generic extraction path — try explicit key first, then common shapes.
+        # Generic extraction path. An explicit chat_response_key is real user
+        # config and always wins outright. Otherwise, try the common known
+        # response shapes on EVERY call before falling back to a previously
+        # auto-detected key — _detect_response_key is a one-shot heuristic
+        # guess from a single past response, so it must not outrank a
+        # recognizable shape (e.g. "answer") on the current response just
+        # because an earlier, atypical turn (e.g. an empty/refused answer)
+        # caused it to lock onto the wrong sibling field. Without this
+        # ordering, one bad turn permanently poisons every later turn even
+        # after the target starts responding normally again.
         # chat_response_key supports dot-notation for nested keys (e.g. "result.text").
-        effective_key = self._chat_response_key or self._detected_response_key
-        if effective_key and isinstance(data, dict):
-            extracted = _extract_nested_key(data, effective_key)
+        if self._chat_response_key and isinstance(data, dict):
+            extracted = _extract_nested_key(data, self._chat_response_key)
             if isinstance(extracted, list):
                 text = " ".join(str(item) for item in extracted if item is not None)
             elif extracted is not None:
                 text = str(extracted)
         if not text:
             text = _extract_common_response_text(data)
+        if not text and self._detected_response_key and isinstance(data, dict):
+            extracted = _extract_nested_key(data, self._detected_response_key)
+            if isinstance(extracted, list):
+                text = " ".join(str(item) for item in extracted if item is not None)
+            elif extracted is not None:
+                text = str(extracted)
         # Last resort: return full JSON so evaluators have something to work with.
         # Before doing so, attempt one-time auto-detection of the response key so
         # subsequent turns extract a clean text field instead of raw JSON.

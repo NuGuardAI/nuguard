@@ -685,6 +685,52 @@ async def test_send_extracts_answer_key_over_suggestions_list() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_recovers_after_stale_detected_key_from_one_bad_turn() -> None:
+    """A one-shot bad auto-detection must not permanently poison later turns.
+
+    Regression for a second layer of the same kscope bug: even after `answer`
+    was added to `_extract_common_response_text`, a turn where `answer` comes
+    back empty (e.g. the app declines to answer at all) still lets
+    `_detect_response_key` lock `_detected_response_key` onto a sibling list
+    like `suggestions`. Because that cached key used to be checked BEFORE the
+    generic common-shape extraction, every later turn — even ones with a
+    perfectly healthy `answer` — kept extracting the stale wrong field for
+    the rest of the run. The fix reorders extraction so the common shapes are
+    tried before a merely auto-detected (not explicitly configured) key.
+    """
+    import httpx
+    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.redteam.target.session import AttackSession
+
+    client = TargetAppClient(base_url="http://localhost:9999")
+    session = AttackSession(session_id="s1", target_url="http://localhost:9999", chain_id="c1")
+
+    def _resp(payload: dict) -> MagicMock:
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(return_value=payload)
+        return resp
+
+    # Turn 1: answer is empty, so only `suggestions` qualifies as a detection
+    # candidate and gets cached as _detected_response_key.
+    bad_turn = _resp({"answer": "", "suggestions": ["What does my record say?", "Anything else?"]})
+    with patch.object(client._client, "post", new_callable=AsyncMock, return_value=bad_turn):
+        text1, _ = await client.send("hello", session)
+    assert client._detected_response_key == "suggestions"
+    assert text1 == "What does my record say? Anything else?"
+
+    # Turn 2: answer is healthy again — must win over the stale cached key.
+    good_turn = _resp({
+        "answer": "Here is a real, substantive answer to your follow-up.",
+        "suggestions": ["Unrelated chip 1", "Unrelated chip 2"],
+    })
+    with patch.object(client._client, "post", new_callable=AsyncMock, return_value=good_turn):
+        text2, _ = await client.send("follow up", session)
+    assert text2 == "Here is a real, substantive answer to your follow-up."
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_send_self_heals_422_with_llm_inferred_field() -> None:
     """A 422 validation error naming a missing field is repaired via LLM and retried."""
     import httpx
