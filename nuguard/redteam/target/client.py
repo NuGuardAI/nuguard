@@ -213,16 +213,25 @@ def _extract_sse_event_text(event: dict[str, Any]) -> str:
 def _extract_common_response_text(data: Any) -> str:
     """Try the common generic response shapes shared by chat/streaming clients.
 
-    Order: ``response``/``content``/``text``/``message.content`` keys, then
-    Google ADK/CES ``outputs: [{"text": ...}]``, then a trailing
+    Order: ``response``/``answer``/``content``/``text``/``message.content``
+    keys, then Google ADK/CES ``outputs: [{"text": ...}]``, then a trailing
     ``messages: [...]`` entry, then a raw string. Returns ``""`` if none match
     — callers apply their own last-resort fallback (raw JSON dump, key
     auto-detection, etc.).
+
+    ``answer`` matters here specifically because it's a common top-level key
+    that competes with sibling keys like ``suggestions`` (a list of follow-up
+    prompt chips). Without it in this always-tried, never-cached path, a
+    response whose ``answer`` happens to be short/echo-filtered on the first
+    probed turn would let ``_detect_response_key``'s one-shot, cached
+    auto-detection lock onto ``suggestions`` instead — silently discarding
+    the real reply for the rest of the run.
     """
     text = ""
     if isinstance(data, dict):
         text = (
             data.get("response")
+            or data.get("answer")
             or data.get("content")
             or data.get("text")
             or data.get("message", {}).get("content", "")

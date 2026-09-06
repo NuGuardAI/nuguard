@@ -644,6 +644,47 @@ async def test_send_retries_429_then_succeeds() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_extracts_answer_key_over_suggestions_list() -> None:
+    """send() prefers a top-level 'answer' string over a sibling 'suggestions' list.
+
+    Regression for a bug found against a real target (kscope/getmosaiccare.com):
+    its /chat responses carry both `answer` (the real reply) and `suggestions`
+    (canned follow-up prompt chips). Before `answer` was added to
+    `_extract_common_response_text`'s always-tried key list, a turn whose
+    `answer` was short/echo-filtered could let the one-shot, cached
+    `_detect_response_key` heuristic lock onto `suggestions` for the rest of
+    the run, silently discarding every subsequent real answer.
+    """
+    import httpx
+    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.redteam.target.session import AttackSession
+
+    client = TargetAppClient(base_url="http://localhost:9999")
+    session = AttackSession(session_id="s1", target_url="http://localhost:9999", chain_id="c1")
+
+    req = httpx.Request("POST", "http://localhost:9999/chat")
+    resp_ok = MagicMock()
+    resp_ok.raise_for_status = MagicMock()
+    resp_ok.json = MagicMock(
+        return_value={
+            "answer": "This is the real, substantive reply to your question.",
+            "suggestions": [
+                "What does my health record say about me?",
+                "Can I update my personal health information?",
+            ],
+        }
+    )
+
+    with patch.object(client._client, "post", new_callable=AsyncMock, return_value=resp_ok):
+        text, _ = await client.send("hello", session)
+
+    assert text == "This is the real, substantive reply to your question."
+    # The generic-shape extraction handled it — no fallback auto-detection needed.
+    assert client._detected_response_key is None
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_send_self_heals_422_with_llm_inferred_field() -> None:
     """A 422 validation error naming a missing field is repaired via LLM and retried."""
     import httpx
