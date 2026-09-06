@@ -77,6 +77,7 @@ if TYPE_CHECKING:
     from nuguard.behavior.coverage_director import CoverageDirector
     from nuguard.behavior.escalation import EscalationLadder, FamilyCircuitBreaker
     from nuguard.behavior.models import IntentProfile
+    from nuguard.behavior.refusal import RefusalReason
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
@@ -686,6 +687,36 @@ async def _adapt_message(
     return message, pii_probed, hook_probed, None
 
 
+async def _should_abandon_tool_chain(
+    context: "TurnContext | None",
+    response: str,
+    llm_client: "LLMClient | None",
+) -> "RefusalReason | None":
+    """Return the RefusalReason if the prior turn was a genuine hard decline that
+    should abandon the remaining scripted tool-chain turns, else None.
+
+    Used only for COMPONENT_COVERAGE / AGENT_COVERAGE scenarios to stop firing
+    pre-planned scripted turns that ignore a refusal already given (e.g. "he is a
+    boy" sent after a full parental-access decline). Cheap regex-based
+    TurnContext.agent_posture is the first-pass filter; classify_refusal() -- the
+    same heuristic-first classifier the judge's precondition detector and the
+    escalation ladder already rely on -- makes the final call so a "please give me
+    the account ID" precondition-ask is never misclassified as a hard stop.
+    """
+    if context is None or not context.boundary_hit:
+        return None
+    if context.agent_posture not in ("hard_refusal", "partial_refusal"):
+        return None
+
+    from nuguard.behavior.refusal import RefusalReason, classify_refusal  # noqa: PLC0415
+
+    reason = await classify_refusal(response, llm_client=llm_client)
+    if reason in (RefusalReason.PERMISSION_DENIED, RefusalReason.OUT_OF_SCOPE_DEFLECTION,
+                  RefusalReason.SERVER_ERROR):
+        return reason
+    return None
+
+
 class BehaviorRunner:
     """Adaptive behavior test runner with per-turn judging and coverage tracking.
 
@@ -1178,6 +1209,10 @@ class BehaviorRunner:
         pii_probed: bool = False
         hook_probed: bool = False
 
+        # v-fix: tool-chain hard-refusal abandonment (once per scenario) — see
+        # _should_abandon_tool_chain.
+        chain_adapted: bool = False
+
         # v7: inter-turn confirmation — set when the agent asks for confirmation but
         # handle_mid_turn_interrupts did not resolve it within the same turn.
         # The confirmation reply is sent as the very next message, bypassing
@@ -1265,18 +1300,65 @@ class BehaviorRunner:
             # 2. Next scripted message — adapt using prior turn context (v7.5: probe
             #    is separated into its own turn; original is deferred to the next one)
             elif pending_messages:
-                raw_msg = pending_messages.pop(0)
-                message, pii_probed, hook_probed, deferred = await _adapt_message(
-                    raw_msg, last_turn_context, scenario,
-                    last_response=response if turn_idx > 0 else "",
-                    llm_client=self._llm,
-                    pii_probed=pii_probed,
-                    hook_probed=hook_probed,
-                )
-                if deferred is not None:
-                    # Probe fires this turn; put the original back at the front so
-                    # it runs next turn as a clean, single-focus message.
-                    pending_messages.insert(0, deferred)
+                _stype = getattr(scenario.scenario_type, "value", str(scenario.scenario_type))
+                if (
+                    not chain_adapted
+                    and _stype in (BehaviorScenarioType.COMPONENT_COVERAGE.value, BehaviorScenarioType.AGENT_COVERAGE.value)
+                    and turn_idx > 0
+                ):
+                    _abandon_reason = await _should_abandon_tool_chain(last_turn_context, response, self._llm)
+                    if _abandon_reason is not None:
+                        chain_adapted = True
+                        _log.info(
+                            "_run_scenario: abandoning remaining scripted tool-chain turns for "
+                            "scenario=%s after %s refusal on turn %d (%d scripted turn(s) dropped)",
+                            scenario.name, _abandon_reason.value, turn_idx, len(pending_messages),
+                        )
+                        # Attribute the refusal to whichever scoped components are
+                        # still uncovered, so the coverage report explains *why*
+                        # instead of a blank "never tested".
+                        _uncovered_now = coverage_state.uncovered_agents | coverage_state.uncovered_tools
+                        for _comp in (scenario.scoped_tools or []) + (scenario.scoped_agents or []):
+                            if _comp in _uncovered_now:
+                                self._refusal_classifications.setdefault(_comp, _abandon_reason.value)
+                        pending_messages = []
+                        _chain_uncovered = (
+                            _uncovered_now & scoped_component_set
+                            if scoped_component_set is not None
+                            else _uncovered_now
+                        )
+                        if _chain_uncovered and coverage_turns_used < _adaptive_coverage_cap(self._config):
+                            coverage_messages = await generate_coverage_turns(
+                                uncovered=_chain_uncovered,
+                                session_context=response[:500],
+                                component_descriptions=self._component_descriptions,
+                                llm_client=self._llm,
+                                domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
+                                intent=self._intent,
+                                scoped_components=scoped_component_set,
+                                profile=self._pre_scan_profile,
+                            )
+                            if coverage_messages:
+                                coverage_turns_used += len(coverage_messages)
+                                pending_messages = coverage_messages
+                        # If pending_messages is still [] here, the `if message is
+                        # None: break` below ends the scenario cleanly -- correct
+                        # when there's truly nothing left to probe.
+                if pending_messages:
+                    raw_msg = pending_messages.pop(0)
+                    message, pii_probed, hook_probed, deferred = await _adapt_message(
+                        raw_msg, last_turn_context, scenario,
+                        last_response=response if turn_idx > 0 else "",
+                        llm_client=self._llm,
+                        pii_probed=pii_probed,
+                        hook_probed=hook_probed,
+                    )
+                    if deferred is not None:
+                        # Probe fires this turn; put the original back at the front so
+                        # it runs next turn as a clean, single-focus message.
+                        pending_messages.insert(0, deferred)
+                # else: message stays None (reset at loop top) -- the "if message is
+                # None: break" below ends the scenario cleanly when nothing is left.
 
             # 3. Coverage follow-up — sent clean without _adapt_message so the
             #    focused component question is not contaminated by PII/hook probes.
