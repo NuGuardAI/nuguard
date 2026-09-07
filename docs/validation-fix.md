@@ -245,37 +245,45 @@ cache-aware function — no new liveness code needed, just correct ordering).
   SBOM, checked {ts}): {path} -> {operational}"` — mirrors the
   `discovered_profile` cache-hit log line.
 
-**3b. Golden data** — `DiscoveredProfile` (already cached) and
-`AttackSession.golden_data`/`golden_ids` (raw DISCOVER response, currently
-run-scoped only) are structurally different: the profile is normalized for
-token substitution, the raw form is what `golden_data_filter.py` needs for
-verbatim echo-detection. Add a **second, distinct** field rather than
-conflating them:
-- `AiSbomDocument.discovered_golden_data: dict[str, Any] | None` —
-  docstring explains it's distinct from `discovered_profile` and used for
-  false-positive echo-suppression.
-- `persist_golden_data_sbom(sbom, sbom_path)` — same shape/`cache_key=None`.
-- Populate-guard in `executor.py` near the existing `_golden_data_cache`
-  population (~409-480): only persist non-empty data.
-- Read/skip-guard in `orchestrator.py` near its golden-data pre-seed
-  (~1803-1817): new priority order **cached SBOM golden data > live DISCOVER
-  probe > config `golden_data` fallback** (strictly additive — cache only ever
-  populates from a prior successful live probe, so this can't be worse than
-  today's live-probe-or-config-fallback behavior).
-- Log a one-line notice whenever *cached* (not freshly probed) golden data is
-  used, so a report reviewer knows a finding-suppression decision rested on
-  potentially-stale data.
+**3b. Golden data** — **implemented (revised from the original sketch
+below).** Investigating the actual executor code (`nuguard/redteam/executor/executor.py`,
+`_golden_data_cache` population) showed `DiscoveredProfile.raw_response` is
+already documented and used as "concatenation of all discovery turn responses
+(for golden-data cache seeding)" — it's already the verbatim text
+`golden_data_filter.py` needs, not a lossy normalized form. So no second field
+was needed; the real gap was simpler and more consistent with "maximum code
+reuse": **redteam never read or wrote `sbom.discovered_profile` at all** —
+`orchestrator.py` always ran a live DISCOVER conversation unconditionally
+(unless `skip_discovery`), and never persisted its result, even though
+`behavior/runner.py` has had this exact read/write cache for `discovered_profile`
+since commit `9b9fa056`. Implemented:
+- New shared `nuguard.common.discovery.cached_discovery_profile(sbom)` —
+  extracted from `behavior/runner.py`'s existing private
+  `_cached_discovery_profile()` into a module-level function both packages
+  can call (parse-guard + `is_empty` check, same as the original).
+- `orchestrator.py`'s pre-scan discovery block now calls
+  `cached_discovery_profile(self._sbom)` before opening the discovery client
+  connection; on a hit it skips the `run_discovery(...)` call entirely
+  (capability discovery, a separate concern, still runs if it has its own
+  gaps to fill) and logs `"pre-scan discovery (from enriched SBOM): name=... ids=..."`.
+  On a miss, it runs live discovery as before, then — new — persists a
+  non-empty result via `persist_discovery_profile_sbom` so a later run (either
+  package) gets the cache hit.
+- Original sketch (superseded by the above, kept here for history): add a
+  distinct `AiSbomDocument.discovered_golden_data` field, a parallel
+  `persist_golden_data_sbom`, and a priority order of cached-SBOM > live-DISCOVER >
+  config fallback. Not built — `discovered_profile` already covers this
+  without a second field or a second persistence path.
 
-**Tests**: `nuguard/sbom/tests/test_models_liveness_fields.py` (round-trip
-serialization); `nuguard/common/tests/test_endpoint_liveness_cache.py`
+**Tests**: `nuguard/common/tests/test_endpoint_liveness_cache.py`
 (`test_fresh_cache_skips_live_probe`, `test_stale_cache_triggers_reprobe`,
-`test_empty_liveness_result_does_not_overwrite_cached_data`);
-`nuguard/redteam/tests/test_golden_data_cache.py`
-(`test_cached_golden_data_used_before_live_discover`,
-`test_cached_golden_data_falls_back_to_config_when_absent`,
-`test_empty_golden_data_does_not_persist`); regenerate
-`tests/contracts/public_api.schema.json` for the new `discovered_golden_data`
-field (pydantic-interface skill).
+`test_empty_liveness_result_does_not_overwrite_cached_data`,
+`test_fresh_probe_result_persisted_to_enriched_sbom`,
+`test_ttl_none_preserves_original_always_probe_behavior`);
+`nuguard/common/tests/test_discovery_profile_persistence.py` extended with
+`cached_discovery_profile()` unit tests (`returns_none_when_sbom_is_none`,
+`_when_field_unset`, `_when_empty`, `_on_unparseable_data`,
+`returns_profile_when_non_empty`).
 
 ## Phase 4 — LLM-assisted semantic dedup for capability/tool discovery
 
