@@ -330,6 +330,21 @@ like `"send_email"` vs `"SendEmailTool"` vs `"email_sender"`.
 `test_disabled_by_default_no_llm_call_made`,
 `test_canned_llm_client_response_does_not_cause_false_dedup`).
 
+**Implemented as designed**, with one structural consequence: since the LLM
+call is async, `apply_capability_discovery()` itself had to become
+`async def` (it was previously synchronous). All three call sites
+(`orchestrator.py`, `behavior/runner.py` x2) were already inside `async`
+functions calling it right after an `await run_capability_discovery(...)`, so
+adding `await` there was a one-line change each; `llm` defaults to `None`
+everywhere, so non-LLM callers are unaffected. New `behavior.llm_capability_dedup`
+/ `redteam.llm_capability_dedup` config (off by default), threaded through the
+CLI's nested wrapper functions in `nuguard/cli/commands/redteam.py` and
+`RedteamRunRequest` in `nuguard/redteam/public_api.py`. One pre-existing test
+file outside the `nuguard/` tree, `tests/common/test_capability_discovery.py`,
+called `apply_capability_discovery()` synchronously and had to be updated to
+`async def`/`await` — a real (now-fixed) regression this change would
+otherwise have introduced.
+
 ## Phase 5 — Behavior/redteam scenario-generation convergence: recommendation
 
 **Do not** force a shared scenario-generator base class between

@@ -27,6 +27,7 @@ from nuguard.sbom.models import Evidence, Node, SourceLocation
 from nuguard.sbom.types import ComponentType, RelationshipType
 
 if TYPE_CHECKING:
+    from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.target.client import TargetAppClient
     from nuguard.redteam.target.session import AttackSession
     from nuguard.sbom.models import AiSbomDocument
@@ -898,10 +899,12 @@ async def run_capability_discovery(
     return result
 
 
-def apply_capability_discovery(
+async def apply_capability_discovery(
     sbom: "AiSbomDocument",
     gaps: list[AgentCapabilityGap],
     result: CapabilityDiscoveryResult,
+    *,
+    llm: "LLMClient | None" = None,
 ) -> list[str]:
     """Merge parsed probe responses back into *sbom* in place.
 
@@ -910,6 +913,13 @@ def apply_capability_discovery(
     tool/sub-agent nodes of the same name are never duplicated.  Returns
     human-readable notes describing what was added, mirroring
     :class:`DiscoveryOutcome`.
+
+    When *llm* is given (and actually configured — see
+    :mod:`nuguard.common.capability_dedup_llm`), an additive second dedup
+    pass runs on whatever names survive the exact-match heuristic dedup
+    below, to also catch naming-convention paraphrases (``send_email`` vs
+    ``SendEmailTool``) the heuristic can't. *llm* defaults to ``None``,
+    which preserves the exact pre-existing heuristic-only behavior.
     """
     notes: list[str] = []
     if not gaps or not result.raw_responses:
@@ -931,6 +941,39 @@ def apply_capability_discovery(
         if len(system_prompt_reply.strip()) > 80
         else ""
     )
+
+    tool_llm_dedup: dict[str, str] = {}
+    subagent_llm_dedup: dict[str, str] = {}
+    if llm is not None:
+        from nuguard.common.capability_dedup_llm import (  # noqa: PLC0415
+            llm_dedup_capability_names,
+        )
+
+        tool_candidates = [t for t in tool_items if t.strip().lower() not in existing_tool_names]
+        if tool_candidates:
+            existing_tool_display = sorted(
+                {n.name for n in sbom.nodes if n.component_type == ComponentType.TOOL}
+            )
+            try:
+                tool_llm_dedup = await llm_dedup_capability_names(
+                    tool_candidates, existing_tool_display, llm
+                )
+            except Exception as exc:  # noqa: BLE001 - additive path, never propagate
+                _log.warning("capability discovery: LLM tool dedup failed: %s", exc)
+
+        subagent_candidates = [
+            s for s in subagent_items if s.strip().lower() not in existing_agent_names
+        ]
+        if subagent_candidates:
+            existing_agent_display = sorted(
+                {n.name for n in sbom.nodes if n.component_type == ComponentType.AGENT}
+            )
+            try:
+                subagent_llm_dedup = await llm_dedup_capability_names(
+                    subagent_candidates, existing_agent_display, llm
+                )
+            except Exception as exc:  # noqa: BLE001 - additive path, never propagate
+                _log.warning("capability discovery: LLM sub-agent dedup failed: %s", exc)
 
     def _dynamic_evidence(detail: str) -> Evidence:
         return Evidence(
@@ -960,6 +1003,13 @@ def apply_capability_discovery(
             for tool_name in tool_items:
                 if tool_name.strip().lower() in existing_tool_names:
                     continue
+                _llm_match = tool_llm_dedup.get(tool_name)
+                if _llm_match:
+                    notes.append(
+                        f"Capability discovery: {tool_name!r} treated as a duplicate of "
+                        f"existing tool {_llm_match!r} (LLM dedup)"
+                    )
+                    continue
                 new_node = Node(
                     name=tool_name,
                     component_type=ComponentType.TOOL,
@@ -982,6 +1032,13 @@ def apply_capability_discovery(
         if gap.needs_subagents and subagent_items:
             for subagent_name in subagent_items:
                 if subagent_name.strip().lower() in existing_agent_names:
+                    continue
+                _llm_match = subagent_llm_dedup.get(subagent_name)
+                if _llm_match:
+                    notes.append(
+                        f"Capability discovery: {subagent_name!r} treated as a duplicate of "
+                        f"existing sub-agent {_llm_match!r} (LLM dedup)"
+                    )
                     continue
                 new_node = Node(
                     name=subagent_name,

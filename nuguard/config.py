@@ -340,6 +340,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_liveness_cache_ttl_seconds"] = float(redteam["liveness_cache_ttl_seconds"])
     if "browser_discover_endpoints" in redteam:
         flat["redteam_browser_discover_endpoints"] = bool(redteam["browser_discover_endpoints"])
+    if "llm_capability_dedup" in redteam:
+        flat["redteam_llm_capability_dedup"] = bool(redteam["llm_capability_dedup"])
     if "browser_discovery_nav_targets" in redteam and isinstance(
         redteam["browser_discovery_nav_targets"], list
     ):
@@ -714,6 +716,17 @@ class BehaviorConfig(BaseModel):
             "browser_discover_endpoints is enabled, e.g. ['/dashboard', '/account'] "
             "(yaml: behavior.browser_discovery_nav_targets). Never auto-discovered by "
             "following links — only these caller-declared paths are visited."
+        ),
+    )
+    llm_capability_dedup: bool = Field(
+        default=False,
+        description=(
+            "When capability_discovery finds tool/sub-agent names that survive the "
+            "exact-match dedup against the SBOM's known names, ask the LLM whether any "
+            "are just a naming-convention paraphrase of an existing one (e.g. "
+            "'send_email' vs 'SendEmailTool') before adding a new node (yaml: "
+            "behavior.llm_capability_dedup). Off by default; additive only — a failed "
+            "or unconfigured LLM call falls back to the pre-existing heuristic result."
         ),
     )
     turn_delay_seconds: float = Field(
@@ -1341,6 +1354,17 @@ class NuGuardConfig(BaseSettings):
             "redteam_browser_discover_endpoints is enabled (yaml: "
             "redteam.browser_discovery_nav_targets). Never auto-discovered by following "
             "links — only these caller-declared paths are visited."
+        ),
+    )
+    redteam_llm_capability_dedup: bool = Field(
+        default=False,
+        description=(
+            "When capability_discovery finds tool/sub-agent names that survive the "
+            "exact-match dedup against the SBOM's known names, ask the LLM whether any "
+            "are just a naming-convention paraphrase of an existing one (e.g. "
+            "'send_email' vs 'SendEmailTool') before adding a new node (yaml: "
+            "redteam.llm_capability_dedup). Off by default; additive only — a failed "
+            "or unconfigured LLM call falls back to the pre-existing heuristic result."
         ),
     )
     redteam_prompt_cache_dir: str = Field(

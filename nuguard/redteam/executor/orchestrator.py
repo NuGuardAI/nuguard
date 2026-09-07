@@ -820,6 +820,7 @@ class RedteamOrchestrator:
         discovery_max_turns: int = 3,
         capability_discovery: bool = True,
         liveness_cache_ttl_seconds: float = 3600.0,
+        llm_capability_dedup: bool = False,
         chat_payload_extras: dict[str, Any] | None = None,
         catalog: "tuple | None" = None,
         pre_run_warmup: int = 0,
@@ -908,6 +909,7 @@ class RedteamOrchestrator:
         self._discovery_max_turns = max(1, discovery_max_turns)
         self._capability_discovery = capability_discovery
         self._liveness_cache_ttl_seconds = max(0.0, liveness_cache_ttl_seconds)
+        self._llm_capability_dedup = llm_capability_dedup
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
         self._pre_run_warmup = max(0, pre_run_warmup)
         self._verify_findings = verify_findings
@@ -1457,7 +1459,12 @@ class RedteamOrchestrator:
                 from nuguard.common.discovery import (  # noqa: PLC0415
                     apply_capability_discovery,
                 )
-                _cap_notes = apply_capability_discovery(self._sbom, _cap_gaps, _cap_result)
+                _cap_notes = await apply_capability_discovery(
+                    self._sbom,
+                    _cap_gaps,
+                    _cap_result,
+                    llm=(self._eval_llm or self._redteam_llm) if self._llm_capability_dedup else None,
+                )
                 self.config_notes.extend(_cap_notes)
                 for _cap_note in _cap_notes:
                     _rtconsole.print(f"  [yellow]{_cap_note}[/yellow]")

@@ -193,6 +193,7 @@ class RedteamRunRequest(BaseModel):
     discovery_max_turns: int = 3
     capability_discovery: bool = True
     liveness_cache_ttl_seconds: float = 3600.0
+    llm_capability_dedup: bool = False
     chat_payload_extras: dict[str, Any] | None = None
     pre_run_warmup: int = 0
     verify_findings: bool = True
@@ -447,6 +448,7 @@ async def run_redteam(
         discovery_max_turns=request.discovery_max_turns,
         capability_discovery=request.capability_discovery,
         liveness_cache_ttl_seconds=request.liveness_cache_ttl_seconds,
+        llm_capability_dedup=request.llm_capability_dedup,
         chat_payload_extras=request.chat_payload_extras,
         catalog=catalog,
         pre_run_warmup=request.pre_run_warmup,

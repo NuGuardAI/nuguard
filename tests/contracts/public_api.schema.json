@@ -947,6 +947,12 @@
             "title": "Browser Discovery Nav Targets",
             "type": "array"
           },
+          "llm_capability_dedup": {
+            "default": false,
+            "description": "When capability_discovery finds tool/sub-agent names that survive the exact-match dedup against the SBOM's known names, ask the LLM whether any are just a naming-convention paraphrase of an existing one (e.g. 'send_email' vs 'SendEmailTool') before adding a new node (yaml: behavior.llm_capability_dedup). Off by default; additive only \u2014 a failed or unconfigured LLM call falls back to the pre-existing heuristic result.",
+            "title": "Llm Capability Dedup",
+            "type": "boolean"
+          },
           "turn_delay_seconds": {
             "default": 0.0,
             "description": "Inter-turn pause in seconds to avoid 429 rate-limit errors.",
@@ -2330,6 +2336,12 @@
             },
             "title": "Browser Discovery Nav Targets",
             "type": "array"
+          },
+          "llm_capability_dedup": {
+            "default": false,
+            "description": "When capability_discovery finds tool/sub-agent names that survive the exact-match dedup against the SBOM's known names, ask the LLM whether any are just a naming-convention paraphrase of an existing one (e.g. 'send_email' vs 'SendEmailTool') before adding a new node (yaml: behavior.llm_capability_dedup). Off by default; additive only \u2014 a failed or unconfigured LLM call falls back to the pre-existing heuristic result.",
+            "title": "Llm Capability Dedup",
+            "type": "boolean"
           },
           "turn_delay_seconds": {
             "default": 0.0,
@@ -6862,6 +6874,11 @@
         "default": 3600.0,
         "title": "Liveness Cache Ttl Seconds",
         "type": "number"
+      },
+      "llm_capability_dedup": {
+        "default": false,
+        "title": "Llm Capability Dedup",
+        "type": "boolean"
       },
       "chat_payload_extras": {
         "anyOf": [

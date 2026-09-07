@@ -2153,7 +2153,12 @@ class BehaviorRunner:
                     _cap_result = await run_capability_discovery(
                         client, _disc_session, _cap_gaps,
                     )
-                    _cap_notes = apply_capability_discovery(self._sbom, _cap_gaps, _cap_result)
+                    _cap_notes = await apply_capability_discovery(
+                        self._sbom,
+                        _cap_gaps,
+                        _cap_result,
+                        llm=self._llm if getattr(self._config, "llm_capability_dedup", False) else None,
+                    )
                     for _cap_note in _cap_notes:
                         _console.print(f"  [dim]{_cap_note}[/dim]")
                     _log.info(
@@ -2550,7 +2555,12 @@ class BehaviorRunner:
                     _cap_result = await run_capability_discovery(
                         client, _disc_session, _cap_gaps,
                     )
-                    _cap_notes = apply_capability_discovery(self._sbom, _cap_gaps, _cap_result)
+                    _cap_notes = await apply_capability_discovery(
+                        self._sbom,
+                        _cap_gaps,
+                        _cap_result,
+                        llm=self._llm if getattr(self._config, "llm_capability_dedup", False) else None,
+                    )
                     for _cap_note in _cap_notes:
                         _console.print(f"  [dim]{_cap_note}[/dim]")
                     _log.info(
