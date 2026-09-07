@@ -1760,6 +1760,36 @@ class RedteamOrchestrator:
                 _log.error("Redteam: aborting — no working chat endpoint found (%s)", _pf.notes)
                 return []
 
+            # Per-endpoint liveness: mark every other SBOM-discovered
+            # API_ENDPOINT node operational/non-operational via a live ping,
+            # so scenario generation (should_skip_direct_http_scenario) can
+            # skip direct-HTTP scenarios against confirmed-dead endpoints the
+            # same way it already skips structurally-invalid ones. Best-effort
+            # — a failure here must never abort the scan.
+            #
+            # NOTE: scenario generation (ScenarioGenerator.generate(), above)
+            # already ran before this point, so results from *this* run's own
+            # probe only benefit a later run that reads them back from the
+            # enriched SBOM (once Phase 3 caching persists this field) — they
+            # do not retroactively filter scenarios already generated in this
+            # same run. Moving generation to occur after this check is a
+            # larger reordering left for a follow-up change.
+            try:
+                from nuguard.common.endpoint_liveness import (  # noqa: PLC0415
+                    check_endpoint_liveness,
+                )
+                _liveness = await check_endpoint_liveness(
+                    self._sbom, client, effective_headers or None
+                )
+                _log.info(
+                    "Redteam: endpoint liveness — checked=%d operational=%d "
+                    "non_operational=%d skipped=%d",
+                    _liveness.checked, _liveness.operational,
+                    _liveness.non_operational, _liveness.skipped,
+                )
+            except Exception as exc:
+                _log.warning("Redteam: endpoint liveness check failed (non-fatal): %s", exc)
+
             # Substitute poison server URL into all scenario step payloads that
             # contain the placeholder host.  This makes indirect injection and RAG
             # poisoning scenarios point at our live server instead of a dead host.

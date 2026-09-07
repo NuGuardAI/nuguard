@@ -60,6 +60,7 @@ def _api_node(
     idor_surface: bool = False,
     path_params: list[str] | None = None,
     rate_limited: bool | None = None,
+    operational: bool | None = None,
 ) -> Node:
     return Node(
         id=_uuid.uuid5(_uuid.NAMESPACE_URL, node_id),
@@ -73,6 +74,7 @@ def _api_node(
             idor_surface=idor_surface,
             path_params=path_params or [],
             rate_limited=rate_limited,
+            operational=operational,
         ),
     )
 
@@ -758,6 +760,33 @@ def test_normal_rest_path_endpoint_unaffected():
     node = _api_node(
         "ep22", "Internal Transfer", path="/api/bank/transfer/internal",
         method="POST", auth_required=True, rate_limited=True,
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    api_scenarios = [s for s in scenarios if s.goal_type == GoalType.API_ATTACK]
+    assert len(api_scenarios) > 0
+    assert not gen.skipped_endpoint_notes
+
+
+def test_confirmed_dead_endpoint_via_liveness_skips_direct_http_scenarios():
+    node = _api_node(
+        "ep23", "Internal Transfer", path="/api/bank/transfer/internal",
+        method="POST", auth_required=True, operational=False,
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    api_scenarios = [s for s in scenarios if s.goal_type == GoalType.API_ATTACK]
+    assert len(api_scenarios) == 0
+    assert gen.skipped_endpoint_notes
+    assert "Internal Transfer" in gen.skipped_endpoint_notes[0]
+
+
+def test_never_probed_endpoint_operational_none_unaffected():
+    node = _api_node(
+        "ep24", "Internal Transfer", path="/api/bank/transfer/internal",
+        method="POST", auth_required=True, operational=None,
     )
     sbom = _make_sbom([node])
     gen = ScenarioGenerator(sbom)

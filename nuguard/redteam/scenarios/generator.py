@@ -5,6 +5,7 @@ import re
 import uuid
 from typing import TYPE_CHECKING
 
+from nuguard.common.endpoint_scenario_gate import should_skip_direct_http_scenario
 from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
 from nuguard.models.policy import CognitivePolicy
@@ -1696,17 +1697,17 @@ class ScenarioGenerator:
             meta = node.metadata
             endpoint_id = str(node.id)
 
-            if meta.endpoint and not self._looks_like_rest_path(meta.endpoint):
+            _skip, _skip_reason = should_skip_direct_http_scenario(meta)
+            if meta.endpoint and _skip:
                 # A guessed slug path is no better than the wrong declared
                 # one — it produced a stale 404-on-every-turn "Internal
                 # Transfer" scenario in a real scan. Skip direct-HTTP
                 # scenarios for this node entirely rather than fabricate a
                 # path; a chat-routed capability probe (if any) is unaffected.
+                # Same skip applies when a live liveness probe already
+                # confirmed the endpoint is dead (operational=False).
                 self.skipped_endpoint_notes.append(
-                    f"Skipped direct-HTTP attack scenarios for '{node.name}': "
-                    f"endpoint metadata {meta.endpoint!r} is not an HTTP path "
-                    f"(bind address / MCP-SSE annotation) — no REST route to "
-                    f"attack directly."
+                    f"Skipped direct-HTTP attack scenarios for '{node.name}': {_skip_reason}"
                 )
                 continue
 

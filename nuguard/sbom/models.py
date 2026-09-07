@@ -547,6 +547,23 @@ class NodeMetadata(BaseModel):
         default=None,
         description="True when rate limiting is configured for this endpoint",
     )
+    operational: bool | None = Field(
+        default=None,
+        description=(
+            "True when a live authenticated ping to this API endpoint returned a "
+            "reachable response (including a 401/403 auth-correctly-enforced "
+            "response); False when it hit a rotation-trigger 4xx (404/405/400/422) "
+            "or a network-level failure; None when never probed."
+        ),
+    )
+    liveness_checked_at: str | None = Field(
+        default=None,
+        description="ISO8601 timestamp of the last liveness probe.",
+    )
+    liveness_notes: list[str] = Field(
+        default_factory=list,
+        description="Notes from the last liveness probe (status codes, timeouts, rotation).",
+    )
     idor_surface: bool | None = Field(
         default=None,
         description=(

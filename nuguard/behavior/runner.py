@@ -2425,6 +2425,32 @@ class BehaviorRunner:
         except Exception as _pf_exc:
             _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
 
+        # Per-endpoint liveness: mark every other SBOM-discovered API_ENDPOINT
+        # node operational/non-operational via a live ping, so scenario
+        # generation (should_skip_direct_http_scenario, consulted by
+        # build_scenarios -> _endpoint_coverage_scenarios below) can skip
+        # scenarios against confirmed-dead endpoints. Best-effort — a failure
+        # here must never abort the run.
+        if _preflight_ok and self._sbom is not None:
+            try:
+                from nuguard.common.endpoint_liveness import (  # noqa: PLC0415
+                    check_endpoint_liveness,
+                )
+                _bootstrap_hdrs2: dict[str, str] = (
+                    getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
+                )
+                _liveness = await check_endpoint_liveness(
+                    self._sbom, client, _bootstrap_hdrs2 or None
+                )
+                _log.info(
+                    "Behavior: endpoint liveness — checked=%d operational=%d "
+                    "non_operational=%d skipped=%d",
+                    _liveness.checked, _liveness.operational,
+                    _liveness.non_operational, _liveness.skipped,
+                )
+            except Exception as _liv_exc:
+                _log.warning("Behavior: endpoint liveness check failed (non-fatal): %s", _liv_exc)
+
         if not _preflight_ok:
             _failure_note = (
                 f"Configured chat endpoint unreachable (405/404): {_configured_endpoint}. "
