@@ -2021,6 +2021,44 @@ class BehaviorRunner:
             matched_topic=getattr(scenario, "matched_topic", None),
         )
 
+    def _cached_discovery_profile(self) -> "DiscoveredProfile | None":
+        """Return a previously-persisted, non-empty pre-scan profile from the
+        SBOM's ``discovered_profile`` field, or ``None`` if absent/empty/invalid.
+
+        Lets a later run reuse a profile a previous run already discovered live,
+        skipping the discovery HTTP round-trip entirely.
+        """
+        if self._sbom is None or self._sbom.discovered_profile is None:
+            return None
+        from nuguard.common.discovery import DiscoveredProfile  # noqa: PLC0415
+
+        try:
+            profile = DiscoveredProfile.model_validate(self._sbom.discovered_profile)
+        except Exception as exc:
+            _log.warning("behavior pre-scan discovery: could not parse cached SBOM profile: %s", exc)
+            return None
+        return None if profile.is_empty else profile
+
+    def _persist_discovery_profile_sbom(self, profile: "DiscoveredProfile") -> None:
+        """Cache a freshly-discovered, non-empty pre-scan profile onto the SBOM
+        so later runs against the same enriched SBOM can reuse it.
+
+        No-op when the profile is empty (never overwrite a good cached profile
+        with an empty one) or no source SBOM path is known.
+        """
+        if profile.is_empty or self._sbom_path is None or self._sbom is None:
+            return
+        from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
+            persist_discovery_profile_sbom,
+        )
+        self._sbom.discovered_profile = profile.model_dump(mode="json")
+        try:
+            artifact = persist_discovery_profile_sbom(self._sbom, self._sbom_path)
+            _log.info("behavior pre-scan discovery: persisted profile to %s", artifact)
+            _console.print(f"  [dim]Pre-scan discovery profile cached in {artifact}[/dim]")
+        except Exception as exc:
+            _log.warning("behavior pre-scan discovery: could not persist SBOM profile: %s", exc)
+
     def _persist_capability_discovery_sbom(self, notes: list[str]) -> None:
         """Write the in-memory SBOM (post capability discovery) to the same
         ``<name>.sbom.enriched.json`` artifact used by auto-enrichment, so the
@@ -2081,19 +2119,28 @@ class BehaviorRunner:
                 if _explicit_endpoint
                 else (list(_disc_candidates(self._sbom)[1:]) if self._sbom else [])
             )
-            _outcome = await run_discovery(
-                client,
-                _disc_session,
-                DiscoveryRequest(use_case=_use_case, max_turns=2, fallback_endpoints=_disc_fallbacks[:4]),
-            )
-            profile = _outcome.profile
-            for _disc_note in _outcome.notes:
-                _console.print(f"  [dim]{_disc_note}[/dim]")
+            _cached_profile = self._cached_discovery_profile()
+            if _cached_profile is not None:
+                profile = _cached_profile
+                _console.print(
+                    f"  [bold cyan]Pre-scan discovery (from enriched SBOM):[/bold cyan] "
+                    f"name={profile.customer_name!r}  ids={profile.ids}"
+                )
+            else:
+                _outcome = await run_discovery(
+                    client,
+                    _disc_session,
+                    DiscoveryRequest(use_case=_use_case, max_turns=2, fallback_endpoints=_disc_fallbacks[:4]),
+                )
+                profile = _outcome.profile
+                for _disc_note in _outcome.notes:
+                    _console.print(f"  [dim]{_disc_note}[/dim]")
 
-            _log.info(
-                "behavior pre-scan discovery: name=%r ids=%s turns=%d source=%s",
-                profile.customer_name, profile.ids, profile.turns_sent, profile.source,
-            )
+                _log.info(
+                    "behavior pre-scan discovery: name=%r ids=%s turns=%d source=%s",
+                    profile.customer_name, profile.ids, profile.turns_sent, profile.source,
+                )
+                self._persist_discovery_profile_sbom(profile)
 
             if bool(getattr(self._config, "capability_discovery", True)):
                 from nuguard.common.discovery import (  # noqa: PLC0415
@@ -2411,13 +2458,6 @@ class BehaviorRunner:
             )
         else:
             _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
-            from nuguard.common.discovery import (  # noqa: PLC0415
-                DiscoveryRequest,
-                run_discovery,
-            )
-            from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-                discover_chat_candidates_from_sbom as _discover_candidates,
-            )
             from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
             _disc_session = _AS(
                 session_id="behavior-discovery",
@@ -2426,26 +2466,44 @@ class BehaviorRunner:
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
             _explicit_endpoint = self._endpoint_is_explicit()
-            _sbom_fallbacks = (
-                []
-                if _explicit_endpoint
-                else (list(_discover_candidates(self._sbom)[1:]) if self._sbom else [])
-            )
-            _outcome = await run_discovery(
-                client,
-                _disc_session,
-                DiscoveryRequest(use_case=_use_case or "", max_turns=2, fallback_endpoints=_sbom_fallbacks[:4]),
-            )
-            self._pre_scan_profile = _outcome.profile
-            self._judge.set_profile(_outcome.profile)
-            for _disc_note in _outcome.notes:
-                _console.print(f"  [dim]{_disc_note}[/dim]")
-            _log.info(
-                "behavior pre-scan discovery: name=%r ids=%s source=%s",
-                self._pre_scan_profile.customer_name,
-                self._pre_scan_profile.ids,
-                self._pre_scan_profile.source,
-            )
+
+            _cached_profile = self._cached_discovery_profile()
+            if _cached_profile is not None:
+                self._pre_scan_profile = _cached_profile
+                self._judge.set_profile(_cached_profile)
+                _console.print(
+                    f"  [bold cyan]Pre-scan discovery (from enriched SBOM):[/bold cyan] "
+                    f"name={_cached_profile.customer_name!r}  ids={_cached_profile.ids}"
+                )
+            else:
+                from nuguard.common.discovery import (  # noqa: PLC0415
+                    DiscoveryRequest,
+                    run_discovery,
+                )
+                from nuguard.common.endpoint_probe import (  # noqa: PLC0415
+                    discover_chat_candidates_from_sbom as _discover_candidates,
+                )
+                _sbom_fallbacks = (
+                    []
+                    if _explicit_endpoint
+                    else (list(_discover_candidates(self._sbom)[1:]) if self._sbom else [])
+                )
+                _outcome = await run_discovery(
+                    client,
+                    _disc_session,
+                    DiscoveryRequest(use_case=_use_case or "", max_turns=2, fallback_endpoints=_sbom_fallbacks[:4]),
+                )
+                self._pre_scan_profile = _outcome.profile
+                self._judge.set_profile(_outcome.profile)
+                for _disc_note in _outcome.notes:
+                    _console.print(f"  [dim]{_disc_note}[/dim]")
+                _log.info(
+                    "behavior pre-scan discovery: name=%r ids=%s source=%s",
+                    self._pre_scan_profile.customer_name,
+                    self._pre_scan_profile.ids,
+                    self._pre_scan_profile.source,
+                )
+                self._persist_discovery_profile_sbom(self._pre_scan_profile)
 
             # Capability discovery: ask the live agent about its tools (always
             # cross-checked against the SBOM) and, when actually missing from

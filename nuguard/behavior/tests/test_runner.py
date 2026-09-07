@@ -1339,3 +1339,101 @@ async def test_probe_tool_families_empty_sbom_returns_empty():
     )
     results = await runner.probe_tool_families()
     assert results == {}
+
+
+# ---------------------------------------------------------------------------
+# Cached pre-scan discovery profile (reuse across runs via enriched SBOM)
+# ---------------------------------------------------------------------------
+
+
+def test_cached_discovery_profile_none_when_sbom_has_no_profile():
+    sbom = AiSbomDocument(target="./app")
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+    assert runner._cached_discovery_profile() is None
+
+
+def test_cached_discovery_profile_none_when_sbom_missing():
+    runner = BehaviorRunner(config=_make_config(), sbom=None, policy=None, intent=_make_intent(), llm_client=None)
+    assert runner._cached_discovery_profile() is None
+
+
+def test_cached_discovery_profile_none_when_persisted_profile_is_empty():
+    sbom = AiSbomDocument(target="./app", discovered_profile=DiscoveredProfile().model_dump(mode="json"))
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+    assert runner._cached_discovery_profile() is None
+
+
+def test_cached_discovery_profile_none_when_persisted_profile_is_malformed():
+    sbom = AiSbomDocument(target="./app", discovered_profile={"ids": "not-a-list"})
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+    assert runner._cached_discovery_profile() is None
+
+
+def test_cached_discovery_profile_returns_persisted_non_empty_profile():
+    profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
+    sbom = AiSbomDocument(target="./app", discovered_profile=profile.model_dump(mode="json"))
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    cached = runner._cached_discovery_profile()
+
+    assert cached == profile
+
+
+def test_persist_discovery_profile_sbom_noop_for_empty_profile():
+    sbom = AiSbomDocument(target="./app")
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+    runner._sbom_path = MagicMock()
+
+    runner._persist_discovery_profile_sbom(DiscoveredProfile())
+
+    assert sbom.discovered_profile is None
+
+
+def test_persist_discovery_profile_sbom_noop_without_sbom_path():
+    sbom = AiSbomDocument(target="./app")
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+    runner._sbom_path = None
+
+    runner._persist_discovery_profile_sbom(DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"]))
+
+    assert sbom.discovered_profile is None
+
+
+def test_persist_discovery_profile_sbom_writes_profile_onto_sbom_and_disk(tmp_path):
+    sbom = AiSbomDocument(target="./app")
+    sbom_path = tmp_path / "app.sbom.json"
+    sbom_path.write_text(sbom.model_dump_json())
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+    runner._sbom_path = sbom_path
+    profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
+
+    runner._persist_discovery_profile_sbom(profile)
+
+    assert sbom.discovered_profile == profile.model_dump(mode="json")
+    enriched_path = sbom_path.with_name("app.sbom.enriched.json")
+    assert enriched_path.exists()
+    written = AiSbomDocument.model_validate_json(enriched_path.read_text())
+    assert DiscoveredProfile.model_validate(written.discovered_profile) == profile
+
+
+@pytest.mark.asyncio
+async def test_discover_reuses_cached_sbom_profile_and_skips_run_discovery():
+    """Regression: a good profile discovered on a prior run must be reused on
+    later runs instead of re-running live discovery from scratch every time
+    (tests/apps/kscope/reports/agentic-test-20260828T201422.log:8096 showed a
+    live run coming back empty even though a good profile was already known).
+    """
+    cached_profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
+    sbom = AiSbomDocument(target="./app", discovered_profile=cached_profile.model_dump(mode="json"))
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    mock_client = MagicMock()
+    mock_client.resolution_notes = []
+    with (
+        patch.object(runner, "_build_client", new=AsyncMock(return_value=mock_client)),
+        patch("nuguard.common.discovery.run_discovery", new=AsyncMock()) as mock_run_discovery,
+    ):
+        result = await runner.discover()
+
+    mock_run_discovery.assert_not_awaited()
+    assert result == cached_profile

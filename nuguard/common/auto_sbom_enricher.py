@@ -887,6 +887,21 @@ def persist_capability_discovery_sbom(sbom: AiSbomDocument, sbom_path: Path) -> 
     return out_path
 
 
+def persist_discovery_profile_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
+    """Write *sbom* (with ``sbom.discovered_profile`` already set) to the same
+    ``<name>.sbom.enriched.json`` artifact used by :func:`maybe_auto_enrich_sbom`,
+    so a successfully-discovered pre-scan identity profile (see
+    :mod:`nuguard.common.discovery`) survives across runs and later runs can skip
+    the live discovery HTTP round-trip entirely.
+
+    Like :func:`persist_capability_discovery_sbom`, no ``_enrichment_cache_key``
+    is embedded, since this write carries live target-derived data.
+    """
+    out_path = _enriched_output_path(sbom_path)
+    _write_enriched(sbom, out_path, cache_key=None)
+    return out_path
+
+
 def _enrichment_cache_key(
     sbom: AiSbomDocument,
     target_url: str | None,

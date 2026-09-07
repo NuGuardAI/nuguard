@@ -1154,3 +1154,14 @@ class AiSbomDocument(BaseModel):
             "Only populated when enable_llm=True during SBOM generation."
         ),
     )
+    discovered_profile: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Cached pre-scan identity discovery result (a serialized "
+            "nuguard.common.discovery.DiscoveredProfile), persisted here after a "
+            "behavior/redteam run successfully discovers the authenticated test "
+            "user's real identity via a live DISCOVER conversation. Later runs "
+            "against this SBOM reuse it instead of re-running discovery. Delete "
+            "or regenerate the enriched SBOM file to force a fresh discovery."
+        ),
+    )
