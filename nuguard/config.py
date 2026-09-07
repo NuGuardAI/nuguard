@@ -338,6 +338,14 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_capability_discovery"] = bool(redteam["capability_discovery"])
     if "liveness_cache_ttl_seconds" in redteam:
         flat["redteam_liveness_cache_ttl_seconds"] = float(redteam["liveness_cache_ttl_seconds"])
+    if "browser_discover_endpoints" in redteam:
+        flat["redteam_browser_discover_endpoints"] = bool(redteam["browser_discover_endpoints"])
+    if "browser_discovery_nav_targets" in redteam and isinstance(
+        redteam["browser_discovery_nav_targets"], list
+    ):
+        flat["redteam_browser_discovery_nav_targets"] = [
+            str(p) for p in redteam["browser_discovery_nav_targets"] if p is not None
+        ]
     if "prompt_cache_dir" in redteam:
         flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
     if "resume" in redteam and redteam["resume"] is not None:
@@ -686,6 +694,26 @@ class BehaviorConfig(BaseModel):
             "cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached "
             "result — including one written by a prior redteam run against the same "
             "enriched SBOM — is used as-is, skipping the live ping entirely."
+        ),
+    )
+    browser_discover_endpoints: bool = Field(
+        default=False,
+        description=(
+            "After browser login, crawl caller-declared browser_discovery_nav_targets and "
+            "sniff network requests via Playwright to find REST endpoints the static SBOM "
+            "extractor missed, merging them into the SBOM as new API_ENDPOINT nodes (yaml: "
+            "behavior.browser_discover_endpoints). Off by default — requires the 'browser' "
+            "extra (Playwright/Chromium) and browser login already configured "
+            "(target.browser_login / target.auth)."
+        ),
+    )
+    browser_discovery_nav_targets: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Relative paths to visit during the endpoint-discovery crawl when "
+            "browser_discover_endpoints is enabled, e.g. ['/dashboard', '/account'] "
+            "(yaml: behavior.browser_discovery_nav_targets). Never auto-discovered by "
+            "following links — only these caller-declared paths are visited."
         ),
     )
     turn_delay_seconds: float = Field(
@@ -1294,6 +1322,25 @@ class NuGuardConfig(BaseSettings):
             "cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached "
             "result — including one written by a prior behavior run against the same "
             "enriched SBOM — is used as-is, skipping the live ping entirely."
+        ),
+    )
+    redteam_browser_discover_endpoints: bool = Field(
+        default=False,
+        description=(
+            "After browser login, crawl caller-declared redteam_browser_discovery_nav_targets "
+            "and sniff network requests via Playwright to find REST endpoints the static SBOM "
+            "extractor missed, merging them into the SBOM as new API_ENDPOINT nodes (yaml: "
+            "redteam.browser_discover_endpoints). Off by default — requires the 'browser' "
+            "extra (Playwright/Chromium) and browser login already configured."
+        ),
+    )
+    redteam_browser_discovery_nav_targets: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Relative paths to visit during the endpoint-discovery crawl when "
+            "redteam_browser_discover_endpoints is enabled (yaml: "
+            "redteam.browser_discovery_nav_targets). Never auto-discovered by following "
+            "links — only these caller-declared paths are visited."
         ),
     )
     redteam_prompt_cache_dir: str = Field(

@@ -170,6 +170,21 @@ call sites.
 
 ## Phase 2 — Browser/Playwright-based endpoint discovery (v1, config-gated)
 
+**As implemented**: `crawl_and_sniff()`/`merge_sniffed_endpoints_into_sbom()`
+landed as a standalone, tested capability plus config fields
+(`behavior.browser_discover_endpoints`/`nav_targets`,
+`redteam.browser_discover_endpoints`/`nav_targets`). Automatic bootstrap
+wiring into `behavior/runner.py`/`orchestrator.py` was deliberately deferred:
+`browser_login/session.py`'s own docstring states it "is only imported by
+`nuguard/cli/commands/target_browser.py`, never by any hot path" — wiring
+this crawl into the automatic bootstrap would mean constructing a full
+separate browser-login flow (its own auth resolution, cookie/session
+lifecycle) inside those runners, a materially larger and riskier change than
+Phase 1/3's single-call-site additions. Until that wiring lands, invoke the
+crawl explicitly (e.g. from a future `nuguard target discover-browser`
+extension, or a short CLI/script wrapper) and merge its result into an
+enriched SBOM before running `behavior`/`redteam`.
+
 **Scope**: a bounded, operator-declared crawl — not autonomous link-following
 (too open-ended for a security tool; could trigger destructive actions like a
 delete-account button). v1 visits only caller-supplied `nav_targets` paths

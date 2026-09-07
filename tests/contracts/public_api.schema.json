@@ -933,6 +933,20 @@
             "title": "Liveness Cache Ttl Seconds",
             "type": "number"
           },
+          "browser_discover_endpoints": {
+            "default": false,
+            "description": "After browser login, crawl caller-declared browser_discovery_nav_targets and sniff network requests via Playwright to find REST endpoints the static SBOM extractor missed, merging them into the SBOM as new API_ENDPOINT nodes (yaml: behavior.browser_discover_endpoints). Off by default \u2014 requires the 'browser' extra (Playwright/Chromium) and browser login already configured (target.browser_login / target.auth).",
+            "title": "Browser Discover Endpoints",
+            "type": "boolean"
+          },
+          "browser_discovery_nav_targets": {
+            "description": "Relative paths to visit during the endpoint-discovery crawl when browser_discover_endpoints is enabled, e.g. ['/dashboard', '/account'] (yaml: behavior.browser_discovery_nav_targets). Never auto-discovered by following links \u2014 only these caller-declared paths are visited.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Browser Discovery Nav Targets",
+            "type": "array"
+          },
           "turn_delay_seconds": {
             "default": 0.0,
             "description": "Inter-turn pause in seconds to avoid 429 rate-limit errors.",
@@ -2302,6 +2316,20 @@
             "description": "How long a per-endpoint liveness result (yaml: behavior.liveness_cache_ttl_seconds) cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached result \u2014 including one written by a prior redteam run against the same enriched SBOM \u2014 is used as-is, skipping the live ping entirely.",
             "title": "Liveness Cache Ttl Seconds",
             "type": "number"
+          },
+          "browser_discover_endpoints": {
+            "default": false,
+            "description": "After browser login, crawl caller-declared browser_discovery_nav_targets and sniff network requests via Playwright to find REST endpoints the static SBOM extractor missed, merging them into the SBOM as new API_ENDPOINT nodes (yaml: behavior.browser_discover_endpoints). Off by default \u2014 requires the 'browser' extra (Playwright/Chromium) and browser login already configured (target.browser_login / target.auth).",
+            "title": "Browser Discover Endpoints",
+            "type": "boolean"
+          },
+          "browser_discovery_nav_targets": {
+            "description": "Relative paths to visit during the endpoint-discovery crawl when browser_discover_endpoints is enabled, e.g. ['/dashboard', '/account'] (yaml: behavior.browser_discovery_nav_targets). Never auto-discovered by following links \u2014 only these caller-declared paths are visited.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Browser Discovery Nav Targets",
+            "type": "array"
           },
           "turn_delay_seconds": {
             "default": 0.0,
