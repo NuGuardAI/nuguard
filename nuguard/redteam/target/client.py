@@ -662,6 +662,7 @@ class TargetAppClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         """Send a prompt payload to the target and return (response_text, tool_calls).
 
@@ -675,6 +676,11 @@ class TargetAppClient:
         This prevents the thundering-herd pattern where multiple chains hammer a
         cold-starting Azure Container App during the retry window.
 
+        ``retry_transient=True`` opts into the same classify+backoff retry loop
+        without requiring a semaphore — for single-shot pre-scenario callers
+        (warmup pings, health checks) that want cold-start absorption but run
+        sequentially, so there's no other concurrent chain to protect.
+
         Raises:
             TargetUnavailableError: after MAX_CONSECUTIVE_ERRORS consecutive 5xx
                 or network errors on the chat endpoint.  4xx responses (validation
@@ -684,6 +690,8 @@ class TargetAppClient:
         if self._request_sem is not None:
             async with self._request_sem:
                 text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
+        elif retry_transient:
+            text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
         else:
             text, calls = await self._send_impl(payload, session, extra_headers)
         # Single choke point: strip known app-generated response-wrapper

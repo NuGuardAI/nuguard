@@ -1626,12 +1626,24 @@ class RedteamOrchestrator:
             # connection errors and produce 0-turn ABORTED records.  Sending a
             # lightweight probe first absorbs the cold-start penalty centrally.
             if self._pre_run_warmup > 0:
+                from nuguard.common.transport import (  # noqa: PLC0415
+                    TransportOutcome,
+                    classify_transport,
+                )
                 from nuguard.redteam.target.session import AttackSession as _WS  # noqa: PLC0415
                 _wu_session = _WS(session_id="pre-run-warmup", target_url=self._target_url, chain_id="pre-run-warmup")
                 for _wu_idx in range(self._pre_run_warmup):
                     try:
-                        _wu_resp_text, _ = await client.send("Hello", _wu_session)
-                        _log.info("pre-run warmup %d/%d: %s", _wu_idx + 1, self._pre_run_warmup, _wu_resp_text[:80] if _wu_resp_text else "(empty)")
+                        _wu_resp_text, _ = await client.send("Hello", _wu_session, retry_transient=True)
+                        _wu_outcome = classify_transport(_wu_resp_text) if _wu_resp_text else TransportOutcome.REQUEST_ERROR
+                        if _wu_outcome != TransportOutcome.OK:
+                            _log.warning(
+                                "pre-run warmup %d/%d: target still unhealthy after retries (%s): %s",
+                                _wu_idx + 1, self._pre_run_warmup, _wu_outcome.value,
+                                _wu_resp_text[:120] if _wu_resp_text else "(empty)",
+                            )
+                        else:
+                            _log.info("pre-run warmup %d/%d: %s", _wu_idx + 1, self._pre_run_warmup, _wu_resp_text[:80])
                     except Exception as _wu_exc:
                         _log.warning("pre-run warmup %d/%d failed (non-fatal): %s", _wu_idx + 1, self._pre_run_warmup, _wu_exc)
 
