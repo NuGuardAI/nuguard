@@ -336,6 +336,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_discovery_max_turns"] = int(redteam["discovery_max_turns"])
     if "capability_discovery" in redteam:
         flat["redteam_capability_discovery"] = bool(redteam["capability_discovery"])
+    if "liveness_cache_ttl_seconds" in redteam:
+        flat["redteam_liveness_cache_ttl_seconds"] = float(redteam["liveness_cache_ttl_seconds"])
     if "prompt_cache_dir" in redteam:
         flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
     if "resume" in redteam and redteam["resume"] is not None:
@@ -675,6 +677,15 @@ class BehaviorConfig(BaseModel):
             "Probe the live agent for tools, sub-agents, and its system prompt when the "
             "AI-SBOM is missing them, and merge the findings back into the in-memory SBOM "
             "before scenario generation. Only fires for AGENT nodes with an actual gap."
+        ),
+    )
+    liveness_cache_ttl_seconds: float = Field(
+        default=3600.0,
+        description=(
+            "How long a per-endpoint liveness result (yaml: behavior.liveness_cache_ttl_seconds) "
+            "cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached "
+            "result — including one written by a prior redteam run against the same "
+            "enriched SBOM — is used as-is, skipping the live ping entirely."
         ),
     )
     turn_delay_seconds: float = Field(
@@ -1274,6 +1285,15 @@ class NuGuardConfig(BaseSettings):
             "for AGENT nodes with an actual gap, so a well-populated SBOM sends no extra "
             "turns. Findings are tagged with confidence 0.5 and evidence kind "
             "'dynamic_probe' to distinguish them from static-analysis results."
+        ),
+    )
+    redteam_liveness_cache_ttl_seconds: float = Field(
+        default=3600.0,
+        description=(
+            "How long a per-endpoint liveness result (yaml: redteam.liveness_cache_ttl_seconds) "
+            "cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached "
+            "result — including one written by a prior behavior run against the same "
+            "enriched SBOM — is used as-is, skipping the live ping entirely."
         ),
     )
     redteam_prompt_cache_dir: str = Field(

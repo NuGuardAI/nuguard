@@ -2434,18 +2434,22 @@ class BehaviorRunner:
         if _preflight_ok and self._sbom is not None:
             try:
                 from nuguard.common.endpoint_liveness import (  # noqa: PLC0415
-                    check_endpoint_liveness,
+                    ensure_endpoint_liveness,
                 )
                 _bootstrap_hdrs2: dict[str, str] = (
                     getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
                 )
-                _liveness = await check_endpoint_liveness(
-                    self._sbom, client, _bootstrap_hdrs2 or None
+                _liveness = await ensure_endpoint_liveness(
+                    self._sbom,
+                    client,
+                    _bootstrap_hdrs2 or None,
+                    ttl_seconds=self._config.liveness_cache_ttl_seconds,
+                    sbom_path=self._sbom_path,
                 )
                 _log.info(
-                    "Behavior: endpoint liveness — checked=%d operational=%d "
+                    "Behavior: endpoint liveness — checked=%d cached=%d operational=%d "
                     "non_operational=%d skipped=%d",
-                    _liveness.checked, _liveness.operational,
+                    _liveness.checked, _liveness.cached, _liveness.operational,
                     _liveness.non_operational, _liveness.skipped,
                 )
             except Exception as _liv_exc:

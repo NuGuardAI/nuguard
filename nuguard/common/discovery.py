@@ -89,6 +89,27 @@ class DiscoveredProfile(BaseModel):
         return not self.customer_name and not self.ids
 
 
+def cached_discovery_profile(sbom: Any) -> "DiscoveredProfile | None":
+    """Return a previously-persisted, non-empty pre-scan profile from
+    *sbom*'s ``discovered_profile`` field, or ``None`` if absent/empty/invalid.
+
+    Shared by ``behavior`` and ``redteam`` so a run of either package against
+    an already-enriched SBOM can reuse a profile the other one discovered
+    live, skipping the DISCOVER HTTP round-trip (and its golden-data —
+    ``raw_response``/``ids`` — with it, since :attr:`DiscoveredProfile.raw_response`
+    already *is* the verbatim golden-data text consumed by
+    :mod:`nuguard.redteam.executor.golden_data_filter`).
+    """
+    if sbom is None or getattr(sbom, "discovered_profile", None) is None:
+        return None
+    try:
+        profile = DiscoveredProfile.model_validate(sbom.discovered_profile)
+    except Exception as exc:
+        _log.warning("cached_discovery_profile: could not parse cached SBOM profile: %s", exc)
+        return None
+    return None if profile.is_empty else profile
+
+
 # ---------------------------------------------------------------------------
 # Refusal detection
 # ---------------------------------------------------------------------------

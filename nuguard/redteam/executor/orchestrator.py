@@ -819,6 +819,7 @@ class RedteamOrchestrator:
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
         capability_discovery: bool = True,
+        liveness_cache_ttl_seconds: float = 3600.0,
         chat_payload_extras: dict[str, Any] | None = None,
         catalog: "tuple | None" = None,
         pre_run_warmup: int = 0,
@@ -906,6 +907,7 @@ class RedteamOrchestrator:
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
         self._capability_discovery = capability_discovery
+        self._liveness_cache_ttl_seconds = max(0.0, liveness_cache_ttl_seconds)
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
         self._pre_run_warmup = max(0, pre_run_warmup)
         self._verify_findings = verify_findings
@@ -1392,12 +1394,20 @@ class RedteamOrchestrator:
                 )
                 _cap_gaps = sbom_capability_gaps(self._sbom)
 
+            from nuguard.common.discovery import (  # noqa: PLC0415
+                cached_discovery_profile,
+            )
+            _cached_profile_hit = cached_discovery_profile(self._sbom)
+
             async with _disc_client:
-                _disc_outcome = await run_discovery(
-                    _disc_client,
-                    _disc_session,
-                    DiscoveryRequest(use_case=_use_case, max_turns=self._discovery_max_turns),
-                )
+                if _cached_profile_hit is not None:
+                    _disc_outcome = None
+                else:
+                    _disc_outcome = await run_discovery(
+                        _disc_client,
+                        _disc_session,
+                        DiscoveryRequest(use_case=_use_case, max_turns=self._discovery_max_turns),
+                    )
                 _cap_result = None
                 if _cap_gaps:
                     from nuguard.common.discovery import (  # noqa: PLC0415
@@ -1406,17 +1416,42 @@ class RedteamOrchestrator:
                     _cap_result = await run_capability_discovery(
                         _disc_client, _disc_session, _cap_gaps,
                     )
-            _pre_scan_profile = _disc_outcome.profile
-            self.config_notes.extend(_disc_outcome.notes)
-            for _disc_note in _disc_outcome.notes:
-                _rtconsole.print(f"  [yellow]{_disc_note}[/yellow]")
-            _log.info(
-                "pre-scan discovery: name=%r ids=%s turns=%d source=%s",
-                _pre_scan_profile.customer_name,
-                _pre_scan_profile.ids,
-                _pre_scan_profile.turns_sent,
-                _pre_scan_profile.source,
-            )
+            if _cached_profile_hit is not None:
+                _pre_scan_profile = _cached_profile_hit
+                _cache_note = (
+                    f"Pre-scan discovery (from enriched SBOM): name={_pre_scan_profile.customer_name!r} "
+                    f"ids={_pre_scan_profile.ids}"
+                )
+                self.config_notes.append(_cache_note)
+                _rtconsole.print(f"  [dim]{_cache_note}[/dim]")
+                _log.info(
+                    "pre-scan discovery (from enriched SBOM): name=%r ids=%s",
+                    _pre_scan_profile.customer_name, _pre_scan_profile.ids,
+                )
+            else:
+                assert _disc_outcome is not None
+                _pre_scan_profile = _disc_outcome.profile
+                self.config_notes.extend(_disc_outcome.notes)
+                for _disc_note in _disc_outcome.notes:
+                    _rtconsole.print(f"  [yellow]{_disc_note}[/yellow]")
+                _log.info(
+                    "pre-scan discovery: name=%r ids=%s turns=%d source=%s",
+                    _pre_scan_profile.customer_name,
+                    _pre_scan_profile.ids,
+                    _pre_scan_profile.turns_sent,
+                    _pre_scan_profile.source,
+                )
+                if not _pre_scan_profile.is_empty and self._sbom_path is not None and self._sbom is not None:
+                    from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
+                        persist_discovery_profile_sbom,
+                    )
+                    self._sbom.discovered_profile = _pre_scan_profile.model_dump(mode="json")
+                    try:
+                        _profile_artifact = persist_discovery_profile_sbom(self._sbom, self._sbom_path)
+                        _log.info("pre-scan discovery: persisted profile to %s", _profile_artifact)
+                        _rtconsole.print(f"  [dim]Pre-scan discovery profile cached in {_profile_artifact}[/dim]")
+                    except Exception as exc:
+                        _log.warning("pre-scan discovery: could not persist SBOM profile: %s", exc)
 
             if _cap_gaps and _cap_result is not None:
                 from nuguard.common.discovery import (  # noqa: PLC0415
@@ -1776,15 +1811,19 @@ class RedteamOrchestrator:
             # larger reordering left for a follow-up change.
             try:
                 from nuguard.common.endpoint_liveness import (  # noqa: PLC0415
-                    check_endpoint_liveness,
+                    ensure_endpoint_liveness,
                 )
-                _liveness = await check_endpoint_liveness(
-                    self._sbom, client, effective_headers or None
+                _liveness = await ensure_endpoint_liveness(
+                    self._sbom,
+                    client,
+                    effective_headers or None,
+                    ttl_seconds=self._liveness_cache_ttl_seconds,
+                    sbom_path=self._sbom_path,
                 )
                 _log.info(
-                    "Redteam: endpoint liveness — checked=%d operational=%d "
+                    "Redteam: endpoint liveness — checked=%d cached=%d operational=%d "
                     "non_operational=%d skipped=%d",
-                    _liveness.checked, _liveness.operational,
+                    _liveness.checked, _liveness.cached, _liveness.operational,
                     _liveness.non_operational, _liveness.skipped,
                 )
             except Exception as exc:

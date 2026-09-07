@@ -902,6 +902,22 @@ def persist_discovery_profile_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Pat
     return out_path
 
 
+def persist_liveness_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
+    """Write *sbom* (with per-node ``operational``/``liveness_checked_at``/
+    ``liveness_notes`` already set) to the same ``<name>.sbom.enriched.json``
+    artifact, so a completed live endpoint-liveness pass (see
+    :mod:`nuguard.common.endpoint_liveness`) survives across runs and a later
+    run — behavior after redteam, or vice versa — can skip re-pinging
+    endpoints whose cached result is still fresh.
+
+    Like :func:`persist_discovery_profile_sbom`, no ``_enrichment_cache_key``
+    is embedded, since this write carries live target-derived data.
+    """
+    out_path = _enriched_output_path(sbom_path)
+    _write_enriched(sbom, out_path, cache_key=None)
+    return out_path
+
+
 def _enrichment_cache_key(
     sbom: AiSbomDocument,
     target_url: str | None,

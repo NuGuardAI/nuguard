@@ -927,6 +927,12 @@
             "title": "Capability Discovery",
             "type": "boolean"
           },
+          "liveness_cache_ttl_seconds": {
+            "default": 3600.0,
+            "description": "How long a per-endpoint liveness result (yaml: behavior.liveness_cache_ttl_seconds) cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached result \u2014 including one written by a prior redteam run against the same enriched SBOM \u2014 is used as-is, skipping the live ping entirely.",
+            "title": "Liveness Cache Ttl Seconds",
+            "type": "number"
+          },
           "turn_delay_seconds": {
             "default": 0.0,
             "description": "Inter-turn pause in seconds to avoid 429 rate-limit errors.",
@@ -2290,6 +2296,12 @@
             "description": "Probe the live agent for tools, sub-agents, and its system prompt when the AI-SBOM is missing them, and merge the findings back into the in-memory SBOM before scenario generation. Only fires for AGENT nodes with an actual gap.",
             "title": "Capability Discovery",
             "type": "boolean"
+          },
+          "liveness_cache_ttl_seconds": {
+            "default": 3600.0,
+            "description": "How long a per-endpoint liveness result (yaml: behavior.liveness_cache_ttl_seconds) cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached result \u2014 including one written by a prior redteam run against the same enriched SBOM \u2014 is used as-is, skipping the live ping entirely.",
+            "title": "Liveness Cache Ttl Seconds",
+            "type": "number"
           },
           "turn_delay_seconds": {
             "default": 0.0,
@@ -6817,6 +6829,11 @@
         "default": true,
         "title": "Capability Discovery",
         "type": "boolean"
+      },
+      "liveness_cache_ttl_seconds": {
+        "default": 3600.0,
+        "title": "Liveness Cache Ttl Seconds",
+        "type": "number"
       },
       "chat_payload_extras": {
         "anyOf": [
