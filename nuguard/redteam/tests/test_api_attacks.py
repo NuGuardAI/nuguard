@@ -724,6 +724,60 @@ def test_generator_no_api_scenarios_without_api_endpoint_nodes():
 
 
 # ---------------------------------------------------------------------------
+# _looks_like_rest_path / non-REST endpoint liveness filtering (Gap A fix)
+# ---------------------------------------------------------------------------
+
+def test_bind_address_endpoint_skips_direct_http_scenarios():
+    node = _api_node(
+        "ep20", "MCP Bridge", path="0.0.0.0:8080 (sse)",
+        method="GET", auth_required=True,
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    api_scenarios = [s for s in scenarios if s.goal_type == GoalType.API_ATTACK]
+    assert len(api_scenarios) == 0
+    assert gen.skipped_endpoint_notes
+    assert "MCP Bridge" in gen.skipped_endpoint_notes[0]
+
+
+def test_mcp_style_endpoint_skipped():
+    node = _api_node(
+        "ep21", "Tool Server", path="stdio://mcp-server (mcp)",
+        method="GET", auth_required=True,
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    api_scenarios = [s for s in scenarios if s.goal_type == GoalType.API_ATTACK]
+    assert len(api_scenarios) == 0
+    assert gen.skipped_endpoint_notes
+
+
+def test_normal_rest_path_endpoint_unaffected():
+    node = _api_node(
+        "ep22", "Internal Transfer", path="/api/bank/transfer/internal",
+        method="POST", auth_required=True, rate_limited=True,
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    api_scenarios = [s for s in scenarios if s.goal_type == GoalType.API_ATTACK]
+    assert len(api_scenarios) > 0
+    assert not gen.skipped_endpoint_notes
+
+
+def test_looks_like_rest_path_helper():
+    assert ScenarioGenerator._looks_like_rest_path("/api/transfer") is True
+    assert ScenarioGenerator._looks_like_rest_path("/api/users/{id}") is True
+    assert ScenarioGenerator._looks_like_rest_path("0.0.0.0:8080 (sse)") is False
+    assert ScenarioGenerator._looks_like_rest_path("stdio://mcp-server") is False
+    assert ScenarioGenerator._looks_like_rest_path("mcp-server (mcp)") is False
+    assert ScenarioGenerator._looks_like_rest_path(None) is False
+    assert ScenarioGenerator._looks_like_rest_path("") is False
+
+
+# ---------------------------------------------------------------------------
 # StepResult HTTP_2XX_SENTINEL logic
 # ---------------------------------------------------------------------------
 

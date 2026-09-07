@@ -32,6 +32,8 @@ from nuguard.common.run_checkpoint import (
 from nuguard.common.run_checkpoint import (
     fingerprint as _checkpoint_fingerprint,
 )
+from nuguard.common.text_similarity import extract_tokens as _extract_evidence_tokens
+from nuguard.common.text_similarity import jaccard as _evidence_jaccard
 from nuguard.models.exploit_chain import ExploitChain, GoalType, ScenarioType
 from nuguard.models.finding import Finding, Severity
 from nuguard.models.policy import CognitivePolicy
@@ -150,6 +152,104 @@ def _dedup_findings(findings: list[Finding]) -> list[Finding]:
     return result
 
 
+# Evidence text is far more structured/repetitive than the free-text attack
+# payloads SimilarityMissTracker clusters (default 0.25) — a higher bar avoids
+# over-merging genuinely distinct findings that happen to share boilerplate
+# wording about the same endpoint.
+_EVIDENCE_DEDUP_SIMILARITY_THRESHOLD = 0.75
+
+
+def _dedup_findings_by_evidence_similarity(findings: list[Finding]) -> list[Finding]:
+    """Collapse findings that share an affected_component + goal_type and whose
+    evidence text is near-identical, even when their titles (and therefore
+    ``_dedup_findings``'s exact finding_id key) differ.
+
+    Motivating case: three differently-titled scenarios (e.g. "JWT Tampering",
+    "Authentication Bypass", "Auth Scope Bypass") hitting the same unauthenticated
+    endpoint produce byte-identical evidence but distinct finding_ids, so the
+    exact-key pass in :func:`_dedup_findings` never collapses them — one real
+    issue then inflates into N separate findings of the same severity.
+
+    Never merges across different ``goal_type``s (a real IDOR and a real
+    AUTH_BYPASS against the same endpoint are still two distinct classes of
+    safeguard break) or when ``affected_component`` is empty/None on either
+    side (an empty-string collision would over-merge unrelated findings that
+    never got a component label).
+    """
+    groups: dict[tuple[str, str], list[Finding]] = {}
+    order: list[tuple[str, str]] = []
+    for f in findings:
+        component = (f.affected_component or "").strip().lower()
+        goal = f.goal_type or ""
+        if not component:
+            # No component label to group on — never merge, pass through as its
+            # own singleton group so it survives untouched below.
+            key = (f"__no_component__:{id(f)}", goal)
+        else:
+            key = (component, goal)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(f)
+
+    result: list[Finding] = []
+    collapsed_count = 0
+    for key in order:
+        group = groups[key]
+        if len(group) == 1:
+            result.append(group[0])
+            continue
+        # Cluster by Jaccard similarity of evidence text (fall back to
+        # evidence_quote), same clustering shape as SimilarityMissTracker:
+        # union against the nearest existing cluster representative.
+        clusters: list[list[Finding]] = []
+        cluster_tokens: list[frozenset[str]] = []
+        for f in group:
+            evidence_text = f.evidence or f.evidence_quote or ""
+            tokens = _extract_evidence_tokens(evidence_text)
+            if not tokens:
+                clusters.append([f])
+                cluster_tokens.append(tokens)
+                continue
+            placed = False
+            for idx, existing_tokens in enumerate(cluster_tokens):
+                if existing_tokens and _evidence_jaccard(tokens, existing_tokens) >= _EVIDENCE_DEDUP_SIMILARITY_THRESHOLD:
+                    clusters[idx].append(f)
+                    cluster_tokens[idx] = existing_tokens | tokens
+                    placed = True
+                    break
+            if not placed:
+                clusters.append([f])
+                cluster_tokens.append(tokens)
+
+        for cluster in clusters:
+            if len(cluster) == 1:
+                result.append(cluster[0])
+                continue
+            winner = cluster[0]
+            for f in cluster[1:]:
+                if _sev_rank(f.severity) < _sev_rank(winner.severity):
+                    winner = f
+                elif _sev_rank(f.severity) == _sev_rank(winner.severity) and len(f.evidence or "") > len(winner.evidence or ""):
+                    winner = f
+            collapsed_titles = sorted({f.title for f in cluster if f.title and f.title != winner.title})
+            if collapsed_titles:
+                note = (
+                    f" (collapsed {len(cluster) - 1} near-duplicate finding(s) with "
+                    f"near-identical evidence: {', '.join(collapsed_titles)})"
+                )
+                winner = winner.model_copy(update={"description": (winner.description or "") + note})
+            result.append(winner)
+            collapsed_count += len(cluster) - 1
+
+    if collapsed_count:
+        _log.info(
+            "Finding dedup (evidence similarity): collapsed %d near-duplicate(s) → %d findings",
+            collapsed_count, len(result),
+        )
+    return result
+
+
 def _matches_scenario_tokens(goal: str, scenario_type: str, title: str, filters: set[str]) -> bool:
     """Shared substring-match rule for both the pre-run and post-run filter checks."""
     return any(_token_matches(token, goal, scenario_type, title) for token in filters)
@@ -241,6 +341,11 @@ class ScenarioRecord:
     http_2xx: int = 0
     http_4xx: int = 0
     http_5xx: int = 0
+    # Subset of http_4xx specifically (never a replacement) — 404 means "this
+    # path doesn't exist" (wrong/stale endpoint resolution), a materially
+    # different claim than a 401/403 "this path exists and rejected me"
+    # (a defended attack). See _maybe_mark_endpoint_not_found below.
+    http_404: int = 0
     request_errors: int = 0
     timeout_errors: int = 0
     # Timing and turn counts — populated after execution
@@ -339,6 +444,23 @@ def _idor_chain_status_with_auth_caveat(
     return chain_status
 
 
+def _is_404(response: str, http_status_code: int | None) -> bool:
+    """True when a step's transport outcome was specifically HTTP 404.
+
+    Reuses the same two code paths ``_classify_step_transport`` parses
+    (direct status code from ``invoke_endpoint``, or a ``[HTTP NNN]``-encoded
+    chat-path response) rather than re-deriving the parsing logic.
+    """
+    if http_status_code is not None:
+        return http_status_code == 404
+    if response.startswith("[HTTP "):
+        try:
+            return int(response[6:9]) == 404
+        except (ValueError, IndexError):
+            return False
+    return False
+
+
 def _tally_transport(record: ScenarioRecord, step_results: list) -> None:
     """Accumulate transport health counters into *record* from *step_results*."""
     for sr in step_results:
@@ -347,12 +469,42 @@ def _tally_transport(record: ScenarioRecord, step_results: list) -> None:
             record.http_2xx += 1
         elif category == "http_4xx":
             record.http_4xx += 1
+            if _is_404(sr.response, sr.http_status_code):
+                record.http_404 += 1
         elif category == "http_5xx":
             record.http_5xx += 1
         elif category == "timeout_error":
             record.timeout_errors += 1
         else:
             record.request_errors += 1
+
+
+def _maybe_mark_endpoint_not_found(
+    record: ScenarioRecord, chain_status: str, is_direct_http_only: bool
+) -> str:
+    """Reclassify a direct-HTTP-only scenario that 404'd on every step.
+
+    A dead/misresolved SBOM endpoint (stale REST path, guessed slug) 404s on
+    every attempt and — with no finding raised — reads identically in the
+    report to a live endpoint that successfully defended the same attack.
+    That silently understates risk: the attack surface was never reached at
+    all. Deliberately conservative — only fires when every transport-
+    classified step in the scenario was specifically a 404 (not a mix that
+    includes a real 401/403 defended response) and no finding was raised, so
+    a scenario that got a genuine auth rejection on some steps and a
+    spurious 404 elsewhere (e.g. after an ID substitution) is never
+    miscategorized as "not reached".
+    """
+    if (
+        chain_status == "completed"
+        and is_direct_http_only
+        and not record.had_finding
+        and record.http_404 > 0
+        and record.http_404 == record.http_4xx
+        and record.http_404 == (record.http_2xx + record.http_4xx + record.http_5xx)
+    ):
+        return "completed:endpoint_not_found"
+    return chain_status
 
 
 def _compute_scan_outcome(
@@ -1356,6 +1508,7 @@ class RedteamOrchestrator:
         generator = ScenarioGenerator(self._sbom, effective_policy, canary_config=self._canary_config)
         all_scenarios = generator.generate(with_guided=_with_guided, progressive=_progressive)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
+        self.config_notes.extend(generator.skipped_endpoint_notes)
 
         # 1b. Catalog scenarios — merged into the SBOM-driven set above.
         # The catalog is capability-aware and handles its own profile filtering,
@@ -1524,7 +1677,7 @@ class RedteamOrchestrator:
                 self.scan_outcome = _compute_scan_outcome(
                     findings=self.findings, records=self.scenario_records, strict=self._strict_outcome,
                 )
-                return _dedup_findings(self.findings)
+                return _dedup_findings_by_evidence_similarity(_dedup_findings(self.findings))
             _log.info(
                 "No scenarios met the impact threshold — scan complete with 0 findings"
             )
@@ -1791,7 +1944,7 @@ class RedteamOrchestrator:
                     self.scenario_records.extend(escalation_records)
                     self.findings.extend(findings)
 
-        findings = _dedup_findings(findings)
+        findings = _dedup_findings_by_evidence_similarity(_dedup_findings(findings))
         _log.info("Scan complete: %d findings (after dedup)", len(findings))
 
         # Update coverage tracker with finding data from executed scenarios.
@@ -2054,6 +2207,9 @@ class RedteamOrchestrator:
                         turns_budget=len(scenario.chain.steps),
                     )
                     _tally_transport(record, step_results)
+                    record.chain_status = _maybe_mark_endpoint_not_found(
+                        record, record.chain_status, _is_direct_http
+                    )
 
                     # Code-gen exploitation escalation: when the primary chain
                     # confirms the agent generated code, immediately run a

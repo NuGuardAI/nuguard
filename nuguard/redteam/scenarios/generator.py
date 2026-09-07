@@ -340,6 +340,12 @@ class ScenarioGenerator:
         # Coverage report produced by the last generate_from_catalog() call.
         from nuguard.redteam.catalog.coverage import CoverageReport as _CR
         self.last_coverage: _CR | None = None
+        # Notes recorded by the last generate()/_api_attack_scenarios() call
+        # for API_ENDPOINT nodes whose declared endpoint isn't an attackable
+        # REST path (e.g. an MCP/SSE bind-string like "0.0.0.0:8080 (sse)") —
+        # surfaced so a report reader knows why no direct-HTTP scenarios were
+        # generated for that node, instead of silently seeing nothing.
+        self.skipped_endpoint_notes: list[str] = []
 
     def generate(self, with_guided: bool = False, progressive: bool = False) -> list[AttackScenario]:
         """Generate all attack scenarios sorted by impact score descending.
@@ -1623,6 +1629,26 @@ class ScenarioGenerator:
         "oauth", "callback", "token",
     })
 
+    # Matches SBOM-declared "endpoint" values that aren't an HTTP path:
+    # bind-address:port strings ("0.0.0.0:8080"), scheme-prefixed URIs
+    # ("stdio://...", "mcp://..."), and trailing protocol annotations like
+    # "(sse)"/"(mcp)"/"(ws)" — see Node.metadata.endpoint's own docstring
+    # example "0.0.0.0:8080 (sse)" for MCP/SSE services.
+    _NON_REST_ENDPOINT_RE = re.compile(
+        r"^[\w.\-]+:\d+|^[a-z][a-z0-9+.\-]*://|\(\s*[a-z]+\s*\)\s*$", re.IGNORECASE
+    )
+
+    @classmethod
+    def _looks_like_rest_path(cls, endpoint: str | None) -> bool:
+        """True when *endpoint* is an attackable HTTP path, not a bind
+        address / MCP-SSE annotation / other non-REST identifier."""
+        if not endpoint or not endpoint.strip():
+            return False
+        candidate = endpoint.strip()
+        if not candidate.startswith("/"):
+            return False
+        return not cls._NON_REST_ENDPOINT_RE.search(candidate)
+
     def _api_attack_scenarios(self) -> list[AttackScenario]:
         """Generate direct HTTP attack scenarios from API_ENDPOINT SBOM nodes.
 
@@ -1669,6 +1695,21 @@ class ScenarioGenerator:
                 continue
             meta = node.metadata
             endpoint_id = str(node.id)
+
+            if meta.endpoint and not self._looks_like_rest_path(meta.endpoint):
+                # A guessed slug path is no better than the wrong declared
+                # one — it produced a stale 404-on-every-turn "Internal
+                # Transfer" scenario in a real scan. Skip direct-HTTP
+                # scenarios for this node entirely rather than fabricate a
+                # path; a chat-routed capability probe (if any) is unaffected.
+                self.skipped_endpoint_notes.append(
+                    f"Skipped direct-HTTP attack scenarios for '{node.name}': "
+                    f"endpoint metadata {meta.endpoint!r} is not an HTTP path "
+                    f"(bind address / MCP-SSE annotation) — no REST route to "
+                    f"attack directly."
+                )
+                continue
+
             # Fall back to a slugified name if endpoint path was not captured
             path = meta.endpoint or f"/{node.name.lower().replace(' ', '-')}"
             method = (meta.method or "GET").upper()
