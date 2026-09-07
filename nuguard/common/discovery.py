@@ -10,6 +10,7 @@ DISCOVER steps are cheap cache hits.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -781,7 +782,22 @@ def _extract_list_items(text: str) -> list[str]:
     Falls back to comma-separated segments of the first sentence when no
     list markers are present (some agents answer in prose, e.g.
     "I can book flights, cancel reservations, and check in.").
+
+    Undecoded JSON (e.g. a raw SSE event object dumped as text when the
+    target's streaming response shape wasn't recognized) is never natural
+    language and must not reach the comma/bullet splitters below — doing so
+    turns literal JSON keys like ``"type"``/``"chunk"``/``"conversation_id"``
+    into fabricated "capability" names.
     """
+    stripped = text.strip()
+    if stripped[:1] in "{[":
+        try:
+            json.loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        else:
+            return []
+
     items: list[str] = []
     for line in text.splitlines():
         m = _LIST_ITEM_RE.match(line)

@@ -3268,6 +3268,7 @@ class RedteamOrchestrator:
                 violation_ngrs = ngrs.score_policy_violation(
                     violation.type, violation.policy_clause, violation.confidence,
                     scenario.goal_type, turns_used=_turns_used,
+                    evidence_text=sr.response,
                 )
                 violation_title = f"{violation.type.replace('_', ' ').title()} — {scenario.title}"
                 # Evidence centres on the specific step that triggered the violation.

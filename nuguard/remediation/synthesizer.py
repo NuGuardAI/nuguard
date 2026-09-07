@@ -573,12 +573,20 @@ def _merge_artefacts(artefacts: list[RemediationArtefact]) -> list[RemediationAr
         finding_ids: list[str] = []
         patch_parts: list[str] = []
         rationale_parts: list[str] = []
+        per_finding_rationale: dict[str, str] = {}
         for a in group:
             finding_ids.extend(a.finding_ids)
             if a.patch_text:
                 patch_parts.append(a.patch_text)
             if a.rationale:
                 rationale_parts.append(a.rationale)
+                # Each finding this pre-merge artefact addresses keeps its OWN
+                # rationale text, so backfill can recover it even after the
+                # combined `rationale` below is truncated for display — a
+                # finding's remediation must never be reconstructed from a
+                # sibling finding's text (see backfill.py).
+                for fid in a.finding_ids:
+                    per_finding_rationale[fid] = a.rationale
         base = group[0]
         merged.append(RemediationArtefact(
             finding_ids=finding_ids,
@@ -595,6 +603,7 @@ def _merge_artefacts(artefacts: list[RemediationArtefact]) -> list[RemediationAr
             # report even when several findings land on the same patch.
             rationale="\n".join(dict.fromkeys(rationale_parts))
             or f"Merged {len(group)} system prompt patches for {comp}",
+            per_finding_rationale=per_finding_rationale,
         ))
 
     # Sort by priority

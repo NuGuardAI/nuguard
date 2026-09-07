@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from nuguard.common.exfiltration_indicators import contains_exfiltration_indicators
 from nuguard.models.exploit_chain import GoalType
 from nuguard.models.finding import Severity
 
@@ -362,6 +363,7 @@ def score_policy_violation(
     *,
     turns_used: int | None = None,
     probe_modifier: int = 0,
+    evidence_text: str = "",
 ) -> NGRSResult:
     """Score a PolicyViolation finding.
 
@@ -370,8 +372,18 @@ def score_policy_violation(
     by every detector — see ``nuguard/redteam/policy_engine/detectors/*.py``
     — and previously dropped entirely once ``_build_findings`` read only
     ``.severity``) now sets ``evidence_strength`` directly.
+
+    ``evidence_text`` (the actual target response, when available) is
+    scanned for a genuine exfiltration attempt (an exec/network verb paired
+    with an outbound URL or secret-file reference) — a topic_boundary
+    violation whose response contains a working exfiltration command is
+    scored as DATA_EXFILTRATION impact regardless of which tier fired,
+    instead of the generic low-impact topic-boundary treatment. This only
+    affects impact scoring of an already-triggered violation, not detection.
     """
-    if violation_type == "topic_boundary":
+    if violation_type == "topic_boundary" and contains_exfiltration_indicators(evidence_text):
+        impact = _GOAL_TYPE_DEFAULT_IMPACT[GoalType.DATA_EXFILTRATION]
+    elif violation_type == "topic_boundary":
         impact = (
             _TOPIC_BOUNDARY_TIER2_IMPACT
             if policy_clause == _TOPIC_BOUNDARY_TIER2_CLAUSE

@@ -186,28 +186,58 @@ def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
     return current
 
 
-def _extract_sse_event_text(event: dict[str, Any]) -> str:
+def _extract_sse_event_text(event: dict[str, Any]) -> str | None:
     """Extract incremental text from one generic (non-framework-adapter) SSE event.
 
-    Covers the plain ``{"text"|"content"|"message": "..."}`` shapes as well as
+    Covers the plain ``{"text"|"content"|"message"|"chunk": "..."}`` shapes,
     the OpenAI/Vercel-AI-SDK streaming-completion shape
     ``{"choices": [{"delta": {"content": "..."}}]}`` used by e.g. OWASP Juice
-    Shop's ``/rest/chat`` and any other ``ai`` package / OpenAI-compatible
+    Shop's ``/rest/chat``, a bare-string top-level ``delta`` (some custom
+    chat-widget backends), and any other ``ai`` package / OpenAI-compatible
     streaming chat backend. An ``{"error": "..."}`` event is deliberately
     *not* treated as text here — surfacing it as if it were assistant output
     would poison the transcript with the app's own error message.
+
+    Returns ``None`` (not ``""``) when the event's shape isn't recognized at
+    all, distinct from a recognized-but-empty text field — callers must not
+    fall back to dumping the raw event JSON as if it were response text (that
+    feeds literal key/type fragments like ``"content_block"``/``"chunk"``
+    into downstream capability-discovery/evidence parsing as if they were
+    real assistant output).
     """
     if not isinstance(event, dict) or "error" in event:
         return ""
-    text = event.get("text") or event.get("content") or event.get("message") or ""
-    if text:
-        return str(text)
+    text = (
+        event.get("text")
+        or event.get("content")
+        or event.get("message")
+        or event.get("chunk")
+        or ""
+    )
+    if text and isinstance(text, str):
+        return text
     choices = event.get("choices")
     if isinstance(choices, list) and choices and isinstance(choices[0], dict):
         delta = choices[0].get("delta")
         if isinstance(delta, dict):
             return str(delta.get("content") or "")
-    return ""
+    delta = event.get("delta")
+    if isinstance(delta, str):
+        return delta
+    if isinstance(delta, dict):
+        nested = delta.get("text") or delta.get("content")
+        if isinstance(nested, str):
+            return nested
+    known_envelope_keys = {
+        "type", "id", "conversation_id", "role", "index", "model", "stop_reason",
+        "created", "created_at", "object", "usage", "finish_reason",
+    }
+    if event and set(event.keys()) <= known_envelope_keys:
+        # A recognized streaming-envelope shape carrying no text this event
+        # (e.g. a "message_start"/"ping" control frame) — legitimately empty,
+        # not unrecognized.
+        return ""
+    return None
 
 
 def _extract_common_response_text(data: Any) -> str:
@@ -957,8 +987,34 @@ class TargetAppClient:
                     from nuguard.redteam.target.sse import parse_sse_events  # noqa: PLC0415
 
                     _sse_events = parse_sse_events(resp.text)
-                    _sse_text = "".join(_extract_sse_event_text(_ev) for _ev in _sse_events)
-                    data = _sse_text or json.dumps(_sse_events)
+                    _extracted_texts = [_extract_sse_event_text(_ev) for _ev in _sse_events]
+                    _sse_text = "".join(t for t in _extracted_texts if t)
+                    _has_error_event = any(
+                        isinstance(_ev, dict) and "error" in _ev for _ev in _sse_events
+                    )
+                    if _sse_text:
+                        data = _sse_text
+                    elif _has_error_event:
+                        # An app-level error event carries no extractable
+                        # "assistant text" by design (see
+                        # _extract_sse_event_text's docstring), but it must
+                        # still reach callers/judges as a visible failure
+                        # rather than silently becoming an empty response.
+                        data = json.dumps(_sse_events)
+                    elif _sse_events and all(t is None for t in _extracted_texts):
+                        # Every event had an unrecognized (non-error) shape —
+                        # do not fall back to dumping the raw event JSON as
+                        # response text; that feeds literal key/type
+                        # fragments (e.g. "content_block", "chunk") into
+                        # downstream capability-discovery parsing as if they
+                        # were real assistant output.
+                        _log.warning(
+                            "SSE response with no recognized event text shape: %r",
+                            _sse_events[0] if _sse_events else None,
+                        )
+                        data = ""
+                    else:
+                        data = ""
                 else:
                     data = resp.json()
                 break
@@ -1291,7 +1347,7 @@ class TargetAppClient:
                                 tool_calls.extend(chunk_tools)
                         else:
                             # Generic: look for content/text in the event dict
-                            chunk_text = _extract_sse_event_text(event)
+                            chunk_text = _extract_sse_event_text(event) or ""
                             tool_calls = []
                         if chunk_text:
                             accumulated_text_parts.append(chunk_text)

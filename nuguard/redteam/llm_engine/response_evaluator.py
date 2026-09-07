@@ -419,6 +419,7 @@ class LLMResponseEvaluator:
         golden_data: str = "",
         app_log_context: str | None = None,
         sensitive_fields: list[str] | None = None,
+        http_status_code: int | None = None,
     ) -> dict:
         """Return dict with: succeeded, confidence, evidence, severity_signal.
 
@@ -446,6 +447,10 @@ class LLMResponseEvaluator:
         app_log_context:
             Optional log lines captured from the target application during
             this request.  Injected into the evaluation prompt when provided.
+        http_status_code:
+            The direct-HTTP status code for this response, when known — used
+            to guard the bulk-record-count data-exposure heuristic against
+            4xx validation-error/not-found envelopes.
         """
         if not response or response.startswith(
             ("[REQUEST_ERROR:", "[HTTP ", "[NUGUARD_CANNED")
@@ -458,7 +463,9 @@ class LLMResponseEvaluator:
             _log.debug("Judge cache hit | goal=%s", goal_type)
             return cached
 
-        bundle = self._collect_signals(goal_type, payload, response, sensitive_fields)
+        bundle = self._collect_signals(
+            goal_type, payload, response, sensitive_fields, http_status_code
+        )
         deterministic = bundle.resolve_deterministic()
         if deterministic is not None:
             _log.info(
@@ -482,6 +489,7 @@ class LLMResponseEvaluator:
         payload: str,
         response: str,
         sensitive_fields: list[str] | None = None,
+        http_status_code: int | None = None,
     ) -> EvidenceBundle:
         """Run every detector applicable to *goal_type* and return the bundle.
 
@@ -510,7 +518,11 @@ class LLMResponseEvaluator:
             bundle.add(detect_fictional_data(response))
 
         if goal_type in _API_RESPONSE_GOALS:
-            bundle.add(detect_api_data_exposure(response, sensitive_fields))
+            bundle.add(
+                detect_api_data_exposure(
+                    response, sensitive_fields, http_status_code=http_status_code
+                )
+            )
 
         _code_gen_keywords = (
             "write python", "write a python", "write code", "write a function",

@@ -644,6 +644,13 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "per_finding_rationale": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Per Finding Rationale",
+            "type": "object"
           }
         },
         "required": [
@@ -1807,6 +1814,13 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "per_finding_rationale": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Per Finding Rationale",
+            "type": "object"
           }
         },
         "required": [
@@ -3185,6 +3199,13 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "per_finding_rationale": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Per Finding Rationale",
+            "type": "object"
           }
         },
         "required": [
@@ -6048,6 +6069,13 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "per_finding_rationale": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Per Finding Rationale",
+            "type": "object"
           }
         },
         "required": [
@@ -7465,6 +7493,13 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "per_finding_rationale": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Per Finding Rationale",
+            "type": "object"
           }
         },
         "required": [
