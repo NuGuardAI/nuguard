@@ -1005,9 +1005,25 @@ def discover_chat_candidates_from_sbom(
         elif node.confidence >= 0.75:
             score += 1
 
-        if "/chat/message" in endpoint_l:
+        # Path tokens must match whole segments — a substring check would let
+        # e.g. "/respond-visual" falsely match the "/respond" token and
+        # outscore the real "/chat" endpoint.
+        endpoint_segments = [s for s in endpoint_l.strip("/").split("/") if s]
+
+        def _segment_match(token: str) -> bool:
+            tok_segments = [s for s in token.strip("/").split("/") if s]
+            n = len(tok_segments)
+            return any(
+                endpoint_segments[i : i + n] == tok_segments
+                for i in range(len(endpoint_segments) - n + 1)
+            )
+
+        if _segment_match("/chat/message"):
             score += 2
-        elif any(token in endpoint_l for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")):
+        elif any(
+            _segment_match(token)
+            for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")
+        ):
             score += 3
         elif endpoint_l.endswith("/chat"):
             score += 1
