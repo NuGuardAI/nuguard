@@ -453,16 +453,39 @@ def test_to_markdown_gap_summary_renders_remediation_and_fallback():
         gap_aggregation_stats={
             "raw_gap_observations": 5,
             "unique_gap_observations": 4,
+            "buckets_suppressed_by_coverage": 2,
             "min_occurrences_threshold": 1,
         },
     )
     md = to_markdown(result)
     assert "## Behavioral Gap Summary" in md
     assert "| Component | Occurrences | Sample Gaps | Remediation |" in md
+    assert "| Buckets suppressed by successful final coverage | 2 |" in md
     # Explicit remediation is rendered verbatim.
     assert "Add a wheelchair-assistance entry to the FAQ knowledge base." in md
     # Missing remediation falls back to the per-type guidance template.
     assert "Align doc_agent system prompt with application's stated purpose" in md
+
+
+def test_to_markdown_gap_summary_renders_when_all_buckets_reconciled() -> None:
+    result = _make_result(
+        dynamic_findings=[],
+        gap_aggregation_stats={
+            "raw_gap_observations": 2,
+            "unique_gap_observations": 1,
+            "buckets_formed": 1,
+            "buckets_emitted": 0,
+            "buckets_dropped": 0,
+            "buckets_suppressed_by_coverage": 1,
+            "min_occurrences_threshold": 2,
+        },
+    )
+
+    md = to_markdown(result)
+
+    assert "## Behavioral Gap Summary" in md
+    assert "| Buckets emitted as findings (>= 2) | 0 |" in md
+    assert "| Buckets suppressed by successful final coverage | 1 |" in md
 
 
 def test_to_markdown_gap_summary_empty_remediation_falls_back():

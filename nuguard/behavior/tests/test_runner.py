@@ -217,6 +217,254 @@ async def test_run_single_scenario_pass():
 
 
 @pytest.mark.asyncio
+async def test_run_reconciles_nonmention_gap_with_final_successful_coverage() -> None:
+    """A later successful exercise must clear an earlier non-mention gap."""
+    tool_name = "Search Tool"
+    runner = BehaviorRunner(
+        config=_make_config(),
+        sbom=AiSbomDocument(
+            target="test",
+            nodes=[
+                Node(
+                    name=tool_name,
+                    component_type=ComponentType.TOOL,
+                    confidence=1.0,
+                    metadata=NodeMetadata(),
+                )
+            ],
+        ),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    scenarios = [
+        BehaviorScenario(
+            scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
+            name="search_missing",
+            messages=["Try search without naming it."],
+            target_component=tool_name,
+            target_component_type="TOOL",
+            scoped_tools=[tool_name],
+        ),
+        BehaviorScenario(
+            scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
+            name="search_succeeds",
+            messages=["Use search explicitly."],
+            target_component=tool_name,
+            target_component_type="TOOL",
+            scoped_tools=[tool_name],
+        ),
+    ]
+
+    async def _canned_result(scenario, _client, _evaluator):
+        if scenario.name == "search_missing":
+            verdicts = [
+                {
+                    "turn": turn,
+                    "verdict": "FAIL",
+                    "overall_score": 1.0,
+                    "gaps": [f"Tools not mentioned: {tool_name}"],
+                    "agents_mentioned": [],
+                    "tools_mentioned": [],
+                    "deviations": [],
+                }
+                for turn in (1, 2)
+            ]
+        else:
+            verdicts = [
+                {
+                    "turn": 1,
+                    "verdict": "PASS",
+                    "overall_score": 5.0,
+                    "gaps": [],
+                    "agents_mentioned": [],
+                    "tools_mentioned": [tool_name],
+                    "deviations": [],
+                }
+            ]
+        return ScenarioResult(
+            scenario_id=scenario.scenario_id,
+            scenario_name=scenario.name,
+            scenario_type=scenario.scenario_type.value,
+            verdicts=verdicts,
+            overall_score=max(v["overall_score"] for v in verdicts),
+            total_turns=len(verdicts),
+        )
+
+    mock_client = AsyncMock()
+    with (
+        patch.object(runner, "_build_client", new=AsyncMock(return_value=mock_client)),
+        patch.object(runner, "_build_policy_evaluator", return_value=None),
+        patch.object(runner, "_run_scenario", side_effect=_canned_result),
+    ):
+        result = await runner.run(scenarios=scenarios, pre_scan_profile=DiscoveredProfile())
+
+    tool_coverage = next(c for c in result.coverage if c.component_name == tool_name)
+    assert tool_coverage.exercised is True
+    assert tool_coverage.exercised_within_policy is True
+    assert not any(
+        finding.get("affected_component") == tool_name
+        and finding.get("finding_type") in {"CAPABILITY_GAP", "TOOL_CHAIN_BROKEN"}
+        for finding in result.findings
+    )
+    assert result.scan_outcome == "no_findings"
+    assert result.gap_aggregation_stats["buckets_suppressed_by_coverage"] == 1
+
+
+async def _run_component_gap_scenarios(
+    *,
+    gap_text: str,
+    mention_verdict: str,
+    mentioned_tool: str,
+    target_tool: str = "Search Tool",
+    additional_tools: list[str] | None = None,
+) -> BehaviorRunResult:
+    tool_names = [target_tool, *(additional_tools or [])]
+    runner = BehaviorRunner(
+        config=_make_config(),
+        sbom=AiSbomDocument(
+            target="test",
+            nodes=[
+                Node(
+                    name=name,
+                    component_type=ComponentType.TOOL,
+                    confidence=1.0,
+                    metadata=NodeMetadata(),
+                )
+                for name in tool_names
+            ],
+        ),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    gap_scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
+        name="target_gap",
+        messages=["Exercise the target tool."],
+        target_component=target_tool,
+        target_component_type="TOOL",
+        scoped_tools=[target_tool],
+    )
+    mention_scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
+        name="mention_evidence",
+        messages=["Exercise the mentioned tool."],
+        target_component=mentioned_tool,
+        target_component_type="TOOL",
+        scoped_tools=[mentioned_tool],
+    )
+
+    async def _canned_result(scenario, _client, _evaluator):
+        if scenario.name == "target_gap":
+            verdicts = [
+                {
+                    "turn": turn,
+                    "verdict": "FAIL",
+                    "overall_score": 1.0,
+                    "gaps": [gap_text],
+                    "agents_mentioned": [],
+                    "tools_mentioned": [],
+                    "deviations": [],
+                }
+                for turn in (1, 2)
+            ]
+        else:
+            verdicts = [
+                {
+                    "turn": 1,
+                    "verdict": mention_verdict,
+                    "overall_score": 5.0 if mention_verdict == "PASS" else 1.0,
+                    "gaps": [],
+                    "agents_mentioned": [],
+                    "tools_mentioned": [mentioned_tool],
+                    "deviations": [],
+                }
+            ]
+        return ScenarioResult(
+            scenario_id=scenario.scenario_id,
+            scenario_name=scenario.name,
+            scenario_type=scenario.scenario_type.value,
+            verdicts=verdicts,
+            overall_score=max(v["overall_score"] for v in verdicts),
+            total_turns=len(verdicts),
+        )
+
+    with (
+        patch.object(runner, "_build_client", new=AsyncMock(return_value=AsyncMock())),
+        patch.object(runner, "_build_policy_evaluator", return_value=None),
+        patch.object(runner, "_run_scenario", side_effect=_canned_result),
+    ):
+        return await runner.run(
+            scenarios=[gap_scenario, mention_scenario],
+            pre_scan_profile=DiscoveredProfile(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_run_fail_mention_does_not_suppress_nonmention_gap() -> None:
+    """A mention on a failed verdict cannot prove successful tool coverage."""
+    result = await _run_component_gap_scenarios(
+        gap_text="Tool not mentioned: Search Tool",
+        mention_verdict="FAIL",
+        mentioned_tool="Search Tool",
+    )
+
+    finding = next(f for f in result.findings if f.get("affected_component") == "Search Tool")
+    assert finding["finding_type"] == "CAPABILITY_GAP"
+    assert finding["severity"] == "medium"
+    assert result.gap_aggregation_stats["buckets_suppressed_by_coverage"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_pass_mention_does_not_suppress_explicit_tool_failure() -> None:
+    """Successful mention evidence must not erase explicit invocation failures."""
+    result = await _run_component_gap_scenarios(
+        gap_text="Tool invocation failed: Search Tool timed out",
+        mention_verdict="PASS",
+        mentioned_tool="Search Tool",
+    )
+
+    finding = next(f for f in result.findings if f.get("affected_component") == "Search Tool")
+    assert finding["finding_type"] == "TOOL_CHAIN_BROKEN"
+    assert finding["severity"] == "high"
+    assert result.gap_aggregation_stats["buckets_suppressed_by_coverage"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_unrelated_tool_pass_does_not_suppress_target_gap() -> None:
+    """Coverage reconciliation must remain scoped to the canonical target tool."""
+    result = await _run_component_gap_scenarios(
+        gap_text="Tool not mentioned: Search Tool",
+        mention_verdict="PASS",
+        mentioned_tool="Billing Tool",
+        additional_tools=["Billing Tool"],
+    )
+
+    finding = next(f for f in result.findings if f.get("affected_component") == "Search Tool")
+    assert finding["finding_type"] == "CAPABILITY_GAP"
+    assert finding["severity"] == "medium"
+    assert result.gap_aggregation_stats["buckets_suppressed_by_coverage"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_normalized_pass_mention_suppresses_canonical_tool_gap() -> None:
+    """Normalized mention spelling must reconcile to the canonical SBOM tool name."""
+    result = await _run_component_gap_scenarios(
+        gap_text="Tool not mentioned: Search Tool",
+        mention_verdict="PASS",
+        mentioned_tool="search_tool",
+    )
+
+    assert not any(
+        finding.get("affected_component") == "Search Tool"
+        and finding.get("finding_type") == "CAPABILITY_GAP"
+        for finding in result.findings
+    )
+    assert result.gap_aggregation_stats["buckets_suppressed_by_coverage"] == 1
+
+
+@pytest.mark.asyncio
 async def test_run_policy_violation_creates_finding():
     """If _run_scenario returns deviations with policy_violation, findings are emitted."""
     runner = BehaviorRunner(
