@@ -186,6 +186,14 @@ def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
     return current
 
 
+# SSE event "type" values that are always transient progress/control frames,
+# never assistant-authored content, across common streaming-chat backends
+# (e.g. phlox's status_message()/start_message() helpers). Deliberately does
+# NOT include content-carrying types like "content_block"/"chunk"/"delta" —
+# only frames whose entire purpose is UI progress signaling.
+_SSE_NON_CONTENT_TYPES: frozenset[str] = frozenset({"status", "ping", "heartbeat"})
+
+
 def _extract_sse_event_text(event: dict[str, Any]) -> str | None:
     """Extract incremental text from one generic (non-framework-adapter) SSE event.
 
@@ -203,9 +211,21 @@ def _extract_sse_event_text(event: dict[str, Any]) -> str | None:
     fall back to dumping the raw event JSON as if it were response text (that
     feeds literal key/type fragments like ``"content_block"``/``"chunk"``
     into downstream capability-discovery/evidence parsing as if they were
-    real assistant output).
+    real assistant output). Likewise, a recognized-but-non-content ``"type"``
+    (see :data:`_SSE_NON_CONTENT_TYPES`) returns ``""`` even when it carries
+    its own ``content``/``text`` field — that field is UI progress text, not
+    an assistant reply.
     """
     if not isinstance(event, dict) or "error" in event:
+        return ""
+    event_type = event.get("type")
+    if isinstance(event_type, str) and event_type.lower() in _SSE_NON_CONTENT_TYPES:
+        # A transient progress/control frame (e.g. phlox's
+        # {"type": "status", "content": "Error processing request. Generating
+        # direct response..."}) — its "content" is UI-facing status text, not
+        # assistant output. Treating it as real text would poison the
+        # transcript with the app's own recovery/progress messages instead of
+        # the actual answer that arrives in a later "chunk"-type event.
         return ""
     text = (
         event.get("text")

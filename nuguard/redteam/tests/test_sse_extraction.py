@@ -40,3 +40,19 @@ def test_known_control_frame_with_no_text_is_empty_not_none():
 def test_unrecognized_event_shape_returns_none_not_raw_json():
     event = {"conversation_id": "abc", "answering": True, "foo_bar_field": 1}
     assert _extract_sse_event_text(event) is None
+
+
+def test_status_type_frame_content_not_treated_as_assistant_text():
+    """Regression: phlox's status_message() helper emits
+    {"type": "status", "content": "Error processing request. Generating
+    direct response..."} as a transient progress frame — its content must
+    never leak into the captured transcript as if it were the real answer."""
+    event = {"type": "status", "content": "Error processing request. Generating direct response..."}
+    assert _extract_sse_event_text(event) == ""
+
+
+def test_chunk_type_frame_still_extracted_alongside_status_frames():
+    """A real content frame with an explicit 'chunk' type must still work —
+    only the denylisted control-frame types are suppressed."""
+    event = {"type": "chunk", "content": "the actual answer"}
+    assert _extract_sse_event_text(event) == "the actual answer"
