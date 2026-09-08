@@ -9,6 +9,7 @@ from __future__ import annotations
 # This is a no-op if python-dotenv is not installed or no .env file is found.
 try:
     from dotenv import load_dotenv
+
     load_dotenv(override=False)  # env vars already in the shell take precedence
 except ImportError:
     pass
@@ -20,6 +21,7 @@ from nuguard.cli.commands.analyze import analyze_app
 from nuguard.cli.commands.behavior import behavior_app
 from nuguard.cli.commands.findings import findings_app
 from nuguard.cli.commands.init import init_command
+from nuguard.cli.commands.pentest import pentest as pentest_command
 from nuguard.cli.commands.policy import policy_app
 from nuguard.cli.commands.redteam import redteam_app
 from nuguard.cli.commands.replay import replay_app
@@ -36,6 +38,8 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+
+app.command(name="pentest")(pentest_command)
 
 app.command(name="init")(init_command)
 app.add_typer(sbom_app, name="sbom")
