@@ -23,6 +23,7 @@ from typing import Any
 from uuid import UUID
 
 from nuguard.common.logging import get_logger
+from nuguard.common.soft_reject import SOFT_REJECT_FLAG
 
 from ..models import ComponentType, Evidence, Node
 from .gap_fill.snippets import detect_language, extract_context
@@ -327,7 +328,7 @@ def apply_verification_results(
                 else:
                     # Soft-reject: keep but push confidence below verification floor
                     node.confidence = min(node.confidence, 0.55)
-                    node.metadata.extras["llm_soft_rejected"] = True
+                    node.metadata.extras[SOFT_REJECT_FLAG] = True
                     node.metadata.extras["llm_verification_reason"] = result.reason
                     _log.debug(
                         "apply_verification: soft-reject deterministic node %r → conf=0.55",
@@ -413,9 +414,7 @@ async def verify_uncertain_nodes(
             evidence_list[0].location.path if evidence_list and evidence_list[0].location else ""
         )
         file_content = (file_contents or {}).get(file_path)
-        system_prompt, user_prompt = build_verification_prompt(
-            node, evidence_list, file_content
-        )
+        system_prompt, user_prompt = build_verification_prompt(node, evidence_list, file_content)
         prepared.append((node, system_prompt, user_prompt, VERIFICATION_CALL_COST_CAP))
 
     cost_per_call = VERIFICATION_CALL_COST_CAP

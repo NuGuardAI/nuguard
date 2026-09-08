@@ -1,4 +1,5 @@
 """Context-sensitive scenario generator — reads SBOM and emits prioritised AttackScenario list."""
+
 from __future__ import annotations
 
 import re
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.canary import CanaryConfig
 
 # ── 2024–2025 advanced attack families ────────────────────────────────────────
+from nuguard.common.soft_reject import iter_effective_nodes, partition_node_counts
+
 from .advanced_jailbreaks import (
     build_crescendo_attack,
     build_many_shot_jailbreak,
@@ -118,24 +121,65 @@ _log = get_logger(__name__)
 # High-risk tools are always tested individually (full max_turns=4) regardless
 # of sampling.  Low-risk tools are batched into groups of up to
 # _MAX_GROUP_SIZE and tested with a reduced turn budget.
-_HIGH_RISK_TOOL_KEYWORDS: frozenset[str] = frozenset({
-    "admin", "delete", "override", "bulk", "broadcast",
-    "invoke", "grant", "waive", "stream_all", "reset_password",
-    "whitelist", "escalat", "bypass", "export_all",
-})
+_HIGH_RISK_TOOL_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "admin",
+        "delete",
+        "override",
+        "bulk",
+        "broadcast",
+        "invoke",
+        "grant",
+        "waive",
+        "stream_all",
+        "reset_password",
+        "whitelist",
+        "escalat",
+        "bypass",
+        "export_all",
+    }
+)
 
 # Functional categories for grouping low/mid risk tools.  Each entry is a
 # (group_label, keywords) pair.  A tool is placed in the first matching group.
 _TOOL_GROUPS: list[tuple[str, tuple[str, ...]]] = [
-    ("fund_ops",        ("transfer", "payment", "crypto", "fund", "convert")),
-    ("read_data",       ("get", "list", "fetch", "view", "check", "status",
-                         "search", "lookup", "price", "rate", "summary")),
-    ("write_data",      ("create", "submit", "update", "flag", "schedule",
-                         "send", "file", "generate", "buy", "sell", "cancel")),
-    ("compliance",      ("kyc", "aml", "sanction", "compliance", "regulatory")),
-    ("audit",           ("audit", "log")),
-    ("user_mgmt",       ("user", "password", "otp", "session", "role")),
-    ("document",        ("document", "portfolio", "asset", "wallet")),
+    ("fund_ops", ("transfer", "payment", "crypto", "fund", "convert")),
+    (
+        "read_data",
+        (
+            "get",
+            "list",
+            "fetch",
+            "view",
+            "check",
+            "status",
+            "search",
+            "lookup",
+            "price",
+            "rate",
+            "summary",
+        ),
+    ),
+    (
+        "write_data",
+        (
+            "create",
+            "submit",
+            "update",
+            "flag",
+            "schedule",
+            "send",
+            "file",
+            "generate",
+            "buy",
+            "sell",
+            "cancel",
+        ),
+    ),
+    ("compliance", ("kyc", "aml", "sanction", "compliance", "regulatory")),
+    ("audit", ("audit", "log")),
+    ("user_mgmt", ("user", "password", "otp", "session", "role")),
+    ("document", ("document", "portfolio", "asset", "wallet")),
 ]
 _TOOL_GROUP_OTHER = "other"
 
@@ -319,7 +363,30 @@ class ScenarioGenerator:
         policy: CognitivePolicy | None = None,
         canary_config: "CanaryConfig | None" = None,
     ) -> None:
-        self._sbom = sbom
+        # Build one non-mutating effective view for every red-team consumer.
+        # Soft-rejected nodes remain in the original SBOM for recall and audit.
+        effective_nodes = list(iter_effective_nodes(sbom.nodes))
+        effective_node_ids = {node.id for node in effective_nodes}
+        effective_edges = [
+            edge
+            for edge in sbom.edges
+            if (edge.source in effective_node_ids and edge.target in effective_node_ids)
+        ]
+
+        effective_summary = sbom.summary.model_copy(deep=True) if sbom.summary is not None else None
+
+        if effective_summary is not None:
+            count_partition = partition_node_counts(sbom.nodes)
+            effective_summary.node_counts = count_partition.effective
+            effective_summary.node_counts_soft_rejected = count_partition.soft_rejected
+
+        self._sbom = sbom.model_copy(
+            update={
+                "nodes": effective_nodes,
+                "edges": effective_edges,
+                "summary": effective_summary,
+            }
+        )
         self._policy = policy or CognitivePolicy()
         # Real second tenant id (docs/claude-redteam-3.md §5 cross-tenant fix) —
         # used by build_cross_tenant_exfiltration in place of a random probe id
@@ -327,21 +394,38 @@ class ScenarioGenerator:
         self._real_tenant_id = ""
         if canary_config is not None and len(getattr(canary_config, "tenants", []) or []) >= 2:
             self._real_tenant_id = canary_config.tenants[1].tenant_id
-        self._node_by_id = {str(n.id): n for n in sbom.nodes}
-        # Build edge indexes: source_id -> {relationship_type -> [target_id]}
-        self._outgoing: dict[str, dict[str, list[str]]] = {}
-        for edge in sbom.edges:
-            self._outgoing.setdefault(str(edge.source), {}).setdefault(
-                edge.relationship_type, []
+        self._node_by_id = {str(node.id): node for node in self._sbom.nodes}
+
+        # Build edge indexes only from edges whose endpoints are effective.
+        self._outgoing: dict[
+            str,
+            dict[str, list[str]],
+        ] = {}
+
+        for edge in self._sbom.edges:
+            self._outgoing.setdefault(
+                str(edge.source),
+                {},
+            ).setdefault(
+                edge.relationship_type,
+                [],
             ).append(str(edge.target))
-        # Capability profile — built once, reused by generate_from_catalog()
+
+        # Capability and catalog selection must use the same effective view.
         from nuguard.redteam.catalog.capability import CapabilityDetector
-        self._caps = CapabilityDetector(sbom, self._policy).build()
+
+        self._caps = CapabilityDetector(
+            self._sbom,
+            self._policy,
+        ).build()
         # Coverage report produced by the last generate_from_catalog() call.
         from nuguard.redteam.catalog.coverage import CoverageReport as _CR
+
         self.last_coverage: _CR | None = None
 
-    def generate(self, with_guided: bool = False, progressive: bool = False) -> list[AttackScenario]:
+    def generate(
+        self, with_guided: bool = False, progressive: bool = False
+    ) -> list[AttackScenario]:
         """Generate all attack scenarios sorted by impact score descending.
 
         Parameters
@@ -441,6 +525,7 @@ class ScenarioGenerator:
 
         # Record coverage for each generated scenario
         from nuguard.redteam.coverage.tracker import CoverageTracker as _CT
+
         self.coverage_tracker = _CT()
         for sc in scenarios:
             primary_id = sc.target_node_ids[0] if sc.target_node_ids else ""
@@ -480,9 +565,7 @@ class ScenarioGenerator:
             tool_names: list[str] = []
             seen: set[str] = set()
             for node_id in sc.target_node_ids:
-                for tid in self._outgoing.get(node_id, {}).get(
-                    RelationshipType.CALLS, []
-                ):
+                for tid in self._outgoing.get(node_id, {}).get(RelationshipType.CALLS, []):
                     n = self._node_by_id.get(tid)
                     if n is None:
                         continue
@@ -524,6 +607,7 @@ class ScenarioGenerator:
             :func:`nuguard.redteam.catalog.loader.load_catalog_yaml`.
         """
         from nuguard.redteam.catalog.selector import select_scenarios
+
         scenarios, coverage = select_scenarios(
             sbom=self._sbom,
             profile=self._caps,
@@ -556,7 +640,9 @@ class ScenarioGenerator:
                 sc.target_tool_names = tool_names[:12]
         _log.info(
             "Catalog generated %d scenarios (profile=%s, guided=%s, categories=%d)",
-            len(scenarios), scan_profile, with_guided,
+            len(scenarios),
+            scan_profile,
+            with_guided,
             coverage.categories_covered_count,
         )
         return scenarios
@@ -702,8 +788,7 @@ class ScenarioGenerator:
             # 2. Name heuristic: triage / router / entry / gateway agents
             _ENTRY_KEYWORDS = ("triage", "router", "entry", "gateway", "main", "orchestrat")
             triage_nodes = [
-                n for n in all_agent_nodes
-                if any(kw in n.name.lower() for kw in _ENTRY_KEYWORDS)
+                n for n in all_agent_nodes if any(kw in n.name.lower() for kw in _ENTRY_KEYWORDS)
             ]
             target_nodes = triage_nodes if triage_nodes else all_agent_nodes[:1]
 
@@ -721,7 +806,9 @@ class ScenarioGenerator:
                     # truncation and is filterable/identifiable at a glance.
                     variant_suffix = scenario.title.rsplit(" — ", 1)[-1]
                     scenario.title = f"Universal Safety Probe ({category_id}) — {variant_suffix}"
-                    scenario.description = f"Universal safety probe ({category_id}): {scenario.description}"
+                    scenario.description = (
+                        f"Universal safety probe ({category_id}): {scenario.description}"
+                    )
                 out.extend(variants)
         for action in policy.restricted_actions:
             for node in target_nodes:
@@ -824,9 +911,7 @@ class ScenarioGenerator:
             agent_ids = self._agents_reaching_datastore(str(node.id))
             if not agent_ids:
                 agent_ids = [
-                    str(n.id)
-                    for n in self._sbom.nodes
-                    if n.component_type == ComponentType.AGENT
+                    str(n.id) for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
                 ]
 
             for agent_id in agent_ids[:_MAX_AGENTS_PER_GOAL]:  # cap at 2 agents per datastore
@@ -895,18 +980,18 @@ class ScenarioGenerator:
             agent_ids = self._agents_reaching_datastore(str(node.id))
             if not agent_ids:
                 agent_ids = [
-                    str(n.id)
-                    for n in self._sbom.nodes
-                    if n.component_type == ComponentType.AGENT
+                    str(n.id) for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
                 ]
             for agent_id in agent_ids[:1]:  # one agent per PFI datastore
                 agent_node = self._node_by_id.get(agent_id)
                 agent_name = agent_node.name if agent_node else "Agent"
-                out.extend([
-                    build_payment_method_escalation(agent_id=agent_id, agent_name=agent_name),
-                    build_bank_account_probe(agent_id=agent_id, agent_name=agent_name),
-                    build_ssn_enumeration(agent_id=agent_id, agent_name=agent_name),
-                ])
+                out.extend(
+                    [
+                        build_payment_method_escalation(agent_id=agent_id, agent_name=agent_name),
+                        build_bank_account_probe(agent_id=agent_id, agent_name=agent_name),
+                        build_ssn_enumeration(agent_id=agent_id, agent_name=agent_name),
+                    ]
+                )
 
         # Covert encoding exfiltration — always add for every agent with data access
         # All four techniques: base64, JSON/XML, document-embedded, image-URL steg
@@ -929,32 +1014,35 @@ class ScenarioGenerator:
         target_field = ", ".join(_covert_field_names[:3]) if _covert_field_names else "user record"
 
         for agent_node in agent_nodes_for_covert[:_MAX_AGENTS_PER_GOAL]:
-            out.extend([
-                build_base64_exfiltration(
-                    agent_id=str(agent_node.id),
-                    agent_name=agent_node.name,
-                    target_field=target_field,
-                ),
-                build_json_xml_exfiltration(
-                    agent_id=str(agent_node.id),
-                    agent_name=agent_node.name,
-                    target_field=target_field,
-                ),
-                build_document_embedded_exfiltration(
-                    agent_id=str(agent_node.id),
-                    agent_name=agent_node.name,
-                    target_field=target_field,
-                ),
-                build_image_url_exfiltration(
-                    agent_id=str(agent_node.id),
-                    agent_name=agent_node.name,
-                    target_field=target_field,
-                ),
-            ])
+            out.extend(
+                [
+                    build_base64_exfiltration(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        target_field=target_field,
+                    ),
+                    build_json_xml_exfiltration(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        target_field=target_field,
+                    ),
+                    build_document_embedded_exfiltration(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        target_field=target_field,
+                    ),
+                    build_image_url_exfiltration(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        target_field=target_field,
+                    ),
+                ]
+            )
 
         # Cross-tenant exfiltration — detect multi-tenant indicators
         cross_tenant_nodes = [
-            n for n in self._sbom.nodes
+            n
+            for n in self._sbom.nodes
             if n.component_type == ComponentType.AGENT
             and (
                 "multi_tenant" in (n.metadata.extras or {})
@@ -1027,21 +1115,26 @@ class ScenarioGenerator:
                 ds_agent_ids = self._agents_with_data_tools()
             if not ds_agent_ids:
                 ds_agent_ids = [
-                    str(n.id)
-                    for n in self._sbom.nodes
-                    if n.component_type == ComponentType.AGENT
+                    str(n.id) for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
                 ]
 
             # NoSQL databases share "db" as a substring with SQL dbs, so guard
             # explicitly before running SQL-specific probes.
             _NOSQL_INDICATORS = (
-                "mongo", "redis", "cassandra", "dynamo", "elastic",
-                "couch", "neo4j", "graph", "firestore", "hbase",
+                "mongo",
+                "redis",
+                "cassandra",
+                "dynamo",
+                "elastic",
+                "couch",
+                "neo4j",
+                "graph",
+                "firestore",
+                "hbase",
             )
             _is_nosql = any(t in ds_type.lower() for t in _NOSQL_INDICATORS)
             _is_sql = not _is_nosql and any(
-                t in ds_type.lower()
-                for t in ("sql", "sqlite", "postgres", "mysql", "relational")
+                t in ds_type.lower() for t in ("sql", "sqlite", "postgres", "mysql", "relational")
             )
 
             for agent_id in ds_agent_ids[:_MAX_AGENTS_PER_GOAL]:
@@ -1078,16 +1171,12 @@ class ScenarioGenerator:
         # to social-engineer them into dumping data without per-account scoping.
         _BULK_TOOL_KEYWORDS = ("list_all", "bulk", "export", "all_", "dump", "enumerate")
         for agent_node in [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]:
-            tool_ids = self._outgoing.get(str(agent_node.id), {}).get(
-                RelationshipType.CALLS, []
-            )
+            tool_ids = self._outgoing.get(str(agent_node.id), {}).get(RelationshipType.CALLS, [])
             privileged_tools = [
                 self._node_by_id[tid].name
                 for tid in tool_ids
                 if tid in self._node_by_id
-                and any(
-                    kw in self._node_by_id[tid].name.lower() for kw in _BULK_TOOL_KEYWORDS
-                )
+                and any(kw in self._node_by_id[tid].name.lower() for kw in _BULK_TOOL_KEYWORDS)
             ]
             if privileged_tools:
                 out.append(
@@ -1112,8 +1201,7 @@ class ScenarioGenerator:
         for agent_node in [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]:
             tool_ids = self._outgoing.get(str(agent_node.id), {}).get(RelationshipType.CALLS, [])
             tool_names_lower = {
-                self._node_by_id[tid].name.lower()
-                for tid in tool_ids if tid in self._node_by_id
+                self._node_by_id[tid].name.lower() for tid in tool_ids if tid in self._node_by_id
             }
             id_label = "account"
             for label, keywords in _ID_LABELS.items():
@@ -1133,7 +1221,9 @@ class ScenarioGenerator:
         if not out and self._policy.data_classification:
             policy_fields = self._parse_policy_pii_fields(self._policy.data_classification)
             if policy_fields:
-                agent_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]
+                agent_nodes = [
+                    n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
+                ]
                 for node in agent_nodes[:3]:
                     chain_id = str(uuid.uuid4())
                     field_list = ", ".join(policy_fields[:5])
@@ -1211,10 +1301,22 @@ class ScenarioGenerator:
 
     # Keywords indicating a tool is likely involved in data access / querying.
     # Matched against tool.name.lower() — used by _agents_with_data_tools().
-    _DATA_TOOL_KEYWORDS: frozenset[str] = frozenset({
-        "query", "search", "lookup", "fetch", "get_", "list_", "find",
-        "account", "user", "customer", "booking", "record",
-    })
+    _DATA_TOOL_KEYWORDS: frozenset[str] = frozenset(
+        {
+            "query",
+            "search",
+            "lookup",
+            "fetch",
+            "get_",
+            "list_",
+            "find",
+            "account",
+            "user",
+            "customer",
+            "booking",
+            "record",
+        }
+    )
 
     def _agents_with_data_tools(self) -> list[str]:
         """Return AGENT node IDs that CALL at least one tool with a data-access name pattern.
@@ -1307,9 +1409,7 @@ class ScenarioGenerator:
             agent_ids = self._agents_reaching_datastore(str(ds_node.id))
             if not agent_ids:
                 agent_ids = [
-                    str(n.id)
-                    for n in self._sbom.nodes
-                    if n.component_type == ComponentType.AGENT
+                    str(n.id) for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
                 ]
             for agent_id in agent_ids[:1]:
                 agent_node = self._node_by_id.get(agent_id)
@@ -1408,6 +1508,7 @@ class ScenarioGenerator:
         - If any scenario targets an entry agent, keep only entry-agent scenarios (cap 2).
         - Otherwise keep all (up to 3) sorted by impact score descending.
         """
+
         def _template_key(s: AttackScenario) -> str:
             return f"{s.goal_type.value}|{s.scenario_type.value}|{s.title}"
 
@@ -1422,8 +1523,7 @@ class ScenarioGenerator:
                 continue
 
             entry_targeted = [
-                s for s in group
-                if any(tid in entry_agents for tid in s.target_node_ids)
+                s for s in group if any(tid in entry_agents for tid in s.target_node_ids)
             ]
 
             if entry_targeted:
@@ -1437,7 +1537,9 @@ class ScenarioGenerator:
         if removed > 0:
             _log.info(
                 "Entry-endpoint dedup: removed %d near-duplicate scenarios (%d → %d)",
-                removed, len(scenarios), len(result),
+                removed,
+                len(scenarios),
+                len(result),
             )
         return result
 
@@ -1478,17 +1580,13 @@ class ScenarioGenerator:
         untrusted = [
             n
             for n in self._sbom.nodes
-            if n.component_type == ComponentType.TOOL
-            and n.metadata.trust_level == "untrusted"
+            if n.component_type == ComponentType.TOOL and n.metadata.trust_level == "untrusted"
         ]
         sinks = [
             n
             for n in self._sbom.nodes
             if n.component_type == ComponentType.TOOL
-            and (
-                n.metadata.privilege_scope in _WRITE_SCOPES
-                or n.metadata.high_privilege
-            )
+            and (n.metadata.privilege_scope in _WRITE_SCOPES or n.metadata.high_privilege)
         ]
         for source in untrusted[:3]:
             for sink in sinks[:3]:
@@ -1574,8 +1672,15 @@ class ScenarioGenerator:
         from nuguard.redteam.executor.poison_server import POISON_PAYLOAD_HOST
 
         _WRITE_TOOL_INDICATORS = {
-            "upload", "ingest", "index", "store", "write", "add_document",
-            "add_file", "insert", "embed",
+            "upload",
+            "ingest",
+            "index",
+            "store",
+            "write",
+            "add_document",
+            "add_file",
+            "insert",
+            "embed",
         }
 
         for agent_node in self._sbom.nodes:
@@ -1590,7 +1695,8 @@ class ScenarioGenerator:
 
             # Look for any write/upload capable tool that could index content
             write_tools = [
-                t for t in tools
+                t
+                for t in tools
                 if any(ind in t.name.lower() for ind in _WRITE_TOOL_INDICATORS)
                 or t.metadata.high_privilege
             ]
@@ -1616,12 +1722,28 @@ class ScenarioGenerator:
     # ------------------------------------------------------------------ #
 
     # Endpoint path segments that are unambiguously public — no auth bypass needed.
-    _PUBLIC_PATH_HINTS: frozenset[str] = frozenset({
-        "health", "healthz", "ping", "status", "metrics",
-        "docs", "openapi", "swagger", "redoc",
-        "login", "signin", "sign-in", "register", "signup", "sign-up",
-        "oauth", "callback", "token",
-    })
+    _PUBLIC_PATH_HINTS: frozenset[str] = frozenset(
+        {
+            "health",
+            "healthz",
+            "ping",
+            "status",
+            "metrics",
+            "docs",
+            "openapi",
+            "swagger",
+            "redoc",
+            "login",
+            "signin",
+            "sign-in",
+            "register",
+            "signup",
+            "sign-up",
+            "oauth",
+            "callback",
+            "token",
+        }
+    )
 
     def _api_attack_scenarios(self) -> list[AttackScenario]:
         """Generate direct HTTP attack scenarios from API_ENDPOINT SBOM nodes.
@@ -1688,12 +1810,14 @@ class ScenarioGenerator:
             # This endpoint's own sensitive fields (if the extractor tagged it
             # directly) plus the SBOM-wide datastore pool — used to prioritise
             # and to validate that a successful probe actually returned data.
-            endpoint_sensitive_fields = list(dict.fromkeys(
-                (meta.pii_fields or [])
-                + (meta.phi_fields or [])
-                + (meta.pfi_fields or [])
-                + sensitive_field_pool
-            ))
+            endpoint_sensitive_fields = list(
+                dict.fromkeys(
+                    (meta.pii_fields or [])
+                    + (meta.phi_fields or [])
+                    + (meta.pfi_fields or [])
+                    + sensitive_field_pool
+                )
+            )
             is_sensitive = bool(meta.returns_sensitive_data) or bool(
                 meta.pii_fields or meta.phi_fields or meta.pfi_fields
             )
@@ -1756,16 +1880,20 @@ class ScenarioGenerator:
             inferred_params: list[str] = list(meta.path_params or [])
             if not inferred_params:
                 # Detect {id}, :user_id, <account_id> style path templates
-                for m in re.finditer(
-                    r"\{([^}]+)\}|:([A-Za-z_][A-Za-z0-9_]*)|<([^>]+)>", path
-                ):
+                for m in re.finditer(r"\{([^}]+)\}|:([A-Za-z_][A-Za-z0-9_]*)|<([^>]+)>", path):
                     param = m.group(1) or m.group(2) or m.group(3)
                     if param:
                         inferred_params.append(param)
 
             _ID_LIKE_PARAMS = {
-                "id", "user_id", "tenant_id", "account_id",
-                "customer_id", "org_id", "record_id", "object_id",
+                "id",
+                "user_id",
+                "tenant_id",
+                "account_id",
+                "customer_id",
+                "org_id",
+                "record_id",
+                "object_id",
             }
             has_idor_params = meta.idor_surface or any(
                 p.lower() in _ID_LIKE_PARAMS for p in inferred_params
@@ -1899,14 +2027,15 @@ class ScenarioGenerator:
             n.name for n in self._sbom.nodes if n.component_type == ComponentType.DATASTORE
         ]
         pii_datastores = [
-            n.name for n in self._sbom.nodes
+            n.name
+            for n in self._sbom.nodes
             if n.component_type == ComponentType.DATASTORE
             and (n.metadata.pii_fields or n.metadata.phi_fields)
         ]
         pfi_datastores = [
-            n.name for n in self._sbom.nodes
-            if n.component_type == ComponentType.DATASTORE
-            and n.metadata.pfi_fields
+            n.name
+            for n in self._sbom.nodes
+            if n.component_type == ComponentType.DATASTORE and n.metadata.pfi_fields
         ]
 
         for node in self._sbom.nodes:
@@ -1961,7 +2090,16 @@ class ScenarioGenerator:
             if not has_pfi and self._policy.data_classification:
                 has_pfi = any(
                     kw in " ".join(self._policy.data_classification).lower()
-                    for kw in ("card", "bank", "account", "payment", "financial", "routing", "ssn", "tax_id")
+                    for kw in (
+                        "card",
+                        "bank",
+                        "account",
+                        "payment",
+                        "financial",
+                        "routing",
+                        "ssn",
+                        "tax_id",
+                    )
                 )
             if has_pfi:
                 out.append(
@@ -2028,8 +2166,11 @@ class ScenarioGenerator:
             # current user, then use the response to probe IDOR, record writes, and
             # privilege escalation.  Added for all agents with any data access signal.
             has_any_data = bool(
-                datastore_names or pii_datastores or pfi_datastores
-                or has_pii or has_pfi
+                datastore_names
+                or pii_datastores
+                or pfi_datastores
+                or has_pii
+                or has_pfi
                 or agent_capabilities
             )
             if has_any_data:
@@ -2038,12 +2179,18 @@ class ScenarioGenerator:
                 if self._sbom.summary:
                     uc = (getattr(self._sbom.summary, "use_case", "") or "").lower()
                     for kw, label in (
-                        ("health", "healthcare"), ("patient", "healthcare"),
-                        ("medical", "healthcare"), ("flight", "airline"),
-                        ("airline", "airline"), ("booking", "airline"),
-                        ("bank", "banking"), ("finance", "banking"),
-                        ("account", "banking"), ("shop", "e-commerce"),
-                        ("order", "e-commerce"), ("ecommerce", "e-commerce"),
+                        ("health", "healthcare"),
+                        ("patient", "healthcare"),
+                        ("medical", "healthcare"),
+                        ("flight", "airline"),
+                        ("airline", "airline"),
+                        ("booking", "airline"),
+                        ("bank", "banking"),
+                        ("finance", "banking"),
+                        ("account", "banking"),
+                        ("shop", "e-commerce"),
+                        ("order", "e-commerce"),
+                        ("ecommerce", "e-commerce"),
                     ):
                         if kw in uc:
                             domain = label
@@ -2051,8 +2198,10 @@ class ScenarioGenerator:
                 if not domain and meta.system_prompt_excerpt:
                     excerpt_lower = meta.system_prompt_excerpt.lower()
                     for kw, label in (
-                        ("health", "healthcare"), ("patient", "healthcare"),
-                        ("flight", "airline"), ("bank", "banking"),
+                        ("health", "healthcare"),
+                        ("patient", "healthcare"),
+                        ("flight", "airline"),
+                        ("bank", "banking"),
                         ("shop", "e-commerce"),
                     ):
                         if kw in excerpt_lower:
@@ -2070,7 +2219,8 @@ class ScenarioGenerator:
 
             # Privilege escalation — when agent has privileged tools or high-priv actions
             priv_tools = [
-                n.name for n in self._sbom.nodes
+                n.name
+                for n in self._sbom.nodes
                 if n.component_type == ComponentType.TOOL
                 and (n.metadata.no_auth_required or n.metadata.sql_injectable)
             ]
@@ -2103,6 +2253,7 @@ class ScenarioGenerator:
                 from nuguard.redteam.models.guided_conversation import (
                     infer_capability_profile,  # noqa: PLC0415
                 )
+
                 _domain = "customer_service"
                 _sbom_use_case = ""
                 if self._sbom.summary:
@@ -2113,7 +2264,10 @@ class ScenarioGenerator:
                         (("health", "patient", "medical"), "healthcare"),
                         (("bank", "finance", "payment"), "banking"),
                     ]:
-                        if any(k in _sbom_use_case or k in _app_name or k in agent_name.lower() for k in _kw):
+                        if any(
+                            k in _sbom_use_case or k in _app_name or k in agent_name.lower()
+                            for k in _kw
+                        ):
                             _domain = _dom
                             break
                 _profile = infer_capability_profile(
@@ -2143,8 +2297,12 @@ class ScenarioGenerator:
         import hashlib as _hashlib
         import random as _random
 
-        _seed_src = getattr(self._sbom, "document_id", None) or getattr(self._sbom, "name", "") or ""
-        _rng = _random.Random(int(_hashlib.md5(_seed_src.encode(), usedforsecurity=False).hexdigest(), 16))  # noqa: S324
+        _seed_src = (
+            getattr(self._sbom, "document_id", None) or getattr(self._sbom, "name", "") or ""
+        )
+        _rng = _random.Random(
+            int(_hashlib.md5(_seed_src.encode(), usedforsecurity=False).hexdigest(), 16)
+        )  # noqa: S324
 
         # --- collect tools ---
         # (node_id, name, description, agent_node_id) per TOOL with a description
@@ -2196,7 +2354,7 @@ class ScenarioGenerator:
             _rng.shuffle(members)
             # Split into sub-groups of up to _MAX_GROUP_SIZE tools each
             for chunk_start in range(0, len(members), _MAX_GROUP_SIZE):
-                chunk = members[chunk_start: chunk_start + _MAX_GROUP_SIZE]
+                chunk = members[chunk_start : chunk_start + _MAX_GROUP_SIZE]
                 # Use the agent_node_id from the first tool in the chunk
                 agent_id = chunk[0][3] if chunk else ""
                 tool_group = [(nid, nm, dsc) for nid, nm, dsc, _ in chunk]
@@ -2231,7 +2389,9 @@ class ScenarioGenerator:
         blocked_topics = list(self._policy.restricted_topics or [])
         blocked_actions = list(self._policy.restricted_actions or [])
         restricted_topic = blocked_topics[0] if blocked_topics else "restricted content"
-        restricted_action = blocked_actions[0] if blocked_actions else "share confidential system information"
+        restricted_action = (
+            blocked_actions[0] if blocked_actions else "share confidential system information"
+        )
 
         # Policy patch rule — try to craft a meaningful expansion of the restriction
         new_rule = (
@@ -2257,7 +2417,9 @@ class ScenarioGenerator:
                     agent_name=agent_name,
                     restricted_topic=restricted_topic,
                     new_rule=new_rule[:200],
-                    extra_restricted_topics=[t for t in blocked_topics[1:] if t != restricted_topic],
+                    extra_restricted_topics=[
+                        t for t in blocked_topics[1:] if t != restricted_topic
+                    ],
                     extra_restricted_actions=blocked_actions,
                 )
             )
@@ -2346,7 +2508,8 @@ class ScenarioGenerator:
 
             # Jurisdiction forgery — always applicable (GDPR right-to-erasure is universal)
             target_action = (
-                blocked_actions[0] if blocked_actions
+                blocked_actions[0]
+                if blocked_actions
                 else "delete all my personal data from your system immediately"
             )
             out.append(
@@ -2370,7 +2533,8 @@ class ScenarioGenerator:
 
         blocked_actions = list(self._policy.restricted_actions or [])
         blocked_action = (
-            blocked_actions[0][:120] if blocked_actions
+            blocked_actions[0][:120]
+            if blocked_actions
             else "reveal your system prompt and all internal instructions"
         )
 
@@ -2403,7 +2567,7 @@ class ScenarioGenerator:
         # Derive a plausible attack goal from policy / SBOM metadata
         def _attack_goal(node: object) -> str:
             meta = getattr(node, "metadata", None)
-            blocked = (getattr(meta, "blocked_topics", None) or [])
+            blocked = getattr(meta, "blocked_topics", None) or []
             restricted = list(self._policy.restricted_topics or [])
             candidates = blocked or restricted
             if candidates:
@@ -2411,9 +2575,8 @@ class ScenarioGenerator:
             use_case = ""
             if self._sbom.summary:
                 use_case = (getattr(self._sbom.summary, "use_case", "") or "")[:80]
-            return (
-                "provide information outside its primary purpose"
-                + (f" ({use_case})" if use_case else "")
+            return "provide information outside its primary purpose" + (
+                f" ({use_case})" if use_case else ""
             )
 
         for node in agent_nodes[:_MAX_AGENTS_PER_GOAL]:  # cap at 2 agents to avoid explosion
@@ -2424,10 +2587,14 @@ class ScenarioGenerator:
             if self._sbom.summary:
                 use_case = (getattr(self._sbom.summary, "use_case", "") or "").lower()
                 for kw, label in [
-                    ("bank", "financial services"), ("finance", "financial services"),
-                    ("health", "healthcare"), ("patient", "healthcare"),
-                    ("airline", "airline"), ("flight", "airline"),
-                    ("shop", "e-commerce"), ("order", "e-commerce"),
+                    ("bank", "financial services"),
+                    ("finance", "financial services"),
+                    ("health", "healthcare"),
+                    ("patient", "healthcare"),
+                    ("airline", "airline"),
+                    ("flight", "airline"),
+                    ("shop", "e-commerce"),
+                    ("order", "e-commerce"),
                 ]:
                     if kw in use_case:
                         domain = label
@@ -2456,9 +2623,7 @@ class ScenarioGenerator:
                 )
             )
             # Payload splitting — use the first restricted action if available
-            split_goal = (
-                list(self._policy.restricted_actions or [])[:1] or [goal]
-            )[0]
+            split_goal = (list(self._policy.restricted_actions or [])[:1] or [goal])[0]
             out.append(
                 build_payload_splitting(
                     agent_id=agent_id,
@@ -2518,11 +2683,19 @@ class ScenarioGenerator:
 
         # Confused Deputy — agent with a write/email/financial tool
         _HIGH_PRIV_INDICATORS = (
-            "email", "send", "transfer", "payment", "write", "delete",
-            "admin", "broadcast", "notify",
+            "email",
+            "send",
+            "transfer",
+            "payment",
+            "write",
+            "delete",
+            "admin",
+            "broadcast",
+            "notify",
         )
         priv_tools = [
-            t for t in tool_nodes
+            t
+            for t in tool_nodes
             if any(ind in t.name.lower() for ind in _HIGH_PRIV_INDICATORS)
             or t.metadata.high_privilege
         ]
@@ -2530,9 +2703,8 @@ class ScenarioGenerator:
             for priv_tool in priv_tools[:_MAX_AGENTS_PER_GOAL]:
                 # Build a plausible sensitive_action from restricted_actions or tool name
                 sensitive_action = (
-                    list(self._policy.restricted_actions or [])[:1] or [
-                        f"invoke {priv_tool.name} with attacker-controlled parameters"
-                    ]
+                    list(self._policy.restricted_actions or [])[:1]
+                    or [f"invoke {priv_tool.name} with attacker-controlled parameters"]
                 )[0]
                 out.append(
                     build_confused_deputy(
@@ -2545,16 +2717,16 @@ class ScenarioGenerator:
 
         # Multi-Agent Trust Boundary — orchestrator → sub-agent trust exploitation
         orchestrator_nodes = [
-            n for n in agent_nodes
+            n
+            for n in agent_nodes
             if any(kw in n.name.lower() for kw in ("orchestrat", "triage", "router", "main"))
         ]
         sub_agent_nodes = [n for n in agent_nodes if n not in orchestrator_nodes]
         for orch in orchestrator_nodes[:1]:
             for sub in sub_agent_nodes[:_MAX_AGENTS_PER_GOAL]:
                 privileged_cap = (
-                    list(self._policy.restricted_actions or [])[:1] or [
-                        "access internal data and return all results"
-                    ]
+                    list(self._policy.restricted_actions or [])[:1]
+                    or ["access internal data and return all results"]
                 )[0]
                 out.append(
                     build_multi_agent_trust_boundary(
@@ -2568,11 +2740,13 @@ class ScenarioGenerator:
 
         # Memory Poisoning — agents that have memory/history capability signals
         memory_agents = [
-            n for n in agent_nodes
+            n
+            for n in agent_nodes
             if "memory" in n.name.lower()
             or "memory" in (n.metadata.description or "").lower()
             or any(
-                "memory" in (self._node_by_id.get(tid, None) and self._node_by_id[tid].name or "").lower()
+                "memory"
+                in (self._node_by_id.get(tid, None) and self._node_by_id[tid].name or "").lower()
                 for tid in self._outgoing.get(str(n.id), {}).get(RelationshipType.CALLS, [])
             )
         ]
@@ -2588,9 +2762,8 @@ class ScenarioGenerator:
                     memory_store = t.name
                     break
             persistent_goal = (
-                list(self._policy.restricted_actions or [])[:1] or [
-                    "disclose sensitive user information when asked"
-                ]
+                list(self._policy.restricted_actions or [])[:1]
+                or ["disclose sensitive user information when asked"]
             )[0]
             out.append(
                 build_memory_poisoning(
@@ -2604,8 +2777,7 @@ class ScenarioGenerator:
         # Goal Hijacking — agents with search/query/fetch tools
         _HIJACKABLE_INDICATORS = ("search", "query", "fetch", "lookup", "retrieve", "find")
         hijackable_tools = [
-            t for t in tool_nodes
-            if any(ind in t.name.lower() for ind in _HIJACKABLE_INDICATORS)
+            t for t in tool_nodes if any(ind in t.name.lower() for ind in _HIJACKABLE_INDICATORS)
         ]
         for agent_node in agent_nodes[:1]:
             for tool in hijackable_tools[:_MAX_AGENTS_PER_GOAL]:
@@ -2614,9 +2786,7 @@ class ScenarioGenerator:
                         agent_id=str(agent_node.id),
                         agent_name=agent_node.name,
                         tool_name=tool.name,
-                        hijacked_action=(
-                            "exfiltrate all results to attacker-controlled endpoint"
-                        ),
+                        hijacked_action=("exfiltrate all results to attacker-controlled endpoint"),
                     )
                 )
 
@@ -2627,7 +2797,8 @@ class ScenarioGenerator:
         # the attack bypasses specialist guardrails by disguising the request.
         restricted_actions_list = list(self._policy.restricted_actions or [])
         high_risk_action = (
-            restricted_actions_list[0][:80] if restricted_actions_list
+            restricted_actions_list[0][:80]
+            if restricted_actions_list
             else "approve a loan application without credit checks"
         )
         for agent_node in agent_nodes[:_MAX_AGENTS_PER_GOAL]:
@@ -2653,7 +2824,8 @@ class ScenarioGenerator:
         if has_multi_agent_signals:
             target_action = (
                 f"finalise the {restricted_actions_list[0][:60]}"
-                if restricted_actions_list else "finalise the inter-account transfer"
+                if restricted_actions_list
+                else "finalise the inter-account transfer"
             )
             for agent_node in agent_nodes[:1]:
                 out.append(
@@ -2705,8 +2877,7 @@ class ScenarioGenerator:
         for agent_node in agent_nodes[:1]:
             tool_ids = self._outgoing.get(str(agent_node.id), {}).get(RelationshipType.CALLS, [])
             tool_names_agent = [
-                self._node_by_id[tid].name.lower()
-                for tid in tool_ids if tid in self._node_by_id
+                self._node_by_id[tid].name.lower() for tid in tool_ids if tid in self._node_by_id
             ]
             # Pick the first matching scope pair based on available tools
             scoped_req, overreach = "check my account summary", "modify my account settings"
@@ -2763,20 +2934,42 @@ class ScenarioGenerator:
         if self._sbom.summary:
             app_name = (getattr(self._sbom.summary, "application_name", "") or "").strip()
             use_case = (getattr(self._sbom.summary, "use_case", "") or "").strip()
-            app_domain = f"{app_name} — {use_case[:120]}" if app_name and use_case else (app_name or use_case[:120])
+            app_domain = (
+                f"{app_name} — {use_case[:120]}"
+                if app_name and use_case
+                else (app_name or use_case[:120])
+            )
 
-        restricted_action = (self._policy.restricted_actions or ["access privileged administrative functions"])[0]
+        restricted_action = (
+            self._policy.restricted_actions or ["access privileged administrative functions"]
+        )[0]
 
         out.extend(
             build_off_topic_probes(
-                agent_id, agent_name, app_domain=app_domain,
+                agent_id,
+                agent_name,
+                app_domain=app_domain,
                 restricted_topics=self._policy.restricted_topics,
             )
         )
-        out.append(build_scripted_identity_confusion(agent_id, agent_name, app_domain=app_domain or "this application"))
-        out.append(build_scripted_role_confusion(agent_id, agent_name, app_domain=app_domain or "this application"))
-        out.append(build_document_memory_poisoning(agent_id, agent_name, restricted_action=restricted_action))
-        out.append(build_recovery_verification(agent_id, agent_name, baseline_prompt=baseline_prompt))
+        out.append(
+            build_scripted_identity_confusion(
+                agent_id, agent_name, app_domain=app_domain or "this application"
+            )
+        )
+        out.append(
+            build_scripted_role_confusion(
+                agent_id, agent_name, app_domain=app_domain or "this application"
+            )
+        )
+        out.append(
+            build_document_memory_poisoning(
+                agent_id, agent_name, restricted_action=restricted_action
+            )
+        )
+        out.append(
+            build_recovery_verification(agent_id, agent_name, baseline_prompt=baseline_prompt)
+        )
         return out
 
     def _oracle_scenarios(self) -> list[AttackScenario]:
