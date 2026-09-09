@@ -2,10 +2,54 @@ name: Publish To TestPyPI
 
 on:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Git tag or commit containing a PEP 440 prerelease version
+        required: true
+        type: string
+
+concurrency:
+  group: testpypi-${{ inputs.ref }}
+  cancel-in-progress: false
 
 jobs:
+  validate:
+    name: Validate TestPyPI contract
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Verify prerelease metadata
+        run: |
+          uv lock --check
+          npm run version:check
+          uv run python - <<'PY'
+          from packaging.version import Version
+          import tomllib
+
+          with open("pyproject.toml", "rb") as stream:
+              version = Version(tomllib.load(stream)["project"]["version"])
+          if not version.is_prerelease:
+              raise SystemExit(f"TestPyPI requires a prerelease version, got {version}")
+          PY
+
   build:
     name: Build Distributions
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -13,6 +57,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -52,3 +98,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          skip-existing: true

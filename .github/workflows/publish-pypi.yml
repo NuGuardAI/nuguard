@@ -1,20 +1,73 @@
 name: Publish to PyPI and Smithery
 
 on:
-  release:
-    types: [published]
-  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  build:
-    name: Build distributions
+  validate:
+    name: Validate release contract
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
-      - name: Checkout
+      - name: Checkout release tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Verify tag and release metadata
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION=$(uv version --short)
+          test "$RELEASE_TAG" = "v$VERSION" || {
+            echo "Release tag $RELEASE_TAG does not match package version v$VERSION" >&2
+            exit 1
+          }
+          uv lock --check
+          npm run version:check
+
+  draft-release:
+    name: Create draft GitHub Release
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create or reuse draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" --draft --verify-tag --generate-notes
+
+  build:
+    name: Build distributions
+    needs:
+      - validate
+      - draft-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -41,16 +94,32 @@ jobs:
       name: pypi
       url: https://pypi.org/project/nuguard/
     permissions:
+      contents: read
       id-token: write
 
     steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
       - name: Download distributions
         uses: actions/download-artifact@v4
         with:
           name: python-package-distributions
           path: dist/
 
+      - name: Verify existing PyPI artifacts
+        id: pypi-registry
+        run: |
+          python scripts/verify_registry_artifacts.py pypi \
+            --project nuguard \
+            --version "${GITHUB_REF_NAME#v}" \
+            --dist-dir dist \
+            >> "$GITHUB_OUTPUT"
+
       - name: Publish to PyPI
+        if: steps.pypi-registry.outputs.exists != 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
 
   publish-npm:
@@ -64,8 +133,10 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout
+      - name: Checkout release tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -73,7 +144,17 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Verify existing npm artifact
+        id: npm-registry
+        run: |
+          python scripts/verify_registry_artifacts.py npm \
+            --package @nuguardai/nuguard \
+            --version "${GITHUB_REF_NAME#v}" \
+            --package-dir npm \
+            >> "$GITHUB_OUTPUT"
+
       - name: Publish to npm
+        if: steps.npm-registry.outputs.exists != 'true'
         working-directory: npm/
         run: npm publish --access public
         env:
@@ -88,8 +169,10 @@ jobs:
       url: https://smithery.ai/server/NuGuardAI/nuguard
 
     steps:
-      - name: Checkout
+      - name: Checkout release tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -112,7 +195,25 @@ jobs:
           SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
         run: |
           python scripts/publish_smithery.py \
+            --version "${GITHUB_REF_NAME#v}" \
             --skip-pypi \
             --skip-git-tag \
             --allow-dirty \
             --allow-branch
+
+  finalize-release:
+    name: Publish GitHub Release
+    needs:
+      - publish-npm
+      - publish-smithery
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release edit "$RELEASE_TAG" --draft=false
