@@ -58,8 +58,19 @@ from nuguard.common.rate_limit import (
     is_rate_limited,
     scenario_rate_limit_backoff,
 )
+from nuguard.common.run_checkpoint import (
+    PartialRunError,
+    RunCheckpoint,
+    behavior_result_signature,
+    behavior_scenario_obj_signature,
+    validate_fingerprint,
+)
+from nuguard.common.run_checkpoint import (
+    fingerprint as _checkpoint_fingerprint,
+)
 from nuguard.config import BehaviorConfig
 from nuguard.redteam.llm_engine.refusal_patterns import APP_TRANSIENT_ERROR_PATTERNS
+from nuguard.sbom.models import is_soft_rejected as _shared_is_soft_rejected
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -67,6 +78,7 @@ if TYPE_CHECKING:
     from nuguard.behavior.coverage_director import CoverageDirector
     from nuguard.behavior.escalation import EscalationLadder, FamilyCircuitBreaker
     from nuguard.behavior.models import IntentProfile
+    from nuguard.behavior.refusal import RefusalReason
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
@@ -676,6 +688,36 @@ async def _adapt_message(
     return message, pii_probed, hook_probed, None
 
 
+async def _should_abandon_tool_chain(
+    context: "TurnContext | None",
+    response: str,
+    llm_client: "LLMClient | None",
+) -> "RefusalReason | None":
+    """Return the RefusalReason if the prior turn was a genuine hard decline that
+    should abandon the remaining scripted tool-chain turns, else None.
+
+    Used only for COMPONENT_COVERAGE / AGENT_COVERAGE scenarios to stop firing
+    pre-planned scripted turns that ignore a refusal already given (e.g. "he is a
+    boy" sent after a full parental-access decline). Cheap regex-based
+    TurnContext.agent_posture is the first-pass filter; classify_refusal() -- the
+    same heuristic-first classifier the judge's precondition detector and the
+    escalation ladder already rely on -- makes the final call so a "please give me
+    the account ID" precondition-ask is never misclassified as a hard stop.
+    """
+    if context is None or not context.boundary_hit:
+        return None
+    if context.agent_posture not in ("hard_refusal", "partial_refusal"):
+        return None
+
+    from nuguard.behavior.refusal import RefusalReason, classify_refusal  # noqa: PLC0415
+
+    reason = await classify_refusal(response, llm_client=llm_client)
+    if reason in (RefusalReason.PERMISSION_DENIED, RefusalReason.OUT_OF_SCOPE_DEFLECTION,
+                  RefusalReason.SERVER_ERROR):
+        return reason
+    return None
+
+
 class BehaviorRunner:
     """Adaptive behavior test runner with per-turn judging and coverage tracking.
 
@@ -716,6 +758,15 @@ class BehaviorRunner:
 
         self._judge = BehaviorJudge(llm_client=llm_client, intent=intent, judge_cache=judge_cache)
         self._judge_cache = judge_cache
+        # Checkpoint/resume support (issue #508) — see nuguard.common.run_checkpoint.
+        # Loaded lazily in run() (from config.resume/prompt_cache_dir) once the
+        # effective sbom/policy fingerprint is known. scenario_results/all_findings
+        # accumulate on the instance (mirroring RedteamOrchestrator.scenario_records)
+        # so a PartialRunError raised mid-run can still report completed progress.
+        self._checkpoint: "RunCheckpoint | None" = None
+        self._checkpoint_path: "Path | None" = None
+        self._completed_signatures: set[str] = set()
+        self.scenario_results: list[ScenarioResult] = []
         self._auth_session: Any = None
         self._coverage_mapping_diagnostics: dict[str, Any] = {}
         # Escalation-ladder state (behavior.escalate_on_refusal): component name
@@ -745,8 +796,7 @@ class BehaviorRunner:
                 if nt not in ("AGENT", "TOOL"):
                     continue
                 meta = getattr(node, "metadata", None)
-                extras = (getattr(meta, "extras", None) or {}) if meta is not None else {}
-                if extras.get("llm_soft_rejected"):
+                if _shared_is_soft_rejected(node):
                     # Same convention as policy/checker.py's _is_soft_rejected(): LLM
                     # verification flagged this candidate as a likely false positive
                     # (e.g. a CI-only Playwright screenshot step misdetected as a
@@ -1159,6 +1209,10 @@ class BehaviorRunner:
         pii_probed: bool = False
         hook_probed: bool = False
 
+        # v-fix: tool-chain hard-refusal abandonment (once per scenario) — see
+        # _should_abandon_tool_chain.
+        chain_adapted: bool = False
+
         # v7: inter-turn confirmation — set when the agent asks for confirmation but
         # handle_mid_turn_interrupts did not resolve it within the same turn.
         # The confirmation reply is sent as the very next message, bypassing
@@ -1246,18 +1300,65 @@ class BehaviorRunner:
             # 2. Next scripted message — adapt using prior turn context (v7.5: probe
             #    is separated into its own turn; original is deferred to the next one)
             elif pending_messages:
-                raw_msg = pending_messages.pop(0)
-                message, pii_probed, hook_probed, deferred = await _adapt_message(
-                    raw_msg, last_turn_context, scenario,
-                    last_response=response if turn_idx > 0 else "",
-                    llm_client=self._llm,
-                    pii_probed=pii_probed,
-                    hook_probed=hook_probed,
-                )
-                if deferred is not None:
-                    # Probe fires this turn; put the original back at the front so
-                    # it runs next turn as a clean, single-focus message.
-                    pending_messages.insert(0, deferred)
+                _stype = getattr(scenario.scenario_type, "value", str(scenario.scenario_type))
+                if (
+                    not chain_adapted
+                    and _stype in (BehaviorScenarioType.COMPONENT_COVERAGE.value, BehaviorScenarioType.AGENT_COVERAGE.value)
+                    and turn_idx > 0
+                ):
+                    _abandon_reason = await _should_abandon_tool_chain(last_turn_context, response, self._llm)
+                    if _abandon_reason is not None:
+                        chain_adapted = True
+                        _log.info(
+                            "_run_scenario: abandoning remaining scripted tool-chain turns for "
+                            "scenario=%s after %s refusal on turn %d (%d scripted turn(s) dropped)",
+                            scenario.name, _abandon_reason.value, turn_idx, len(pending_messages),
+                        )
+                        # Attribute the refusal to whichever scoped components are
+                        # still uncovered, so the coverage report explains *why*
+                        # instead of a blank "never tested".
+                        _uncovered_now = coverage_state.uncovered_agents | coverage_state.uncovered_tools
+                        for _comp in (scenario.scoped_tools or []) + (scenario.scoped_agents or []):
+                            if _comp in _uncovered_now:
+                                self._refusal_classifications.setdefault(_comp, _abandon_reason.value)
+                        pending_messages = []
+                        _chain_uncovered = (
+                            _uncovered_now & scoped_component_set
+                            if scoped_component_set is not None
+                            else _uncovered_now
+                        )
+                        if _chain_uncovered and coverage_turns_used < _adaptive_coverage_cap(self._config):
+                            coverage_messages = await generate_coverage_turns(
+                                uncovered=_chain_uncovered,
+                                session_context=response[:500],
+                                component_descriptions=self._component_descriptions,
+                                llm_client=self._llm,
+                                domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
+                                intent=self._intent,
+                                scoped_components=scoped_component_set,
+                                profile=self._pre_scan_profile,
+                            )
+                            if coverage_messages:
+                                coverage_turns_used += len(coverage_messages)
+                                pending_messages = coverage_messages
+                        # If pending_messages is still [] here, the `if message is
+                        # None: break` below ends the scenario cleanly -- correct
+                        # when there's truly nothing left to probe.
+                if pending_messages:
+                    raw_msg = pending_messages.pop(0)
+                    message, pii_probed, hook_probed, deferred = await _adapt_message(
+                        raw_msg, last_turn_context, scenario,
+                        last_response=response if turn_idx > 0 else "",
+                        llm_client=self._llm,
+                        pii_probed=pii_probed,
+                        hook_probed=hook_probed,
+                    )
+                    if deferred is not None:
+                        # Probe fires this turn; put the original back at the front so
+                        # it runs next turn as a clean, single-focus message.
+                        pending_messages.insert(0, deferred)
+                # else: message stays None (reset at loop top) -- the "if message is
+                # None: break" below ends the scenario cleanly when nothing is left.
 
             # 3. Coverage follow-up — sent clean without _adapt_message so the
             #    focused component question is not contaminated by PII/hook probes.
@@ -1920,6 +2021,44 @@ class BehaviorRunner:
             matched_topic=getattr(scenario, "matched_topic", None),
         )
 
+    def _cached_discovery_profile(self) -> "DiscoveredProfile | None":
+        """Return a previously-persisted, non-empty pre-scan profile from the
+        SBOM's ``discovered_profile`` field, or ``None`` if absent/empty/invalid.
+
+        Lets a later run reuse a profile a previous run already discovered live,
+        skipping the discovery HTTP round-trip entirely.
+        """
+        if self._sbom is None or self._sbom.discovered_profile is None:
+            return None
+        from nuguard.common.discovery import DiscoveredProfile  # noqa: PLC0415
+
+        try:
+            profile = DiscoveredProfile.model_validate(self._sbom.discovered_profile)
+        except Exception as exc:
+            _log.warning("behavior pre-scan discovery: could not parse cached SBOM profile: %s", exc)
+            return None
+        return None if profile.is_empty else profile
+
+    def _persist_discovery_profile_sbom(self, profile: "DiscoveredProfile") -> None:
+        """Cache a freshly-discovered, non-empty pre-scan profile onto the SBOM
+        so later runs against the same enriched SBOM can reuse it.
+
+        No-op when the profile is empty (never overwrite a good cached profile
+        with an empty one) or no source SBOM path is known.
+        """
+        if profile.is_empty or self._sbom_path is None or self._sbom is None:
+            return
+        from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
+            persist_discovery_profile_sbom,
+        )
+        self._sbom.discovered_profile = profile.model_dump(mode="json")
+        try:
+            artifact = persist_discovery_profile_sbom(self._sbom, self._sbom_path)
+            _log.info("behavior pre-scan discovery: persisted profile to %s", artifact)
+            _console.print(f"  [dim]Pre-scan discovery profile cached in {artifact}[/dim]")
+        except Exception as exc:
+            _log.warning("behavior pre-scan discovery: could not persist SBOM profile: %s", exc)
+
     def _persist_capability_discovery_sbom(self, notes: list[str]) -> None:
         """Write the in-memory SBOM (post capability discovery) to the same
         ``<name>.sbom.enriched.json`` artifact used by auto-enrichment, so the
@@ -1980,19 +2119,28 @@ class BehaviorRunner:
                 if _explicit_endpoint
                 else (list(_disc_candidates(self._sbom)[1:]) if self._sbom else [])
             )
-            _outcome = await run_discovery(
-                client,
-                _disc_session,
-                DiscoveryRequest(use_case=_use_case, max_turns=2, fallback_endpoints=_disc_fallbacks[:4]),
-            )
-            profile = _outcome.profile
-            for _disc_note in _outcome.notes:
-                _console.print(f"  [dim]{_disc_note}[/dim]")
+            _cached_profile = self._cached_discovery_profile()
+            if _cached_profile is not None:
+                profile = _cached_profile
+                _console.print(
+                    f"  [bold cyan]Pre-scan discovery (from enriched SBOM):[/bold cyan] "
+                    f"name={profile.customer_name!r}  ids={profile.ids}"
+                )
+            else:
+                _outcome = await run_discovery(
+                    client,
+                    _disc_session,
+                    DiscoveryRequest(use_case=_use_case, max_turns=2, fallback_endpoints=_disc_fallbacks[:4]),
+                )
+                profile = _outcome.profile
+                for _disc_note in _outcome.notes:
+                    _console.print(f"  [dim]{_disc_note}[/dim]")
 
-            _log.info(
-                "behavior pre-scan discovery: name=%r ids=%s turns=%d source=%s",
-                profile.customer_name, profile.ids, profile.turns_sent, profile.source,
-            )
+                _log.info(
+                    "behavior pre-scan discovery: name=%r ids=%s turns=%d source=%s",
+                    profile.customer_name, profile.ids, profile.turns_sent, profile.source,
+                )
+                self._persist_discovery_profile_sbom(profile)
 
             if bool(getattr(self._config, "capability_discovery", True)):
                 from nuguard.common.discovery import (  # noqa: PLC0415
@@ -2005,7 +2153,12 @@ class BehaviorRunner:
                     _cap_result = await run_capability_discovery(
                         client, _disc_session, _cap_gaps,
                     )
-                    _cap_notes = apply_capability_discovery(self._sbom, _cap_gaps, _cap_result)
+                    _cap_notes = await apply_capability_discovery(
+                        self._sbom,
+                        _cap_gaps,
+                        _cap_result,
+                        llm=self._llm if getattr(self._config, "llm_capability_dedup", False) else None,
+                    )
                     for _cap_note in _cap_notes:
                         _console.print(f"  [dim]{_cap_note}[/dim]")
                     _log.info(
@@ -2106,7 +2259,60 @@ class BehaviorRunner:
 
         return results
 
+    def _checkpoint_payload(self, *, status: str, abort_reason: str | None = None) -> dict[str, Any]:
+        """Build the JSON-safe checkpoint payload for the current in-progress state."""
+        return {
+            "cache_key": _checkpoint_fingerprint(self._sbom, self._policy),
+            "status": status,
+            "abort_reason": abort_reason,
+            "completed_signatures": sorted(
+                {behavior_result_signature(r) for r in self.scenario_results}
+            ),
+            "scenario_results": [r.model_dump(mode="json") for r in self.scenario_results],
+            "run_meta": {"target": getattr(self._config, "target", "")},
+        }
+
+    def _save_checkpoint(self, *, status: str = "in_progress", abort_reason: str | None = None) -> None:
+        if self._checkpoint is None or self._checkpoint_path is None:
+            return
+        self._checkpoint.save(self._checkpoint_path, self._checkpoint_payload(status=status, abort_reason=abort_reason))
+
     async def run(
+        self,
+        scenarios: list[BehaviorScenario],
+        pre_scan_profile: "DiscoveredProfile | None" = None,
+    ) -> BehaviorRunResult:
+        """Run all scenarios, salvaging partial progress into a checkpoint on failure.
+
+        Delegates to :meth:`_run_impl` for the actual run. On success, any
+        configured checkpoint file is deleted. On any exception, a checkpoint
+        is written with whatever ``scenario_results`` were accumulated so far,
+        and :class:`~nuguard.common.run_checkpoint.PartialRunError` is raised
+        (chained via ``from exc``) so the caller can persist/report a partial
+        result instead of losing all progress (see issue #508).
+        """
+        try:
+            result = await self._run_impl(scenarios, pre_scan_profile)
+        except PartialRunError:
+            raise
+        except (Exception, asyncio.CancelledError) as exc:
+            if self.scenario_results:
+                # Only worth a checkpoint (and a PartialRunError) when at least
+                # one scenario actually completed — an abort before that point
+                # (e.g. client/auth bootstrap failing) has nothing to resume from.
+                self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__)
+                raise PartialRunError(
+                    exc,
+                    partial_payload=self._checkpoint_payload(status="aborted", abort_reason=type(exc).__name__),
+                    checkpoint_path=self._checkpoint_path,
+                ) from exc
+            raise
+        else:
+            if self._checkpoint is not None and self._checkpoint_path is not None:
+                self._checkpoint.delete(self._checkpoint_path)
+            return result
+
+    async def _run_impl(
         self,
         scenarios: list[BehaviorScenario],
         pre_scan_profile: "DiscoveredProfile | None" = None,
@@ -2224,6 +2430,36 @@ class BehaviorRunner:
         except Exception as _pf_exc:
             _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
 
+        # Per-endpoint liveness: mark every other SBOM-discovered API_ENDPOINT
+        # node operational/non-operational via a live ping, so scenario
+        # generation (should_skip_direct_http_scenario, consulted by
+        # build_scenarios -> _endpoint_coverage_scenarios below) can skip
+        # scenarios against confirmed-dead endpoints. Best-effort — a failure
+        # here must never abort the run.
+        if _preflight_ok and self._sbom is not None:
+            try:
+                from nuguard.common.endpoint_liveness import (  # noqa: PLC0415
+                    ensure_endpoint_liveness,
+                )
+                _bootstrap_hdrs2: dict[str, str] = (
+                    getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
+                )
+                _liveness = await ensure_endpoint_liveness(
+                    self._sbom,
+                    client,
+                    _bootstrap_hdrs2 or None,
+                    ttl_seconds=self._config.liveness_cache_ttl_seconds,
+                    sbom_path=self._sbom_path,
+                )
+                _log.info(
+                    "Behavior: endpoint liveness — checked=%d cached=%d operational=%d "
+                    "non_operational=%d skipped=%d",
+                    _liveness.checked, _liveness.cached, _liveness.operational,
+                    _liveness.non_operational, _liveness.skipped,
+                )
+            except Exception as _liv_exc:
+                _log.warning("Behavior: endpoint liveness check failed (non-fatal): %s", _liv_exc)
+
         if not _preflight_ok:
             _failure_note = (
                 f"Configured chat endpoint unreachable (405/404): {_configured_endpoint}. "
@@ -2250,19 +2486,13 @@ class BehaviorRunner:
         if pre_scan_profile is not None:
             # Caller already ran discovery — reuse the profile, skip HTTP round-trip.
             self._pre_scan_profile = pre_scan_profile
+            self._judge.set_profile(pre_scan_profile)
             _console.print(
                 f"  [bold cyan]Pre-scan discovery (cached):[/bold cyan] "
                 f"name={pre_scan_profile.customer_name!r}  ids={pre_scan_profile.ids}"
             )
         else:
             _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
-            from nuguard.common.discovery import (  # noqa: PLC0415
-                DiscoveryRequest,
-                run_discovery,
-            )
-            from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-                discover_chat_candidates_from_sbom as _discover_candidates,
-            )
             from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
             _disc_session = _AS(
                 session_id="behavior-discovery",
@@ -2271,25 +2501,44 @@ class BehaviorRunner:
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
             _explicit_endpoint = self._endpoint_is_explicit()
-            _sbom_fallbacks = (
-                []
-                if _explicit_endpoint
-                else (list(_discover_candidates(self._sbom)[1:]) if self._sbom else [])
-            )
-            _outcome = await run_discovery(
-                client,
-                _disc_session,
-                DiscoveryRequest(use_case=_use_case or "", max_turns=2, fallback_endpoints=_sbom_fallbacks[:4]),
-            )
-            self._pre_scan_profile = _outcome.profile
-            for _disc_note in _outcome.notes:
-                _console.print(f"  [dim]{_disc_note}[/dim]")
-            _log.info(
-                "behavior pre-scan discovery: name=%r ids=%s source=%s",
-                self._pre_scan_profile.customer_name,
-                self._pre_scan_profile.ids,
-                self._pre_scan_profile.source,
-            )
+
+            _cached_profile = self._cached_discovery_profile()
+            if _cached_profile is not None:
+                self._pre_scan_profile = _cached_profile
+                self._judge.set_profile(_cached_profile)
+                _console.print(
+                    f"  [bold cyan]Pre-scan discovery (from enriched SBOM):[/bold cyan] "
+                    f"name={_cached_profile.customer_name!r}  ids={_cached_profile.ids}"
+                )
+            else:
+                from nuguard.common.discovery import (  # noqa: PLC0415
+                    DiscoveryRequest,
+                    run_discovery,
+                )
+                from nuguard.common.endpoint_probe import (  # noqa: PLC0415
+                    discover_chat_candidates_from_sbom as _discover_candidates,
+                )
+                _sbom_fallbacks = (
+                    []
+                    if _explicit_endpoint
+                    else (list(_discover_candidates(self._sbom)[1:]) if self._sbom else [])
+                )
+                _outcome = await run_discovery(
+                    client,
+                    _disc_session,
+                    DiscoveryRequest(use_case=_use_case or "", max_turns=2, fallback_endpoints=_sbom_fallbacks[:4]),
+                )
+                self._pre_scan_profile = _outcome.profile
+                self._judge.set_profile(_outcome.profile)
+                for _disc_note in _outcome.notes:
+                    _console.print(f"  [dim]{_disc_note}[/dim]")
+                _log.info(
+                    "behavior pre-scan discovery: name=%r ids=%s source=%s",
+                    self._pre_scan_profile.customer_name,
+                    self._pre_scan_profile.ids,
+                    self._pre_scan_profile.source,
+                )
+                self._persist_discovery_profile_sbom(self._pre_scan_profile)
 
             # Capability discovery: ask the live agent about its tools (always
             # cross-checked against the SBOM) and, when actually missing from
@@ -2306,7 +2555,12 @@ class BehaviorRunner:
                     _cap_result = await run_capability_discovery(
                         client, _disc_session, _cap_gaps,
                     )
-                    _cap_notes = apply_capability_discovery(self._sbom, _cap_gaps, _cap_result)
+                    _cap_notes = await apply_capability_discovery(
+                        self._sbom,
+                        _cap_gaps,
+                        _cap_result,
+                        llm=self._llm if getattr(self._config, "llm_capability_dedup", False) else None,
+                    )
                     for _cap_note in _cap_notes:
                         _console.print(f"  [dim]{_cap_note}[/dim]")
                     _log.info(
@@ -2322,6 +2576,35 @@ class BehaviorRunner:
                 _console.print(f"\n[bold yellow]⚠ config:[/bold yellow] {_note}\n")
 
         policy_evaluator = self._build_policy_evaluator()
+
+        # Checkpoint/resume setup (issue #508) — see nuguard.common.run_checkpoint.
+        # Reuses prompt_cache_dir (same convention as BehaviorPromptCache) so
+        # checkpointing is active whenever that directory is configured.
+        _restored_results: list[ScenarioResult] = []
+        _cache_dir = str(getattr(self._config, "prompt_cache_dir", "") or "")
+        if _cache_dir:
+            from pathlib import Path as _Path  # noqa: PLC0415
+            self._checkpoint = RunCheckpoint(_Path(_cache_dir), "behavior")
+            _ckpt_key = _checkpoint_fingerprint(self._sbom, self._policy)
+            self._checkpoint_path = self._checkpoint.path_for(_ckpt_key)
+        _resume_path = getattr(self._config, "resume", None)
+        if _resume_path:
+            from pathlib import Path as _Path  # noqa: PLC0415
+            _resume_dir = _Path(_cache_dir) if _cache_dir else _Path(_resume_path).parent
+            _resume_checkpoint = RunCheckpoint(_resume_dir, "behavior").load(_Path(_resume_path))
+            if _resume_checkpoint is None:
+                raise ValueError(f"--resume checkpoint not found or unreadable: {_resume_path}")
+            validate_fingerprint(_resume_checkpoint, sbom=self._sbom, policy=self._policy)
+            self._checkpoint_path = _Path(_resume_path)
+            _restored_results = [
+                ScenarioResult(**r) for r in _resume_checkpoint.get("scenario_results", [])
+            ]
+            self.scenario_results = list(_restored_results)
+            self._completed_signatures = set(_resume_checkpoint.get("completed_signatures", []))
+            _log.info(
+                "BehaviorRunner: resuming from checkpoint — %d scenario(s) already completed",
+                len(_restored_results),
+            )
 
         all_findings: list[dict] = []
         all_turn_records: list[TurnRecord] = []
@@ -2350,6 +2633,20 @@ class BehaviorRunner:
             _log.info(
                 "BehaviorRunner.run: goal dedup reduced scenarios %d → %d",
                 pre_goal_dedup, len(scenarios),
+            )
+
+        # Resume (issue #508): drop scenarios already completed in a prior,
+        # aborted run — matched by a stable signature since BehaviorScenario's
+        # own scenario_id is a fresh UUID on every generation pass.
+        if self._completed_signatures:
+            _pre_resume_filter = len(scenarios)
+            scenarios = [
+                s for s in scenarios
+                if behavior_scenario_obj_signature(s) not in self._completed_signatures
+            ]
+            _log.info(
+                "BehaviorRunner: resume skipping %d already-completed scenario(s) (%d remaining)",
+                _pre_resume_filter - len(scenarios), len(scenarios),
             )
 
         sem = asyncio.Semaphore(concurrency)
@@ -2399,7 +2696,14 @@ class BehaviorRunner:
                     for _pp_name, _pp_value in self._bootstrapped_path_params.items():
                         _scenario_client.set_path_param(_pp_name, _pp_value)
                 try:
-                    result = await self._run_scenario(scenario, _scenario_client, policy_evaluator)  # type: ignore[arg-type]
+                    # Per-scenario wall-clock timeout (issue #508) — mirrors redteam's
+                    # scenario_timeout. asyncio.wait_for raises TimeoutError, already
+                    # caught by the `except Exception` below, which logs and returns
+                    # None so a single hung scenario can't stall the whole gather().
+                    result = await asyncio.wait_for(
+                        self._run_scenario(scenario, _scenario_client, policy_evaluator),  # type: ignore[arg-type]
+                        timeout=float(getattr(self._config, "scenario_timeout", 180.0)),
+                    )
                     # Check if the first verdict was a first-turn 405 failure.
                     _first_verdict = (result.verdicts if result else None or [][:1])
                     _first_v = _first_verdict[0] if _first_verdict else None
@@ -2450,6 +2754,13 @@ class BehaviorRunner:
             async with progress_lock:
                 completed += 1
                 completed_count = completed
+                if result is not None:
+                    # Checkpoint (issue #508): append as each scenario completes
+                    # (not just once after the whole gather() returns) so a
+                    # crash/timeout later in the run still leaves a resumable
+                    # file on disk with every scenario finished so far.
+                    self.scenario_results.append(result)
+                    self._save_checkpoint(status="in_progress")
             self._emit_progress(
                 {
                     "kind": "scenario_finished",
@@ -2469,6 +2780,15 @@ class BehaviorRunner:
             return result
 
         raw_results = await asyncio.gather(*(_run_and_emit(i, s) for i, s in enumerate(scenarios)))
+
+        # Resume (issue #508): fold checkpoint-restored results into the same
+        # aggregation pass below so has_critical/has_high/gap-bucketing and the
+        # final scenario_results list cover the FULL combined set in one pass —
+        # no separate merge step needed. scenario_by_id has no entry for a
+        # restored scenario_id (its original BehaviorScenario is gone), so
+        # _resolve_affected_component(None) falls back to "unknown" for those —
+        # an accepted precision loss for resumed-run finding attribution.
+        raw_results = [*_restored_results, *raw_results]
 
         seen_findings: set[tuple[str, str, str]] = set()
         raw_gap_observations = 0

@@ -50,7 +50,7 @@ class StreamDeltaPayload(BaseModel):
 class StreamTerminalPayload(BaseModel):
     """Terminal event payload for completed/failed outcomes."""
 
-    status: Literal["completed", "failed"]
+    status: Literal["completed", "failed", "partial"]
     summary: dict[str, Any] = Field(default_factory=dict)
     is_retryable: bool = False
     failure_stage: str | None = None

@@ -897,7 +897,7 @@ class AttackExecutor:
             # after the LLM-eval block below, since it only applies when no
             # LLM judge actually adjudicated this step.
             result.data_exposure = check_response_for_data_exposure(
-                response, step.sensitive_fields
+                response, step.sensitive_fields, http_status_code=status_code
             )
             result.resolved_payload = _resolved_payload
         else:
@@ -1142,6 +1142,7 @@ class AttackExecutor:
                 golden_data=session.golden_data,
                 app_log_context=app_log_context,
                 sensitive_fields=step.sensitive_fields if step.target_path else None,
+                http_status_code=result.http_status_code,
             )
             if llm_eval.get("confidence") in ("high", "medium"):
                 result.success_signal_found = bool(llm_eval.get("succeeded", False))

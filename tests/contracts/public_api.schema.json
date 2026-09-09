@@ -644,6 +644,13 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "per_finding_rationale": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Per Finding Rationale",
+            "type": "object"
           }
         },
         "required": [
@@ -908,10 +915,42 @@
             "title": "Use Llm",
             "type": "boolean"
           },
+          "probe_llm": {
+            "default": false,
+            "description": "Use LLM to improve endpoint probe accuracy (yaml: target.probe_llm).",
+            "title": "Probe Llm",
+            "type": "boolean"
+          },
           "capability_discovery": {
             "default": true,
             "description": "Probe the live agent for tools, sub-agents, and its system prompt when the AI-SBOM is missing them, and merge the findings back into the in-memory SBOM before scenario generation. Only fires for AGENT nodes with an actual gap.",
             "title": "Capability Discovery",
+            "type": "boolean"
+          },
+          "liveness_cache_ttl_seconds": {
+            "default": 3600.0,
+            "description": "How long a per-endpoint liveness result (yaml: behavior.liveness_cache_ttl_seconds) cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached result \u2014 including one written by a prior redteam run against the same enriched SBOM \u2014 is used as-is, skipping the live ping entirely.",
+            "title": "Liveness Cache Ttl Seconds",
+            "type": "number"
+          },
+          "browser_discover_endpoints": {
+            "default": false,
+            "description": "After browser login, crawl caller-declared browser_discovery_nav_targets and sniff network requests via Playwright to find REST endpoints the static SBOM extractor missed, merging them into the SBOM as new API_ENDPOINT nodes (yaml: behavior.browser_discover_endpoints). Off by default \u2014 requires the 'browser' extra (Playwright/Chromium) and browser login already configured (target.browser_login / target.auth).",
+            "title": "Browser Discover Endpoints",
+            "type": "boolean"
+          },
+          "browser_discovery_nav_targets": {
+            "description": "Relative paths to visit during the endpoint-discovery crawl when browser_discover_endpoints is enabled, e.g. ['/dashboard', '/account'] (yaml: behavior.browser_discovery_nav_targets). Never auto-discovered by following links \u2014 only these caller-declared paths are visited.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Browser Discovery Nav Targets",
+            "type": "array"
+          },
+          "llm_capability_dedup": {
+            "default": false,
+            "description": "When capability_discovery finds tool/sub-agent names that survive the exact-match dedup against the SBOM's known names, ask the LLM whether any are just a naming-convention paraphrase of an existing one (e.g. 'send_email' vs 'SendEmailTool') before adding a new node (yaml: behavior.llm_capability_dedup). Off by default; additive only \u2014 a failed or unconfigured LLM call falls back to the pre-existing heuristic result.",
+            "title": "Llm Capability Dedup",
             "type": "boolean"
           },
           "turn_delay_seconds": {
@@ -1074,6 +1113,26 @@
             "description": "Directory for the cross-run judge verdict cache. Empty string disables caching.",
             "title": "Judge Cache Dir",
             "type": "string"
+          },
+          "scenario_timeout": {
+            "default": 180.0,
+            "description": "Per-scenario wall-clock timeout in seconds.",
+            "exclusiveMinimum": 0.0,
+            "title": "Scenario Timeout",
+            "type": "number"
+          },
+          "resume": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path to a checkpoint file written by a previous aborted run (see prompt_cache_dir) \u2014 already-completed scenarios are skipped and the final report combines the checkpointed and newly-run results.",
+            "title": "Resume"
           },
           "max_scenarios": {
             "anyOf": [
@@ -1781,6 +1840,13 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "per_finding_rationale": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Per Finding Rationale",
+            "type": "object"
           }
         },
         "required": [
@@ -2239,10 +2305,42 @@
             "title": "Use Llm",
             "type": "boolean"
           },
+          "probe_llm": {
+            "default": false,
+            "description": "Use LLM to improve endpoint probe accuracy (yaml: target.probe_llm).",
+            "title": "Probe Llm",
+            "type": "boolean"
+          },
           "capability_discovery": {
             "default": true,
             "description": "Probe the live agent for tools, sub-agents, and its system prompt when the AI-SBOM is missing them, and merge the findings back into the in-memory SBOM before scenario generation. Only fires for AGENT nodes with an actual gap.",
             "title": "Capability Discovery",
+            "type": "boolean"
+          },
+          "liveness_cache_ttl_seconds": {
+            "default": 3600.0,
+            "description": "How long a per-endpoint liveness result (yaml: behavior.liveness_cache_ttl_seconds) cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached result \u2014 including one written by a prior redteam run against the same enriched SBOM \u2014 is used as-is, skipping the live ping entirely.",
+            "title": "Liveness Cache Ttl Seconds",
+            "type": "number"
+          },
+          "browser_discover_endpoints": {
+            "default": false,
+            "description": "After browser login, crawl caller-declared browser_discovery_nav_targets and sniff network requests via Playwright to find REST endpoints the static SBOM extractor missed, merging them into the SBOM as new API_ENDPOINT nodes (yaml: behavior.browser_discover_endpoints). Off by default \u2014 requires the 'browser' extra (Playwright/Chromium) and browser login already configured (target.browser_login / target.auth).",
+            "title": "Browser Discover Endpoints",
+            "type": "boolean"
+          },
+          "browser_discovery_nav_targets": {
+            "description": "Relative paths to visit during the endpoint-discovery crawl when browser_discover_endpoints is enabled, e.g. ['/dashboard', '/account'] (yaml: behavior.browser_discovery_nav_targets). Never auto-discovered by following links \u2014 only these caller-declared paths are visited.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Browser Discovery Nav Targets",
+            "type": "array"
+          },
+          "llm_capability_dedup": {
+            "default": false,
+            "description": "When capability_discovery finds tool/sub-agent names that survive the exact-match dedup against the SBOM's known names, ask the LLM whether any are just a naming-convention paraphrase of an existing one (e.g. 'send_email' vs 'SendEmailTool') before adding a new node (yaml: behavior.llm_capability_dedup). Off by default; additive only \u2014 a failed or unconfigured LLM call falls back to the pre-existing heuristic result.",
+            "title": "Llm Capability Dedup",
             "type": "boolean"
           },
           "turn_delay_seconds": {
@@ -2405,6 +2503,26 @@
             "description": "Directory for the cross-run judge verdict cache. Empty string disables caching.",
             "title": "Judge Cache Dir",
             "type": "string"
+          },
+          "scenario_timeout": {
+            "default": 180.0,
+            "description": "Per-scenario wall-clock timeout in seconds.",
+            "exclusiveMinimum": 0.0,
+            "title": "Scenario Timeout",
+            "type": "number"
+          },
+          "resume": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path to a checkpoint file written by a previous aborted run (see prompt_cache_dir) \u2014 already-completed scenarios are skipped and the final report combines the checkpointed and newly-run results.",
+            "title": "Resume"
           },
           "max_scenarios": {
             "anyOf": [
@@ -3133,6 +3251,13 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "per_finding_rationale": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Per Finding Rationale",
+            "type": "object"
           }
         },
         "required": [
@@ -3886,7 +4011,8 @@
       "status": {
         "enum": [
           "completed",
-          "failed"
+          "failed",
+          "partial"
         ],
         "title": "Status",
         "type": "string"
@@ -5995,6 +6121,13 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "per_finding_rationale": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Per Finding Rationale",
+            "type": "object"
           }
         },
         "required": [
@@ -6120,7 +6253,8 @@
           "aborted_target_unavailable",
           "aborted_endpoint_unreachable",
           "inconclusive_target_errors",
-          "no_findings"
+          "no_findings",
+          "partial"
         ],
         "title": "Scan Outcome",
         "type": "string"
@@ -6736,6 +6870,16 @@
         "title": "Capability Discovery",
         "type": "boolean"
       },
+      "liveness_cache_ttl_seconds": {
+        "default": 3600.0,
+        "title": "Liveness Cache Ttl Seconds",
+        "type": "number"
+      },
+      "llm_capability_dedup": {
+        "default": false,
+        "title": "Llm Capability Dedup",
+        "type": "boolean"
+      },
       "chat_payload_extras": {
         "anyOf": [
           {
@@ -6791,6 +6935,23 @@
         "default": "none",
         "title": "Progressive Halt On Severity",
         "type": "string"
+      },
+      "probe_llm": {
+        "default": false,
+        "title": "Probe Llm",
+        "type": "boolean"
+      },
+      "resume_from": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Resume From"
       }
     },
     "required": [
@@ -7394,6 +7555,13 @@
           "rationale": {
             "title": "Rationale",
             "type": "string"
+          },
+          "per_finding_rationale": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Per Finding Rationale",
+            "type": "object"
           }
         },
         "required": [
@@ -7519,7 +7687,8 @@
           "aborted_target_unavailable",
           "aborted_endpoint_unreachable",
           "inconclusive_target_errors",
-          "no_findings"
+          "no_findings",
+          "partial"
         ],
         "title": "Scan Outcome",
         "type": "string"
@@ -7783,6 +7952,20 @@
             "default": null,
             "description": "Markdown section containing a Mermaid flowchart of key component relationships (AGENT \u2192 TOOL \u2192 DATASTORE, guardrail coverage, etc.) plus an LLM-written plain-English narrative. Only populated when enable_llm=True during SBOM generation.",
             "title": "Relationship Graph Md"
+          },
+          "discovered_profile": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "title": "Discovered Profile"
           }
         },
         "required": [
@@ -9155,6 +9338,40 @@
             "default": null,
             "description": "True when rate limiting is configured for this endpoint",
             "title": "Rate Limited"
+          },
+          "operational": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a live authenticated ping to this API endpoint returned a reachable response (including a 401/403 auth-correctly-enforced response); False when it hit a rotation-trigger 4xx (404/405/400/422) or a network-level failure; None when never probed.",
+            "title": "Operational"
+          },
+          "liveness_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ISO8601 timestamp of the last liveness probe.",
+            "title": "Liveness Checked At"
+          },
+          "liveness_notes": {
+            "description": "Notes from the last liveness probe (status codes, timeouts, rotation).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Liveness Notes",
+            "type": "array"
           },
           "idor_surface": {
             "anyOf": [
@@ -10151,8 +10368,16 @@
             "additionalProperties": {
               "type": "integer"
             },
-            "description": "Count of nodes per ComponentType, e.g. {'AGENT': 3, 'MODEL': 2}",
+            "description": "Count of effective nodes per ComponentType. Nodes carrying llm_soft_rejected=true are excluded.",
             "title": "Node Counts",
+            "type": "object"
+          },
+          "node_counts_soft_rejected": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Count of deterministic nodes retained for audit after LLM verification rejected them. These nodes remain in document.nodes but are excluded from effective summaries and red-team generation.",
+            "title": "Node Counts Soft Rejected",
             "type": "object"
           },
           "secret_stores": {
@@ -10813,6 +11038,20 @@
             "default": null,
             "description": "Markdown section containing a Mermaid flowchart of key component relationships (AGENT \u2192 TOOL \u2192 DATASTORE, guardrail coverage, etc.) plus an LLM-written plain-English narrative. Only populated when enable_llm=True during SBOM generation.",
             "title": "Relationship Graph Md"
+          },
+          "discovered_profile": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "title": "Discovered Profile"
           }
         },
         "required": [
@@ -12186,6 +12425,40 @@
             "description": "True when rate limiting is configured for this endpoint",
             "title": "Rate Limited"
           },
+          "operational": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a live authenticated ping to this API endpoint returned a reachable response (including a 401/403 auth-correctly-enforced response); False when it hit a rotation-trigger 4xx (404/405/400/422) or a network-level failure; None when never probed.",
+            "title": "Operational"
+          },
+          "liveness_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ISO8601 timestamp of the last liveness probe.",
+            "title": "Liveness Checked At"
+          },
+          "liveness_notes": {
+            "description": "Notes from the last liveness probe (status codes, timeouts, rotation).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Liveness Notes",
+            "type": "array"
+          },
           "idor_surface": {
             "anyOf": [
               {
@@ -13110,8 +13383,16 @@
             "additionalProperties": {
               "type": "integer"
             },
-            "description": "Count of nodes per ComponentType, e.g. {'AGENT': 3, 'MODEL': 2}",
+            "description": "Count of effective nodes per ComponentType. Nodes carrying llm_soft_rejected=true are excluded.",
             "title": "Node Counts",
+            "type": "object"
+          },
+          "node_counts_soft_rejected": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Count of deterministic nodes retained for audit after LLM verification rejected them. These nodes remain in document.nodes but are excluded from effective summaries and red-team generation.",
+            "title": "Node Counts Soft Rejected",
             "type": "object"
           },
           "secret_stores": {
@@ -13897,6 +14178,20 @@
             "description": "Run supply-chain second pass: DevToolConfigAdapter, GithubActionsAdapter, and LifecycleScriptAdapter. Creates DEVELOPER_TOOL_CONFIG, GITHUB_WORKFLOW, LIFECYCLE_SCRIPT, and MCP_SERVER nodes. Does not affect normal SBOM extraction.",
             "title": "Supply Chain Scan",
             "type": "boolean"
+          },
+          "bulk_catalog_threshold": {
+            "default": 15,
+            "description": "When a single (file, adapter) pair produces more than this many detections, treat the file as a bulk data catalog/fixture rather than code: keep the first few representative nodes and mark the rest bulk_catalog_truncated instead of emitting one node per entry (e.g. a test fixture listing hundreds of model names).",
+            "minimum": 1,
+            "title": "Bulk Catalog Threshold",
+            "type": "integer"
+          },
+          "bulk_catalog_keep": {
+            "default": 3,
+            "description": "Representative nodes kept per bulk-catalog file once bulk_catalog_threshold is exceeded.",
+            "minimum": 0,
+            "title": "Bulk Catalog Keep",
+            "type": "integer"
           }
         },
         "title": "AiSbomConfig",
@@ -14029,6 +14324,20 @@
             "default": null,
             "description": "Markdown section containing a Mermaid flowchart of key component relationships (AGENT \u2192 TOOL \u2192 DATASTORE, guardrail coverage, etc.) plus an LLM-written plain-English narrative. Only populated when enable_llm=True during SBOM generation.",
             "title": "Relationship Graph Md"
+          },
+          "discovered_profile": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "title": "Discovered Profile"
           }
         },
         "required": [
@@ -15402,6 +15711,40 @@
             "description": "True when rate limiting is configured for this endpoint",
             "title": "Rate Limited"
           },
+          "operational": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a live authenticated ping to this API endpoint returned a reachable response (including a 401/403 auth-correctly-enforced response); False when it hit a rotation-trigger 4xx (404/405/400/422) or a network-level failure; None when never probed.",
+            "title": "Operational"
+          },
+          "liveness_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ISO8601 timestamp of the last liveness probe.",
+            "title": "Liveness Checked At"
+          },
+          "liveness_notes": {
+            "description": "Notes from the last liveness probe (status codes, timeouts, rotation).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Liveness Notes",
+            "type": "array"
+          },
           "idor_surface": {
             "anyOf": [
               {
@@ -16326,8 +16669,16 @@
             "additionalProperties": {
               "type": "integer"
             },
-            "description": "Count of nodes per ComponentType, e.g. {'AGENT': 3, 'MODEL': 2}",
+            "description": "Count of effective nodes per ComponentType. Nodes carrying llm_soft_rejected=true are excluded.",
             "title": "Node Counts",
+            "type": "object"
+          },
+          "node_counts_soft_rejected": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Count of deterministic nodes retained for audit after LLM verification rejected them. These nodes remain in document.nodes but are excluded from effective summaries and red-team generation.",
+            "title": "Node Counts Soft Rejected",
             "type": "object"
           },
           "secret_stores": {
@@ -16967,6 +17318,20 @@
             "default": null,
             "description": "Markdown section containing a Mermaid flowchart of key component relationships (AGENT \u2192 TOOL \u2192 DATASTORE, guardrail coverage, etc.) plus an LLM-written plain-English narrative. Only populated when enable_llm=True during SBOM generation.",
             "title": "Relationship Graph Md"
+          },
+          "discovered_profile": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "title": "Discovered Profile"
           }
         },
         "required": [
@@ -18340,6 +18705,40 @@
             "description": "True when rate limiting is configured for this endpoint",
             "title": "Rate Limited"
           },
+          "operational": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a live authenticated ping to this API endpoint returned a reachable response (including a 401/403 auth-correctly-enforced response); False when it hit a rotation-trigger 4xx (404/405/400/422) or a network-level failure; None when never probed.",
+            "title": "Operational"
+          },
+          "liveness_checked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "ISO8601 timestamp of the last liveness probe.",
+            "title": "Liveness Checked At"
+          },
+          "liveness_notes": {
+            "description": "Notes from the last liveness probe (status codes, timeouts, rotation).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Liveness Notes",
+            "type": "array"
+          },
           "idor_surface": {
             "anyOf": [
               {
@@ -19264,8 +19663,16 @@
             "additionalProperties": {
               "type": "integer"
             },
-            "description": "Count of nodes per ComponentType, e.g. {'AGENT': 3, 'MODEL': 2}",
+            "description": "Count of effective nodes per ComponentType. Nodes carrying llm_soft_rejected=true are excluded.",
             "title": "Node Counts",
+            "type": "object"
+          },
+          "node_counts_soft_rejected": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Count of deterministic nodes retained for audit after LLM verification rejected them. These nodes remain in document.nodes but are excluded from effective summaries and red-team generation.",
+            "title": "Node Counts Soft Rejected",
             "type": "object"
           },
           "secret_stores": {

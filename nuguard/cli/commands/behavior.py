@@ -10,6 +10,7 @@ from rich.console import Console
 
 from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.common.logging import get_logger
+from nuguard.common.run_checkpoint import PartialRunError
 
 behavior_app = typer.Typer(
     name="behavior",
@@ -93,6 +94,15 @@ def behavior_command(
     dynamic: bool = typer.Option(
         False, "--dynamic", help="Run dynamic analysis only (shorthand for --mode dynamic)"
     ),
+    resume: Optional[Path] = typer.Option(
+        None,
+        "--resume",
+        help=(
+            "Path to a checkpoint file from a previous aborted run (see "
+            "prompt_cache_dir) — already-completed scenarios are skipped and the "
+            "final report combines the checkpointed and newly-run results."
+        ),
+    ),
 ) -> None:
     """Analyze AI application behavior against its declared intent.
 
@@ -150,6 +160,7 @@ def behavior_command(
             compare_to_path=compare_to,
             strict_report=strict_report,
             verbose=verbose,
+            resume=resume,
         )
     )
 
@@ -169,6 +180,7 @@ async def _run_behavior(
     compare_to_path: Optional[Path],
     strict_report: bool,
     verbose: Optional[bool],
+    resume: Optional[Path] = None,
 ) -> None:
     """Internal async implementation of the behavior command."""
     from nuguard.behavior.public_api import BehaviorAnalysisRequest, analyze_behavior
@@ -194,6 +206,8 @@ async def _run_behavior(
         updates["verbose"] = bool(verbose)
     if canary_path:
         updates["canary"] = str(canary_path)
+    if resume:
+        updates["resume"] = str(resume)
     if updates:
         bc = bc.model_copy(update=updates)
 
@@ -279,6 +293,7 @@ async def _run_behavior(
 
     # 7. Run analysis
     _console.print(f"[bold]Running behavior analysis[/bold]  mode={mode}")
+    _partial_run = False
     try:
         request = BehaviorAnalysisRequest(config=bc, mode=mode)  # type: ignore[arg-type]
         result = await analyze_behavior(
@@ -290,6 +305,17 @@ async def _run_behavior(
             llm_client=llm_client,
             remediation_llm_client=remediation_llm_client,
         )
+    except PartialRunError as exc:
+        _err_console.print(
+            f"[yellow]⚠ Run aborted:[/yellow] {exc.cause}\n"
+            f"  Checkpoint saved: {exc.checkpoint_path}\n"
+            f"  Resume with: nuguard behavior --resume {exc.checkpoint_path} "
+            "(plus your usual --sbom/--target/--config flags)"
+        )
+        if exc.partial_result is None:
+            raise typer.Exit(code=1) from exc
+        _partial_run = True
+        result = exc.partial_result
     except Exception as exc:
         from nuguard.common.errors import AuthError, TargetUnavailableError  # noqa: PLC0415
         if isinstance(exc, TargetUnavailableError):
@@ -397,4 +423,6 @@ async def _run_behavior(
         default=99,
     )
     if worst <= fail_threshold:
+        raise typer.Exit(code=1)
+    if _partial_run:
         raise typer.Exit(code=1)

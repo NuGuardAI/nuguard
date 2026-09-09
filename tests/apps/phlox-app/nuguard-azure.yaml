@@ -10,12 +10,18 @@ policy:
 
 llm:
   model: openai/gpt-4o-mini
+  api_key: ${OPENAI_API_KEY}
+  # Pin explicitly — .env also sets AZURE_API_BASE (for the Azure-flavored
+  # nuguard.yaml in this same directory), which litellm_api_base aliases to
+  # when unset, silently redirecting this plain-OpenAI model to the Azure
+  # endpoint and causing litellm.NotFoundError ("Resource not found").
+  api_base: https://api.openai.com/v1
 
 sbom_generation:
   llm: true
 
 target:
-  url: http://phlox-nuguard-039182d3.eastus2.azurecontainer.io:80
+  url: http://phlox-nuguard-d35b6449.eastus2.azurecontainer.io:80
   auth:
     type: none
 
@@ -29,7 +35,7 @@ behavior:
   capability_discovery: true
 
 redteam:
-  target: http://phlox-nuguard-039182d3.eastus2.azurecontainer.io:80
+  target: http://phlox-nuguard-d35b6449.eastus2.azurecontainer.io:80
   canary: ./canary.json
   profile: ci
   min_impact_score: 0.0

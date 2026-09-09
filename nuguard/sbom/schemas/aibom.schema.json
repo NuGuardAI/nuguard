@@ -1375,6 +1375,40 @@
           "description": "True when rate limiting is configured for this endpoint",
           "title": "Rate Limited"
         },
+        "operational": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a live authenticated ping to this API endpoint returned a reachable response (including a 401/403 auth-correctly-enforced response); False when it hit a rotation-trigger 4xx (404/405/400/422) or a network-level failure; None when never probed.",
+          "title": "Operational"
+        },
+        "liveness_checked_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ISO8601 timestamp of the last liveness probe.",
+          "title": "Liveness Checked At"
+        },
+        "liveness_notes": {
+          "description": "Notes from the last liveness probe (status codes, timeouts, rotation).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Liveness Notes",
+          "type": "array"
+        },
         "idor_surface": {
           "anyOf": [
             {
@@ -2299,8 +2333,16 @@
           "additionalProperties": {
             "type": "integer"
           },
-          "description": "Count of nodes per ComponentType, e.g. {'AGENT': 3, 'MODEL': 2}",
+          "description": "Count of effective nodes per ComponentType. Nodes carrying llm_soft_rejected=true are excluded.",
           "title": "Node Counts",
+          "type": "object"
+        },
+        "node_counts_soft_rejected": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Count of deterministic nodes retained for audit after LLM verification rejected them. These nodes remain in document.nodes but are excluded from effective summaries and red-team generation.",
+          "title": "Node Counts Soft Rejected",
           "type": "object"
         },
         "secret_stores": {
@@ -2886,6 +2928,20 @@
       "default": null,
       "description": "Markdown section containing a Mermaid flowchart of key component relationships (AGENT \u2192 TOOL \u2192 DATASTORE, guardrail coverage, etc.) plus an LLM-written plain-English narrative. Only populated when enable_llm=True during SBOM generation.",
       "title": "Relationship Graph Md"
+    },
+    "discovered_profile": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+      "title": "Discovered Profile"
     }
   },
   "required": [
