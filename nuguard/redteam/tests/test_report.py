@@ -105,6 +105,37 @@ def test_to_json_diagnostics_only_when_verbose() -> None:
     assert "diagnostics" not in non_verbose_payload
 
 
+# ── Fix: stable run_id in machine-readable artifacts, hidden from default ui ──
+
+
+def test_to_json_meta_has_non_empty_run_id() -> None:
+    """Machine-readable JSON must carry a stable, non-empty run id in _meta."""
+    payload = json.loads(to_json(_sample_findings(), meta=ReportMeta()))
+    assert payload["_meta"]["run_id"]
+    assert payload["_meta"]["run_id"] != payload["_meta"]["generated_at"]
+
+
+def test_to_markdown_hides_run_id_by_default_shows_in_verbose() -> None:
+    """The run id is an internal correlation id — hidden from user-facing
+    markdown by default; surfaced only in verbose mode."""
+    findings = _sample_findings()
+    meta = ReportMeta()
+    default_md = to_markdown(findings, meta=meta)
+    verbose_md = to_markdown(findings, meta=ReportMeta(verbose=True, run_id=meta.run_id))
+    assert meta.run_id not in default_md
+    assert f"`{meta.run_id}`" in verbose_md
+
+
+def test_to_text_line_hides_run_id_by_default_shows_in_verbose() -> None:
+    from nuguard.cli.commands.redteam import _render_findings_text
+
+    meta = ReportMeta()
+    default_text = _render_findings_text(_sample_findings(), meta)
+    verbose_text = _render_findings_text(_sample_findings(), ReportMeta(verbose=True, run_id=meta.run_id))
+    assert meta.run_id not in default_text
+    assert meta.run_id in verbose_text
+
+
 def test_to_json_diagnostics_turn_cap_enforced() -> None:
     findings = _sample_findings()
     records = _sample_scenario_records()
