@@ -5,7 +5,29 @@ import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from nuguard.common.llm_client import LLMClient, _is_reasoning_model
+
+
+@pytest.fixture(autouse=True)
+def _restore_real_litellm_module():
+    """_install_fake_litellm() below replaces sys.modules["litellm"] with a
+    SimpleNamespace stub and never restores it — without this fixture, every
+    test in this file permanently swaps out the real litellm module for the
+    rest of the process, so any later test (in any file, run in the same
+    pytest session) that does ``import litellm`` gets this file's fake stub
+    instead. That broke nuguard/common/tests/test_llm_client_stream_retry.py
+    when run as part of the full suite: llm_client.py's ``except
+    litellm.APIConnectionError`` no longer matched a real APIConnectionError
+    instance because ``litellm.APIConnectionError`` had become the stub's
+    unrelated ``_FakeConnectionError`` class."""
+    original = sys.modules.get("litellm")
+    yield
+    if original is not None:
+        sys.modules["litellm"] = original
+    else:
+        sys.modules.pop("litellm", None)
 
 
 class _FakeDelta:

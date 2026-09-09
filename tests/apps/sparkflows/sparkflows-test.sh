@@ -28,10 +28,10 @@ echo "---"
 
 echo "Preparing Sparkflows Agent for NuGuard Testing..."
 
-#uv run nuguard sbom generate \
-#  --config "$SCRIPT_DIR/nuguard.yaml" \
-#  --format json \
-#  -o "$SCRIPT_DIR/sparkflows.sbom.json"
+uv run nuguard sbom generate \
+  --config "$SCRIPT_DIR/nuguard.yaml" \
+  --format json \
+  -o "$SCRIPT_DIR/sparkflows.sbom.json"
 
 echo "SBOM generated successfully."
 

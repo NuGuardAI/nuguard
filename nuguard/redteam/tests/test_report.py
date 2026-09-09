@@ -116,6 +116,18 @@ def test_to_json_diagnostics_turn_cap_enforced() -> None:
     assert traces[0]["turns_truncated"] == 1
 
 
+def test_to_json_renders_partial_scan_outcome() -> None:
+    """A run salvaged via PartialRunError (issue #508) reports scan_outcome='partial'."""
+    findings = _sample_findings()
+    records = _sample_scenario_records()
+
+    payload = json.loads(
+        to_json(findings, meta=ReportMeta(), scan_outcome="partial", scenario_records=records)
+    )
+
+    assert payload["scan_outcome"] == "partial"
+
+
 def _sample_remediation_plan() -> list:
     from nuguard.remediation.models import RemediationArtefact, RemediationArtefactType
 
@@ -307,3 +319,71 @@ def test_attack_coverage_summary_still_excludes_skipped_and_similar_miss() -> No
     lines = _attack_coverage_summary(records)
     table_line = next(line for line in lines if line.startswith("| API Attack"))
     assert table_line == "| API Attack | 4 | 3 | 25% |"
+
+
+# ── Gap A2: "Not Reached" (endpoint_not_found) distinct from "Not Tested" ───
+
+
+def test_attack_coverage_summary_tracks_endpoint_not_found_separately() -> None:
+    """A dead/misresolved endpoint (all-404 direct-HTTP scenario) is DID
+    execute — distinct from "Not Tested" (never executed) — so it gets its
+    own "Not Reached" column/count rather than folding into either bucket."""
+    records = [
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="completed:endpoint_not_found"),
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="completed"),
+    ]
+    lines = _attack_coverage_summary(records)
+    table_line = next(line for line in lines if line.startswith("| API Attack"))
+    # Not Tested stays 0 (the scenario did execute); Not Reached is 1; only
+    # the remaining "completed" scenario counts toward coverage (1/2 = 50%).
+    assert table_line == "| API Attack | 2 | 0 | 1 | 50% |"
+    assert any("Not Reached" in line for line in lines)
+
+
+def test_attack_coverage_summary_no_not_reached_column_when_unused() -> None:
+    """The extra column only appears when at least one scenario needs it —
+    existing reports with no dead endpoints render exactly as before."""
+    records = [SimpleNamespace(goal_type="API_ATTACK", chain_status="completed")]
+    lines = _attack_coverage_summary(records)
+    assert not any("Not Reached" in line for line in lines)
+    table_line = next(line for line in lines if line.startswith("| API Attack"))
+    assert table_line == "| API Attack | 1 | 0 | 100% |"
+
+
+def test_scenario_coverage_table_renders_endpoint_not_found_marker() -> None:
+    records = [
+        SimpleNamespace(
+            title="Injection Probe — Internal Transfer",
+            goal_type="API_ATTACK",
+            impact_score=8.0,
+            had_finding=False,
+            turns_used=5,
+            turns_budget=5,
+            duration_s=1.2,
+            chain_status="completed:endpoint_not_found",
+            steps=[],
+        )
+    ]
+    lines = _scenario_coverage_table(records)
+    table_body = "\n".join(lines)
+    assert "| n/r† |" in table_body
+    assert "never actually reached" in table_body
+
+
+def test_scenario_coverage_table_endpoint_not_found_not_double_counted_as_not_tested() -> None:
+    records = [
+        SimpleNamespace(
+            title="Injection Probe — Internal Transfer",
+            goal_type="API_ATTACK",
+            impact_score=8.0,
+            had_finding=False,
+            turns_used=5,
+            turns_budget=5,
+            duration_s=1.2,
+            chain_status="completed:endpoint_not_found",
+            steps=[],
+        )
+    ]
+    lines = _scenario_coverage_table(records)
+    table_body = "\n".join(lines)
+    assert "no target authentication configured" not in table_body

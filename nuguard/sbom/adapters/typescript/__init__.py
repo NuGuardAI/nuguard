@@ -13,6 +13,7 @@ Supports detection of AI frameworks in TypeScript and JavaScript code:
 """
 
 from .agent_orchestrator import AgentOrchestratorTSAdapter
+from .agent_registry import AgentRegistryTSAdapter
 from .agno import AgnoTSAdapter
 from .auth_detector import NestJSAuthTSAdapter
 from .aws_bedrock_guardrails import AWSBedrockGuardrailsTSAdapter
@@ -33,6 +34,7 @@ from .vercel_ai_sdk import VercelAISDKTSAdapter
 
 __all__ = [
     "AgentOrchestratorTSAdapter",
+    "AgentRegistryTSAdapter",
     "AgnoTSAdapter",
     "AWSBedrockGuardrailsTSAdapter",
     "AzureAIAgentsTSAdapter",

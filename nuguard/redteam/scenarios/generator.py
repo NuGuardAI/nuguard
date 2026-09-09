@@ -6,6 +6,7 @@ import re
 import uuid
 from typing import TYPE_CHECKING
 
+from nuguard.common.endpoint_scenario_gate import should_skip_direct_http_scenario
 from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
 from nuguard.models.policy import CognitivePolicy
@@ -366,27 +367,30 @@ class ScenarioGenerator:
         # Build one non-mutating effective view for every red-team consumer.
         # Soft-rejected nodes remain in the original SBOM for recall and audit.
         effective_nodes = list(iter_effective_nodes(sbom.nodes))
-        effective_node_ids = {node.id for node in effective_nodes}
-        effective_edges = [
-            edge
-            for edge in sbom.edges
-            if (edge.source in effective_node_ids and edge.target in effective_node_ids)
-        ]
+        if len(effective_nodes) == len(sbom.nodes):
+            self._sbom = sbom
+        else:
+            effective_node_ids = {node.id for node in effective_nodes}
+            effective_edges = [
+                edge
+                for edge in sbom.edges
+                if (edge.source in effective_node_ids and edge.target in effective_node_ids)
+            ]
 
-        effective_summary = sbom.summary.model_copy(deep=True) if sbom.summary is not None else None
+            effective_summary = sbom.summary.model_copy(deep=True) if sbom.summary is not None else None
 
-        if effective_summary is not None:
-            count_partition = partition_node_counts(sbom.nodes)
-            effective_summary.node_counts = count_partition.effective
-            effective_summary.node_counts_soft_rejected = count_partition.soft_rejected
+            if effective_summary is not None:
+                count_partition = partition_node_counts(sbom.nodes)
+                effective_summary.node_counts = count_partition.effective
+                effective_summary.node_counts_soft_rejected = count_partition.soft_rejected
 
-        self._sbom = sbom.model_copy(
-            update={
-                "nodes": effective_nodes,
-                "edges": effective_edges,
-                "summary": effective_summary,
-            }
-        )
+            self._sbom = sbom.model_copy(
+                update={
+                    "nodes": effective_nodes,
+                    "edges": effective_edges,
+                    "summary": effective_summary,
+                }
+            )
         self._policy = policy or CognitivePolicy()
         # Real second tenant id (docs/claude-redteam-3.md §5 cross-tenant fix) —
         # used by build_cross_tenant_exfiltration in place of a random probe id
@@ -422,6 +426,12 @@ class ScenarioGenerator:
         from nuguard.redteam.catalog.coverage import CoverageReport as _CR
 
         self.last_coverage: _CR | None = None
+        # Notes recorded by the last generate()/_api_attack_scenarios() call
+        # for API_ENDPOINT nodes whose declared endpoint isn't an attackable
+        # REST path (e.g. an MCP/SSE bind-string like "0.0.0.0:8080 (sse)") —
+        # surfaced so a report reader knows why no direct-HTTP scenarios were
+        # generated for that node, instead of silently seeing nothing.
+        self.skipped_endpoint_notes: list[str] = []
 
     def generate(
         self, with_guided: bool = False, progressive: bool = False
@@ -1745,6 +1755,26 @@ class ScenarioGenerator:
         }
     )
 
+    # Matches SBOM-declared "endpoint" values that aren't an HTTP path:
+    # bind-address:port strings ("0.0.0.0:8080"), scheme-prefixed URIs
+    # ("stdio://...", "mcp://..."), and trailing protocol annotations like
+    # "(sse)"/"(mcp)"/"(ws)" — see Node.metadata.endpoint's own docstring
+    # example "0.0.0.0:8080 (sse)" for MCP/SSE services.
+    _NON_REST_ENDPOINT_RE = re.compile(
+        r"^[\w.\-]+:\d+|^[a-z][a-z0-9+.\-]*://|\(\s*[a-z]+\s*\)\s*$", re.IGNORECASE
+    )
+
+    @classmethod
+    def _looks_like_rest_path(cls, endpoint: str | None) -> bool:
+        """True when *endpoint* is an attackable HTTP path, not a bind
+        address / MCP-SSE annotation / other non-REST identifier."""
+        if not endpoint or not endpoint.strip():
+            return False
+        candidate = endpoint.strip()
+        if not candidate.startswith("/"):
+            return False
+        return not cls._NON_REST_ENDPOINT_RE.search(candidate)
+
     def _api_attack_scenarios(self) -> list[AttackScenario]:
         """Generate direct HTTP attack scenarios from API_ENDPOINT SBOM nodes.
 
@@ -1791,6 +1821,21 @@ class ScenarioGenerator:
                 continue
             meta = node.metadata
             endpoint_id = str(node.id)
+
+            _skip, _skip_reason = should_skip_direct_http_scenario(meta)
+            if meta.endpoint and _skip:
+                # A guessed slug path is no better than the wrong declared
+                # one — it produced a stale 404-on-every-turn "Internal
+                # Transfer" scenario in a real scan. Skip direct-HTTP
+                # scenarios for this node entirely rather than fabricate a
+                # path; a chat-routed capability probe (if any) is unaffected.
+                # Same skip applies when a live liveness probe already
+                # confirmed the endpoint is dead (operational=False).
+                self.skipped_endpoint_notes.append(
+                    f"Skipped direct-HTTP attack scenarios for '{node.name}': {_skip_reason}"
+                )
+                continue
+
             # Fall back to a slugified name if endpoint path was not captured
             path = meta.endpoint or f"/{node.name.lower().replace(' ', '-')}"
             method = (meta.method or "GET").upper()

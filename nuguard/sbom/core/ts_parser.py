@@ -1503,18 +1503,36 @@ class TypeScriptParser:
             r'(?:this|[A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*[`"\']'
         )
 
+        def _closest_preceding_match(pattern: "re.Pattern[str]", text: str) -> Optional["re.Match[str]"]:
+            """Return the match closest to the end of *text* (nearest to the
+            literal being attributed), not the first/leftmost one.
+
+            ``text`` is everything on the line up to the matched string
+            literal's start. When a line contains multiple sibling
+            key/assignment patterns — e.g. an object literal
+            ``{ name: "Foo", content: "Bar" }`` — a plain ``.search()`` always
+            returns the first ("name"), wrongly attributing every literal on
+            the line to the earliest key instead of the one immediately
+            preceding it ("content" for "Bar"). Regression: garbled
+            content/name fields in i18n/locale files (docs/sbom-accuracy-plan.md #2).
+            """
+            last: Optional["re.Match[str]"] = None
+            for m in pattern.finditer(text):
+                last = m
+            return last
+
         def find_context_in_text(text: str) -> Optional[str]:
             """Find context from various patterns in text"""
             # Check variable assignment first (most specific)
-            m = var_assignment_pattern.search(text)
+            m = _closest_preceding_match(var_assignment_pattern, text)
             if m:
                 return m.group(1)
             # Check member assignment
-            m = member_assignment_pattern.search(text)
+            m = _closest_preceding_match(member_assignment_pattern, text)
             if m:
                 return m.group(1)
             # Check property assignment
-            m = property_pattern.search(text)
+            m = _closest_preceding_match(property_pattern, text)
             if m:
                 return m.group(1)
             return None
@@ -1569,8 +1587,17 @@ class TypeScriptParser:
             for match in STRING_LITERAL_PATTERN.finditer(line):
                 value = match.group(1)
 
-                # Try to find context from the line
-                context = find_context_in_text(line[: match.start()])
+                # Try to find context from the line. Include the literal's own
+                # opening quote (match.start() + 1) — property_pattern/
+                # var_assignment_pattern/member_assignment_pattern all require
+                # a trailing quote/backtick character to anchor the match, so
+                # excluding it (the historical `line[:match.start()]` slice)
+                # made the *closest* preceding key structurally unmatchable,
+                # silently falling back to an earlier, unrelated key on the
+                # same line — the real root cause behind garbled i18n context
+                # attribution (docs/sbom-accuracy-plan.md #2), independent of
+                # the first-vs-closest-match fix in _closest_preceding_match.
+                context = find_context_in_text(line[: match.start() + 1])
 
                 # Always compute position for enclosing function lookup
                 pos = sum(len(lines[i]) + 1 for i in range(line_num - 1)) + match.start()

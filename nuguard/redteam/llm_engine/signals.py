@@ -237,7 +237,9 @@ def detect_fictional_data(response: str) -> list[Signal]:
 
 
 def detect_api_data_exposure(
-    response: str, sensitive_fields: list[str] | None = None
+    response: str,
+    sensitive_fields: list[str] | None = None,
+    http_status_code: int | None = None,
 ) -> list[Signal]:
     """Detect evidence that a direct-HTTP API response body exposed data.
 
@@ -249,8 +251,14 @@ def detect_api_data_exposure(
     Heuristic-trust: a body containing plausible PII shapes is strong
     evidence but not structural proof the way a canary hit is, so it's
     weighed by the LLM adjudicator rather than resolving the bundle alone.
+
+    *http_status_code*, when known, guards the bulk-record-count heuristic
+    against 4xx validation-error/not-found envelopes (see
+    ``response_data_check.check_response_for_data_exposure``).
     """
-    result = check_response_for_data_exposure(response, sensitive_fields)
+    result = check_response_for_data_exposure(
+        response, sensitive_fields, http_status_code=http_status_code
+    )
     if not result.exposed:
         return []
     return [

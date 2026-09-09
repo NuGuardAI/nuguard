@@ -5,7 +5,7 @@ import asyncio
 import hashlib
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Literal, cast
 
@@ -23,6 +23,17 @@ if TYPE_CHECKING:
 from nuguard.common.console import print_turn as _common_print_turn
 from nuguard.common.id_extractor import extract_customer_name, extract_ids
 from nuguard.common.logging import get_logger
+from nuguard.common.run_checkpoint import (
+    PartialRunError,
+    RunCheckpoint,
+    scenario_record_signature,
+    validate_fingerprint,
+)
+from nuguard.common.run_checkpoint import (
+    fingerprint as _checkpoint_fingerprint,
+)
+from nuguard.common.text_similarity import extract_tokens as _extract_evidence_tokens
+from nuguard.common.text_similarity import jaccard as _evidence_jaccard
 from nuguard.models.exploit_chain import ExploitChain, GoalType, ScenarioType
 from nuguard.models.finding import Finding, Severity
 from nuguard.models.policy import CognitivePolicy
@@ -141,6 +152,104 @@ def _dedup_findings(findings: list[Finding]) -> list[Finding]:
     return result
 
 
+# Evidence text is far more structured/repetitive than the free-text attack
+# payloads SimilarityMissTracker clusters (default 0.25) — a higher bar avoids
+# over-merging genuinely distinct findings that happen to share boilerplate
+# wording about the same endpoint.
+_EVIDENCE_DEDUP_SIMILARITY_THRESHOLD = 0.75
+
+
+def _dedup_findings_by_evidence_similarity(findings: list[Finding]) -> list[Finding]:
+    """Collapse findings that share an affected_component + goal_type and whose
+    evidence text is near-identical, even when their titles (and therefore
+    ``_dedup_findings``'s exact finding_id key) differ.
+
+    Motivating case: three differently-titled scenarios (e.g. "JWT Tampering",
+    "Authentication Bypass", "Auth Scope Bypass") hitting the same unauthenticated
+    endpoint produce byte-identical evidence but distinct finding_ids, so the
+    exact-key pass in :func:`_dedup_findings` never collapses them — one real
+    issue then inflates into N separate findings of the same severity.
+
+    Never merges across different ``goal_type``s (a real IDOR and a real
+    AUTH_BYPASS against the same endpoint are still two distinct classes of
+    safeguard break) or when ``affected_component`` is empty/None on either
+    side (an empty-string collision would over-merge unrelated findings that
+    never got a component label).
+    """
+    groups: dict[tuple[str, str], list[Finding]] = {}
+    order: list[tuple[str, str]] = []
+    for f in findings:
+        component = (f.affected_component or "").strip().lower()
+        goal = f.goal_type or ""
+        if not component:
+            # No component label to group on — never merge, pass through as its
+            # own singleton group so it survives untouched below.
+            key = (f"__no_component__:{id(f)}", goal)
+        else:
+            key = (component, goal)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(f)
+
+    result: list[Finding] = []
+    collapsed_count = 0
+    for key in order:
+        group = groups[key]
+        if len(group) == 1:
+            result.append(group[0])
+            continue
+        # Cluster by Jaccard similarity of evidence text (fall back to
+        # evidence_quote), same clustering shape as SimilarityMissTracker:
+        # union against the nearest existing cluster representative.
+        clusters: list[list[Finding]] = []
+        cluster_tokens: list[frozenset[str]] = []
+        for f in group:
+            evidence_text = f.evidence or f.evidence_quote or ""
+            tokens = _extract_evidence_tokens(evidence_text)
+            if not tokens:
+                clusters.append([f])
+                cluster_tokens.append(tokens)
+                continue
+            placed = False
+            for idx, existing_tokens in enumerate(cluster_tokens):
+                if existing_tokens and _evidence_jaccard(tokens, existing_tokens) >= _EVIDENCE_DEDUP_SIMILARITY_THRESHOLD:
+                    clusters[idx].append(f)
+                    cluster_tokens[idx] = existing_tokens | tokens
+                    placed = True
+                    break
+            if not placed:
+                clusters.append([f])
+                cluster_tokens.append(tokens)
+
+        for cluster in clusters:
+            if len(cluster) == 1:
+                result.append(cluster[0])
+                continue
+            winner = cluster[0]
+            for f in cluster[1:]:
+                if _sev_rank(f.severity) < _sev_rank(winner.severity):
+                    winner = f
+                elif _sev_rank(f.severity) == _sev_rank(winner.severity) and len(f.evidence or "") > len(winner.evidence or ""):
+                    winner = f
+            collapsed_titles = sorted({f.title for f in cluster if f.title and f.title != winner.title})
+            if collapsed_titles:
+                note = (
+                    f" (collapsed {len(cluster) - 1} near-duplicate finding(s) with "
+                    f"near-identical evidence: {', '.join(collapsed_titles)})"
+                )
+                winner = winner.model_copy(update={"description": (winner.description or "") + note})
+            result.append(winner)
+            collapsed_count += len(cluster) - 1
+
+    if collapsed_count:
+        _log.info(
+            "Finding dedup (evidence similarity): collapsed %d near-duplicate(s) → %d findings",
+            collapsed_count, len(result),
+        )
+    return result
+
+
 def _matches_scenario_tokens(goal: str, scenario_type: str, title: str, filters: set[str]) -> bool:
     """Shared substring-match rule for both the pre-run and post-run filter checks."""
     return any(_token_matches(token, goal, scenario_type, title) for token in filters)
@@ -232,12 +341,23 @@ class ScenarioRecord:
     http_2xx: int = 0
     http_4xx: int = 0
     http_5xx: int = 0
+    # Subset of http_4xx specifically (never a replacement) — 404 means "this
+    # path doesn't exist" (wrong/stale endpoint resolution), a materially
+    # different claim than a 401/403 "this path exists and rejected me"
+    # (a defended attack). See _maybe_mark_endpoint_not_found below.
+    http_404: int = 0
     request_errors: int = 0
     timeout_errors: int = 0
     # Timing and turn counts — populated after execution
     duration_s: float = 0.0      # wall-clock seconds for the full scenario
     turns_used: int = 0          # turns/steps actually executed
     turns_budget: int = 0        # max turns/steps available (from scenario definition)
+    # Stable catalog identity (e.g. "C01"), when this scenario came from the
+    # attack catalog rather than the legacy SBOM-driven builders — mirrors
+    # AttackScenario.catalog_id so scenario_record_signature() (see
+    # nuguard.common.run_checkpoint) matches across a resumed run's
+    # regenerated AttackScenario objects.
+    catalog_id: str | None = None
 
 
 def _classify_step_transport(response: str, http_status_code: int | None) -> str:
@@ -324,6 +444,23 @@ def _idor_chain_status_with_auth_caveat(
     return chain_status
 
 
+def _is_404(response: str, http_status_code: int | None) -> bool:
+    """True when a step's transport outcome was specifically HTTP 404.
+
+    Reuses the same two code paths ``_classify_step_transport`` parses
+    (direct status code from ``invoke_endpoint``, or a ``[HTTP NNN]``-encoded
+    chat-path response) rather than re-deriving the parsing logic.
+    """
+    if http_status_code is not None:
+        return http_status_code == 404
+    if response.startswith("[HTTP "):
+        try:
+            return int(response[6:9]) == 404
+        except (ValueError, IndexError):
+            return False
+    return False
+
+
 def _tally_transport(record: ScenarioRecord, step_results: list) -> None:
     """Accumulate transport health counters into *record* from *step_results*."""
     for sr in step_results:
@@ -332,12 +469,42 @@ def _tally_transport(record: ScenarioRecord, step_results: list) -> None:
             record.http_2xx += 1
         elif category == "http_4xx":
             record.http_4xx += 1
+            if _is_404(sr.response, sr.http_status_code):
+                record.http_404 += 1
         elif category == "http_5xx":
             record.http_5xx += 1
         elif category == "timeout_error":
             record.timeout_errors += 1
         else:
             record.request_errors += 1
+
+
+def _maybe_mark_endpoint_not_found(
+    record: ScenarioRecord, chain_status: str, is_direct_http_only: bool
+) -> str:
+    """Reclassify a direct-HTTP-only scenario that 404'd on every step.
+
+    A dead/misresolved SBOM endpoint (stale REST path, guessed slug) 404s on
+    every attempt and — with no finding raised — reads identically in the
+    report to a live endpoint that successfully defended the same attack.
+    That silently understates risk: the attack surface was never reached at
+    all. Deliberately conservative — only fires when every transport-
+    classified step in the scenario was specifically a 404 (not a mix that
+    includes a real 401/403 defended response) and no finding was raised, so
+    a scenario that got a genuine auth rejection on some steps and a
+    spurious 404 elsewhere (e.g. after an ID substitution) is never
+    miscategorized as "not reached".
+    """
+    if (
+        chain_status == "completed"
+        and is_direct_http_only
+        and not record.had_finding
+        and record.http_404 > 0
+        and record.http_404 == record.http_4xx
+        and record.http_404 == (record.http_2xx + record.http_4xx + record.http_5xx)
+    ):
+        return "completed:endpoint_not_found"
+    return chain_status
 
 
 def _compute_scan_outcome(
@@ -652,6 +819,8 @@ class RedteamOrchestrator:
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
         capability_discovery: bool = True,
+        liveness_cache_ttl_seconds: float = 3600.0,
+        llm_capability_dedup: bool = False,
         chat_payload_extras: dict[str, Any] | None = None,
         catalog: "tuple | None" = None,
         pre_run_warmup: int = 0,
@@ -663,6 +832,8 @@ class RedteamOrchestrator:
         progressive_halt_on_severity: str = "none",
         progress_sink: Callable[[dict[str, Any]], None] | None = None,
         probe_llm: bool = False,
+        resume_checkpoint: dict[str, Any] | None = None,
+        resume_checkpoint_path: Path | None = None,
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
@@ -737,6 +908,8 @@ class RedteamOrchestrator:
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
         self._capability_discovery = capability_discovery
+        self._liveness_cache_ttl_seconds = max(0.0, liveness_cache_ttl_seconds)
+        self._llm_capability_dedup = llm_capability_dedup
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
         self._pre_run_warmup = max(0, pre_run_warmup)
         self._verify_findings = verify_findings
@@ -780,6 +953,20 @@ class RedteamOrchestrator:
         self._emitted_finding_keys: set[tuple[str, str, str]] = set()
         # Verbose per-scenario records — populated regardless of whether a finding was raised
         self.scenario_records: list[ScenarioRecord] = []
+        # Raw (pre-dedup) findings accumulated across passes — mirrors scenario_records'
+        # incremental-accumulation-on-self pattern so a PartialRunError raised mid-run
+        # can still report whatever findings were confirmed before the abort (see
+        # nuguard.common.run_checkpoint and issue #508).
+        self.findings: list[Finding] = []
+        # Checkpoint/resume support (issue #508) — see nuguard.common.run_checkpoint.
+        # ``_checkpoint``/``_checkpoint_path`` are set in run() once the effective
+        # policy (needed for the fingerprint) is known; ``_resume_checkpoint`` is the
+        # raw dict loaded from disk by the caller (run_redteam) for a ``--resume``.
+        self._resume_checkpoint: dict[str, Any] | None = resume_checkpoint
+        self._resume_checkpoint_path: Path | None = resume_checkpoint_path
+        self._checkpoint: "RunCheckpoint | None" = None
+        self._checkpoint_path: Path | None = None
+        self._completed_signatures: set[str] = set()
         # Node lookup: str(id) → "name (TYPE)" — use str() so UUID objects and
         # string IDs both resolve correctly against scenario.target_node_ids.
         # For narrative/diagnostic text only (log lines, sbom_path_descriptions) —
@@ -938,7 +1125,86 @@ class RedteamOrchestrator:
                 budget,
             )
 
+    def _checkpoint_payload(
+        self,
+        *,
+        status: str,
+        abort_reason: str | None = None,
+        records: "list[ScenarioRecord] | None" = None,
+        findings: "list[Finding] | None" = None,
+    ) -> dict[str, Any]:
+        """Build the JSON-safe checkpoint payload for the given (or current) run state.
+
+        *records*/*findings* let a caller checkpoint an in-flight batch's
+        results without first mutating ``self.scenario_records``/``self.findings``
+        (see the per-batch save in ``_run_scenarios``) — they default to the
+        current accumulated instance state.
+        """
+        _records = self.scenario_records if records is None else records
+        _findings = self.findings if findings is None else findings
+        return {
+            "cache_key": _checkpoint_fingerprint(self._sbom, self._effective_policy),
+            "status": status,
+            "abort_reason": abort_reason,
+            "completed_signatures": sorted({scenario_record_signature(r) for r in _records}),
+            "scenario_records": [asdict(r) for r in _records],
+            "findings": [f.model_dump(mode="json") for f in _findings],
+            "run_meta": {
+                "target_url": self._target_url,
+                "config_notes": list(self.config_notes),
+            },
+        }
+
+    def _save_checkpoint(
+        self,
+        *,
+        status: str = "in_progress",
+        abort_reason: str | None = None,
+        records: "list[ScenarioRecord] | None" = None,
+        findings: "list[Finding] | None" = None,
+    ) -> None:
+        if self._checkpoint is None or self._checkpoint_path is None:
+            return
+        self._checkpoint.save(
+            self._checkpoint_path,
+            self._checkpoint_payload(status=status, abort_reason=abort_reason, records=records, findings=findings),
+        )
+
     async def run(self) -> list[Finding]:
+        """Run the full scan, salvaging partial progress into a checkpoint on failure.
+
+        Delegates to :meth:`_run_impl` for the actual scan. On success, any
+        configured checkpoint file is deleted (a completed run has no further
+        use for it). On any exception — including a scenario-level abort that
+        somehow escapes ``_run_scenarios``' own per-scenario handling — a
+        checkpoint is written with whatever ``scenario_records``/``findings``
+        were accumulated so far, and :class:`~nuguard.common.run_checkpoint.PartialRunError`
+        is raised (chained via ``from exc``) so the caller can choose to
+        persist/report a partial result instead of losing all progress
+        (see issue #508).
+        """
+        try:
+            findings = await self._run_impl()
+        except PartialRunError:
+            raise
+        except (Exception, asyncio.CancelledError) as exc:
+            if self.scenario_records:
+                # Only worth a checkpoint (and a PartialRunError) when at least
+                # one scenario actually completed — an abort before that point
+                # (e.g. auth bootstrap failing) has nothing to resume from.
+                self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__)
+                raise PartialRunError(
+                    exc,
+                    partial_payload=self._checkpoint_payload(status="aborted", abort_reason=type(exc).__name__),
+                    checkpoint_path=self._checkpoint_path,
+                ) from exc
+            raise
+        else:
+            if self._checkpoint is not None and self._checkpoint_path is not None:
+                self._checkpoint.delete(self._checkpoint_path)
+            return findings
+
+    async def _run_impl(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
         self._emitted_finding_keys.clear()
         _log.info(
@@ -1130,12 +1396,20 @@ class RedteamOrchestrator:
                 )
                 _cap_gaps = sbom_capability_gaps(self._sbom)
 
+            from nuguard.common.discovery import (  # noqa: PLC0415
+                cached_discovery_profile,
+            )
+            _cached_profile_hit = cached_discovery_profile(self._sbom)
+
             async with _disc_client:
-                _disc_outcome = await run_discovery(
-                    _disc_client,
-                    _disc_session,
-                    DiscoveryRequest(use_case=_use_case, max_turns=self._discovery_max_turns),
-                )
+                if _cached_profile_hit is not None:
+                    _disc_outcome = None
+                else:
+                    _disc_outcome = await run_discovery(
+                        _disc_client,
+                        _disc_session,
+                        DiscoveryRequest(use_case=_use_case, max_turns=self._discovery_max_turns),
+                    )
                 _cap_result = None
                 if _cap_gaps:
                     from nuguard.common.discovery import (  # noqa: PLC0415
@@ -1144,23 +1418,53 @@ class RedteamOrchestrator:
                     _cap_result = await run_capability_discovery(
                         _disc_client, _disc_session, _cap_gaps,
                     )
-            _pre_scan_profile = _disc_outcome.profile
-            self.config_notes.extend(_disc_outcome.notes)
-            for _disc_note in _disc_outcome.notes:
-                _rtconsole.print(f"  [yellow]{_disc_note}[/yellow]")
-            _log.info(
-                "pre-scan discovery: name=%r ids=%s turns=%d source=%s",
-                _pre_scan_profile.customer_name,
-                _pre_scan_profile.ids,
-                _pre_scan_profile.turns_sent,
-                _pre_scan_profile.source,
-            )
+            if _cached_profile_hit is not None:
+                _pre_scan_profile = _cached_profile_hit
+                _cache_note = (
+                    f"Pre-scan discovery (from enriched SBOM): name={_pre_scan_profile.customer_name!r} "
+                    f"ids={_pre_scan_profile.ids}"
+                )
+                self.config_notes.append(_cache_note)
+                _rtconsole.print(f"  [dim]{_cache_note}[/dim]")
+                _log.info(
+                    "pre-scan discovery (from enriched SBOM): name=%r ids=%s",
+                    _pre_scan_profile.customer_name, _pre_scan_profile.ids,
+                )
+            else:
+                assert _disc_outcome is not None
+                _pre_scan_profile = _disc_outcome.profile
+                self.config_notes.extend(_disc_outcome.notes)
+                for _disc_note in _disc_outcome.notes:
+                    _rtconsole.print(f"  [yellow]{_disc_note}[/yellow]")
+                _log.info(
+                    "pre-scan discovery: name=%r ids=%s turns=%d source=%s",
+                    _pre_scan_profile.customer_name,
+                    _pre_scan_profile.ids,
+                    _pre_scan_profile.turns_sent,
+                    _pre_scan_profile.source,
+                )
+                if not _pre_scan_profile.is_empty and self._sbom_path is not None and self._sbom is not None:
+                    from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
+                        persist_discovery_profile_sbom,
+                    )
+                    self._sbom.discovered_profile = _pre_scan_profile.model_dump(mode="json")
+                    try:
+                        _profile_artifact = persist_discovery_profile_sbom(self._sbom, self._sbom_path)
+                        _log.info("pre-scan discovery: persisted profile to %s", _profile_artifact)
+                        _rtconsole.print(f"  [dim]Pre-scan discovery profile cached in {_profile_artifact}[/dim]")
+                    except Exception as exc:
+                        _log.warning("pre-scan discovery: could not persist SBOM profile: %s", exc)
 
             if _cap_gaps and _cap_result is not None:
                 from nuguard.common.discovery import (  # noqa: PLC0415
                     apply_capability_discovery,
                 )
-                _cap_notes = apply_capability_discovery(self._sbom, _cap_gaps, _cap_result)
+                _cap_notes = await apply_capability_discovery(
+                    self._sbom,
+                    _cap_gaps,
+                    _cap_result,
+                    llm=(self._eval_llm or self._redteam_llm) if self._llm_capability_dedup else None,
+                )
                 self.config_notes.extend(_cap_notes)
                 for _cap_note in _cap_notes:
                     _rtconsole.print(f"  [yellow]{_cap_note}[/yellow]")
@@ -1208,6 +1512,24 @@ class RedteamOrchestrator:
             effective_policy = _policy_from_controls(self._policy_controls)
         self._effective_policy = effective_policy
 
+        # Checkpoint/resume setup (issue #508) — now that the effective policy is
+        # known, the fingerprint used to name/validate checkpoint files is stable.
+        if self._prompt_cache_dir is not None:
+            self._checkpoint = RunCheckpoint(self._prompt_cache_dir, "redteam")
+            _ckpt_key = _checkpoint_fingerprint(self._sbom, self._effective_policy)
+            self._checkpoint_path = self._resume_checkpoint_path or self._checkpoint.path_for(_ckpt_key)
+        if self._resume_checkpoint is not None:
+            validate_fingerprint(self._resume_checkpoint, sbom=self._sbom, policy=self._effective_policy)
+            self.scenario_records = [
+                ScenarioRecord(**r) for r in self._resume_checkpoint.get("scenario_records", [])
+            ]
+            self.findings = [Finding(**f) for f in self._resume_checkpoint.get("findings", [])]
+            self._completed_signatures = set(self._resume_checkpoint.get("completed_signatures", []))
+            _log.info(
+                "Resuming from checkpoint: %d scenario(s) already completed, %d finding(s) carried over",
+                len(self.scenario_records), len(self.findings),
+            )
+
         # Guided conversations require an LLM — only generate when one is configured.
         _with_guided = self._guided_conversations and bool(self._redteam_llm)
         if self._guided_conversations and not _with_guided:
@@ -1228,6 +1550,7 @@ class RedteamOrchestrator:
         generator = ScenarioGenerator(self._sbom, effective_policy, canary_config=self._canary_config)
         all_scenarios = generator.generate(with_guided=_with_guided, progressive=_progressive)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
+        self.config_notes.extend(generator.skipped_endpoint_notes)
 
         # 1b. Catalog scenarios — merged into the SBOM-driven set above.
         # The catalog is capability-aware and handles its own profile filtering,
@@ -1315,6 +1638,23 @@ class RedteamOrchestrator:
         if self._profile == "minimal" and scenarios:
             scenarios = scenarios[:1]
 
+        # Resume (issue #508): drop scenarios already completed in a prior,
+        # aborted run — matched by a stable signature since AttackScenario's
+        # own scenario_id is a fresh UUID on every generate() call. Runs
+        # before LLM enrichment so no payload budget is wasted on scenarios
+        # that won't be dispatched. See nuguard.common.run_checkpoint.
+        if self._completed_signatures:
+            from nuguard.common.run_checkpoint import attack_scenario_signature  # noqa: PLC0415
+            _pre_resume_filter = len(scenarios)
+            scenarios = [
+                s for s in scenarios
+                if attack_scenario_signature(s) not in self._completed_signatures
+            ]
+            _log.info(
+                "Resume: skipping %d already-completed scenario(s) (%d remaining)",
+                _pre_resume_filter - len(scenarios), len(scenarios),
+            )
+
         # 3. LLM payload enrichment (opt-in — only enrich scenarios that will run)
         _llm_payloads: dict = {}
         if self._redteam_llm and scenarios:
@@ -1371,6 +1711,15 @@ class RedteamOrchestrator:
         self._publish_scenarios(scenarios)
 
         if not scenarios:
+            if self.findings:
+                # Resume (issue #508): every remaining scenario was already
+                # completed in the checkpointed pass — nothing left to run,
+                # return the carried-over findings instead of discarding them.
+                _log.info("Resume: no scenarios remaining — returning %d carried-over finding(s)", len(self.findings))
+                self.scan_outcome = _compute_scan_outcome(
+                    findings=self.findings, records=self.scenario_records, strict=self._strict_outcome,
+                )
+                return _dedup_findings_by_evidence_similarity(_dedup_findings(self.findings))
             _log.info(
                 "No scenarios met the impact threshold — scan complete with 0 findings"
             )
@@ -1453,6 +1802,40 @@ class RedteamOrchestrator:
                 _log.error("Redteam: aborting — no working chat endpoint found (%s)", _pf.notes)
                 return []
 
+            # Per-endpoint liveness: mark every other SBOM-discovered
+            # API_ENDPOINT node operational/non-operational via a live ping,
+            # so scenario generation (should_skip_direct_http_scenario) can
+            # skip direct-HTTP scenarios against confirmed-dead endpoints the
+            # same way it already skips structurally-invalid ones. Best-effort
+            # — a failure here must never abort the scan.
+            #
+            # NOTE: scenario generation (ScenarioGenerator.generate(), above)
+            # already ran before this point, so results from *this* run's own
+            # probe only benefit a later run that reads them back from the
+            # enriched SBOM (once Phase 3 caching persists this field) — they
+            # do not retroactively filter scenarios already generated in this
+            # same run. Moving generation to occur after this check is a
+            # larger reordering left for a follow-up change.
+            try:
+                from nuguard.common.endpoint_liveness import (  # noqa: PLC0415
+                    ensure_endpoint_liveness,
+                )
+                _liveness = await ensure_endpoint_liveness(
+                    self._sbom,
+                    client,
+                    effective_headers or None,
+                    ttl_seconds=self._liveness_cache_ttl_seconds,
+                    sbom_path=self._sbom_path,
+                )
+                _log.info(
+                    "Redteam: endpoint liveness — checked=%d cached=%d operational=%d "
+                    "non_operational=%d skipped=%d",
+                    _liveness.checked, _liveness.cached, _liveness.operational,
+                    _liveness.non_operational, _liveness.skipped,
+                )
+            except Exception as exc:
+                _log.warning("Redteam: endpoint liveness check failed (non-fatal): %s", exc)
+
             # Substitute poison server URL into all scenario step payloads that
             # contain the placeholder host.  This makes indirect injection and RAG
             # poisoning scenarios point at our live server instead of a dead host.
@@ -1472,12 +1855,24 @@ class RedteamOrchestrator:
             # connection errors and produce 0-turn ABORTED records.  Sending a
             # lightweight probe first absorbs the cold-start penalty centrally.
             if self._pre_run_warmup > 0:
+                from nuguard.common.transport import (  # noqa: PLC0415
+                    TransportOutcome,
+                    classify_transport,
+                )
                 from nuguard.redteam.target.session import AttackSession as _WS  # noqa: PLC0415
                 _wu_session = _WS(session_id="pre-run-warmup", target_url=self._target_url, chain_id="pre-run-warmup")
                 for _wu_idx in range(self._pre_run_warmup):
                     try:
-                        _wu_resp_text, _ = await client.send("Hello", _wu_session)
-                        _log.info("pre-run warmup %d/%d: %s", _wu_idx + 1, self._pre_run_warmup, _wu_resp_text[:80] if _wu_resp_text else "(empty)")
+                        _wu_resp_text, _ = await client.send("Hello", _wu_session, retry_transient=True)
+                        _wu_outcome = classify_transport(_wu_resp_text) if _wu_resp_text else TransportOutcome.REQUEST_ERROR
+                        if _wu_outcome != TransportOutcome.OK:
+                            _log.warning(
+                                "pre-run warmup %d/%d: target still unhealthy after retries (%s): %s",
+                                _wu_idx + 1, self._pre_run_warmup, _wu_outcome.value,
+                                _wu_resp_text[:120] if _wu_resp_text else "(empty)",
+                            )
+                        else:
+                            _log.info("pre-run warmup %d/%d: %s", _wu_idx + 1, self._pre_run_warmup, _wu_resp_text[:80])
                     except Exception as _wu_exc:
                         _log.warning("pre-run warmup %d/%d failed (non-fatal): %s", _wu_idx + 1, self._pre_run_warmup, _wu_exc)
 
@@ -1564,6 +1959,7 @@ class RedteamOrchestrator:
             findings, executed, records = await self._run_scenarios(scenarios, executor, guided_executor)
             self.scenarios_executed.extend(executed)
             self.scenario_records.extend(records)
+            self.findings.extend(findings)
 
             # 5. Escalation pass: if no findings, run lower-scored scenarios that
             #    were filtered out in the CI pass (minimum impact lowered to 3.0)
@@ -1622,8 +2018,9 @@ class RedteamOrchestrator:
                     )
                     self.scenarios_executed.extend(escalation_executed)
                     self.scenario_records.extend(escalation_records)
+                    self.findings.extend(findings)
 
-        findings = _dedup_findings(findings)
+        findings = _dedup_findings_by_evidence_similarity(_dedup_findings(findings))
         _log.info("Scan complete: %d findings (after dedup)", len(findings))
 
         # Update coverage tracker with finding data from executed scenarios.
@@ -1743,6 +2140,7 @@ class RedteamOrchestrator:
                         affected=", ".join(
                             self._node_label.get(nid, nid) for nid in s.target_node_ids[:2]
                         ),
+                        catalog_id=s.catalog_id or None,
                         chain_status="skipped",
                         had_finding=False,
                     )
@@ -1772,6 +2170,7 @@ class RedteamOrchestrator:
                     description=scenario.description,
                     impact_score=scenario.impact_score,
                     affected=affected,
+                    catalog_id=scenario.catalog_id or None,
                     chain_status=status,
                     had_finding=False,
                 )
@@ -1882,6 +2281,7 @@ class RedteamOrchestrator:
                         description=scenario.description,
                         impact_score=scenario.impact_score,
                         affected=affected,
+                        catalog_id=scenario.catalog_id or None,
                         chain_status=_chain_status,
                         had_finding=had_finding,
                         steps=step_details,
@@ -1892,6 +2292,9 @@ class RedteamOrchestrator:
                         turns_budget=len(scenario.chain.steps),
                     )
                     _tally_transport(record, step_results)
+                    record.chain_status = _maybe_mark_endpoint_not_found(
+                        record, record.chain_status, _is_direct_http
+                    )
 
                     # Code-gen exploitation escalation: when the primary chain
                     # confirms the agent generated code, immediately run a
@@ -2092,6 +2495,7 @@ class RedteamOrchestrator:
                         description=scenario.description,
                         impact_score=scenario.impact_score,
                         affected=affected,
+                        catalog_id=scenario.catalog_id or None,
                         chain_status="failed",
                         had_finding=False,
                         steps=[],
@@ -2188,6 +2592,17 @@ class RedteamOrchestrator:
                 results.extend(batch_results)
                 batch_start = batch_end
 
+                # Checkpoint (issue #508): persist progress after each phase batch so
+                # a crash/timeout later in the run still leaves a resumable file on
+                # disk. Computed against self.scenario_records/self.findings PLUS
+                # this pass's results-so-far, without mutating instance state here —
+                # the call sites in run() are still what actually extends
+                # self.scenario_records/self.findings once this whole pass returns.
+                if self._checkpoint is not None and self._checkpoint_path is not None:
+                    _batch_records = self.scenario_records + [r for _, _, r in results]
+                    _batch_findings = self.findings + [f for fs, _, _ in results for f in fs]
+                    self._save_checkpoint(status="in_progress", records=_batch_records, findings=_batch_findings)
+
                 if _halt_threshold is not None:
                     from nuguard.redteam.risk_engine.risk_scorer import highest_severity
 
@@ -2212,6 +2627,7 @@ class RedteamOrchestrator:
                                         description=s.description,
                                         impact_score=s.impact_score,
                                         affected="",
+                                        catalog_id=s.catalog_id or None,
                                         chain_status="skipped:halted_on_severity",
                                         had_finding=False,
                                         steps=[],
@@ -2409,6 +2825,7 @@ class RedteamOrchestrator:
             description=scenario.description,
             impact_score=scenario.impact_score,
             affected=affected,
+            catalog_id=scenario.catalog_id or None,
             chain_status=chain_status,
             had_finding=had_finding,
             steps=step_details,
@@ -2959,6 +3376,7 @@ class RedteamOrchestrator:
                 violation_ngrs = ngrs.score_policy_violation(
                     violation.type, violation.policy_clause, violation.confidence,
                     scenario.goal_type, turns_used=_turns_used,
+                    evidence_text=sr.response,
                 )
                 violation_title = f"{violation.type.replace('_', ' ').title()} — {scenario.title}"
                 # Evidence centres on the specific step that triggered the violation.

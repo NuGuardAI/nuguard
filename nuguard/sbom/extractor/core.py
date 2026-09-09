@@ -111,6 +111,7 @@ from ..models import (
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
 from .postprocess import (
+    _collapse_bulk_catalog_files,
     _dedup_by_location,
     _dedup_by_name_prefix,
     _dedup_deployment_nodes,
@@ -1626,6 +1627,15 @@ class AiSbomExtractor:
         # Improve 'generic' display names for AUTH/DEPLOYMENT nodes to reflect
         # the dominant technology keyword found in the evidence.
         _improve_generic_node_names(node_map)
+
+        # Collapse bulk data-catalog/fixture files (e.g. a test fixture JSON
+        # listing hundreds of model names) into a few representative nodes,
+        # deterministically and pre-LLM — see docs/sbom-accuracy-plan.md #1.
+        _collapse_bulk_catalog_files(
+            node_map,
+            threshold=config.bulk_catalog_threshold,
+            keep=config.bulk_catalog_keep,
+        )
 
         # Build nodes + edges
         for key in sorted(node_map.keys(), key=lambda v: (v[0].value, v[1])):
