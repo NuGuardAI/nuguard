@@ -34,11 +34,11 @@ _adk_fallback_warned: set[str] = set()
 DEFAULT_TIMEOUT = 30.0
 
 # Cap on how many times a single TargetAppClient will ask the LLM to repair
-# a 422 body shape. Bounded low: this is meant to fix a one-off config gap
-# (a required field the auto-discovered chat payload doesn't know about),
-# not to iteratively hill-climb an arbitrary schema at LLM-call expense on
-# every scenario.
-MAX_422_HEAL_ATTEMPTS = 2
+# a schema/validation error (HTTP 400 or 422). Bounded low: this is meant to
+# fix a one-off config gap (a required field the auto-discovered chat payload
+# doesn't know about), not to iteratively hill-climb an arbitrary schema at
+# LLM-call expense on every scenario.
+MAX_SCHEMA_HEAL_ATTEMPTS = 2
 
 _HEAL_SYSTEM_PROMPT = (
     "You are helping repair an HTTP API request that failed schema validation. "
@@ -55,31 +55,19 @@ _HEAL_SYSTEM_PROMPT = (
 
 
 def _looks_like_schema_error(body_text: str) -> bool:
-    """Return True when *body_text* looks like a field-validation error body.
+    """Return True when *body_text* is worth asking the LLM to classify/repair.
 
-    Recognises the common shapes: FastAPI/Pydantic
-    ``{"detail": [{"loc": [...], "msg": ..., "type": "missing"}]}``, and the
-    simpler ``{"detail": [{"field": ..., "message": ...}]}`` variant. This
-    gate exists so a 422 that's actually an auth/business-logic rejection
-    (no field-shape information) doesn't burn an LLM call for nothing.
+    Deliberately format-agnostic: target apps signal "missing/invalid field"
+    with wildly different shapes (FastAPI/Pydantic's structured
+    ``{"detail": [...]}``, a flat ``{"error": "..."}`` string, or arbitrarily
+    nested hand-rolled bodies), and hardcoding a shape whitelist here misses new
+    ones indefinitely. Instead this is just a cheap pre-filter to avoid burning
+    an LLM call on a genuinely empty error body — actual classification (is
+    this a field-validation error vs. an auth/business-logic/rate-limit
+    rejection?) is delegated to the LLM via ``_HEAL_SYSTEM_PROMPT``, which is
+    instructed to respond with ``{}`` when the body isn't a schema error.
     """
-    if not body_text:
-        return False
-    try:
-        data = json.loads(body_text)
-    except Exception:
-        return False
-    detail = data.get("detail") if isinstance(data, dict) else None
-    if isinstance(detail, str):
-        return False
-    if isinstance(detail, list) and detail:
-        return all(
-            isinstance(item, dict) and ({"loc", "msg"} <= item.keys() or "field" in item)
-            for item in detail
-        )
-    if isinstance(data, dict) and isinstance(data.get("errors"), (list, dict)):
-        return True
-    return False
+    return bool(body_text and body_text.strip())
 
 # Well-known OpenAI/Anthropic/LangChain-style chat-history field names.  When
 # chat_payload_key matches one of these (and chat_payload_list is True), the
@@ -186,43 +174,102 @@ def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
     return current
 
 
-def _extract_sse_event_text(event: dict[str, Any]) -> str:
+# SSE event "type" values that are always transient progress/control frames,
+# never assistant-authored content, across common streaming-chat backends
+# (e.g. phlox's status_message()/start_message() helpers). Deliberately does
+# NOT include content-carrying types like "content_block"/"chunk"/"delta" —
+# only frames whose entire purpose is UI progress signaling.
+_SSE_NON_CONTENT_TYPES: frozenset[str] = frozenset({"status", "ping", "heartbeat"})
+
+
+def _extract_sse_event_text(event: dict[str, Any]) -> str | None:
     """Extract incremental text from one generic (non-framework-adapter) SSE event.
 
-    Covers the plain ``{"text"|"content"|"message": "..."}`` shapes as well as
+    Covers the plain ``{"text"|"content"|"message"|"chunk": "..."}`` shapes,
     the OpenAI/Vercel-AI-SDK streaming-completion shape
     ``{"choices": [{"delta": {"content": "..."}}]}`` used by e.g. OWASP Juice
-    Shop's ``/rest/chat`` and any other ``ai`` package / OpenAI-compatible
+    Shop's ``/rest/chat``, a bare-string top-level ``delta`` (some custom
+    chat-widget backends), and any other ``ai`` package / OpenAI-compatible
     streaming chat backend. An ``{"error": "..."}`` event is deliberately
     *not* treated as text here — surfacing it as if it were assistant output
     would poison the transcript with the app's own error message.
+
+    Returns ``None`` (not ``""``) when the event's shape isn't recognized at
+    all, distinct from a recognized-but-empty text field — callers must not
+    fall back to dumping the raw event JSON as if it were response text (that
+    feeds literal key/type fragments like ``"content_block"``/``"chunk"``
+    into downstream capability-discovery/evidence parsing as if they were
+    real assistant output). Likewise, a recognized-but-non-content ``"type"``
+    (see :data:`_SSE_NON_CONTENT_TYPES`) returns ``""`` even when it carries
+    its own ``content``/``text`` field — that field is UI progress text, not
+    an assistant reply.
     """
     if not isinstance(event, dict) or "error" in event:
         return ""
-    text = event.get("text") or event.get("content") or event.get("message") or ""
-    if text:
-        return str(text)
+    event_type = event.get("type")
+    if isinstance(event_type, str) and event_type.lower() in _SSE_NON_CONTENT_TYPES:
+        # A transient progress/control frame (e.g. phlox's
+        # {"type": "status", "content": "Error processing request. Generating
+        # direct response..."}) — its "content" is UI-facing status text, not
+        # assistant output. Treating it as real text would poison the
+        # transcript with the app's own recovery/progress messages instead of
+        # the actual answer that arrives in a later "chunk"-type event.
+        return ""
+    text = (
+        event.get("text")
+        or event.get("content")
+        or event.get("message")
+        or event.get("chunk")
+        or ""
+    )
+    if text and isinstance(text, str):
+        return text
     choices = event.get("choices")
     if isinstance(choices, list) and choices and isinstance(choices[0], dict):
         delta = choices[0].get("delta")
         if isinstance(delta, dict):
             return str(delta.get("content") or "")
-    return ""
+    delta = event.get("delta")
+    if isinstance(delta, str):
+        return delta
+    if isinstance(delta, dict):
+        nested = delta.get("text") or delta.get("content")
+        if isinstance(nested, str):
+            return nested
+    known_envelope_keys = {
+        "type", "id", "conversation_id", "role", "index", "model", "stop_reason",
+        "created", "created_at", "object", "usage", "finish_reason",
+    }
+    if event and set(event.keys()) <= known_envelope_keys:
+        # A recognized streaming-envelope shape carrying no text this event
+        # (e.g. a "message_start"/"ping" control frame) — legitimately empty,
+        # not unrecognized.
+        return ""
+    return None
 
 
 def _extract_common_response_text(data: Any) -> str:
     """Try the common generic response shapes shared by chat/streaming clients.
 
-    Order: ``response``/``content``/``text``/``message.content`` keys, then
-    Google ADK/CES ``outputs: [{"text": ...}]``, then a trailing
+    Order: ``response``/``answer``/``content``/``text``/``message.content``
+    keys, then Google ADK/CES ``outputs: [{"text": ...}]``, then a trailing
     ``messages: [...]`` entry, then a raw string. Returns ``""`` if none match
     — callers apply their own last-resort fallback (raw JSON dump, key
     auto-detection, etc.).
+
+    ``answer`` matters here specifically because it's a common top-level key
+    that competes with sibling keys like ``suggestions`` (a list of follow-up
+    prompt chips). Without it in this always-tried, never-cached path, a
+    response whose ``answer`` happens to be short/echo-filtered on the first
+    probed turn would let ``_detect_response_key``'s one-shot, cached
+    auto-detection lock onto ``suggestions`` instead — silently discarding
+    the real reply for the rest of the run.
     """
     text = ""
     if isinstance(data, dict):
         text = (
             data.get("response")
+            or data.get("answer")
             or data.get("content")
             or data.get("text")
             or data.get("message", {}).get("content", "")
@@ -354,10 +401,10 @@ class TargetAppClient:
         # Populated by build_target_app_client() with human-readable notes about
         # automatic config resolution (URL fallback, auth upgrade, etc.).
         self.resolution_notes: list[str] = []
-        # Optional LLM used to self-heal a 422 schema-validation error by
-        # inferring the missing request field(s) from the error body — see
-        # _attempt_422_heal(). None disables self-healing (falls straight
-        # through to the existing "[HTTP 422]" behaviour).
+        # Optional LLM used to self-heal a schema-validation error (HTTP 400
+        # or 422) by inferring the missing request field(s) from the error
+        # body — see _attempt_schema_heal(). None disables self-healing
+        # (falls straight through to the existing "[HTTP <status>]" behaviour).
         self._heal_llm: "LLMClient | None" = heal_llm
         self._heal_attempts_used = 0
 
@@ -515,8 +562,17 @@ class TargetAppClient:
             _log.debug("Direct-HTTP endpoint probe recovered — resetting error counter")
         self._consecutive_endpoint_errors = 0
 
-    async def _attempt_422_heal(self, sent_body: dict, error_body_text: str) -> bool:
-        """Ask the LLM to infer missing/invalid field(s) from a 422 error body.
+    async def _attempt_schema_heal(
+        self, sent_body: dict, error_body_text: str, status: int
+    ) -> bool:
+        """Ask the LLM to infer missing/invalid field(s) from a schema-error body.
+
+        *status* is the actual HTTP status observed (400 or 422 — apps signal
+        "your request body is invalid/incomplete" with either) and is only used
+        for prompt/log/note text; the body-shape classification itself is left
+        entirely to the LLM so arbitrarily-shaped or nested error bodies are
+        handled without hardcoding another shape here — see
+        ``_looks_like_schema_error``.
 
         On success, merges the inferred fields into ``self._chat_payload_extras``
         (so every subsequent request on this client carries them, not just a
@@ -524,7 +580,7 @@ class TargetAppClient:
         is disabled, the budget is exhausted, the error body doesn't look like
         a field-validation error, or the LLM call didn't yield anything new.
         """
-        if self._heal_llm is None or self._heal_attempts_used >= MAX_422_HEAL_ATTEMPTS:
+        if self._heal_llm is None or self._heal_attempts_used >= MAX_SCHEMA_HEAL_ATTEMPTS:
             return False
         if not _looks_like_schema_error(error_body_text):
             return False
@@ -532,7 +588,7 @@ class TargetAppClient:
         self._heal_attempts_used += 1
         prompt = (
             f"Request body sent:\n{json.dumps(sent_body)}\n\n"
-            f"Server validation error (HTTP 422):\n{error_body_text[:1000]}"
+            f"Server validation error (HTTP {status}):\n{error_body_text[:1000]}"
         )
         try:
             from nuguard.common.json_utils import extract_json_object  # noqa: PLC0415
@@ -540,12 +596,12 @@ class TargetAppClient:
             raw = await self._heal_llm.complete(
                 prompt,
                 system=_HEAL_SYSTEM_PROMPT,
-                label=f"422-heal | path={self._chat_path}",
+                label=f"schema-heal | path={self._chat_path}",
                 temperature=0.0,
             )
             extra_fields = extract_json_object(raw)
         except Exception as exc:
-            _log.debug("_attempt_422_heal: LLM call failed: %s", exc)
+            _log.debug("_attempt_schema_heal: LLM call failed: %s", exc)
             return False
 
         if not isinstance(extra_fields, dict) or not extra_fields:
@@ -559,12 +615,13 @@ class TargetAppClient:
 
         self._chat_payload_extras.update(new_fields)
         _log.info(
-            "422 self-heal: inferred missing field(s) %s for %s (attempt %d/%d) — "
-            "retrying and reusing for subsequent requests",
-            list(new_fields), self._chat_path, self._heal_attempts_used, MAX_422_HEAL_ATTEMPTS,
+            "Schema self-heal: inferred missing field(s) %s for %s (HTTP %d, "
+            "attempt %d/%d) — retrying and reusing for subsequent requests",
+            list(new_fields), self._chat_path, status,
+            self._heal_attempts_used, MAX_SCHEMA_HEAL_ATTEMPTS,
         )
         self.resolution_notes.append(
-            f"HTTP 422 on {self._chat_path} was auto-repaired by inferring field(s) "
+            f"HTTP {status} on {self._chat_path} was auto-repaired by inferring field(s) "
             f"{list(new_fields)} from the validation error body via LLM. Consider "
             f"adding these under target.chat_payload_extras in nuguard.yaml to skip "
             f"this at startup."
@@ -653,6 +710,7 @@ class TargetAppClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         """Send a prompt payload to the target and return (response_text, tool_calls).
 
@@ -666,6 +724,11 @@ class TargetAppClient:
         This prevents the thundering-herd pattern where multiple chains hammer a
         cold-starting Azure Container App during the retry window.
 
+        ``retry_transient=True`` opts into the same classify+backoff retry loop
+        without requiring a semaphore — for single-shot pre-scenario callers
+        (warmup pings, health checks) that want cold-start absorption but run
+        sequentially, so there's no other concurrent chain to protect.
+
         Raises:
             TargetUnavailableError: after MAX_CONSECUTIVE_ERRORS consecutive 5xx
                 or network errors on the chat endpoint.  4xx responses (validation
@@ -675,6 +738,8 @@ class TargetAppClient:
         if self._request_sem is not None:
             async with self._request_sem:
                 text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
+        elif retry_transient:
+            text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
         else:
             text, calls = await self._send_impl(payload, session, extra_headers)
         # Single choke point: strip known app-generated response-wrapper
@@ -847,9 +912,9 @@ class TargetAppClient:
         """Inner send implementation (called with or without the request semaphore)."""
         data: dict | list | str = {}
         body: dict | None = None
-        # Bounded to max_429_retries + MAX_422_HEAL_ATTEMPTS so a 422 self-heal
+        # Bounded to max_429_retries + MAX_SCHEMA_HEAL_ATTEMPTS so a schema-heal
         # retry doesn't eat into the 429 backoff budget (and vice versa).
-        for attempt in range(self._max_429_retries + MAX_422_HEAL_ATTEMPTS + 1):
+        for attempt in range(self._max_429_retries + MAX_SCHEMA_HEAL_ATTEMPTS + 1):
             try:
                 session_id: str = ""
                 if self._framework_adapter is not None:
@@ -940,8 +1005,34 @@ class TargetAppClient:
                     from nuguard.redteam.target.sse import parse_sse_events  # noqa: PLC0415
 
                     _sse_events = parse_sse_events(resp.text)
-                    _sse_text = "".join(_extract_sse_event_text(_ev) for _ev in _sse_events)
-                    data = _sse_text or json.dumps(_sse_events)
+                    _extracted_texts = [_extract_sse_event_text(_ev) for _ev in _sse_events]
+                    _sse_text = "".join(t for t in _extracted_texts if t)
+                    _has_error_event = any(
+                        isinstance(_ev, dict) and "error" in _ev for _ev in _sse_events
+                    )
+                    if _sse_text:
+                        data = _sse_text
+                    elif _has_error_event:
+                        # An app-level error event carries no extractable
+                        # "assistant text" by design (see
+                        # _extract_sse_event_text's docstring), but it must
+                        # still reach callers/judges as a visible failure
+                        # rather than silently becoming an empty response.
+                        data = json.dumps(_sse_events)
+                    elif _sse_events and all(t is None for t in _extracted_texts):
+                        # Every event had an unrecognized (non-error) shape —
+                        # do not fall back to dumping the raw event JSON as
+                        # response text; that feeds literal key/type
+                        # fragments (e.g. "content_block", "chunk") into
+                        # downstream capability-discovery parsing as if they
+                        # were real assistant output.
+                        _log.warning(
+                            "SSE response with no recognized event text shape: %r",
+                            _sse_events[0] if _sse_events else None,
+                        )
+                        data = ""
+                    else:
+                        data = ""
                 else:
                     data = resp.json()
                 break
@@ -964,10 +1055,10 @@ class TargetAppClient:
                     await asyncio.sleep(delay)
                     continue
                 if (
-                    status == 422
+                    status in (400, 422)
                     and self._framework_adapter is None
                     and body is not None
-                    and await self._attempt_422_heal(body, exc.response.text or "")
+                    and await self._attempt_schema_heal(body, exc.response.text or "", status)
                 ):
                     continue
                 # 4xx responses mean the target IS reachable — it actively rejected our
@@ -1018,17 +1109,31 @@ class TargetAppClient:
             self._record_chat_success()
             return str(text), tool_calls
 
-        # Generic extraction path — try explicit key first, then common shapes.
+        # Generic extraction path. An explicit chat_response_key is real user
+        # config and always wins outright. Otherwise, try the common known
+        # response shapes on EVERY call before falling back to a previously
+        # auto-detected key — _detect_response_key is a one-shot heuristic
+        # guess from a single past response, so it must not outrank a
+        # recognizable shape (e.g. "answer") on the current response just
+        # because an earlier, atypical turn (e.g. an empty/refused answer)
+        # caused it to lock onto the wrong sibling field. Without this
+        # ordering, one bad turn permanently poisons every later turn even
+        # after the target starts responding normally again.
         # chat_response_key supports dot-notation for nested keys (e.g. "result.text").
-        effective_key = self._chat_response_key or self._detected_response_key
-        if effective_key and isinstance(data, dict):
-            extracted = _extract_nested_key(data, effective_key)
+        if self._chat_response_key and isinstance(data, dict):
+            extracted = _extract_nested_key(data, self._chat_response_key)
             if isinstance(extracted, list):
                 text = " ".join(str(item) for item in extracted if item is not None)
             elif extracted is not None:
                 text = str(extracted)
         if not text:
             text = _extract_common_response_text(data)
+        if not text and self._detected_response_key and isinstance(data, dict):
+            extracted = _extract_nested_key(data, self._detected_response_key)
+            if isinstance(extracted, list):
+                text = " ".join(str(item) for item in extracted if item is not None)
+            elif extracted is not None:
+                text = str(extracted)
         # Last resort: return full JSON so evaluators have something to work with.
         # Before doing so, attempt one-time auto-detection of the response key so
         # subsequent turns extract a clean text field instead of raw JSON.
@@ -1260,7 +1365,7 @@ class TargetAppClient:
                                 tool_calls.extend(chunk_tools)
                         else:
                             # Generic: look for content/text in the event dict
-                            chunk_text = _extract_sse_event_text(event)
+                            chunk_text = _extract_sse_event_text(event) or ""
                             tool_calls = []
                         if chunk_text:
                             accumulated_text_parts.append(chunk_text)

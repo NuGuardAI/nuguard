@@ -488,6 +488,7 @@ Scan-level metadata derived during extraction. Populated when `nuguard sbom gene
 | `modalities` | string[] | Supported I/O modalities in upper-case, e.g. `["TEXT", "VOICE"]` |
 | `modality_support` | object | Detailed modality flags: `{"text": true, "voice": false}` |
 | `node_counts` | object | Count of nodes per ComponentType, e.g. `{"AGENT": 3, "MODEL": 2}` |
+| `node_counts_soft_rejected` | object | Per-component counts for deterministic nodes retained for audit after LLM verification rejected them. These nodes are excluded from `node_counts` and red-team scenario generation. |
 | `total_loc` | integer | SBOM 1.5.0 total lines of source code scanned across all files in the repository |
 | `uses_streaming` | boolean | True when the app exposes streaming output endpoints. The behavior engine reads this to use streaming-aware turn execution. |
 | `streaming_endpoints` | string[] | Endpoint paths confirmed to serve streaming output, e.g. `["/run_sse", "/chat/stream"]` |

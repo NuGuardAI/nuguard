@@ -39,7 +39,9 @@ jobs:
     name: Public API contract
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: lint
+    needs:
+      - lint
+      - browser_login
 
     steps:
       - name: Checkout
@@ -59,6 +61,45 @@ jobs:
       - name: Verify public API schema contract
         run: uv run pytest tests/contracts/test_public_api_schema_contract.py -q
 
+  browser_login:
+    name: Browser-login tests (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install browser test dependencies
+        run: uv sync --dev --extra mcp --extra browser
+
+      - name: Install Chromium
+        run: uv run playwright install --with-deps chromium
+
+      - name: Verify Chromium runtime
+        env:
+          NUGUARD_REQUIRE_BROWSER_TESTS: "1"
+        run: uv run pytest tests/common/test_browser_runtime.py -q
+
+      - name: Run browser-login tests
+        run: |
+          uv run pytest \
+            tests/cli \
+            tests/common \
+            nuguard/common/browser_login \
+            --ignore=tests/common/test_browser_runtime.py \
+            -k "browser or discover" \
+            -q \
+            -ra
+
   test:
     name: Run full pytest suite
     runs-on: ubuntu-latest
@@ -66,6 +107,7 @@ jobs:
     needs:
       - lint
       - public-api-contract
+      - browser_login
 
     steps:
       - name: Checkout

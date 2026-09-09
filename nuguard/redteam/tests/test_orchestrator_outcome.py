@@ -14,6 +14,7 @@ from nuguard.redteam.executor.orchestrator import (
     ScenarioRecord,
     _classify_step_transport,
     _compute_scan_outcome,
+    _maybe_mark_endpoint_not_found,
     _tally_transport,
 )
 
@@ -123,6 +124,69 @@ def test_tally_all_504():
     results = [_FakeStepResult("[HTTP 504]", 504) for _ in range(4)]
     _tally_transport(record, results)
     assert record.http_5xx == 4
+
+
+def test_tally_transport_tracks_404_as_subset_of_4xx():
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 404]", 404) for _ in range(3)]
+    _tally_transport(record, results)
+    assert record.http_404 == 3
+    assert record.http_4xx == 3
+
+
+def test_tally_transport_401_not_counted_as_404():
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 401]", 401) for _ in range(3)]
+    _tally_transport(record, results)
+    assert record.http_404 == 0
+    assert record.http_4xx == 3
+
+
+# ── _maybe_mark_endpoint_not_found ──────────────────────────────────────────────
+
+
+def test_all_404_direct_http_scenario_gets_endpoint_not_found_status():
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 404]", 404) for _ in range(3)]
+    _tally_transport(record, results)
+    status = _maybe_mark_endpoint_not_found(record, "completed", is_direct_http_only=True)
+    assert status == "completed:endpoint_not_found"
+
+
+def test_mixed_404_and_401_not_marked_endpoint_not_found():
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 404]", 404), _FakeStepResult("[HTTP 401]", 401)]
+    _tally_transport(record, results)
+    status = _maybe_mark_endpoint_not_found(record, "completed", is_direct_http_only=True)
+    assert status == "completed"
+
+
+def test_all_404_chat_routed_scenario_not_marked_endpoint_not_found():
+    """Only direct-HTTP-only scenarios get reclassified — chat-routed scenarios
+    (guided conversations, tool-abuse chains) never hit invoke_endpoint at all,
+    so a [HTTP 404]-shaped chat response isn't a dead-endpoint signal."""
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 404]", 404) for _ in range(3)]
+    _tally_transport(record, results)
+    status = _maybe_mark_endpoint_not_found(record, "completed", is_direct_http_only=False)
+    assert status == "completed"
+
+
+def test_all_404_with_finding_not_marked_endpoint_not_found():
+    record = _make_record()
+    record.had_finding = True
+    results = [_FakeStepResult("[HTTP 404]", 404) for _ in range(3)]
+    _tally_transport(record, results)
+    status = _maybe_mark_endpoint_not_found(record, "completed", is_direct_http_only=True)
+    assert status == "completed"
+
+
+def test_non_completed_chain_status_left_unchanged():
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 404]", 404) for _ in range(3)]
+    _tally_transport(record, results)
+    status = _maybe_mark_endpoint_not_found(record, "aborted:consecutive_request_failures", is_direct_http_only=True)
+    assert status == "aborted:consecutive_request_failures"
     assert record.http_2xx == 0
 
 
@@ -296,6 +360,37 @@ def test_outcome_mixed_aborted_and_completed():
     """Mixed aborted + completed → not flagged as aborted_target_unavailable."""
     records = [
         _record_with_counters(chain_status="aborted"),
+        _record_with_counters(chain_status="completed", http_2xx=3),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome == "no_findings"
+
+
+def test_outcome_all_target_unreachable():
+    """All direct-HTTP scenarios skipped with target_unreachable → aborted_target_unavailable.
+
+    Regression: the endpoint-probe circuit breaker (source='endpoint_probe')
+    produces chain_status='target_unreachable' which was previously not in
+    _HEALTH_ABORT_STATUSES, causing _compute_scan_outcome to fall through to
+    'no_findings' instead of correctly reporting the target as unavailable.
+    """
+    records = [
+        _record_with_counters(chain_status="target_unreachable"),
+        _record_with_counters(chain_status="target_unreachable"),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome == "aborted_target_unavailable"
+
+
+def test_outcome_target_unreachable_mixed_with_completed():
+    """Target_unreachable records alongside completed records → not aborted.
+
+    When some scenarios (chat-routed) complete successfully while others
+    (direct-HTTP-only) are target_unreachable, the scan did partially run,
+    so the outcome is no_findings, not aborted_target_unavailable.
+    """
+    records = [
+        _record_with_counters(chain_status="target_unreachable"),
         _record_with_counters(chain_status="completed", http_2xx=3),
     ]
     outcome = _compute_scan_outcome(findings=[], records=records, strict=False)

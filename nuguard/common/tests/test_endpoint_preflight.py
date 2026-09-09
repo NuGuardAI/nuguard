@@ -141,9 +141,15 @@ async def test_reports_failure_when_nothing_works() -> None:
     client = _DummyClient(working_path=None)
     sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
 
-    with patch(
-        "nuguard.common.endpoint_probe.probe_chat_endpoints",
-        new=AsyncMock(return_value=None),
+    with (
+        patch(
+            "nuguard.common.endpoint_probe.probe_chat_endpoints",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "nuguard.common.browser_login.session.sniff_chat_endpoint_headless",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         outcome = await _validate(
             client, sbom, has_explicit_endpoint=False,
@@ -152,6 +158,57 @@ async def test_reports_failure_when_nothing_works() -> None:
     assert outcome.ok is False
     assert outcome.rotated_endpoint is None
     assert any("unreachable" in n for n in outcome.notes)
+
+
+@pytest.mark.asyncio
+async def test_falls_back_to_browser_sniff_when_probe_also_fails() -> None:
+    """Ground-truth fallback: when neither the SBOM candidates nor the blind
+    HTTP probe find a working endpoint, drive the target's own chat UI in a
+    headless browser and use whatever it actually calls."""
+    client = _DummyClient(working_path="/internal/chat", initial_path="/api/agent/chat")
+    sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
+
+    with (
+        patch(
+            "nuguard.common.endpoint_probe.probe_chat_endpoints",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "nuguard.common.browser_login.session.sniff_chat_endpoint_headless",
+            new=AsyncMock(return_value=("/internal/chat", "prompt", False)),
+        ),
+    ):
+        outcome = await _validate(
+            client, sbom, has_explicit_endpoint=False,
+        )
+
+    assert outcome.ok is True
+    assert outcome.endpoint_source == "probe"
+    assert outcome.rotated_endpoint == ("/internal/chat", "prompt", False, None)
+    assert client.chat_path == "/internal/chat"
+    assert any("browser sniff" in n.lower() for n in outcome.notes)
+
+
+@pytest.mark.asyncio
+async def test_empty_response_also_triggers_rotation() -> None:
+    """A clean HTTP 200 with a blank body is just as strong a wrong-endpoint
+    signal as 400/404/405 — e.g. a vision-only route silently no-opping
+    instead of erroring when the required image field is missing. This is a
+    content-agnostic check (no keyword/wording assumptions)."""
+    client = _DummyClient(
+        working_path="/chat",
+        initial_path="/api/agent/chat",
+        failure_response="   ",
+    )
+    sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
+
+    outcome = await _validate(
+        client, sbom, has_explicit_endpoint=False,
+    )
+
+    assert outcome.ok is True
+    assert outcome.rotated_endpoint is not None
+    assert outcome.rotated_endpoint[0] == "/chat"
 
 
 @pytest.mark.asyncio
