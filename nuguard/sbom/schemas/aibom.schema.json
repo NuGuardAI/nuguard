@@ -2333,8 +2333,16 @@
           "additionalProperties": {
             "type": "integer"
           },
-          "description": "Count of nodes per ComponentType, e.g. {'AGENT': 3, 'MODEL': 2}",
+          "description": "Count of effective nodes per ComponentType. Nodes carrying llm_soft_rejected=true are excluded.",
           "title": "Node Counts",
+          "type": "object"
+        },
+        "node_counts_soft_rejected": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Count of deterministic nodes retained for audit after LLM verification rejected them. These nodes remain in document.nodes but are excluded from effective summaries and red-team generation.",
+          "title": "Node Counts Soft Rejected",
           "type": "object"
         },
         "secret_stores": {

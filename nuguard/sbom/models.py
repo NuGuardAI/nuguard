@@ -119,11 +119,21 @@ class ToolParameter(BaseModel):
 class RateLimitDetail(BaseModel):
     """Structured rate limit configuration extracted from code or IaC."""
 
-    requests_per_minute: int | None = Field(default=None, description="Maximum requests allowed per minute")
-    requests_per_hour: int | None = Field(default=None, description="Maximum requests allowed per hour")
-    requests_per_day: int | None = Field(default=None, description="Maximum requests allowed per day")
-    burst_size: int | None = Field(default=None, description="Burst/concurrency limit above the steady-state rate")
-    window_seconds: int | None = Field(default=None, description="Duration of the rate limit window in seconds")
+    requests_per_minute: int | None = Field(
+        default=None, description="Maximum requests allowed per minute"
+    )
+    requests_per_hour: int | None = Field(
+        default=None, description="Maximum requests allowed per hour"
+    )
+    requests_per_day: int | None = Field(
+        default=None, description="Maximum requests allowed per day"
+    )
+    burst_size: int | None = Field(
+        default=None, description="Burst/concurrency limit above the steady-state rate"
+    )
+    window_seconds: int | None = Field(
+        default=None, description="Duration of the rate limit window in seconds"
+    )
     enforcement_type: str | None = Field(
         default=None,
         description="How the rate limit is enforced, e.g. 'decorator', 'middleware', 'api_gateway'",
@@ -133,9 +143,15 @@ class RateLimitDetail(BaseModel):
 class SecurityHeaderDetail(BaseModel):
     """HTTP security-header posture extracted from code or IaC."""
 
-    csp: bool | None = Field(default=None, description="True when a Content-Security-Policy header is set")
-    x_frame_options: bool | None = Field(default=None, description="True when an X-Frame-Options header is set")
-    hsts: bool | None = Field(default=None, description="True when a Strict-Transport-Security header is set")
+    csp: bool | None = Field(
+        default=None, description="True when a Content-Security-Policy header is set"
+    )
+    x_frame_options: bool | None = Field(
+        default=None, description="True when an X-Frame-Options header is set"
+    )
+    hsts: bool | None = Field(
+        default=None, description="True when a Strict-Transport-Security header is set"
+    )
     missing: list[str] = Field(
         default_factory=list,
         description="Security headers confirmed absent, e.g. ['csp', 'x_frame_options', 'hsts']",
@@ -149,7 +165,8 @@ class CorsPolicyDetail(BaseModel):
         default=None, description="Configured allowed origin(s), e.g. '*' or 'https://example.com'"
     )
     allow_credentials: bool | None = Field(
-        default=None, description="True when the CORS policy allows credentialed cross-origin requests"
+        default=None,
+        description="True when the CORS policy allows credentialed cross-origin requests",
     )
     wildcard_with_credentials: bool = Field(
         default=False,
@@ -164,8 +181,12 @@ class AuthDetail(BaseModel):
         default_factory=list,
         description="Auth protocols in use, e.g. ['oauth2', 'bearer', 'api_key', 'basic']",
     )
-    token_expiry_seconds: int | None = Field(default=None, description="Token TTL in seconds when detectable")
-    mfa_required: bool | None = Field(default=None, description="True when MFA is required for access")
+    token_expiry_seconds: int | None = Field(
+        default=None, description="Token TTL in seconds when detectable"
+    )
+    mfa_required: bool | None = Field(
+        default=None, description="True when MFA is required for access"
+    )
     credential_rotation_policy: str | None = Field(
         default=None, description="Rotation policy description, e.g. '90-day', 'on-demand'"
     )
@@ -191,7 +212,9 @@ class AuthDetail(BaseModel):
 class EncryptionDetail(BaseModel):
     """Encryption and redaction posture for a component."""
 
-    in_transit: bool | None = Field(default=None, description="True when data is encrypted in transit (TLS/SSL)")
+    in_transit: bool | None = Field(
+        default=None, description="True when data is encrypted in transit (TLS/SSL)"
+    )
     at_rest: bool | None = Field(default=None, description="True when data is encrypted at rest")
     algorithm: str | None = Field(
         default=None, description="Encryption algorithm, e.g. 'AES256', 'aws:kms', 'RSA-4096'"
@@ -217,14 +240,18 @@ class DataHandlingDetail(BaseModel):
 
     retention_days: int | None = Field(default=None, description="Data retention period in days")
     purge_schedule: str | None = Field(
-        default=None, description="Schedule or trigger for data purge, e.g. 'weekly', 'on-account-deletion'"
+        default=None,
+        description="Schedule or trigger for data purge, e.g. 'weekly', 'on-account-deletion'",
     )
     backup_frequency: str | None = Field(
         default=None, description="Backup frequency, e.g. 'daily', 'hourly', '7-day-retention'"
     )
-    backup_encrypted: bool | None = Field(default=None, description="True when backups are encrypted")
+    backup_encrypted: bool | None = Field(
+        default=None, description="True when backups are encrypted"
+    )
     anonymization_method: str | None = Field(
-        default=None, description="Anonymization or pseudonymization technique, e.g. 'tokenization', 'k-anonymity'"
+        default=None,
+        description="Anonymization or pseudonymization technique, e.g. 'tokenization', 'k-anonymity'",
     )
     consent_required: bool | None = Field(
         default=None, description="True when user consent is required before processing data"
@@ -244,8 +271,12 @@ class InstrumentationDetail(BaseModel):
     log_level: str | None = Field(
         default=None, description="Configured log level, e.g. 'DEBUG', 'INFO', 'WARNING'"
     )
-    tracing_enabled: bool | None = Field(default=None, description="True when distributed tracing is configured")
-    metrics_enabled: bool | None = Field(default=None, description="True when metrics collection is configured")
+    tracing_enabled: bool | None = Field(
+        default=None, description="True when distributed tracing is configured"
+    )
+    metrics_enabled: bool | None = Field(
+        default=None, description="True when metrics collection is configured"
+    )
     sampling_rate: float | None = Field(
         default=None, description="Trace or log sampling rate [0.0, 1.0] when detectable"
     )
@@ -254,7 +285,9 @@ class InstrumentationDetail(BaseModel):
 class TestingDetail(BaseModel):
     """Testing, validation, and CI/CD posture for a component or application."""
 
-    has_unit_tests: bool | None = Field(default=None, description="True when unit test files are detected")
+    has_unit_tests: bool | None = Field(
+        default=None, description="True when unit test files are detected"
+    )
     has_integration_tests: bool | None = Field(
         default=None, description="True when integration test files or suites are detected"
     )
@@ -263,14 +296,16 @@ class TestingDetail(BaseModel):
         description="Test frameworks detected, e.g. ['pytest', 'jest', 'vitest', 'hypothesis']",
     )
     ci_cd_pipeline: str | None = Field(
-        default=None, description="CI/CD platform detected, e.g. 'github_actions', 'gitlab_ci', 'jenkins'"
+        default=None,
+        description="CI/CD platform detected, e.g. 'github_actions', 'gitlab_ci', 'jenkins'",
     )
     quality_gates: list[str] = Field(
         default_factory=list,
         description="Quality gate tools detected, e.g. ['codecov', 'sonarqube', 'snyk']",
     )
     test_coverage_tool: str | None = Field(
-        default=None, description="Coverage measurement tool detected, e.g. 'coverage.py', 'istanbul'"
+        default=None,
+        description="Coverage measurement tool detected, e.g. 'coverage.py', 'istanbul'",
     )
 
 
@@ -923,7 +958,18 @@ class ScanSummary(BaseModel):
     )
     node_counts: dict[str, int] = Field(
         default_factory=dict,
-        description="Count of nodes per ComponentType, e.g. {'AGENT': 3, 'MODEL': 2}",
+        description=(
+            "Count of effective nodes per ComponentType. "
+            "Nodes carrying llm_soft_rejected=true are excluded."
+        ),
+    )
+    node_counts_soft_rejected: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Count of deterministic nodes retained for audit after LLM "
+            "verification rejected them. These nodes remain in document.nodes "
+            "but are excluded from effective summaries and red-team generation."
+        ),
     )
     # Security & resilience aggregate fields (populated from IaC/Dockerfile adapter output)
     secret_stores: list[str] = Field(
