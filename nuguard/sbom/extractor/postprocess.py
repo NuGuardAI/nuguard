@@ -303,6 +303,67 @@ def _dedup_by_location(
         del node_map[k]
 
 
+def _collapse_bulk_catalog_files(
+    node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
+    *,
+    threshold: int,
+    keep: int,
+) -> None:
+    """Collapse bulk data-catalog/fixture files into a few representative nodes.
+
+    A single (file, adapter, component_type) group with far more than
+    ``threshold`` accumulators is almost certainly an enumerable data catalog
+    (e.g. a test fixture JSON listing hundreds of model names), not code that
+    references that many distinct components individually — the
+    ``model_generic`` regex detector has no per-file volume awareness and
+    fires once per matching string literal regardless of source shape.
+
+    Only accumulators whose evidence comes entirely from one file are
+    considered (a component corroborated across multiple files is treated as
+    real, not catalog noise). The first ``keep`` accumulators (sorted by
+    canonical name, for determinism) are kept as representative nodes; the
+    rest are flagged ``bulk_catalog_truncated`` in extras rather than
+    deleted — the same "keep for provenance, exclude from downstream counts"
+    shape already used for ``llm_soft_rejected``
+    (:func:`nuguard.sbom.core.verification.apply_verification_results`) and
+    honored by the same :func:`nuguard.sbom.models.is_soft_rejected` helper.
+    """
+    if threshold <= 0:
+        return
+    groups: dict[tuple[str, str, ComponentType], list[tuple[ComponentType, str]]] = {}
+    for key, acc in node_map.items():
+        paths = {ev.location.path for ev in acc.evidence if ev.location}
+        if len(paths) != 1:
+            continue
+        (file_path,) = paths
+        groups.setdefault((file_path, acc.adapter_name, key[0]), []).append(key)
+
+    for (file_path, adapter_name, component_type), keys in groups.items():
+        if len(keys) <= threshold:
+            continue
+        keys_sorted = sorted(keys, key=lambda k: k[1])
+        kept_keys, truncated_keys = keys_sorted[:keep], keys_sorted[keep:]
+        _log.info(
+            "bulk-catalog collapse: %s (%s, %s) — %d detections, kept %d representative, truncated %d",
+            file_path,
+            adapter_name,
+            component_type.value,
+            len(keys_sorted),
+            len(kept_keys),
+            len(truncated_keys),
+        )
+        summary = (
+            f"{len(keys_sorted)} similar {component_type.value} entries found in "
+            f"{file_path} (bulk data/fixture file) — {len(truncated_keys)} additional "
+            "entries truncated as bulk_catalog_truncated"
+        )
+        for tkey in truncated_keys:
+            node_map[tkey].metadata["bulk_catalog_truncated"] = True
+            node_map[tkey].metadata["bulk_catalog_file"] = file_path
+        for kkey in kept_keys:
+            node_map[kkey].metadata["bulk_catalog_summary"] = summary
+
+
 # ---------------------------------------------------------------------------
 # Auth / deployment name improvement
 # ---------------------------------------------------------------------------

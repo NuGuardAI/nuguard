@@ -14178,6 +14178,20 @@
             "description": "Run supply-chain second pass: DevToolConfigAdapter, GithubActionsAdapter, and LifecycleScriptAdapter. Creates DEVELOPER_TOOL_CONFIG, GITHUB_WORKFLOW, LIFECYCLE_SCRIPT, and MCP_SERVER nodes. Does not affect normal SBOM extraction.",
             "title": "Supply Chain Scan",
             "type": "boolean"
+          },
+          "bulk_catalog_threshold": {
+            "default": 15,
+            "description": "When a single (file, adapter) pair produces more than this many detections, treat the file as a bulk data catalog/fixture rather than code: keep the first few representative nodes and mark the rest bulk_catalog_truncated instead of emitting one node per entry (e.g. a test fixture listing hundreds of model names).",
+            "minimum": 1,
+            "title": "Bulk Catalog Threshold",
+            "type": "integer"
+          },
+          "bulk_catalog_keep": {
+            "default": 3,
+            "description": "Representative nodes kept per bulk-catalog file once bulk_catalog_threshold is exceeded.",
+            "minimum": 0,
+            "title": "Bulk Catalog Keep",
+            "type": "integer"
           }
         },
         "title": "AiSbomConfig",

@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ...normalization import canonicalize_text
+from ...normalization import canonicalize_text, humanize_context_name
 from ...types import ComponentType
 from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
 from ..models_kb import (
@@ -1040,13 +1040,9 @@ def _infer_var_from_source(source: str, line: int) -> str | None:
 
 def _prompt_display_name(content: str, context: str, line: int) -> str:
     """Derive a human-readable name for a detected prompt."""
-    ctx = context.strip()
-    if ctx:
-        # Split camelCase/PascalCase into words before lowercasing
-        ctx_words = re.sub(r"([a-z])([A-Z])", r"\1_\2", ctx)
-        slug = re.sub(r"[^a-z0-9_]", "_", ctx_words.lower()).strip("_")
-        if slug and slug not in {"prompt", "template", "message", "content", "text", "str"}:
-            return slug.replace("_", " ").title()
+    humanized = humanize_context_name(context)
+    if humanized:
+        return humanized
     cl = content.lower()[:400]
     if re.search(r"\byou are\s", cl):
         return "System Prompt"

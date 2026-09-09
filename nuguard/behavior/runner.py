@@ -70,6 +70,7 @@ from nuguard.common.run_checkpoint import (
 )
 from nuguard.config import BehaviorConfig
 from nuguard.redteam.llm_engine.refusal_patterns import APP_TRANSIENT_ERROR_PATTERNS
+from nuguard.sbom.models import is_soft_rejected as _shared_is_soft_rejected
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -795,8 +796,7 @@ class BehaviorRunner:
                 if nt not in ("AGENT", "TOOL"):
                     continue
                 meta = getattr(node, "metadata", None)
-                extras = (getattr(meta, "extras", None) or {}) if meta is not None else {}
-                if extras.get("llm_soft_rejected"):
+                if _shared_is_soft_rejected(node):
                     # Same convention as policy/checker.py's _is_soft_rejected(): LLM
                     # verification flagged this candidate as a likely false positive
                     # (e.g. a CI-only Playwright screenshot step misdetected as a

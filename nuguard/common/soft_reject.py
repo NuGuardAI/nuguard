@@ -61,11 +61,23 @@ def _extras(
     return {}
 
 
+BULK_CATALOG_TRUNCATED_FLAG = "bulk_catalog_truncated"
+
+
 def is_soft_rejected(
     node: object,
 ) -> bool:
-    """Return whether LLM verification rejected a retained deterministic node."""
-    return _extras(node).get(SOFT_REJECT_FLAG) is True
+    """Return whether verification rejected a retained deterministic node.
+
+    Covers two independent flags with identical "keep for provenance, exclude
+    from downstream counts/findings/scenarios" semantics: ``llm_soft_rejected``
+    (LLM verification judged a deterministic node a likely false positive) and
+    ``bulk_catalog_truncated`` (a node beyond the first few representative
+    entries collapsed from a bulk data-catalog/fixture file — see
+    ``nuguard.sbom.extractor.postprocess._collapse_bulk_catalog_files``).
+    """
+    extras = _extras(node)
+    return extras.get(SOFT_REJECT_FLAG) is True or extras.get(BULK_CATALOG_TRUNCATED_FLAG) is True
 
 
 def iter_effective_nodes(
@@ -132,6 +144,7 @@ def partition_node_counts(
 
 
 __all__ = [
+    "BULK_CATALOG_TRUNCATED_FLAG",
     "NodeCountPartition",
     "SOFT_REJECT_FLAG",
     "is_soft_rejected",

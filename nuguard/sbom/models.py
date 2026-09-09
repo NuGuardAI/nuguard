@@ -886,6 +886,31 @@ class Node(BaseModel):
     )
 
 
+def is_soft_rejected(node: "Node | dict[str, Any]") -> bool:
+    """True when the SBOM's own pipeline flagged this node as not-really-real.
+
+    Covers two independent flags with identical "keep for provenance, exclude
+    from downstream counts/findings/scenarios" semantics: ``llm_soft_rejected``
+    (LLM verification judged a deterministic node a likely false positive) and
+    ``bulk_catalog_truncated`` (a node beyond the first few representative
+    entries collapsed from a bulk data-catalog/fixture file — see
+    ``nuguard.sbom.extractor.postprocess._collapse_bulk_catalog_files``).
+
+    Accepts either a ``Node`` model instance or a raw serialized-dict node
+    (``{"metadata": {"extras": {...}}}``) so callers operating on parsed JSON
+    (e.g. analysis rule plugins) don't need a model round-trip. Consumers of
+    the SBOM (analysis, policy, behavior, redteam, node_counts summaries)
+    must all honor this flag consistently — a flagged node stays in the SBOM
+    for provenance but should never drive findings, scenarios, or counts.
+    """
+    if isinstance(node, dict):
+        extras = (node.get("metadata") or {}).get("extras") or {}
+    else:
+        meta = getattr(node, "metadata", None)
+        extras = (getattr(meta, "extras", None) or {}) if meta is not None else {}
+    return bool(extras.get("llm_soft_rejected")) or bool(extras.get("bulk_catalog_truncated"))
+
+
 class Edge(BaseModel):
     """A directed relationship between two Nodes."""
 

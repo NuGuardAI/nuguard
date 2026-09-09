@@ -236,6 +236,23 @@ class AiSbomConfig(BaseModel):
         ),
     )
 
+    bulk_catalog_threshold: int = Field(
+        default=15,
+        ge=1,
+        description=(
+            "When a single (file, adapter) pair produces more than this many "
+            "detections, treat the file as a bulk data catalog/fixture rather "
+            "than code: keep the first few representative nodes and mark the "
+            "rest bulk_catalog_truncated instead of emitting one node per "
+            "entry (e.g. a test fixture listing hundreds of model names)."
+        ),
+    )
+    bulk_catalog_keep: int = Field(
+        default=3,
+        ge=0,
+        description="Representative nodes kept per bulk-catalog file once bulk_catalog_threshold is exceeded.",
+    )
+
     @model_validator(mode="before")
     @classmethod
     def _migrate_legacy(cls, data: object) -> object:

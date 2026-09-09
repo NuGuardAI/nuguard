@@ -367,27 +367,30 @@ class ScenarioGenerator:
         # Build one non-mutating effective view for every red-team consumer.
         # Soft-rejected nodes remain in the original SBOM for recall and audit.
         effective_nodes = list(iter_effective_nodes(sbom.nodes))
-        effective_node_ids = {node.id for node in effective_nodes}
-        effective_edges = [
-            edge
-            for edge in sbom.edges
-            if (edge.source in effective_node_ids and edge.target in effective_node_ids)
-        ]
+        if len(effective_nodes) == len(sbom.nodes):
+            self._sbom = sbom
+        else:
+            effective_node_ids = {node.id for node in effective_nodes}
+            effective_edges = [
+                edge
+                for edge in sbom.edges
+                if (edge.source in effective_node_ids and edge.target in effective_node_ids)
+            ]
 
-        effective_summary = sbom.summary.model_copy(deep=True) if sbom.summary is not None else None
+            effective_summary = sbom.summary.model_copy(deep=True) if sbom.summary is not None else None
 
-        if effective_summary is not None:
-            count_partition = partition_node_counts(sbom.nodes)
-            effective_summary.node_counts = count_partition.effective
-            effective_summary.node_counts_soft_rejected = count_partition.soft_rejected
+            if effective_summary is not None:
+                count_partition = partition_node_counts(sbom.nodes)
+                effective_summary.node_counts = count_partition.effective
+                effective_summary.node_counts_soft_rejected = count_partition.soft_rejected
 
-        self._sbom = sbom.model_copy(
-            update={
-                "nodes": effective_nodes,
-                "edges": effective_edges,
-                "summary": effective_summary,
-            }
-        )
+            self._sbom = sbom.model_copy(
+                update={
+                    "nodes": effective_nodes,
+                    "edges": effective_edges,
+                    "summary": effective_summary,
+                }
+            )
         self._policy = policy or CognitivePolicy()
         # Real second tenant id (docs/claude-redteam-3.md §5 cross-tenant fix) —
         # used by build_cross_tenant_exfiltration in place of a random probe id
