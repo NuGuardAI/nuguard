@@ -43,6 +43,20 @@ _TEST_MESSAGE = "Hello"
 _ROTATION_TRIGGER_PREFIXES = ("[HTTP 405]", "[HTTP 404]", "[HTTP 400]", "[HTTP 422]")
 
 
+def _response_indicates_wrong_endpoint(response: str) -> bool:
+    """True when *response* signals the current endpoint is not the real chat
+    endpoint — either an explicit rejection status, or a blank/whitespace-only
+    body.
+
+    A clean HTTP 200 with an empty payload is just as strong a "wrong
+    endpoint" signal as a 400/404/405 — e.g. a vision-only route silently
+    no-opping instead of erroring when the required image field is absent.
+    Checking for emptiness rather than any content-based/keyword heuristic
+    keeps this generic across arbitrary target apps.
+    """
+    return response.startswith(_ROTATION_TRIGGER_PREFIXES) or not response.strip()
+
+
 class PreflightOutcome(BaseModel):
     """Result of :func:`validate_and_rotate_chat_endpoint`.
 
@@ -177,7 +191,7 @@ async def validate_and_rotate_chat_endpoint(
         _log.debug("Pre-flight: test request failed (non-fatal): %s", exc)
         return PreflightOutcome(ok=True)
 
-    if not response.startswith(_ROTATION_TRIGGER_PREFIXES):
+    if not _response_indicates_wrong_endpoint(response):
         if sbom is not None:
             _pre_count = len(notes)
             await _bootstrap_path_params(client, sbom, client.chat_path, notes)
@@ -185,7 +199,7 @@ async def validate_and_rotate_chat_endpoint(
                 # A param was bound — re-run the test request against the
                 # now-substituted path, same as the rotation success paths.
                 resp_after, _ = await client.send(_TEST_MESSAGE, session)
-                if resp_after.startswith(_ROTATION_TRIGGER_PREFIXES) or resp_after.startswith(
+                if _response_indicates_wrong_endpoint(resp_after) or resp_after.startswith(
                     "[CONFIG_ERROR"
                 ):
                     _log.info(
@@ -195,7 +209,10 @@ async def validate_and_rotate_chat_endpoint(
                     )
         return PreflightOutcome(ok=True, notes=notes)
 
-    _log.warning("Pre-flight: chat endpoint returned %s — attempting rotation", response[:15])
+    _log.warning(
+        "Pre-flight: chat endpoint returned %s — attempting rotation",
+        response[:15] or "<empty response>",
+    )
 
     if has_explicit_endpoint:
         note = (
@@ -215,7 +232,7 @@ async def validate_and_rotate_chat_endpoint(
         for candidate in _dcandidates(sbom)[1:]:
             client.set_chat_endpoint(candidate[0], candidate[1], candidate[2], candidate[3])
             resp2, _ = await client.send(_TEST_MESSAGE, session)
-            if not resp2.startswith(_ROTATION_TRIGGER_PREFIXES):
+            if not _response_indicates_wrong_endpoint(resp2):
                 _log.info("Pre-flight: rotated to working endpoint %s", candidate[0])
                 notes.append(f"Chat endpoint rotated to {candidate[0]!r} after 400/404/405 on the discovered path.")
                 await _bootstrap_path_params(client, sbom, candidate[0], notes)
@@ -242,9 +259,43 @@ async def validate_and_rotate_chat_endpoint(
                 notes=notes,
             )
 
+        # Ground-truth fallback: every static candidate and the blind HTTP
+        # probe failed to guess the right path/payload shape. Rather than add
+        # more naming-convention heuristics, actually drive the target's own
+        # chat UI in a headless browser and observe which request it fires —
+        # this works for any app regardless of its endpoint naming, since it
+        # never guesses at all. Best-effort: requires Playwright/Chromium and
+        # a discoverable chat input; any failure here just falls through to
+        # the final failure below, same as today.
+        from nuguard.common.browser_login.session import (  # noqa: PLC0415
+            sniff_chat_endpoint_headless,
+        )
+
+        try:
+            sniffed = await sniff_chat_endpoint_headless(target_url, chat_message=_TEST_MESSAGE)
+        except Exception as exc:
+            _log.info("Pre-flight: browser-sniff fallback failed: %s", exc)
+            sniffed = None
+        if sniffed is not None:
+            path, pay_key, pay_list = sniffed
+            client.set_chat_endpoint(path, pay_key, pay_list)
+            _log.info("Pre-flight: browser sniff found working endpoint %s", path)
+            notes.append(
+                f"Chat endpoint rotated to {path!r} via headless-browser sniff after SBOM "
+                "candidates and live probe both failed."
+            )
+            await _bootstrap_path_params(client, sbom, path, notes)
+            return PreflightOutcome(
+                ok=True,
+                rotated_endpoint=(path, pay_key, pay_list, None),
+                endpoint_source="probe",
+                notes=notes,
+            )
+
     note = (
-        "Chat endpoint unreachable — all SBOM candidates and live probe returned "
-        "400/404/405. Check 'target_endpoint' in nuguard.yaml or re-run 'nuguard sbom generate'."
+        "Chat endpoint unreachable — all SBOM candidates, the live probe, and the "
+        "headless-browser sniff fallback returned 400/404/405 or an empty response. "
+        "Check 'target_endpoint' in nuguard.yaml or re-run 'nuguard sbom generate'."
     )
     notes.append(note)
     _log.error("Pre-flight: aborting — no working chat endpoint found")

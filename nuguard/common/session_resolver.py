@@ -488,13 +488,25 @@ async def resolve_target_session(
                 target_url=target_url,
                 chain_id="pre-run-warmup",
             )
+            from nuguard.common.transport import (  # noqa: PLC0415
+                TransportOutcome,
+                classify_transport,
+            )
             for _i in range(warmup_requests):
                 try:
-                    _resp_text, _ = await _wu_client.send("Hello", _wu_session)
-                    _log.info(
-                        "resolve_target_session: warmup %d/%d: %s",
-                        _i + 1, warmup_requests, (_resp_text or "")[:80],
-                    )
+                    _resp_text, _ = await _wu_client.send("Hello", _wu_session, retry_transient=True)
+                    _outcome = classify_transport(_resp_text) if _resp_text else TransportOutcome.REQUEST_ERROR
+                    if _outcome != TransportOutcome.OK:
+                        _log.warning(
+                            "resolve_target_session: warmup %d/%d: target still unhealthy "
+                            "after retries (%s): %s",
+                            _i + 1, warmup_requests, _outcome.value, (_resp_text or "")[:120],
+                        )
+                    else:
+                        _log.info(
+                            "resolve_target_session: warmup %d/%d: %s",
+                            _i + 1, warmup_requests, (_resp_text or "")[:80],
+                        )
                 except Exception as _exc:
                     _log.warning(
                         "resolve_target_session: warmup %d/%d failed (non-fatal): %s",

@@ -110,6 +110,31 @@ def test_ts_literal_provider_model_resolved():
     assert models[0].metadata["provider"] == "openai"
 
 
+def test_ts_agent_call_site_in_test_file_demoted():
+    """Regression (docs/sbom-accuracy-plan.md #3): a streamText/generateText
+    call in a unit test exercising provider-timeout/transform behavior with a
+    throwaway prompt must not be reported at the same confidence as a real
+    product agent — this adapter previously had no test-path awareness at
+    all, unlike the legacy RegexAdapter's skip_path_parts gate."""
+    from nuguard.sbom.adapters.typescript.vercel_ai_sdk import VercelAISDKTSAdapter
+
+    code = """
+    import { streamText } from 'ai'
+    const result = streamText({ model: 'x', system: 'test', messages })
+    """
+    pr = parse_typescript(code, "src/foo.test.ts")
+    dets = VercelAISDKTSAdapter().extract(code, "src/foo.test.ts", pr)
+    agents = _by_type(dets, ComponentType.AGENT)
+    assert len(agents) == 1
+    assert agents[0].confidence < 0.5
+
+    pr2 = parse_typescript(code, "src/routes/chat.ts")
+    dets2 = VercelAISDKTSAdapter().extract(code, "src/routes/chat.ts", pr2)
+    agents2 = _by_type(dets2, ComponentType.AGENT)
+    assert len(agents2) == 1
+    assert agents2[0].confidence >= 0.7
+
+
 def test_ts_can_handle_requires_exact_core_package_match():
     from nuguard.sbom.adapters.typescript.vercel_ai_sdk import VercelAISDKTSAdapter
 

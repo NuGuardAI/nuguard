@@ -10,6 +10,7 @@ DISCOVER steps are cheap cache hits.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -27,6 +28,7 @@ from nuguard.sbom.types import ComponentType, RelationshipType
 
 if TYPE_CHECKING:
     from nuguard.common.target_client_builder import TargetClient
+    from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.target.session import AttackSession
     from nuguard.sbom.models import AiSbomDocument
 
@@ -86,6 +88,27 @@ class DiscoveredProfile(BaseModel):
     def is_empty(self) -> bool:
         """True when no useful data was extracted."""
         return not self.customer_name and not self.ids
+
+
+def cached_discovery_profile(sbom: Any) -> "DiscoveredProfile | None":
+    """Return a previously-persisted, non-empty pre-scan profile from
+    *sbom*'s ``discovered_profile`` field, or ``None`` if absent/empty/invalid.
+
+    Shared by ``behavior`` and ``redteam`` so a run of either package against
+    an already-enriched SBOM can reuse a profile the other one discovered
+    live, skipping the DISCOVER HTTP round-trip (and its golden-data —
+    ``raw_response``/``ids`` — with it, since :attr:`DiscoveredProfile.raw_response`
+    already *is* the verbatim golden-data text consumed by
+    :mod:`nuguard.redteam.executor.golden_data_filter`).
+    """
+    if sbom is None or getattr(sbom, "discovered_profile", None) is None:
+        return None
+    try:
+        profile = DiscoveredProfile.model_validate(sbom.discovered_profile)
+    except Exception as exc:
+        _log.warning("cached_discovery_profile: could not parse cached SBOM profile: %s", exc)
+        return None
+    return None if profile.is_empty else profile
 
 
 # ---------------------------------------------------------------------------
@@ -781,7 +804,22 @@ def _extract_list_items(text: str) -> list[str]:
     Falls back to comma-separated segments of the first sentence when no
     list markers are present (some agents answer in prose, e.g.
     "I can book flights, cancel reservations, and check in.").
+
+    Undecoded JSON (e.g. a raw SSE event object dumped as text when the
+    target's streaming response shape wasn't recognized) is never natural
+    language and must not reach the comma/bullet splitters below — doing so
+    turns literal JSON keys like ``"type"``/``"chunk"``/``"conversation_id"``
+    into fabricated "capability" names.
     """
+    stripped = text.strip()
+    if stripped[:1] in "{[":
+        try:
+            json.loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            pass
+        else:
+            return []
+
     items: list[str] = []
     for line in text.splitlines():
         m = _LIST_ITEM_RE.match(line)
@@ -861,10 +899,12 @@ async def run_capability_discovery(
     return result
 
 
-def apply_capability_discovery(
+async def apply_capability_discovery(
     sbom: "AiSbomDocument",
     gaps: list[AgentCapabilityGap],
     result: CapabilityDiscoveryResult,
+    *,
+    llm: "LLMClient | None" = None,
 ) -> list[str]:
     """Merge parsed probe responses back into *sbom* in place.
 
@@ -873,6 +913,13 @@ def apply_capability_discovery(
     tool/sub-agent nodes of the same name are never duplicated.  Returns
     human-readable notes describing what was added, mirroring
     :class:`DiscoveryOutcome`.
+
+    When *llm* is given (and actually configured — see
+    :mod:`nuguard.common.capability_dedup_llm`), an additive second dedup
+    pass runs on whatever names survive the exact-match heuristic dedup
+    below, to also catch naming-convention paraphrases (``send_email`` vs
+    ``SendEmailTool``) the heuristic can't. *llm* defaults to ``None``,
+    which preserves the exact pre-existing heuristic-only behavior.
     """
     notes: list[str] = []
     if not gaps or not result.raw_responses:
@@ -894,6 +941,39 @@ def apply_capability_discovery(
         if len(system_prompt_reply.strip()) > 80
         else ""
     )
+
+    tool_llm_dedup: dict[str, str] = {}
+    subagent_llm_dedup: dict[str, str] = {}
+    if llm is not None:
+        from nuguard.common.capability_dedup_llm import (  # noqa: PLC0415
+            llm_dedup_capability_names,
+        )
+
+        tool_candidates = [t for t in tool_items if t.strip().lower() not in existing_tool_names]
+        if tool_candidates:
+            existing_tool_display = sorted(
+                {n.name for n in sbom.nodes if n.component_type == ComponentType.TOOL}
+            )
+            try:
+                tool_llm_dedup = await llm_dedup_capability_names(
+                    tool_candidates, existing_tool_display, llm
+                )
+            except Exception as exc:  # noqa: BLE001 - additive path, never propagate
+                _log.warning("capability discovery: LLM tool dedup failed: %s", exc)
+
+        subagent_candidates = [
+            s for s in subagent_items if s.strip().lower() not in existing_agent_names
+        ]
+        if subagent_candidates:
+            existing_agent_display = sorted(
+                {n.name for n in sbom.nodes if n.component_type == ComponentType.AGENT}
+            )
+            try:
+                subagent_llm_dedup = await llm_dedup_capability_names(
+                    subagent_candidates, existing_agent_display, llm
+                )
+            except Exception as exc:  # noqa: BLE001 - additive path, never propagate
+                _log.warning("capability discovery: LLM sub-agent dedup failed: %s", exc)
 
     def _dynamic_evidence(detail: str) -> Evidence:
         return Evidence(
@@ -923,6 +1003,13 @@ def apply_capability_discovery(
             for tool_name in tool_items:
                 if tool_name.strip().lower() in existing_tool_names:
                     continue
+                _llm_match = tool_llm_dedup.get(tool_name)
+                if _llm_match:
+                    notes.append(
+                        f"Capability discovery: {tool_name!r} treated as a duplicate of "
+                        f"existing tool {_llm_match!r} (LLM dedup)"
+                    )
+                    continue
                 new_node = Node(
                     name=tool_name,
                     component_type=ComponentType.TOOL,
@@ -945,6 +1032,13 @@ def apply_capability_discovery(
         if gap.needs_subagents and subagent_items:
             for subagent_name in subagent_items:
                 if subagent_name.strip().lower() in existing_agent_names:
+                    continue
+                _llm_match = subagent_llm_dedup.get(subagent_name)
+                if _llm_match:
+                    notes.append(
+                        f"Capability discovery: {subagent_name!r} treated as a duplicate of "
+                        f"existing sub-agent {_llm_match!r} (LLM dedup)"
+                    )
                     continue
                 new_node = Node(
                     name=subagent_name,

@@ -28,6 +28,10 @@ Makefile shortcuts: `make dev`, `make test`, `make lint`, `make fmt`.
 
 Use `tmp/` for scratch scripts and one-off experiments rather than streaming commands in the terminal.
 
+For functionality changes or bug fixes that affect public Python or platform-facing interfaces,
+follow [the Pydantic interface skill](.github/skills/pydantic-interface/SKILL.md). It defines the
+required model, schema, compatibility, documentation, and credential-redaction workflow.
+
 ## Architecture
 
 NuGuard is an AI application security package with five capabilities:

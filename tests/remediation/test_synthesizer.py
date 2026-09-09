@@ -173,6 +173,38 @@ class TestMergeArtefactsPreservesRationale:
         assert "Merged 2 system prompt patches" not in merged[0].rationale
 
 
+def test_merge_artefacts_populates_per_finding_rationale() -> None:
+    # Regression test for the copy-paste-remediation bug: backfill maps every
+    # finding_id in a merged artefact back to the SAME joined `rationale`
+    # string, which can truncate away a finding's own text while a sibling's
+    # remains visible. per_finding_rationale must let each finding_id recover
+    # its own original rationale independent of merge order/truncation.
+    from nuguard.remediation.models import RemediationArtefact
+
+    a1 = RemediationArtefact(
+        finding_ids=["f1"],
+        component="SupportAgent",
+        component_type="AGENT",
+        artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
+        priority="high",
+        patch_text="text1",
+        rationale="f1's own rationale.",
+    )
+    a2 = RemediationArtefact(
+        finding_ids=["f2"],
+        component="SupportAgent",
+        component_type="AGENT",
+        artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
+        priority="high",
+        patch_text="text2",
+        rationale="f2's own rationale.",
+    )
+    merged = _merge_artefacts([a1, a2])
+    assert len(merged) == 1
+    assert merged[0].per_finding_rationale["f1"] == "f1's own rationale."
+    assert merged[0].per_finding_rationale["f2"] == "f2's own rationale."
+
+
 def test_merge_artefacts_dedupes_identical_rationale() -> None:
     from nuguard.remediation.models import RemediationArtefact
 
