@@ -4,12 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import hmac
 import json
-import shutil
-import subprocess
 import sys
+import tarfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -79,39 +79,28 @@ def verify_pypi(project: str, version: str, dist_dir: Path) -> bool:
     return True
 
 
-def _npm_package_metadata(package_dir: Path) -> dict[str, Any]:
-    npm = shutil.which("npm")
-    if npm is None:
-        raise VerificationError("npm is required to verify npm artifacts")
+def _npm_package_metadata(tarball: Path) -> dict[str, Any]:
     try:
-        result = subprocess.run(
-            [npm, "pack", "--dry-run", "--json"],
-            cwd=package_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise VerificationError("npm is required to verify npm artifacts") from exc
-    if result.returncode != 0:
-        raise VerificationError(f"npm pack failed: {(result.stderr or result.stdout).strip()}")
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise VerificationError("npm pack returned invalid JSON") from exc
-    if not isinstance(payload, list) or len(payload) != 1 or not isinstance(payload[0], dict):
-        raise VerificationError("npm pack returned an unexpected artifact list")
-    return payload[0]
+        with tarfile.open(tarball, "r:gz") as archive:
+            package_json = archive.extractfile("package/package.json")
+            if package_json is None:
+                raise VerificationError("npm tarball is missing package/package.json")
+            payload = json.load(package_json)
+    except (OSError, tarfile.TarError, KeyError, json.JSONDecodeError) as exc:
+        raise VerificationError(f"Could not read npm tarball metadata: {tarball}") from exc
+    if not isinstance(payload, dict):
+        raise VerificationError("npm tarball package.json is not an object")
+    return payload
 
 
-def verify_npm(package_name: str, version: str, package_dir: Path) -> bool:
+def verify_npm(package_name: str, version: str, tarball: Path) -> bool:
     """Return whether npm has the exact locally packable artifact for a version."""
-    local = _npm_package_metadata(package_dir)
+    local = _npm_package_metadata(tarball)
     if local.get("name") != package_name or local.get("version") != version:
         raise VerificationError("Local npm package name or version does not match the release")
-    local_integrity = local.get("integrity")
-    if not isinstance(local_integrity, str):
-        raise VerificationError("npm pack did not report artifact integrity")
+    local_integrity = "sha512-" + base64.b64encode(
+        hashlib.sha512(tarball.read_bytes()).digest()
+    ).decode("ascii")
 
     encoded_name = urllib.parse.quote(package_name, safe="")
     encoded_version = urllib.parse.quote(version, safe="")
@@ -152,7 +141,7 @@ def _parse_args() -> argparse.Namespace:
     npm = subparsers.add_parser("npm")
     npm.add_argument("--package", required=True)
     npm.add_argument("--version", required=True)
-    npm.add_argument("--package-dir", type=Path, required=True)
+    npm.add_argument("--tarball", type=Path, required=True)
     return parser.parse_args()
 
 
@@ -162,7 +151,7 @@ def main() -> int:
         if args.registry == "pypi":
             exists = verify_pypi(args.project, args.version, args.dist_dir)
         else:
-            exists = verify_npm(args.package, args.version, args.package_dir)
+            exists = verify_npm(args.package, args.version, args.tarball)
     except VerificationError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

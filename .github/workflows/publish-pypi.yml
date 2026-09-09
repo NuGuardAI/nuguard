@@ -18,12 +18,15 @@ jobs:
 
     steps:
       - name: Checkout release tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.ref_name }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: false
 
       - name: Verify tag and release metadata
         env:
@@ -62,29 +65,107 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      npm-exists: ${{ steps.npm-registry.outputs.exists }}
+      pypi-exists: ${{ steps.pypi-registry.outputs.exists }}
 
     steps:
       - name: Checkout release tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.ref_name }}
+          persist-credentials: false
+          ref: ${{ github.sha }}
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "20"
 
       - name: Build distributions
         run: uv build
 
+      - name: Verify existing PyPI artifacts
+        id: pypi-registry
+        run: |
+          python scripts/verify_registry_artifacts.py pypi \
+            --project nuguard \
+            --version "${GITHUB_REF_NAME#v}" \
+            --dist-dir dist \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Build npm package
+        run: |
+          mkdir npm-dist
+          npm pack ./npm --pack-destination npm-dist
+
+      - name: Verify existing npm artifact
+        id: npm-registry
+        run: |
+          python scripts/verify_registry_artifacts.py npm \
+            --package @nuguardai/nuguard \
+            --version "${GITHUB_REF_NAME#v}" \
+            --tarball "npm-dist/nuguardai-nuguard-${GITHUB_REF_NAME#v}.tgz" \
+            >> "$GITHUB_OUTPUT"
+
+      - name: Build Smithery bundle
+        run: |
+          uv run python scripts/publish_smithery.py \
+            --dry-run \
+            --skip-pypi \
+            --skip-git-tag \
+            --allow-dirty \
+            --allow-branch
+
+      - name: Prepare verified Smithery CLI
+        env:
+          SMITHERY_CLI_INTEGRITY: sha512-rwczHp2Df6P9P+8Y2YFU/ERrg9QTlLgrMDFt/A1T8VS5vBvoBYjklAEhx6MYiRVbHwBrre5ZrgZfw+N1E+xrdQ==
+        run: |
+          mkdir smithery-cli-dist smithery-cli
+          npm pack smithery@1.2.0 --pack-destination smithery-cli-dist
+          node - <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readFileSync } = require("node:fs");
+
+          const archive = readFileSync("smithery-cli-dist/smithery-1.2.0.tgz");
+          const actual = `sha512-${createHash("sha512").update(archive).digest("base64")}`;
+          if (actual !== process.env.SMITHERY_CLI_INTEGRITY) {
+            throw new Error(`Smithery CLI integrity mismatch: ${actual}`);
+          }
+          NODE
+          tar -xzf smithery-cli-dist/smithery-1.2.0.tgz \
+            -C smithery-cli \
+            --strip-components=2 \
+            package/dist/index.js
+
       - name: Upload distributions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: python-package-distributions
           path: dist/
+
+      - name: Upload npm package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-package-distribution
+          path: npm-dist/*.tgz
+
+      - name: Upload Smithery bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: smithery-bundle
+          path: |
+            server.mcpb
+            smithery-cli/index.js
 
   publish-pypi:
     name: Publish to PyPI
@@ -98,33 +179,21 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout release tag
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-
       - name: Download distributions
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: python-package-distributions
           path: dist/
 
-      - name: Verify existing PyPI artifacts
-        id: pypi-registry
-        run: |
-          python scripts/verify_registry_artifacts.py pypi \
-            --project nuguard \
-            --version "${GITHUB_REF_NAME#v}" \
-            --dist-dir dist \
-            >> "$GITHUB_OUTPUT"
-
       - name: Publish to PyPI
-        if: steps.pypi-registry.outputs.exists != 'true'
-        uses: pypa/gh-action-pypi-publish@release/v1
+        if: needs.build.outputs.pypi-exists != 'true'
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
 
   publish-npm:
     name: Publish to npm
-    needs: publish-pypi
+    needs:
+      - build
+      - publish-pypi
     runs-on: ubuntu-latest
     environment:
       name: npm
@@ -133,73 +202,49 @@ jobs:
       contents: read
 
     steps:
-      - name: Checkout release tag
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Verify existing npm artifact
-        id: npm-registry
-        run: |
-          python scripts/verify_registry_artifacts.py npm \
-            --package @nuguardai/nuguard \
-            --version "${GITHUB_REF_NAME#v}" \
-            --package-dir npm \
-            >> "$GITHUB_OUTPUT"
+      - name: Download npm package
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: npm-package-distribution
+          path: npm-dist/
 
       - name: Publish to npm
-        if: steps.npm-registry.outputs.exists != 'true'
-        working-directory: npm/
-        run: npm publish --access public
+        if: needs.build.outputs.npm-exists != 'true'
+        run: npm publish npm-dist/*.tgz --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-smithery:
     name: Update Smithery listing
-    needs: publish-pypi
+    needs:
+      - build
+      - publish-pypi
     runs-on: ubuntu-latest
     environment:
       name: smithery
       url: https://smithery.ai/server/NuGuardAI/nuguard
 
     steps:
-      - name: Checkout release tag
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
       - name: Set up Node.js (for smithery CLI)
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "20"
 
-      - name: Install smithery CLI
-        run: npm install -g smithery
-
-      - name: Install script dependencies
-        run: pip install pyyaml
+      - name: Download Smithery bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: smithery-bundle
 
       - name: Publish to Smithery
         env:
           SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
-        run: |
-          python scripts/publish_smithery.py \
-            --version "${GITHUB_REF_NAME#v}" \
-            --skip-pypi \
-            --skip-git-tag \
-            --allow-dirty \
-            --allow-branch
+        run: node smithery-cli/index.js mcp publish server.mcpb -n NuGuardAI/nuguard
 
   finalize-release:
     name: Publish GitHub Release

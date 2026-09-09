@@ -99,7 +99,8 @@ def _checkout_refs(job: dict[str, object]) -> list[str]:
     for step in steps:
         if not isinstance(step, dict):
             continue
-        if step.get("uses") != "actions/checkout@v4":
+        uses = step.get("uses")
+        if not isinstance(uses, str) or not uses.startswith("actions/checkout@"):
             continue
         with_block = step.get("with")
         assert isinstance(with_block, dict), "checkout step with: expected mapping"
@@ -163,8 +164,8 @@ def test_release_metadata_matches_pyproject_version() -> None:
     assert project_packages[0]["version"] == expected
 
 
-def test_publish_pypi_workflow_requires_tag_push_and_tag_checkout() -> None:
-    """Production publishing must run only for version tags and check out that tag."""
+def test_publish_pypi_workflow_requires_tag_push_and_event_sha_checkout() -> None:
+    """Production publishing must run for version tags and pin the event commit."""
     workflow = _load_workflow("publish-pypi.yml")
     events = _workflow_events(workflow)
 
@@ -173,11 +174,13 @@ def test_publish_pypi_workflow_requires_tag_push_and_tag_checkout() -> None:
     assert isinstance(push, dict)
     assert push.get("tags") == ["v*"]
 
-    tag_ref = "${{ github.ref_name }}"
-    for name in ["validate", "build", "publish-pypi", "publish-npm", "publish-smithery"]:
+    tag_ref = "${{ github.sha }}"
+    for name in ["validate", "build"]:
         refs = _checkout_refs(_job(workflow, name))
         assert refs, f"{name}: expected at least one checkout step"
         assert set(refs) == {tag_ref}
+    for name in ["publish-pypi", "publish-npm", "publish-smithery"]:
+        assert not _checkout_refs(_job(workflow, name))
 
 
 def test_publish_pypi_workflow_validates_metadata_before_build() -> None:
@@ -198,8 +201,11 @@ def test_publish_pypi_publication_job_dependencies_are_strict() -> None:
     """PyPI publication jobs must preserve dependency order for safe releases."""
     workflow = _load_workflow("publish-pypi.yml")
     assert _job_needs(_job(workflow, "publish-pypi")) == {"build"}
-    assert _job_needs(_job(workflow, "publish-npm")) == {"publish-pypi"}
-    assert _job_needs(_job(workflow, "publish-smithery")) == {"publish-pypi"}
+    assert _job_needs(_job(workflow, "publish-npm")) == {"build", "publish-pypi"}
+    assert _job_needs(_job(workflow, "publish-smithery")) == {
+        "build",
+        "publish-pypi",
+    }
     assert _job_needs(_job(workflow, "draft-release")) == {"validate"}
     assert _job_needs(_job(workflow, "finalize-release")) == {
         "publish-npm",
@@ -216,23 +222,72 @@ def test_publish_pypi_publication_job_dependencies_are_strict() -> None:
 def test_publish_workflow_verifies_registry_artifact_provenance() -> None:
     """Existing versions may be skipped only after exact artifact verification."""
     workflow = _load_workflow("publish-pypi.yml")
+    build_job = _job(workflow, "build")
     pypi_job = _job(workflow, "publish-pypi")
     npm_job = _job(workflow, "publish-npm")
 
-    pypi_script = _step_run(pypi_job, "Verify existing PyPI artifacts")
+    pypi_script = _step_run(build_job, "Verify existing PyPI artifacts")
     assert "verify_registry_artifacts.py pypi" in pypi_script
-    npm_script = _step_run(npm_job, "Verify existing npm artifact")
+    npm_script = _step_run(build_job, "Verify existing npm artifact")
     assert "verify_registry_artifacts.py npm" in npm_script
     assert _step(pypi_job, "Publish to PyPI").get("if") == (
-        "steps.pypi-registry.outputs.exists != 'true'"
+        "needs.build.outputs.pypi-exists != 'true'"
     )
     assert _step(npm_job, "Publish to npm").get("if") == (
-        "steps.npm-registry.outputs.exists != 'true'"
+        "needs.build.outputs.npm-exists != 'true'"
     )
 
     workflow_text = (_WORKFLOWS / "publish-pypi.yml").read_text(encoding="utf-8")
     assert "skip-existing" not in workflow_text
     assert "npm view" not in workflow_text
+
+
+def test_modified_workflows_pin_third_party_actions() -> None:
+    """Release and PR workflows must not execute mutable third-party action refs."""
+    for workflow_name in ["pr-tests.yml", "publish-pypi.yml", "publish-testpypi.yml"]:
+        workflow_text = (_WORKFLOWS / workflow_name).read_text(encoding="utf-8")
+        uses = re.findall(r"^\s*uses:\s*[^@\s]+@([^\s#]+)", workflow_text, re.MULTILINE)
+        assert uses, f"{workflow_name}: expected action references"
+        assert all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in uses), (
+            f"{workflow_name}: mutable action reference found: {uses}"
+        )
+
+
+def test_modified_workflows_do_not_persist_checkout_credentials() -> None:
+    """Jobs executing repository code must not retain the checkout token."""
+    for workflow_name in ["pr-tests.yml", "publish-pypi.yml", "publish-testpypi.yml"]:
+        workflow = _load_workflow(workflow_name)
+        for job in workflow["jobs"].values():
+            for step in job.get("steps", []):
+                if str(step.get("uses", "")).startswith("actions/checkout@"):
+                    assert step.get("with", {}).get("persist-credentials") is False
+
+
+def test_privileged_publish_jobs_do_not_execute_repository_code() -> None:
+    """Credentialed production jobs may only download and publish built artifacts."""
+    workflow = _load_workflow("publish-pypi.yml")
+    for job_name in ["publish-pypi", "publish-npm", "publish-smithery"]:
+        job = _job(workflow, job_name)
+        assert not _checkout_refs(job)
+        steps = job.get("steps")
+        assert isinstance(steps, list)
+        run_scripts = "\n".join(
+            str(step.get("run", "")) for step in steps if isinstance(step, dict)
+        )
+        assert "scripts/" not in run_scripts
+
+    smithery_job = _job(workflow, "publish-smithery")
+    smithery_scripts = "\n".join(
+        str(step.get("run", ""))
+        for step in smithery_job.get("steps", [])
+        if isinstance(step, dict)
+    )
+    assert "npm install" not in smithery_scripts
+
+    build_job = _job(workflow, "build")
+    prepare_script = _step_run(build_job, "Prepare verified Smithery CLI")
+    assert "npm pack smithery@1.2.0" in prepare_script
+    assert "SMITHERY_CLI_INTEGRITY" in prepare_script
 
 
 def test_publish_helper_reports_missing_executable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -249,27 +304,33 @@ def test_publish_helper_reports_missing_executable(monkeypatch: pytest.MonkeyPat
     assert "node not found" in result.stderr
 
 
-def test_publish_testpypi_workflow_requires_explicit_ref_and_validation_gate() -> None:
-    """TestPyPI workflow must require manual ref input and validate before build."""
+def test_publish_testpypi_workflow_restricts_execution_to_develop() -> None:
+    """TestPyPI must pin trusted develop code and validate it before building."""
     workflow = _load_workflow("publish-testpypi.yml")
     events = _workflow_events(workflow)
 
     dispatch = events.get("workflow_dispatch")
-    assert isinstance(dispatch, dict)
-    inputs = dispatch.get("inputs")
-    assert isinstance(inputs, dict)
-    ref_input = inputs.get("ref")
-    assert isinstance(ref_input, dict)
-    assert ref_input.get("required") is True
-    assert ref_input.get("type") == "string"
+    assert dispatch is None
 
-    expected_ref = "${{ inputs.ref }}"
+    expected_ref = "${{ github.sha }}"
     for name in ["validate", "build"]:
         refs = _checkout_refs(_job(workflow, name))
         assert refs, f"{name}: expected checkout step"
         assert set(refs) == {expected_ref}
 
-    validate_script = _step_run(_job(workflow, "validate"), "Verify prerelease metadata")
+    validate_job = _job(workflow, "validate")
+    assert validate_job.get("if") == "github.ref == 'refs/heads/develop'"
+
+    for name in ["validate", "build"]:
+        setup_uv = next(
+            step
+            for step in _job(workflow, name)["steps"]
+            if isinstance(step, dict)
+            and str(step.get("uses", "")).startswith("astral-sh/setup-uv@")
+        )
+        assert setup_uv.get("with") == {"enable-cache": False}
+
+    validate_script = _step_run(validate_job, "Verify prerelease metadata")
     assert "uv lock --check" in validate_script
     assert "npm run version:check" in validate_script
     assert "version.is_prerelease" in validate_script
@@ -277,6 +338,9 @@ def test_publish_testpypi_workflow_requires_explicit_ref_and_validation_gate() -
 
     assert _job_needs(_job(workflow, "build")) == {"validate"}
     assert _job_needs(_job(workflow, "publish")) == {"build"}
+
+    workflow_text = (_WORKFLOWS / "publish-testpypi.yml").read_text(encoding="utf-8")
+    assert "skip-existing" not in workflow_text
 
 
 def test_build_smithery_bundle_pins_exact_mcp_version(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

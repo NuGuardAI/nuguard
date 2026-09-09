@@ -6,11 +6,10 @@ import hashlib
 import importlib.util
 import io
 import json
-import subprocess
+import tarfile
 import types
 import urllib.error
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 
@@ -36,6 +35,15 @@ class _Response(io.BytesIO):
 
 def _response(payload: object) -> _Response:
     return _Response(json.dumps(payload).encode("utf-8"))
+
+
+def _npm_tarball(path: Path, name: str, version: str) -> Path:
+    package_json = json.dumps({"name": name, "version": version}).encode("utf-8")
+    with tarfile.open(path, "w:gz") as archive:
+        member = tarfile.TarInfo("package/package.json")
+        member.size = len(package_json)
+        archive.addfile(member, io.BytesIO(package_json))
+    return path
 
 
 def test_verify_pypi_accepts_only_exact_artifacts(
@@ -90,34 +98,20 @@ def test_verify_npm_compares_registry_integrity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     module = _load_module()
-    local_integrity = "sha512-dGVzdA=="
-    monkeypatch.setattr(module.shutil, "which", lambda executable: "/usr/bin/npm")
-    monkeypatch.setattr(
-        module.subprocess,
-        "run",
-        Mock(
-            return_value=subprocess.CompletedProcess(
-                [],
-                0,
-                stdout=json.dumps(
-                    [
-                        {
-                            "name": "@nuguardai/nuguard",
-                            "version": "1.2.3",
-                            "integrity": local_integrity,
-                        }
-                    ]
-                ),
-                stderr="",
-            )
-        ),
+    tarball = _npm_tarball(
+        tmp_path / "nuguardai-nuguard-1.2.3.tgz",
+        "@nuguardai/nuguard",
+        "1.2.3",
     )
+    local_integrity = "sha512-" + module.base64.b64encode(
+        module.hashlib.sha512(tarball.read_bytes()).digest()
+    ).decode("ascii")
     monkeypatch.setattr(
         module.urllib.request,
         "urlopen",
         lambda *args, **kwargs: _response({"dist": {"integrity": local_integrity}}),
     )
-    assert module.verify_npm("@nuguardai/nuguard", "1.2.3", tmp_path) is True
+    assert module.verify_npm("@nuguardai/nuguard", "1.2.3", tarball) is True
 
     monkeypatch.setattr(
         module.urllib.request,
@@ -125,4 +119,4 @@ def test_verify_npm_compares_registry_integrity(
         lambda *args, **kwargs: _response({"dist": {"integrity": "sha512-b3RoZXI="}}),
     )
     with pytest.raises(module.VerificationError, match="does not match"):
-        module.verify_npm("@nuguardai/nuguard", "1.2.3", tmp_path)
+        module.verify_npm("@nuguardai/nuguard", "1.2.3", tarball)
