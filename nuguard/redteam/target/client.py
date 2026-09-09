@@ -82,6 +82,62 @@ def _is_message_history_key(key: str) -> bool:
     return key.strip().lower() in _MESSAGE_HISTORY_KEYS
 
 
+# Recognized tokens inside a chat_payload_extras template — see
+# TargetAppClient._build_templated_chat_payload. Deliberately only these four;
+# an unrecognized {{foo}} sequence is left untouched rather than guessed at.
+_PAYLOAD_TOKEN_PATTERN = re.compile(r"\{\{(message|history|session_id|conversation_id)\}\}")
+
+
+def _contains_message_token(obj: Any) -> bool:
+    """Recursively check whether any string value in *obj* contains ``{{message}}``.
+
+    This gate decides whether chat_payload_extras is treated as a literal
+    template (this feature) or merged with the auto-detected body shape
+    (existing behaviour, unchanged when the token is absent).
+    """
+    if isinstance(obj, str):
+        return "{{message}}" in obj
+    if isinstance(obj, dict):
+        return any(_contains_message_token(v) for v in obj.values())
+    if isinstance(obj, list):
+        return any(_contains_message_token(v) for v in obj)
+    return False
+
+
+def _render_payload_template(
+    template: Any,
+    *,
+    message: str,
+    history: str,
+    session_id: str,
+    conversation_id: str,
+) -> Any:
+    """Deep-copy *template*, substituting ``{{message}}``/``{{history}}``/
+    ``{{session_id}}``/``{{conversation_id}}`` tokens in every string value.
+
+    Substitution happens on Python objects before ``json.dumps``, so message
+    content containing quotes or braces is safe — there is no JSON-injection
+    risk from user-controlled text landing in ``message``/``history``.
+    """
+    substitutions = {
+        "message": message,
+        "history": history,
+        "session_id": session_id,
+        "conversation_id": conversation_id,
+    }
+
+    def _walk(node: Any) -> Any:
+        if isinstance(node, str):
+            return _PAYLOAD_TOKEN_PATTERN.sub(lambda m: substitutions[m.group(1)], node)
+        if isinstance(node, dict):
+            return {k: _walk(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [_walk(v) for v in node]
+        return node
+
+    return _walk(template)
+
+
 # Path-parameter placeholder styles seen across frameworks: FastAPI/ASP.NET
 # Core use `{id}`, NestJS/Express use `:id`. Substituted against
 # TargetAppClient._path_param_values before every request — see
@@ -798,6 +854,34 @@ class TargetAppClient:
                 )
                 raise
 
+    def _build_templated_chat_payload(self, payload: str, session: AttackSession) -> Any:
+        """Render ``self._chat_payload_extras`` as a literal token template.
+
+        Only called once :func:`_contains_message_token` confirms the extras
+        contain ``{{message}}`` — this is the "custom payload shape with
+        tokens" path, distinct from the auto-detected/merged shape built by
+        :meth:`_build_chat_payload_value`.
+
+        ``history`` replays prior turns using the same ``[{role, content},
+        ...]`` shape as the OpenAI-style branch of ``_build_chat_payload_value``,
+        serialized to a JSON string. The *current* turn is intentionally
+        excluded from history — it is already placed via the ``{{message}}``
+        token, so including it here would duplicate it when a template uses
+        both tokens.
+        """
+        history: list[dict[str, str]] = []
+        for turn in session.turns:
+            history.append({"role": "user", "content": turn.prompt})
+            if turn.response:
+                history.append({"role": "assistant", "content": turn.response})
+        return _render_payload_template(
+            self._chat_payload_extras,
+            message=payload,
+            history=json.dumps(history),
+            session_id=str(session.session_id or self._session_context.get("session_id", "")),
+            conversation_id=str(self._session_context.get("conversation_id", "")),
+        )
+
     def _build_chat_payload_value(self, payload: str, session: AttackSession) -> Any:
         """Shape the outgoing value for ``chat_payload_key`` in the generic (non-adapter) path.
 
@@ -900,17 +984,27 @@ class TargetAppClient:
                     body = self._framework_adapter.build_body(payload, session_id)
                     chat_path = self._framework_adapter.run_path
                 else:
-                    # Generic path: flat key/value body
-                    value: Any = self._build_chat_payload_value(payload, session)
-                    body = {self._chat_payload_key: value}
-                    # Merge any previously extracted session/conversation context so the
-                    # server can correlate subsequent turns within the same conversation.
-                    if self._session_context:
-                        body.update(self._session_context)
-                    # Merge static extra fields (e.g. vehicleState, language) declared in
-                    # chat_payload_extras — the message key always takes precedence.
-                    if self._chat_payload_extras:
-                        body = {**self._chat_payload_extras, **body}
+                    value: Any
+                    if self._chat_payload_extras and _contains_message_token(
+                        self._chat_payload_extras
+                    ):
+                        # Custom payload shape with {{message}} (and optionally
+                        # {{history}}/{{session_id}}/{{conversation_id}}) tokens:
+                        # the extras dict IS the body, tokens substituted in place.
+                        value = payload
+                        body = self._build_templated_chat_payload(payload, session)
+                    else:
+                        # Generic path: flat key/value body
+                        value = self._build_chat_payload_value(payload, session)
+                        body = {self._chat_payload_key: value}
+                        # Merge any previously extracted session/conversation context so the
+                        # server can correlate subsequent turns within the same conversation.
+                        if self._session_context:
+                            body.update(self._session_context)
+                        # Merge static extra fields (e.g. vehicleState, language) declared in
+                        # chat_payload_extras — the message key always takes precedence.
+                        if self._chat_payload_extras:
+                            body = {**self._chat_payload_extras, **body}
                     chat_path, _missing_params = _substitute_path_params(
                         self._chat_path, self._path_param_values
                     )
@@ -921,10 +1015,18 @@ class TargetAppClient:
                         )
                         return f"[CONFIG_ERROR: unresolved path param {_missing_params[0]!r}]", []
 
+                _log.debug(
+                    "Target HTTP POST url=%s body=%s",
+                    chat_path, json.dumps(body, default=str),
+                )
                 if self._chat_payload_format == "form":
                     resp = await self._client.post(chat_path, data=body, headers=extra_headers)
                 else:
                     resp = await self._client.post(chat_path, json=body, headers=extra_headers)
+                _log.debug(
+                    "Target HTTP Response status=%s body=%s",
+                    resp.status_code, resp.text,
+                )
                 resp.raise_for_status()
                 _content_type = resp.headers.get("content-type", "")
                 if "text/event-stream" in _content_type and self._framework_adapter is None:
@@ -1217,12 +1319,19 @@ class TargetAppClient:
                 body = self._framework_adapter.build_body(payload, session_id)
                 chat_path = self._framework_adapter.run_path
             else:
-                value: Any = self._build_chat_payload_value(payload, session)
-                body = {self._chat_payload_key: value}
-                if self._session_context:
-                    body.update(self._session_context)
-                if self._chat_payload_extras:
-                    body = {**self._chat_payload_extras, **body}
+                value: Any
+                if self._chat_payload_extras and _contains_message_token(
+                    self._chat_payload_extras
+                ):
+                    value = payload
+                    body = self._build_templated_chat_payload(payload, session)
+                else:
+                    value = self._build_chat_payload_value(payload, session)
+                    body = {self._chat_payload_key: value}
+                    if self._session_context:
+                        body.update(self._session_context)
+                    if self._chat_payload_extras:
+                        body = {**self._chat_payload_extras, **body}
                 chat_path, _missing_params = _substitute_path_params(
                     self._chat_path, self._path_param_values
                 )
@@ -1239,6 +1348,10 @@ class TargetAppClient:
                 {"data": body}
                 if self._chat_payload_format == "form"
                 else {"json": body}
+            )
+            _log.debug(
+                "Target HTTP POST (stream) url=%s body=%s",
+                chat_path, json.dumps(body, default=str),
             )
             async with self._client.stream("POST", chat_path, **_stream_kwargs) as resp:
                 resp.raise_for_status()
@@ -1266,12 +1379,21 @@ class TargetAppClient:
                     # If nothing yielded yet, yield what we have (empty)
                     if not accumulated_text_parts:
                         yield "", tool_calls
+                    _log.debug(
+                        "Target HTTP Response (stream/SSE) status=%s body=%s",
+                        resp.status_code, "".join(accumulated_text_parts),
+                    )
                     self._record_chat_success()
                 else:
                     # JSON path: buffer and yield once
                     raw = await resp.aread()
                     elapsed_ms = int((time.monotonic() - t_start) * 1000)
                     _ = elapsed_ms  # available to callers via latency if needed
+                    _log.debug(
+                        "Target HTTP Response (stream) status=%s body=%s",
+                        resp.status_code,
+                        raw.decode(errors="replace") if isinstance(raw, bytes) else str(raw),
+                    )
                     try:
                         data = json.loads(raw)
                     except Exception:
