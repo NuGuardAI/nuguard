@@ -230,6 +230,51 @@ def _extract_nested(data: dict[str, Any], key_path: str) -> str | None:
     return str(current) if current is not None else None
 
 
+# Ordered preference list for the token key in a login response — covers
+# snake_case and camelCase variants across common auth frameworks. Mirrors
+# the list in nuguard/common/target_client_builder.py, which uses it for
+# static SBOM-schema-based detection; this one drives *live* detection
+# against the actual response body when the configured/default key misses,
+# so it works even when the SBOM has no response_body_schema for the login
+# endpoint (a common gap in static extraction).
+_TOKEN_KEY_CANDIDATES: tuple[str, ...] = (
+    "token", "access_token", "accessToken",
+    "jwt", "id_token", "idToken",
+    "auth_token", "authToken",
+    "bearer_token", "bearerToken",
+    "session_token", "sessionToken",
+    "api_key", "apiKey",
+)
+
+
+def _find_token_recursive(data: Any, max_depth: int = 3) -> tuple[str, str] | None:
+    """Best-effort search for a token-shaped value nested inside *data*.
+
+    Walks dicts up to *max_depth* levels deep, preferring the highest-ranked
+    candidate name from ``_TOKEN_KEY_CANDIDATES`` found at the shallowest
+    depth. Returns ``(dotted_key_path, token_value)`` or ``None``.
+    """
+    if not isinstance(data, dict) or max_depth <= 0:
+        return None
+
+    lower_keys = {k.lower(): k for k in data}
+    for candidate in _TOKEN_KEY_CANDIDATES:
+        orig_key = lower_keys.get(candidate.lower())
+        if orig_key is None:
+            continue
+        val = data[orig_key]
+        if isinstance(val, str) and val:
+            return orig_key, val
+
+    for key, val in data.items():
+        if isinstance(val, dict):
+            nested = _find_token_recursive(val, max_depth - 1)
+            if nested is not None:
+                nested_path, nested_val = nested
+                return f"{key}.{nested_path}", nested_val
+    return None
+
+
 # Fields in a login response that carry static user identity (same across all requests).
 _LOGIN_IDENTITY_FIELDS = frozenset({
     "user_id", "userId", "uid", "sub", "account_id", "accountId",
@@ -395,6 +440,22 @@ class AuthSession:
                 return
 
             token = _extract_nested(body, lf.token_response_key)
+            resolved_key = lf.token_response_key
+            if not token and isinstance(body, dict):
+                # Configured/default key missed — fall back to a live scan of the
+                # actual response for a token-shaped field (e.g. a nested
+                # "tokens.accessToken" wrapper). This covers apps whose SBOM has
+                # no response_body_schema for the login endpoint, so static
+                # SBOM-based key detection had nothing to go on.
+                found = _find_token_recursive(body)
+                if found is not None:
+                    resolved_key, token = found
+                    _log.warning(
+                        "AuthSession: token key %r not found in login response from %s — "
+                        "auto-discovered token at %r instead. Set "
+                        "auth.login_flow.token_response_key: %s in nuguard.yaml to pin it.",
+                        lf.token_response_key, url, resolved_key, resolved_key,
+                    )
             if not token:
                 response_keys = (
                     list(body.keys()) if isinstance(body, dict) else type(body).__name__
@@ -413,7 +474,7 @@ class AuthSession:
             _log.debug(
                 "AuthSession: token acquired from %s (key=%r)",
                 url,
-                lf.token_response_key,
+                resolved_key,
             )
 
             # Capture identity / session fields from the login response so callers

@@ -136,8 +136,12 @@ _CONTENT_FIELD_NAMES: tuple[str, ...] = (
 
 
 _SIMPLE_SCALAR_TYPES: frozenset[str] = frozenset({
+    # Python (FastAPI/Flask adapters)
     "str", "int", "float", "bool", "dict",
     "list[str]", "list[int]", "list[float]", "list[bool]",
+    # TypeScript (NestJS/Express adapters)
+    "string", "number", "boolean", "object",
+    "string[]", "number[]", "boolean[]",
 })
 
 
@@ -1109,9 +1113,18 @@ def discover_chat_candidates_from_sbom(
 
         # Penalise path-param routes — they require a real resource ID and will
         # 404 with an unresolved placeholder. Still returned so callers can fall
-        # back to them when no parameter-free option exists.
+        # back to them when no parameter-free option exists. The penalty is
+        # much smaller when every param has a known bootstrap source (see
+        # nuguard/common/endpoint_preflight.py's _bootstrap_path_params) —
+        # those routes actually get resolved before use, so they shouldn't be
+        # scored as if they were permanently broken.
         if _HAS_PATH_PARAM_RE.search(discovered_path):
-            score -= 5
+            params = meta.path_params or []
+            sources = meta.path_param_sources or {}
+            if params and all(p in sources for p in params):
+                score -= 1
+            else:
+                score -= 5
 
         # Penalise nodes confirmed dead by the live probe — GET 404 means the
         # route doesn't exist at all on the deployed target; POST 405 strongly
