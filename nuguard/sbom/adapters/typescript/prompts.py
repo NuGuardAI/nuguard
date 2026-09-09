@@ -18,7 +18,7 @@ import re
 from typing import Any
 
 from ...core.ts_parser import TSParseResult, TSStringLiteral, parse_typescript
-from ...normalization import canonicalize_text
+from ...normalization import canonicalize_text, humanize_context_name
 from ...types import ComponentType
 from ..base import ComponentDetection
 from ._ts_regex import TSFrameworkAdapter
@@ -92,6 +92,37 @@ _HIGH_RISK_RE = re.compile(
     r"|searchParams|cookies\.)\b"
 )
 
+# Generic path-shape check for i18n/locale bundles — a single large flat
+# string-literal file repeated once per language under a conventional
+# directory name. Not opencode-specific: any repo following this common
+# convention (i18n/en.ts, locales/fr.json, lang/de.ts, ...) gets the same
+# treatment (docs/sbom-accuracy-plan.md #2).
+_I18N_PATH_RE = re.compile(r"(?:^|/)(?:i18n|locales?|lang|translations?)(?:/|$)", re.IGNORECASE)
+
+
+def _looks_like_i18n_path(file_path: str) -> bool:
+    return bool(_I18N_PATH_RE.search(file_path.replace("\\", "/")))
+
+
+def _looks_like_instruction_text(text: str) -> bool:
+    """Heuristic: does *text* read like natural-language instruction text
+    addressed to a model, rather than short UI copy?
+
+    A key path containing the substring "prompt" (e.g.
+    "context.systemPrompt.title", or the last dotted segment "prompt" that
+    survives context extraction) is a UI-copy naming convention, not proof
+    the *value* is actually a prompt — require the value itself to have
+    sentence/imperative shape: several words, and either sentence punctuation
+    or a second-person/imperative marker.
+    """
+    words = text.split()
+    if len(words) < 6:
+        return False
+    lower = text.lower()
+    if re.search(r"[.!?:]", text):
+        return True
+    return bool(re.search(r"\b(you|your|please|must|should|always|never)\b", lower))
+
 
 def _is_likely_prompt(lit: TSStringLiteral) -> bool:
     text = lit.value
@@ -126,7 +157,7 @@ def _is_likely_prompt(lit: TSStringLiteral) -> bool:
     # prompt templates; confirmed false positives in real-world apps.
     prompt_ctx_words = {"prompt", "instruction", "system", "template", "persona"}
     if any(w in ctx_lower for w in prompt_ctx_words):
-        if len(text) > 30:
+        if len(text) > 30 and _looks_like_instruction_text(text):
             return True
 
     kw_count = sum(1 for kw in _PROMPT_KEYWORDS if kw in text_lower)
@@ -188,12 +219,9 @@ def _detect_role(content: str) -> str | None:
 
 def _prompt_name(lit: TSStringLiteral, line: int) -> str:
     ctx = lit.context or lit.enclosing_function or ""
-    if ctx:
-        # Split camelCase/PascalCase into words before lowercasing
-        ctx_split = re.sub(r"([a-z])([A-Z])", r"\1_\2", ctx)
-        slug = re.sub(r"[^a-z0-9_]", "_", ctx_split.lower()).strip("_")
-        if slug and slug not in {"prompt", "template", "message", "content", "text", "str"}:
-            return slug.replace("_", " ").title()
+    humanized = humanize_context_name(ctx)
+    if humanized:
+        return humanized
     cl = lit.value.lower()[:400]
     if re.search(r"\byou are\s", cl):
         return "System Prompt"
@@ -279,7 +307,15 @@ class PromptTSAdapter(TSFrameworkAdapter):
 
         # --- Prompt-like string literals ---
         # tree-sitter provides accurate context (variable name, property key, function name)
-        # which the _is_likely_prompt heuristic uses to cut false positives
+        # which the _is_likely_prompt heuristic uses to cut false positives.
+        # i18n/locale bundles are UI-copy data repeated once per language,
+        # not code containing real model prompts — skip entirely rather than
+        # rely on _is_likely_prompt alone, since context extraction can only
+        # see the last dotted key segment (e.g. "...updateAfterDownloaded.prompt"
+        # -> context "prompt"), which reads as a strong prompt signal despite
+        # being pure UI-copy naming (docs/sbom-accuracy-plan.md #2).
+        if _looks_like_i18n_path(file_path):
+            return detected
         for lit in result.string_literals:
             if not lit.is_potential_prompt:
                 continue

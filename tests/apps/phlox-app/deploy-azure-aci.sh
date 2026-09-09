@@ -80,7 +80,7 @@ properties:
       - port: ${PORT}
       resources:
         requests:
-          cpu: 0.5
+          cpu: 1
           memoryInGb: 0.5
 type: Microsoft.ContainerInstance/containerGroups
 EOF

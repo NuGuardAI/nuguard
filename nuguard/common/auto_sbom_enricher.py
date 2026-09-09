@@ -23,6 +23,7 @@ import httpx
 from nuguard.common.endpoint_probe import _HAS_PATH_PARAM_RE
 from nuguard.common.logging import get_logger
 from nuguard.sbom.models import AiSbomDocument, Edge, Node, NodeMetadata
+from nuguard.sbom.models import is_soft_rejected as _is_soft_rejected
 from nuguard.sbom.types import AccessType, ComponentType, RelationshipType
 
 if TYPE_CHECKING:
@@ -184,6 +185,8 @@ def _ensure_summary_node_counts(sbom: AiSbomDocument) -> None:
         return
     counts: dict[str, int] = {}
     for node in sbom.nodes:
+        if _is_soft_rejected(node):
+            continue
         key = node.component_type.value
         counts[key] = counts.get(key, 0) + 1
     sbom.summary.node_counts = counts
@@ -811,6 +814,36 @@ def enriched_sbom_artifact_path(sbom_path: Path) -> Path:
     return _enriched_output_path(sbom_path)
 
 
+def _existing_enrichment_cache_key(out_path: Path) -> str | None:
+    """Return the ``_enrichment_cache_key`` already stored in *out_path*, or
+    ``None`` if the file doesn't exist / can't be parsed.
+
+    Live-target-derived persist functions (probe result, capability
+    discovery, discovery profile, endpoint liveness) must carry this value
+    forward unchanged rather than omit it. Omitting it (passing
+    ``cache_key=None`` to :func:`_write_enriched`) does **not** just skip
+    validating *this* write against a stale cache — it strips the key from
+    the file entirely, so the *next* :func:`maybe_auto_enrich_sbom` call
+    (made by every subsequent ``behavior``/``redteam`` CLI invocation via
+    ``enrich_sbom_for_run``) always cache-**misses** and restarts structural
+    enrichment from the pristine, never-probed source SBOM — discarding the
+    very operational/discovered_profile/capability data this write was
+    trying to make reusable across runs. The cache key only encodes
+    (structural sbom content, target_url, probe_auth_header), none of which
+    these functions change, so carrying it forward is always safe; Phase 3's
+    own TTL/emptiness checks (not this cache key) govern whether the live
+    data itself is stale enough to re-probe.
+    """
+    if not out_path.exists():
+        return None
+    try:
+        raw = json.loads(out_path.read_text())
+    except Exception:
+        return None
+    key = raw.get("_enrichment_cache_key")
+    return key if isinstance(key, str) else None
+
+
 def persist_probe_result_to_sbom(
     result: "ProbeResult",
     sbom: AiSbomDocument,
@@ -861,7 +894,7 @@ def persist_probe_result_to_sbom(
 
     out_path = _enriched_output_path(sbom_path)
     try:
-        _write_enriched(updated, out_path, cache_key=None)
+        _write_enriched(updated, out_path, cache_key=_existing_enrichment_cache_key(out_path))
         _log.info("probe_result_persisted: path=%s artifact=%s", result.path, out_path)
     except Exception as exc:  # noqa: BLE001
         _log.warning("probe_result_persist_failed: %s", exc)
@@ -875,15 +908,43 @@ def persist_capability_discovery_sbom(sbom: AiSbomDocument, sbom_path: Path) -> 
     :mod:`nuguard.common.discovery`) combines with the existing enrichment
     artifact instead of writing a second file.
 
-    Unlike :func:`_write_enriched`, no ``_enrichment_cache_key`` is embedded:
-    capability discovery depends on the live target's runtime responses, which
-    can change between runs, so the next :func:`maybe_auto_enrich_sbom` call
-    must not treat this artifact as a valid cache hit — it will always
-    recompute (and may overwrite this file again) rather than silently
-    reusing stale runtime-derived nodes.
+    The existing ``_enrichment_cache_key`` (if any) is carried forward
+    unchanged — see :func:`_existing_enrichment_cache_key` for why omitting
+    it would break, not protect, cross-run reuse.
     """
     out_path = _enriched_output_path(sbom_path)
-    _write_enriched(sbom, out_path, cache_key=None)
+    _write_enriched(sbom, out_path, cache_key=_existing_enrichment_cache_key(out_path))
+    return out_path
+
+
+def persist_discovery_profile_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
+    """Write *sbom* (with ``sbom.discovered_profile`` already set) to the same
+    ``<name>.sbom.enriched.json`` artifact used by :func:`maybe_auto_enrich_sbom`,
+    so a successfully-discovered pre-scan identity profile (see
+    :mod:`nuguard.common.discovery`) survives across runs and later runs can skip
+    the live discovery HTTP round-trip entirely.
+
+    The existing ``_enrichment_cache_key`` (if any) is carried forward
+    unchanged — see :func:`_existing_enrichment_cache_key`.
+    """
+    out_path = _enriched_output_path(sbom_path)
+    _write_enriched(sbom, out_path, cache_key=_existing_enrichment_cache_key(out_path))
+    return out_path
+
+
+def persist_liveness_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
+    """Write *sbom* (with per-node ``operational``/``liveness_checked_at``/
+    ``liveness_notes`` already set) to the same ``<name>.sbom.enriched.json``
+    artifact, so a completed live endpoint-liveness pass (see
+    :mod:`nuguard.common.endpoint_liveness`) survives across runs and a later
+    run — behavior after redteam, or vice versa — can skip re-pinging
+    endpoints whose cached result is still fresh.
+
+    The existing ``_enrichment_cache_key`` (if any) is carried forward
+    unchanged — see :func:`_existing_enrichment_cache_key`.
+    """
+    out_path = _enriched_output_path(sbom_path)
+    _write_enriched(sbom, out_path, cache_key=_existing_enrichment_cache_key(out_path))
     return out_path
 
 

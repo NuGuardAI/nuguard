@@ -230,43 +230,102 @@ def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
     return current
 
 
-def _extract_sse_event_text(event: dict[str, Any]) -> str:
+# SSE event "type" values that are always transient progress/control frames,
+# never assistant-authored content, across common streaming-chat backends
+# (e.g. phlox's status_message()/start_message() helpers). Deliberately does
+# NOT include content-carrying types like "content_block"/"chunk"/"delta" —
+# only frames whose entire purpose is UI progress signaling.
+_SSE_NON_CONTENT_TYPES: frozenset[str] = frozenset({"status", "ping", "heartbeat"})
+
+
+def _extract_sse_event_text(event: dict[str, Any]) -> str | None:
     """Extract incremental text from one generic (non-framework-adapter) SSE event.
 
-    Covers the plain ``{"text"|"content"|"message": "..."}`` shapes as well as
+    Covers the plain ``{"text"|"content"|"message"|"chunk": "..."}`` shapes,
     the OpenAI/Vercel-AI-SDK streaming-completion shape
     ``{"choices": [{"delta": {"content": "..."}}]}`` used by e.g. OWASP Juice
-    Shop's ``/rest/chat`` and any other ``ai`` package / OpenAI-compatible
+    Shop's ``/rest/chat``, a bare-string top-level ``delta`` (some custom
+    chat-widget backends), and any other ``ai`` package / OpenAI-compatible
     streaming chat backend. An ``{"error": "..."}`` event is deliberately
     *not* treated as text here — surfacing it as if it were assistant output
     would poison the transcript with the app's own error message.
+
+    Returns ``None`` (not ``""``) when the event's shape isn't recognized at
+    all, distinct from a recognized-but-empty text field — callers must not
+    fall back to dumping the raw event JSON as if it were response text (that
+    feeds literal key/type fragments like ``"content_block"``/``"chunk"``
+    into downstream capability-discovery/evidence parsing as if they were
+    real assistant output). Likewise, a recognized-but-non-content ``"type"``
+    (see :data:`_SSE_NON_CONTENT_TYPES`) returns ``""`` even when it carries
+    its own ``content``/``text`` field — that field is UI progress text, not
+    an assistant reply.
     """
     if not isinstance(event, dict) or "error" in event:
         return ""
-    text = event.get("text") or event.get("content") or event.get("message") or ""
-    if text:
-        return str(text)
+    event_type = event.get("type")
+    if isinstance(event_type, str) and event_type.lower() in _SSE_NON_CONTENT_TYPES:
+        # A transient progress/control frame (e.g. phlox's
+        # {"type": "status", "content": "Error processing request. Generating
+        # direct response..."}) — its "content" is UI-facing status text, not
+        # assistant output. Treating it as real text would poison the
+        # transcript with the app's own recovery/progress messages instead of
+        # the actual answer that arrives in a later "chunk"-type event.
+        return ""
+    text = (
+        event.get("text")
+        or event.get("content")
+        or event.get("message")
+        or event.get("chunk")
+        or ""
+    )
+    if text and isinstance(text, str):
+        return text
     choices = event.get("choices")
     if isinstance(choices, list) and choices and isinstance(choices[0], dict):
         delta = choices[0].get("delta")
         if isinstance(delta, dict):
             return str(delta.get("content") or "")
-    return ""
+    delta = event.get("delta")
+    if isinstance(delta, str):
+        return delta
+    if isinstance(delta, dict):
+        nested = delta.get("text") or delta.get("content")
+        if isinstance(nested, str):
+            return nested
+    known_envelope_keys = {
+        "type", "id", "conversation_id", "role", "index", "model", "stop_reason",
+        "created", "created_at", "object", "usage", "finish_reason",
+    }
+    if event and set(event.keys()) <= known_envelope_keys:
+        # A recognized streaming-envelope shape carrying no text this event
+        # (e.g. a "message_start"/"ping" control frame) — legitimately empty,
+        # not unrecognized.
+        return ""
+    return None
 
 
 def _extract_common_response_text(data: Any) -> str:
     """Try the common generic response shapes shared by chat/streaming clients.
 
-    Order: ``response``/``content``/``text``/``message.content`` keys, then
-    Google ADK/CES ``outputs: [{"text": ...}]``, then a trailing
+    Order: ``response``/``answer``/``content``/``text``/``message.content``
+    keys, then Google ADK/CES ``outputs: [{"text": ...}]``, then a trailing
     ``messages: [...]`` entry, then a raw string. Returns ``""`` if none match
     — callers apply their own last-resort fallback (raw JSON dump, key
     auto-detection, etc.).
+
+    ``answer`` matters here specifically because it's a common top-level key
+    that competes with sibling keys like ``suggestions`` (a list of follow-up
+    prompt chips). Without it in this always-tried, never-cached path, a
+    response whose ``answer`` happens to be short/echo-filtered on the first
+    probed turn would let ``_detect_response_key``'s one-shot, cached
+    auto-detection lock onto ``suggestions`` instead — silently discarding
+    the real reply for the rest of the run.
     """
     text = ""
     if isinstance(data, dict):
         text = (
             data.get("response")
+            or data.get("answer")
             or data.get("content")
             or data.get("text")
             or data.get("message", {}).get("content", "")
@@ -707,6 +766,7 @@ class TargetAppClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         """Send a prompt payload to the target and return (response_text, tool_calls).
 
@@ -720,6 +780,11 @@ class TargetAppClient:
         This prevents the thundering-herd pattern where multiple chains hammer a
         cold-starting Azure Container App during the retry window.
 
+        ``retry_transient=True`` opts into the same classify+backoff retry loop
+        without requiring a semaphore — for single-shot pre-scenario callers
+        (warmup pings, health checks) that want cold-start absorption but run
+        sequentially, so there's no other concurrent chain to protect.
+
         Raises:
             TargetUnavailableError: after MAX_CONSECUTIVE_ERRORS consecutive 5xx
                 or network errors on the chat endpoint.  4xx responses (validation
@@ -729,6 +794,8 @@ class TargetAppClient:
         if self._request_sem is not None:
             async with self._request_sem:
                 text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
+        elif retry_transient:
+            text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
         else:
             text, calls = await self._send_impl(payload, session, extra_headers)
         # Single choke point: strip known app-generated response-wrapper
@@ -1040,8 +1107,34 @@ class TargetAppClient:
                     from nuguard.redteam.target.sse import parse_sse_events  # noqa: PLC0415
 
                     _sse_events = parse_sse_events(resp.text)
-                    _sse_text = "".join(_extract_sse_event_text(_ev) for _ev in _sse_events)
-                    data = _sse_text or json.dumps(_sse_events)
+                    _extracted_texts = [_extract_sse_event_text(_ev) for _ev in _sse_events]
+                    _sse_text = "".join(t for t in _extracted_texts if t)
+                    _has_error_event = any(
+                        isinstance(_ev, dict) and "error" in _ev for _ev in _sse_events
+                    )
+                    if _sse_text:
+                        data = _sse_text
+                    elif _has_error_event:
+                        # An app-level error event carries no extractable
+                        # "assistant text" by design (see
+                        # _extract_sse_event_text's docstring), but it must
+                        # still reach callers/judges as a visible failure
+                        # rather than silently becoming an empty response.
+                        data = json.dumps(_sse_events)
+                    elif _sse_events and all(t is None for t in _extracted_texts):
+                        # Every event had an unrecognized (non-error) shape —
+                        # do not fall back to dumping the raw event JSON as
+                        # response text; that feeds literal key/type
+                        # fragments (e.g. "content_block", "chunk") into
+                        # downstream capability-discovery parsing as if they
+                        # were real assistant output.
+                        _log.warning(
+                            "SSE response with no recognized event text shape: %r",
+                            _sse_events[0] if _sse_events else None,
+                        )
+                        data = ""
+                    else:
+                        data = ""
                 else:
                     data = resp.json()
                 break
@@ -1118,17 +1211,31 @@ class TargetAppClient:
             self._record_chat_success()
             return str(text), tool_calls
 
-        # Generic extraction path — try explicit key first, then common shapes.
+        # Generic extraction path. An explicit chat_response_key is real user
+        # config and always wins outright. Otherwise, try the common known
+        # response shapes on EVERY call before falling back to a previously
+        # auto-detected key — _detect_response_key is a one-shot heuristic
+        # guess from a single past response, so it must not outrank a
+        # recognizable shape (e.g. "answer") on the current response just
+        # because an earlier, atypical turn (e.g. an empty/refused answer)
+        # caused it to lock onto the wrong sibling field. Without this
+        # ordering, one bad turn permanently poisons every later turn even
+        # after the target starts responding normally again.
         # chat_response_key supports dot-notation for nested keys (e.g. "result.text").
-        effective_key = self._chat_response_key or self._detected_response_key
-        if effective_key and isinstance(data, dict):
-            extracted = _extract_nested_key(data, effective_key)
+        if self._chat_response_key and isinstance(data, dict):
+            extracted = _extract_nested_key(data, self._chat_response_key)
             if isinstance(extracted, list):
                 text = " ".join(str(item) for item in extracted if item is not None)
             elif extracted is not None:
                 text = str(extracted)
         if not text:
             text = _extract_common_response_text(data)
+        if not text and self._detected_response_key and isinstance(data, dict):
+            extracted = _extract_nested_key(data, self._detected_response_key)
+            if isinstance(extracted, list):
+                text = " ".join(str(item) for item in extracted if item is not None)
+            elif extracted is not None:
+                text = str(extracted)
         # Last resort: return full JSON so evaluators have something to work with.
         # Before doing so, attempt one-time auto-detection of the response key so
         # subsequent turns extract a clean text field instead of raw JSON.
@@ -1371,7 +1478,7 @@ class TargetAppClient:
                                 tool_calls.extend(chunk_tools)
                         else:
                             # Generic: look for content/text in the event dict
-                            chunk_text = _extract_sse_event_text(event)
+                            chunk_text = _extract_sse_event_text(event) or ""
                             tool_calls = []
                         if chunk_text:
                             accumulated_text_parts.append(chunk_text)
