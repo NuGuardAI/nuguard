@@ -14,6 +14,9 @@
 ## Release Ownership
 
 Maintainers are responsible for versioning, release approval, and security sign-off.
+The [NuGuard release runbook](releasing.md) is the canonical procedure for preparing,
+validating, and publishing releases. Only repository maintainers should create or push
+release tags or run production publishing workflows.
 
 ## Evolution
 
