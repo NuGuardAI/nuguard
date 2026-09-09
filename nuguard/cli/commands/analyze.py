@@ -322,13 +322,15 @@ def analyze(
     if "markdown" in formats:
         atlas_config["format"] = "markdown"
 
-    # LLM client for remediation-plan synthesis (best-effort; deterministic
-    # templates are used when no client is available). Uses the shared
-    # redteam.llm -> redteam.eval_llm -> llm fallback chain so remediation
-    # text is authored by the highest-capability model configured.
-    from nuguard.remediation.llm import resolve_remediation_llm_client  # noqa: PLC0415
+    # LLM client for remediation-plan synthesis — the same standard `llm`
+    # config used everywhere else, gated by the same --llm/--no-llm flag as
+    # the ATLAS pass above so `--no-llm` (or no configured api_key) fully
+    # disables remediation LLM calls rather than resolving one anyway.
+    llm_client = None
+    if effective_llm:
+        from nuguard.remediation.llm import resolve_remediation_llm_client  # noqa: PLC0415
 
-    llm_client = resolve_remediation_llm_client(cfg)
+        llm_client = resolve_remediation_llm_client(cfg)
 
     # Auto-clone a remote source: URL to a temp dir so supply-chain/Checkov/
     # Trivy/Semgrep get real local files instead of silently scanning nothing

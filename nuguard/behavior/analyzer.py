@@ -510,6 +510,7 @@ class BehaviorAnalyzer:
             sbom=self._sbom,
             policy=self._policy,
             llm_client=self._remediation_llm,
+            intent_purpose=intent.app_purpose,
         ).synthesize_findings_async(all_findings)
         backfill_finding_remediation(result.static_findings, result.remediation_plan)
         backfill_finding_remediation(result.dynamic_findings, result.remediation_plan)

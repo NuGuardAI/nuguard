@@ -620,8 +620,9 @@ async def test_run_redteam_remediation_plan_empty_without_findings():
 
 
 @pytest.mark.asyncio
-async def test_run_redteam_remediation_synthesis_failure_is_swallowed():
-    """Remediation synthesis is best-effort — a failure must not fail the run."""
+async def test_run_redteam_remediation_synthesis_failure_propagates():
+    """A broken remediation LLM client must fail the run loudly, not
+    silently produce a report with an empty remediation plan."""
     findings = [_finding("data_exfiltration")]
     mock_instance = _make_mock_orchestrator(findings)
 
@@ -636,7 +637,5 @@ async def test_run_redteam_remediation_synthesis_failure_is_swallowed():
         request = RedteamRunRequest(target_url="http://target")
         from types import SimpleNamespace
 
-        result = await run_redteam(request, sbom=SimpleNamespace(nodes=[], edges=[]))
-
-    assert result.remediation_plan == []
-    assert len(result.findings) == 1
+        with pytest.raises(RuntimeError, match="boom"):
+            await run_redteam(request, sbom=SimpleNamespace(nodes=[], edges=[]))
