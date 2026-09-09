@@ -191,16 +191,31 @@ def _discover_login_endpoint(sbom: "AiSbomDocument") -> "tuple[str, str, str, st
             orig_pass = next(
                 (k for k in orig_schema if k.lower() == pass_field), pass_field
             )
-            # Try to detect the token key from the response body schema
-            token_key: str | None = None
+            # Prefer a token key already resolved and stored on the SBOM node
+            # (nuguard/sbom/enricher.py::_enrich_login_token_key, static DTO
+            # extraction; or an LLM-inference fallback pass) over recomputing
+            # it here — this also transparently picks up LLM-inferred values
+            # without any extra logic in this module.
+            token_key: str | None = meta.login_token_response_key
+            # Fall back to matching the response body schema directly (older
+            # SBOMs generated before this field existed, or apps where
+            # enrichment didn't run). Matches both flat keys (FastAPI/ASP.NET
+            # Core response models) and dotted nested paths (e.g.
+            # "tokens.accessToken", pre-flattened one level deep by adapters
+            # like nestjs_adapter.py) — the final path segment is compared
+            # against the candidate list, preferring the shallowest match
+            # when several dotted candidates exist.
             try:
-                resp_schema = getattr(meta, "response_body_schema", None) or {}
-                if isinstance(resp_schema, dict) and resp_schema:
-                    resp_keys_lower = {k.lower(): k for k in resp_schema}
-                    for candidate in _TOKEN_KEY_CANDIDATES:
-                        if candidate.lower() in resp_keys_lower:
-                            token_key = resp_keys_lower[candidate.lower()]
-                            break
+                resp_schema = meta.response_schema or {}
+                if not token_key and isinstance(resp_schema, dict) and resp_schema:
+                    matches = [
+                        (k.count("."), k)
+                        for k in resp_schema
+                        if k.rsplit(".", 1)[-1].lower() in _TOKEN_KEY_CANDIDATES_SET
+                    ]
+                    if matches:
+                        matches.sort(key=lambda t: t[0])
+                        token_key = matches[0][1]
             except Exception:
                 pass
             best = (score, path, orig_user, orig_pass, token_key)
