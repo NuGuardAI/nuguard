@@ -79,3 +79,12 @@ class RemediationArtefact(BaseModel):
 
     rationale: str
     """Human-readable explanation of why this remediation is needed."""
+
+    per_finding_rationale: dict[str, str] = Field(default_factory=dict)
+    """When this artefact merges multiple findings' remediation into one
+    combined ``rationale`` (e.g. several system-prompt patches for the same
+    component), this maps each individual ``finding_id`` back to *its own*
+    original rationale text — so a finding's remediation is never
+    reconstructed from a sibling finding's content after truncation. Empty
+    for artefacts that were never merged (their own ``rationale`` applies to
+    every finding_id equally)."""

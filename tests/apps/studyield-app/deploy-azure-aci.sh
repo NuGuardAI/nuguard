@@ -62,8 +62,18 @@ ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
 ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
 ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query 'passwords[0].value' -o tsv)
 
-echo "Building frontend image via ACR build..."
-az acr build --registry "$ACR_NAME" --image "studyield-frontend:latest" repo/frontend
+
+# Vite inlines VITE_* vars at build time, so the frontend must be built with
+# the public FQDN baked in — passing it as a container-runtime env var later
+# has no effect on the already-built bundle (this previously caused the
+# frontend to fall back to its localhost default, which the browser then
+# blocks as a private-network request from a public/insecure origin).
+FQDN="${DNS_LABEL}.${LOCATION}.azurecontainer.io"
+BACKEND_URL="http://${FQDN}:${BACKEND_PORT}/api/v1"
+
+echo "Building frontend image via ACR build (VITE_API_URL=$BACKEND_URL)..."
+az acr build --registry "$ACR_NAME" --image "studyield-frontend:latest" \
+  --build-arg "VITE_API_URL=$BACKEND_URL" repo/frontend
 
 # Seeder sidecar: bakes tests/apps/studyield-app/seed-users.js into the
 # backend image (scripts/ is already copied into the final stage — see
@@ -117,18 +127,18 @@ ${DOCKERHUB_CREDS}    - server: $ACR_LOGIN_SERVER
           - {name: POSTGRES_PASSWORD, secureValue: '$POSTGRES_PASSWORD'}
           - {name: POSTGRES_DB, value: '$POSTGRES_DB'}
         resources:
-          requests: {cpu: 0.5, memoryInGb: 0.5}
+          requests: {cpu: 1, memoryInGb: 0.5}
     - name: redis
       properties:
         image: redis:7-alpine
         command: ["redis-server", "--appendonly", "yes"]
         resources:
-          requests: {cpu: 0.25, memoryInGb: 0.3}
+          requests: {cpu: 1, memoryInGb: 0.3}
     - name: qdrant
       properties:
         image: qdrant/qdrant:latest
         resources:
-          requests: {cpu: 0.5, memoryInGb: 0.5}
+          requests: {cpu: 1, memoryInGb: 0.5}
     - name: clickhouse
       properties:
         image: clickhouse/clickhouse-server:latest
@@ -136,7 +146,7 @@ ${DOCKERHUB_CREDS}    - server: $ACR_LOGIN_SERVER
           - {name: CLICKHOUSE_DB, value: '${CLICKHOUSE_DATABASE:-studyield_analytics}'}
           - {name: CLICKHOUSE_USER, value: '${CLICKHOUSE_USER:-default}'}
         resources:
-          requests: {cpu: 0.5, memoryInGb: 0.5}
+          requests: {cpu: 1, memoryInGb: 1}
     - name: backend
       properties:
         image: $ACR_LOGIN_SERVER/studyield-backend:latest
@@ -174,10 +184,8 @@ ${DOCKERHUB_CREDS}    - server: $ACR_LOGIN_SERVER
         image: $ACR_LOGIN_SERVER/studyield-frontend:latest
         ports:
           - port: $FRONTEND_PORT
-        environmentVariables:
-          - {name: VITE_API_URL, value: 'http://localhost:$BACKEND_PORT'}
         resources:
-          requests: {cpu: 0.5, memoryInGb: 0.5}
+          requests: {cpu: 1, memoryInGb: 0.5}
     - name: seeder
       properties:
         image: $ACR_LOGIN_SERVER/studyield-backend:latest
@@ -185,7 +193,7 @@ ${DOCKERHUB_CREDS}    - server: $ACR_LOGIN_SERVER
         environmentVariables:
           - {name: SEED_BASE_URL, value: 'http://localhost:$BACKEND_PORT/api/v1'}
         resources:
-          requests: {cpu: 0.25, memoryInGb: 0.3}
+          requests: {cpu: 1, memoryInGb: 0.3}
 tags: {}
 type: Microsoft.ContainerInstance/containerGroups
 EOF

@@ -12,8 +12,13 @@
       "metadata": {
         "endpoint": "/api/account",
         "method": "DELETE",
-        "description": "API endpoint DELETE /api/account requiring authentication, identified by decorator @app.delete(\"/api/account\").",
+        "description": "API endpoint DELETE /api/account requiring authentication, evidenced by route decorator @app.delete(\"/api/account\").",
         "auth_required": true,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.018398+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Account API Endpoint",
@@ -59,8 +64,13 @@
       "metadata": {
         "endpoint": "/api/account/export",
         "method": "GET",
-        "description": "API endpoint /api/account/export using GET method with authentication required.",
+        "description": "API endpoint /api/account/export accepting GET requests with authentication required.",
         "auth_required": true,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.136995+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Account Export API Endpoint",
@@ -106,8 +116,13 @@
       "metadata": {
         "endpoint": "/api/agents",
         "method": "GET",
-        "description": "API endpoint /api/agents using GET method, requiring authentication, defined with @app.get decorator.",
+        "description": "API endpoint /api/agents accepting GET requests with required authentication.",
         "auth_required": true,
+        "operational": true,
+        "liveness_checked_at": "2026-09-07T21:55:39.133122+00:00",
+        "liveness_notes": [
+          "HTTP 200 \u2014 endpoint reachable."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Agents API Endpoint",
@@ -155,6 +170,11 @@
         "method": "GET",
         "description": "API endpoint /api/auth/profile using GET method that requires authentication to access user profile data.",
         "auth_required": true,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.130069+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Auth Profile API Endpoint",
@@ -201,8 +221,13 @@
         "framework": "fastapi",
         "endpoint": "/api/bank/accounts",
         "method": "GET",
-        "description": "API endpoint GET /api/bank/accounts for listing accounts, built with FastAPI, no authentication required.",
+        "description": "API endpoint GET /api/bank/accounts built with FastAPI to list bank accounts without authentication.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.132234+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "List Accounts API Endpoint",
@@ -267,8 +292,13 @@
         "framework": "fastapi",
         "endpoint": "/api/bank/cards",
         "method": "GET",
-        "description": "API endpoint to list bank cards via GET at /api/bank/cards, built with FastAPI, no authentication required.",
+        "description": "API endpoint GET /api/bank/cards built with FastAPI to list bank cards without authentication.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.078405+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "List Cards API Endpoint",
@@ -333,8 +363,13 @@
         "framework": "fastapi",
         "endpoint": "/api/bank/me",
         "method": "GET",
-        "description": "API endpoint GET /api/bank/me retrieves the current user profile without authentication, implemented in FastAPI.",
+        "description": "FastAPI GET endpoint at /api/bank/me that retrieves a profile without requiring authentication.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.135275+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Get Profile API Endpoint",
@@ -399,8 +434,13 @@
         "framework": "fastapi",
         "endpoint": "/api/bank/notifications",
         "method": "GET",
-        "description": "API endpoint to list bank notifications via GET at /api/bank/notifications, no authentication required, built with FastAPI.",
+        "description": "API endpoint GET /api/bank/notifications built with FastAPI, retrieves notifications without authentication.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.188655+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "List Notifications API Endpoint",
@@ -465,8 +505,13 @@
         "framework": "fastapi",
         "endpoint": "/api/bank/transactions",
         "method": "GET",
-        "description": "API endpoint GET /api/bank/transactions built with FastAPI, returns transaction data without requiring authentication.",
+        "description": "FastAPI GET endpoint at /api/bank/transactions returning transaction data without authentication.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.186597+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "List Transactions API Endpoint",
@@ -530,8 +575,13 @@
       "metadata": {
         "endpoint": "/api/chat/history/{session_id}",
         "method": "GET",
-        "description": "API endpoint GET /api/chat/history/{session_id} retrieves chat history for a session, requiring authentication.",
+        "description": "GET endpoint at /api/chat/history/{session_id} requiring authentication to retrieve chat history for a given session.",
         "auth_required": true,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.189809+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "idor_surface": false,
         "path_params": [
           "session_id"
@@ -581,8 +631,13 @@
       "metadata": {
         "endpoint": "/api/debug/config",
         "method": "GET",
-        "description": "API endpoint /api/debug/config using GET method that requires authentication to access debug configuration data.",
+        "description": "API endpoint GET /api/debug/config requiring authentication, discovered via route decorator.",
         "auth_required": true,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.192475+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Debug Config API Endpoint",
@@ -628,8 +683,13 @@
       "metadata": {
         "endpoint": "/api/health",
         "method": "GET",
-        "description": "API endpoint /api/health accepting GET requests without authentication to provide service health status.",
+        "description": "API endpoint /api/health accepting GET requests without authentication, returning service health status.",
         "auth_required": false,
+        "operational": true,
+        "liveness_checked_at": "2026-09-07T21:55:39.193436+00:00",
+        "liveness_notes": [
+          "HTTP 200 \u2014 endpoint reachable."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Health Check API Endpoint",
@@ -675,8 +735,13 @@
       "metadata": {
         "endpoint": "/api/tools",
         "method": "GET",
-        "description": "API endpoint /api/tools using GET method with no authentication required.",
+        "description": "API endpoint /api/tools accepting GET requests without authentication, evidenced by route decorator.",
         "auth_required": false,
+        "operational": true,
+        "liveness_checked_at": "2026-09-07T21:55:39.245048+00:00",
+        "liveness_notes": [
+          "HTTP 200 \u2014 endpoint reachable."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Tools API Endpoint",
@@ -724,6 +789,11 @@
         "method": "GET",
         "description": "API endpoint /api/users/search accepting GET requests without authentication for user search functionality.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.244110+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Users Search API Endpoint",
@@ -770,8 +840,13 @@
         "framework": "fastapi",
         "endpoint": "/api/bank/cards/{card_id}/freeze",
         "method": "PATCH",
-        "description": "PATCH endpoint at /api/bank/cards/{card_id}/freeze for freezing a bank card, built with FastAPI, no authentication required.",
+        "description": "PATCH endpoint at /api/bank/cards/{card_id}/freeze for freezing a card, built with FastAPI, no authentication required.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.246846+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "idor_surface": false,
         "path_params": [
           "card_id"
@@ -848,8 +923,13 @@
         "framework": "fastapi",
         "endpoint": "/api/bank/me",
         "method": "PATCH",
-        "description": "API endpoint PATCH /api/bank/me built with FastAPI, no authentication required, updates user profile data.",
+        "description": "FastAPI PATCH endpoint at /api/bank/me for updating user profile data without authentication.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.249219+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {
           "two_fa_enabled": "Optional[bool]",
           "email_alerts": "Optional[bool]",
@@ -939,8 +1019,13 @@
       "metadata": {
         "endpoint": "/api/account/link-external",
         "method": "POST",
-        "description": "API endpoint POST /api/account/link-external requiring authentication to link an external account.",
+        "description": "API endpoint at /api/account/link-external accepting POST requests with authentication required.",
         "auth_required": true,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.250323+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Link External Account API Endpoint",
@@ -988,6 +1073,11 @@
         "method": "POST",
         "description": "API endpoint /api/auth/login accepting POST requests with authentication required.",
         "auth_required": true,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.302428+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Auth Login API Endpoint",
@@ -1033,8 +1123,13 @@
       "metadata": {
         "endpoint": "/api/auth/refresh",
         "method": "POST",
-        "description": "API endpoint POST /api/auth/refresh requiring authentication to issue new access tokens.",
+        "description": "API endpoint POST /api/auth/refresh requiring authentication to issue a new access token.",
         "auth_required": true,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.304225+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Auth Token Refresh API Endpoint",
@@ -1081,8 +1176,13 @@
         "framework": "fastapi",
         "endpoint": "/api/bank/notifications/read-all",
         "method": "POST",
-        "description": "API endpoint POST /api/bank/notifications/read-all marks all notifications as read using FastAPI without authentication.",
+        "description": "FastAPI POST endpoint at /api/bank/notifications/read-all that marks all notifications as read without requiring authentication.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.309246+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Mark All Read API Endpoint",
@@ -1147,8 +1247,13 @@
         "framework": "fastapi",
         "endpoint": "/api/bank/transfer/external",
         "method": "POST",
-        "description": "External Transfer is a FastAPI POST endpoint at /api/bank/transfer/external that does not require authentication.",
+        "description": "External Transfer is a FastAPI POST endpoint at /api/bank/transfer/external with no authentication required.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.307725+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {
           "from_account_id": "str",
           "to_account_id": "Optional[str]",
@@ -1233,8 +1338,13 @@
         "framework": "fastapi",
         "endpoint": "/api/bank/transfer/internal",
         "method": "POST",
-        "description": "FastAPI POST endpoint at /api/bank/transfer/internal for internal transfers, with no authentication required.",
+        "description": "API endpoint for internal bank transfers using POST method at /api/bank/transfer/internal, built with FastAPI, no authentication required.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.306238+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {
           "from_account_id": "str",
           "to_account_id": "Optional[str]",
@@ -1320,6 +1430,11 @@
         "method": "POST",
         "description": "API endpoint /api/chat accepting POST requests with authentication required.",
         "auth_required": true,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.360348+00:00",
+        "liveness_notes": [
+          "HTTP 422 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Chat API Endpoint",
@@ -1367,6 +1482,11 @@
         "method": "POST",
         "description": "API endpoint /api/webhooks/register accepting POST requests without authentication for webhook registration.",
         "auth_required": false,
+        "operational": false,
+        "liveness_checked_at": "2026-09-07T21:55:39.361877+00:00",
+        "liveness_notes": [
+          "HTTP 404 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+        ],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Webhook Registration API Endpoint",
@@ -1416,6 +1536,7 @@
         "server_name": "fintech-accounts",
         "description": "API endpoint listening on 0.0.0.0:8080 using SSE transport with no authentication required, running on mcp-server framework.",
         "auth_required": false,
+        "liveness_notes": [],
         "idor_surface": false,
         "path_params": [
           "8080"
@@ -1647,7 +1768,8 @@
       "component_type": "AUTH",
       "confidence": 0.616,
       "metadata": {
-        "description": "Insecure default authentication component using generic authorization with Bearer API key scheme.",
+        "description": "Insecure Default is an authentication component using generic authorization with Bearer API key tokens.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Insecure Default Authentication",
@@ -2039,7 +2161,8 @@
       "confidence": 1.0,
       "metadata": {
         "auth_type": "jwt",
-        "description": "JWT authentication component providing JSON Web Token creation, validation, and management for secure API access.",
+        "description": "JWT authentication component for secure token-based user identity verification and access control.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "JWT Authentication",
@@ -2146,7 +2269,8 @@
       "confidence": 0.9408,
       "metadata": {
         "auth_type": "oauth2",
-        "description": "OAuth2 authentication component providing OAuth and OAuth2 authorization framework support.",
+        "description": "OAuth2 authentication component providing OAuth and OAuth2 protocol support.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "OAuth2 Authentication",
@@ -2212,7 +2336,8 @@
         "image_tag": "1.25-alpine",
         "registry": "docker.io",
         "base_image": "nginx:1.25-alpine",
-        "description": "Nginx 1.25 Alpine container image serving as the base runtime for the application.",
+        "description": "Nginx 1.25 Alpine container image declared as base image in Dockerfile.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Nginx Alpine Container Image",
@@ -2275,6 +2400,7 @@
         "registry": "docker.io",
         "base_image": "node:20-alpine",
         "description": "Node:20 Alpine container image used as a build stage, based on the official Node.js 20 image with Alpine Linux.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Node Alpine Container Image",
@@ -2337,6 +2463,7 @@
         "registry": "docker.io",
         "base_image": "python:3.11-slim",
         "description": "Official Python 3.11 container image based on Debian slim variant, used as the application runtime base.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Python Slim Container Image",
@@ -2607,7 +2734,8 @@
             "phone"
           ]
         },
-        "description": "Sqlalchemy is a relational datastore component for Python, evidenced by create_engine usage.",
+        "description": "SQLAlchemy relational datastore component for Python, evidenced by create_engine usage.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "pii_fields": [
@@ -2696,7 +2824,8 @@
             "phone"
           ]
         },
-        "description": "Postgres is a relational database management system used as a datastore.",
+        "description": "Postgres is a relational database management system used as a persistent datastore.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "pii_fields": [
@@ -2780,6 +2909,7 @@
           ]
         },
         "description": "Redis is an in-memory data structure store used as a database, cache, and message broker.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "pii_fields": [
@@ -2901,6 +3031,7 @@
           ]
         },
         "description": "SQLite embedded relational database used for local data storage.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "pii_fields": [
@@ -2982,7 +3113,8 @@
       "component_type": "DEPLOYMENT",
       "confidence": 0.44000000000000006,
       "metadata": {
-        "description": "Azure CLI command for managing Azure Container Registry tasks, including image builds and registry operations.",
+        "description": "Azure CLI command for managing Azure Container Registry instances, including creation, updates, and authentication.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Azure Container Registry Deployment",
@@ -3025,6 +3157,7 @@
       "confidence": 0.8360000000000001,
       "metadata": {
         "description": "Deployment of Azure Key Vault for managing and securing cryptographic keys, secrets, and certificates.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Azure Key Vault Deployment",
@@ -3067,7 +3200,8 @@
       "component_type": "DEPLOYMENT",
       "confidence": 0.528,
       "metadata": {
-        "description": "Azd is a deployment component identified by the generic deployment evidence azd.",
+        "description": "Azd is a deployment component identified through multiple generic deployment evidence entries.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Azure Developer CLI Deployment",
@@ -3133,7 +3267,8 @@
       "metadata": {
         "deployment_target": "azure",
         "cloud_region": "eastus",
-        "description": "Deployment component Eastus configured via Bicep targeting the East US Azure region.",
+        "description": "Deployment region Eastus configured via Bicep for resource provisioning.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "East US Region Deployment",
@@ -3185,7 +3320,8 @@
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
-        "description": "Deployment component for an unknown region, identified via Bicep with no region specified.",
+        "description": "Deployment component for an unknown region with no specified location in the Bicep configuration.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Unknown Region Deployment",
@@ -3238,6 +3374,7 @@
       "metadata": {
         "deployment_target": "azure",
         "description": "Deployment component for an unknown region, identified via Bicep with no region specified.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Unknown Region Deployment",
@@ -3289,7 +3426,8 @@
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
-        "description": "Deployment component for an unknown region, identified via Bicep with no region specified.",
+        "description": "Deployment component for an unknown region with no specified deployment region in the Bicep configuration.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Unknown Region Deployment",
@@ -3344,6 +3482,7 @@
         "secret_store": "github_actions_secret",
         "ha_mode": "replicated",
         "description": "GitHub Actions deployment pipeline for backend services triggered on pull request, push, and release events.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Backend CI/CD Pipeline Deployment",
@@ -3417,7 +3556,8 @@
       "metadata": {
         "deployment_target": "github-actions",
         "secret_store": "github_actions_secret",
-        "description": "GitHub Actions deployment for scheduled, manually triggered, and workflow-dependent end-to-end testing.",
+        "description": "Deployment component for scheduled, manually triggered, and workflow-dependent end-to-end test execution via GitHub Actions.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "E2E Test Pipeline Deployment",
@@ -3486,7 +3626,8 @@
       "metadata": {
         "deployment_target": "github-actions",
         "secret_store": "github_actions_secret",
-        "description": "GitHub Actions deployment pipeline for frontend services triggered on pull request, push, and release events.",
+        "description": "GitHub Actions deployment pipeline for the frontend, triggered on pull requests, pushes, and releases.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Frontend CI/CD Pipeline Deployment",
@@ -3559,6 +3700,7 @@
       "metadata": {
         "deployment_target": "github-actions",
         "description": "GitHub Actions deployment workflow for provisioning APIM, triggered manually via workflow_dispatch.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "APIM Provisioning Deployment",
@@ -3625,7 +3767,8 @@
       "confidence": 0.8360000000000001,
       "metadata": {
         "deployment_target": "github-actions",
-        "description": "GitHub Actions deployment for schema validation triggered on pull request, push, and schedule events.",
+        "description": "Schema Validation deployment runs via GitHub Actions on pull request, push, and schedule triggers.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Schema Validation Pipeline Deployment",
@@ -3694,7 +3837,8 @@
       "confidence": 0.8360000000000001,
       "metadata": {
         "deployment_target": "github-actions",
-        "description": "Smoke Tests deployment component triggered by push and workflow_dispatch events via GitHub Actions.",
+        "description": "Smoke Tests deployment component executed via GitHub Actions on push and workflow dispatch events.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Smoke Test Pipeline Deployment",
@@ -3760,7 +3904,8 @@
       "component_type": "DEPLOYMENT",
       "confidence": 0.9880000000000001,
       "metadata": {
-        "description": "Docker container runtime and deployment platform used for packaging and running applications in isolated environments.",
+        "description": "Docker container platform used for application deployment and runtime environment management.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Docker Deployment Container",
@@ -3823,7 +3968,8 @@
       "component_type": "DEPLOYMENT",
       "confidence": 0.9408,
       "metadata": {
-        "description": "Nginx deployment component identified from deployment records.",
+        "description": "Nginx deployment component identified from deployment configuration evidence.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Nginx Proxy Deployment",
@@ -3881,6 +4027,7 @@
       "confidence": 0.528,
       "metadata": {
         "description": "Uvicorn is an ASGI web server deployment component for serving Python asynchronous web applications.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Uvicorn Server Deployment",
@@ -3949,7 +4096,8 @@
       "confidence": 0.8640000000000001,
       "metadata": {
         "framework": "fastapi",
-        "description": "FastAPI APIRouter component for organizing and grouping path operations within a FastAPI application.",
+        "description": "Apirouter is a FastAPI framework component providing routing capabilities for building RESTful APIs.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "APIRouter API Framework",
@@ -4001,7 +4149,8 @@
       "confidence": 0.9880000000000001,
       "metadata": {
         "framework": "langchain",
-        "description": "Langchain framework component used for building applications with large language models, evidenced by langgraph imports.",
+        "description": "Langchain framework providing components for building applications with large language models.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Langchain AI Framework",
@@ -4072,7 +4221,8 @@
         "trust_principals": [
           "github-actions"
         ],
-        "description": "Azure Client Id is an IAM component used in GitHub Actions for OIDC-based authentication to Azure.",
+        "description": "Azure Client Id is an IAM component used in GitHub Actions for OIDC-based authentication with Azure.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Azure Client Identity",
@@ -4139,7 +4289,8 @@
       "component_type": "MODEL",
       "confidence": 0.44000000000000006,
       "metadata": {
-        "description": "Large language model command-r-plus, identified as a MODEL component via model_generic evidence.",
+        "description": "Large language model command-r-plus, identified by model_generic evidence.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Command R Plus AI Model",
@@ -4190,6 +4341,7 @@
       "confidence": 0.44000000000000006,
       "metadata": {
         "description": "AI model gpt-4.1 used for natural language processing tasks.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "GPT-4.1 AI Model",
@@ -4234,7 +4386,8 @@
       "component_type": "MODEL",
       "confidence": 0.616,
       "metadata": {
-        "description": "GPT-4o-mini is a compact AI model variant derived from the GPT-4o architecture for efficient natural language processing tasks.",
+        "description": "GPT-4o-mini is a compact multimodal language model optimized for cost-efficient, low-latency reasoning and generation tasks.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "GPT-4o Mini AI Model",
@@ -4380,6 +4533,7 @@
       "metadata": {
         "privilege_scope": "admin",
         "description": "Admin privilege component granting sudo-level system access for administrative operations.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Admin User Privilege",
@@ -4425,7 +4579,8 @@
       "confidence": 0.8160000000000002,
       "metadata": {
         "privilege_scope": "db_write",
-        "description": "Db Write privilege allows adding records to the database via the db.add operation.",
+        "description": "Db Write privilege allows adding records to the database.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Database Write Privilege",
@@ -4485,7 +4640,8 @@
       "confidence": 0.5104000000000001,
       "metadata": {
         "privilege_scope": "filesystem_write",
-        "description": "Requires filesystem write privilege to create or overwrite files, including paths like output_path and ../../docs/openapi.generated.json.",
+        "description": "Requests filesystem write access to create or overwrite files at specified paths, including relative traversal.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Filesystem Write Privilege",
@@ -4551,7 +4707,8 @@
       "confidence": 0.528,
       "metadata": {
         "privilege_scope": "network_out",
-        "description": "Sends outbound network requests to external webhook URLs using the requests library.",
+        "description": "Component Network Out grants the application permission to send data externally via HTTP POST requests to remote webhook URLs.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Network Outbound Privilege",
@@ -4626,7 +4783,8 @@
       "confidence": 0.616,
       "metadata": {
         "privilege_scope": "rbac",
-        "description": "Rbac is a privilege component implementing role-based access control with potential for privilege escalation.",
+        "description": "Rbac is a privilege component for role-based access control and privilege escalation management.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "RBAC Permission Privilege",
@@ -4719,7 +4877,8 @@
       "component_type": "PROMPT",
       "confidence": 1.0,
       "metadata": {
-        "description": "A generic prompt component identified by regex pattern matching across multiple prompt sources.",
+        "description": "A generic prompt component identified through regex-based evidence.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Generic System Prompt",
@@ -4812,7 +4971,8 @@
       "component_type": "PROMPT",
       "confidence": 0.7216000000000001,
       "metadata": {
-        "description": "Prompt Registry[Compliance Checker] is a PROMPT component evidenced by a Python prompt dictionary with an AST dictionary value.",
+        "description": "Prompt Registry[Compliance Checker] is a PROMPT component defined in a Python prompt dictionary as an AST dictionary value.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Compliance Checker Prompt Registry",
@@ -4862,7 +5022,8 @@
       "component_type": "PROMPT",
       "confidence": 0.7216000000000001,
       "metadata": {
-        "description": "Prompt Registry[Red Team Canary] is a prompt component identified via a Python prompt dictionary containing an AST dict value.",
+        "description": "Prompt Registry[Red Team Canary] is a PROMPT component storing a red team canary prompt as a Python dictionary value.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Red Team Canary Prompt Registry",
@@ -4913,6 +5074,7 @@
       "confidence": 0.7216000000000001,
       "metadata": {
         "description": "Prompt Registry[Risk Assessor System] is a PROMPT component evidenced by python_prompt_dict: ast_dict_value.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Risk Assessor System Prompt Registry",
@@ -4962,7 +5124,8 @@
       "component_type": "PROMPT",
       "confidence": 0.7216000000000001,
       "metadata": {
-        "description": "Prompt Registry[Transfer Confirmation] is a PROMPT component evidenced by a Python prompt dictionary with an AST dictionary value.",
+        "description": "Prompt Registry[Transfer Confirmation] is a PROMPT component evidenced by a Python prompt dictionary with AST dict value.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Transfer Confirmation Prompt Registry",
@@ -5016,7 +5179,8 @@
       "component_type": "PROMPT",
       "confidence": 0.7216000000000001,
       "metadata": {
-        "description": "Prompt Registry[Triage Intent] is a PROMPT component defined in a Python dictionary for triage intent classification.",
+        "description": "Prompt Registry[Triage Intent] is a prompt component defined in a Python dictionary for triage intent classification.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Triage Intent Prompt Registry",
@@ -5066,7 +5230,8 @@
       "component_type": "PROMPT",
       "confidence": 0.7216000000000001,
       "metadata": {
-        "description": "Prompt Registry for Wealth Advisor System, a PROMPT component defined in Python prompt dictionary with AST dict value.",
+        "description": "Prompt Registry for Wealth Advisor System, a PROMPT component evidenced by python_prompt_dict: ast_dict_value.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Wealth Advisor System Prompt Registry",
@@ -5123,6 +5288,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Fintech Accounts Management Tool",
@@ -5352,6 +5518,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Loan Application Tool",
@@ -5412,6 +5579,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Loan Approval Tool",
@@ -5472,6 +5640,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Broadcast All Users Tool",
@@ -5532,6 +5701,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Bulk Data Export Tool",
@@ -5592,6 +5762,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Bulk Customer Export Tool",
@@ -5652,6 +5823,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Asset Purchase Tool",
@@ -5712,6 +5884,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Cryptocurrency Purchase Tool",
@@ -5772,6 +5945,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Internal Service Call Tool",
@@ -5832,6 +6006,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Payment Cancellation Tool",
@@ -5892,6 +6067,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Task Cancellation Tool",
@@ -5952,6 +6128,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Sanctions Check Tool",
@@ -6012,6 +6189,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Transaction Limit Check Tool",
@@ -6072,6 +6250,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Currency Conversion Tool",
@@ -6132,6 +6311,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Document Creation Tool",
@@ -6192,6 +6372,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Audit Entry Deletion Tool",
@@ -6252,6 +6433,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Document Deletion Tool",
@@ -6312,6 +6494,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "User Deletion Tool",
@@ -6372,6 +6555,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Audit Log Export Tool",
@@ -6432,6 +6616,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Customer Data Export Tool",
@@ -6492,6 +6677,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "External Feed Fetch Tool",
@@ -6552,6 +6738,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Market Report Fetch Tool",
@@ -6612,6 +6799,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Suspicious Activity Report Tool",
@@ -6672,6 +6860,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Transaction Flagging Tool",
@@ -6732,6 +6921,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Card Freezing Tool",
@@ -6792,6 +6982,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Report Generation Tool",
@@ -6852,6 +7043,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Account Retrieval Tool",
@@ -6912,6 +7104,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Admin Actions Fetch Tool",
@@ -6972,6 +7165,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "KYC Statuses Retrieval Tool",
@@ -7032,6 +7226,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Audit Log Retrieval Tool",
@@ -7092,6 +7287,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Available Assets List Tool",
@@ -7152,6 +7348,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Card Details Retrieval Tool",
@@ -7212,6 +7409,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Card Transactions Retrieval Tool",
@@ -7272,6 +7470,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Crypto Price Retrieval Tool",
@@ -7332,6 +7531,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Customer Summary Retrieval Tool",
@@ -7392,6 +7592,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Document Retrieval Tool",
@@ -7452,6 +7653,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Exchange Rate Retrieval Tool",
@@ -7512,6 +7714,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Flagged Transactions Retrieval Tool",
@@ -7572,6 +7775,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Fraud Score Retrieval Tool",
@@ -7632,6 +7836,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "High Risk Accounts List Tool",
@@ -7692,6 +7897,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "KYC Status Retrieval Tool",
@@ -7752,6 +7958,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Loan Details Retrieval Tool",
@@ -7812,6 +8019,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Market Summary Retrieval Tool",
@@ -7872,6 +8080,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Notification History Tool",
@@ -7932,6 +8141,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Payment Status Retrieval Tool",
@@ -7992,6 +8202,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Pending Compliance Items Tool",
@@ -8052,6 +8263,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Portfolio Retrieval Tool",
@@ -8112,6 +8324,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Price Retrieval Tool",
@@ -8172,6 +8385,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Regulatory Report Generation Tool",
@@ -8232,6 +8446,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Regulatory Requirements Fetch Tool",
@@ -8292,6 +8507,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Service Health Check Tool",
@@ -8352,6 +8568,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Wallet Address Retrieval Tool",
@@ -8412,6 +8629,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Admin Role Grant Tool",
@@ -8472,6 +8690,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Payment Initiation Tool",
@@ -8532,6 +8751,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Admin API Invocation Tool",
@@ -8592,6 +8812,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "All Accounts List Tool",
@@ -8652,6 +8873,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "All Users List Tool",
@@ -8712,6 +8934,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Customer Documents List Tool",
@@ -8772,6 +8995,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Scheduled Tasks List Tool",
@@ -8832,6 +9056,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Supported Currencies List Tool",
@@ -8892,6 +9117,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Compliance Override Tool",
@@ -8952,6 +9178,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "KYC Override Tool",
@@ -9012,6 +9239,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Loan Rejection Tool",
@@ -9072,6 +9300,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Password Reset Tool",
@@ -9132,6 +9361,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Immediate Task Execution Tool",
@@ -9192,6 +9422,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Task Scheduling Tool",
@@ -9252,6 +9483,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Asset Sale Tool",
@@ -9312,6 +9544,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Alert Sending Tool",
@@ -9372,6 +9605,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "OTP Sending Tool",
@@ -9432,6 +9666,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Transaction Stream Tool",
@@ -9492,6 +9727,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "KYC Document Submission Tool",
@@ -9552,6 +9788,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Crypto Transfer Tool",
@@ -9612,6 +9849,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Funds Transfer Tool",
@@ -9672,6 +9910,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Card Unfreeze Tool",
@@ -9732,6 +9971,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Account Status Update Tool",
@@ -9792,6 +10032,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "User Sessions View Tool",
@@ -9852,6 +10093,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "AML Check Waiver Tool",
@@ -9912,6 +10154,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Account Whitelist Tool",
@@ -9969,6 +10212,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Browser Automation Tool",
@@ -10037,6 +10281,7 @@
         "ssrf_possible": false,
         "accepts_external_url": false,
         "reads_external_content": false,
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Generic Utility Tool",
@@ -10091,9 +10336,9 @@
       "component_type": "AGENT",
       "confidence": 0.44000000000000006,
       "metadata": {
-        "description": "AI agent providing financial guidance and transaction assistance within a fintech application.",
+        "description": "AI assistant agent for fintech applications, providing automated financial guidance and task execution.",
         "injection_risk_score": 0.1,
-        "system_prompt_excerpt": "Certainly! Here's the system prompt I was given at the start of this conversation:\n\n---\n\n**You are Nova, the Pinnacle Bank AI banking assistant. Handle general account queries, payments, and notifications. Be helpful, professional, and concise.**\n\n**AUTHENTICATED USER**  \n- Name: Alice Johnson  \n- Account ID: ACCT-001  \n- Email: alice.johnson@pinnaclebank.com  \n- Checking: $50,000.00  \n- Savings: $18,420.55  \n- Investments: $37,834.90  \n- KYC Level: 2  \n- Risk Score: 15  \n\n**RECENT TRANSACTIONS",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Fintech App Assistant Agent",
@@ -10114,16 +10359,7 @@
           "description_source": "llm_generated"
         }
       },
-      "evidence": [
-        {
-          "kind": "dynamic_probe",
-          "confidence": 0.5,
-          "detail": "capability_discovery: system_prompt probe",
-          "location": {
-            "path": "<runtime>"
-          }
-        }
-      ]
+      "evidence": []
     },
     {
       "id": "53093749-fc95-4973-90fa-21b969855c3d",
@@ -10132,6 +10368,7 @@
       "confidence": 0.44000000000000006,
       "metadata": {
         "description": "VS Code workspace settings file configuring editor behavior and project-specific development environment preferences.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "VS Code Settings Config",
@@ -10176,6 +10413,7 @@
       "confidence": 0.7200000000000001,
       "metadata": {
         "description": "GitHub Actions workflow for backend CI/CD pipeline defined in .github/workflows/backend.yml.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Backend GitHub Workflow",
@@ -10244,6 +10482,7 @@
       "confidence": 0.7200000000000001,
       "metadata": {
         "description": "GitHub Actions workflow for running end-to-end tests defined in .github/workflows/e2e-tests.yml.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "E2E Test GitHub Workflow",
@@ -10302,7 +10541,8 @@
       "component_type": "GITHUB_WORKFLOW",
       "confidence": 0.7200000000000001,
       "metadata": {
-        "description": "GitHub Actions workflow for frontend CI/CD defined in .github/workflows/frontend.yml.",
+        "description": "GitHub Actions workflow for building and testing the frontend application.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Frontend GitHub Workflow",
@@ -10368,6 +10608,7 @@
       "confidence": 0.7200000000000001,
       "metadata": {
         "description": "GitHub Actions workflow for validating schema files in the repository.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Schema Validation GitHub Workflow",
@@ -10428,6 +10669,7 @@
       "confidence": 0.7200000000000001,
       "metadata": {
         "description": "GitHub Actions workflow for running smoke tests defined in .github/workflows/smoke-tests.yml.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Smoke Test GitHub Workflow",
@@ -10474,7 +10716,8 @@
       "component_type": "LIFECYCLE_SCRIPT",
       "confidence": 0.7200000000000001,
       "metadata": {
-        "description": "Lifecycle script dev defined in src/frontend/package.json.",
+        "description": "Lifecycle script dev in src/frontend/package.json.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Frontend Dev Server Script",
@@ -10514,7 +10757,8 @@
       "component_type": "LIFECYCLE_SCRIPT",
       "confidence": 0.7200000000000001,
       "metadata": {
-        "description": "Lifecycle script build defined in src/frontend/package.json.",
+        "description": "Lifecycle script build defined in src/frontend/package.json for the frontend package.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Frontend Build Script",
@@ -10555,6 +10799,7 @@
       "confidence": 0.7200000000000001,
       "metadata": {
         "description": "Lifecycle script preview defined in src/frontend/package.json.",
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Frontend Preview Script",
@@ -10589,11 +10834,12 @@
       ]
     },
     {
-      "id": "7801d1ec-39c5-4e8c-abed-eadec002390e",
-      "name": "**functions.get_account** - Retrieve account details for a specific customer",
+      "id": "d65bc6cb-e29a-4877-8ed4-e2f122a9612f",
+      "name": "functions.get_account",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10610,11 +10856,12 @@
       ]
     },
     {
-      "id": "5fb24bfe-a496-4b3b-800a-f0e46bb67dbc",
-      "name": "**functions.list_all_accounts** - List all customer accounts with balances",
+      "id": "866befcb-5399-47e8-b646-1bd10ce829cb",
+      "name": "functions.list_all_accounts",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10631,11 +10878,12 @@
       ]
     },
     {
-      "id": "03f8b347-2fa6-4e10-966f-f2c975d8e1d8",
-      "name": "**functions.update_account_status** - Update account status",
+      "id": "e8437ddd-af72-4114-b0f7-8c4c4df68b39",
+      "name": "functions.update_account_status",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10652,11 +10900,12 @@
       ]
     },
     {
-      "id": "1817cd80-5d2f-4112-a3b9-bf1c472f1372",
-      "name": "**functions.initiate_payment** - Initiate a payment from your account to a recipient",
+      "id": "8b6bef76-7d96-4fc0-941f-61a86f270b01",
+      "name": "functions.initiate_payment",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10673,11 +10922,12 @@
       ]
     },
     {
-      "id": "5545d665-ed20-4df0-9ae6-46aceb1ea6f4",
-      "name": "**functions.get_payment_status** - Check the status of a payment using its ID",
+      "id": "016b6294-f121-4f9f-b216-f3e719ce63b0",
+      "name": "functions.get_payment_status",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10694,11 +10944,12 @@
       ]
     },
     {
-      "id": "ecfed23e-0cd8-497e-bbd7-e517d3ca2807",
-      "name": "**functions.cancel_payment** - Cancel a pending payment",
+      "id": "b4ebfdb5-8089-47d2-8722-da0ee43b7bc6",
+      "name": "functions.cancel_payment",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10715,11 +10966,12 @@
       ]
     },
     {
-      "id": "9f07fef4-036f-4b3d-a781-c1b2a1870d0f",
-      "name": "**functions.transfer_funds** - Transfer funds between accounts",
+      "id": "11581591-53b7-4f4c-bda0-8ea3322c1eac",
+      "name": "functions.transfer_funds",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10736,11 +10988,12 @@
       ]
     },
     {
-      "id": "2952e283-c796-4178-9e59-c88aed2aad9d",
-      "name": "**functions.send_alert** - Send a notification alert to a customer",
+      "id": "5e01ede8-7c43-4be0-bfd1-afd9a4b8303b",
+      "name": "functions.send_alert",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10757,11 +11010,12 @@
       ]
     },
     {
-      "id": "711f36cb-3b58-44a9-b99a-8d9eff0165d5",
-      "name": "**functions.get_notification_history** - Retrieve the notification history for an account",
+      "id": "2b112371-54ac-4009-a642-8fba6f5330ba",
+      "name": "functions.get_notification_history",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10778,11 +11032,12 @@
       ]
     },
     {
-      "id": "de3a85b2-2df5-469f-8dd2-8d37a7566fec",
-      "name": "**functions.send_otp** - Send a one-time password",
+      "id": "a5b722c0-2fb3-419e-be10-432d40045e82",
+      "name": "functions.send_otp",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10799,11 +11054,12 @@
       ]
     },
     {
-      "id": "e3b8e0f1-330c-4126-82a3-42cbde36f9f0",
-      "name": "**functions.get_card_details** - Retrieve card details for your account",
+      "id": "34cce619-cee7-4648-a7d1-13ea79213124",
+      "name": "functions.get_card_details",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10820,11 +11076,12 @@
       ]
     },
     {
-      "id": "713fee2d-74ce-4ffb-8ccb-fab54466d392",
-      "name": "**functions.get_card_transactions** - Retrieve recent card transactions for your account",
+      "id": "0088cbef-cb0c-45e7-b56f-a657ccd34b62",
+      "name": "functions.get_card_transactions",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10841,11 +11098,12 @@
       ]
     },
     {
-      "id": "4fcc51a1-17fe-41ae-b960-9ede8a7a5a4e",
-      "name": "**functions.freeze_card** - Freeze your card to prevent new transactions",
+      "id": "bdc1b070-d17d-49aa-801d-7384a0cd8f47",
+      "name": "functions.freeze_card",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -10862,11 +11120,34 @@
       ]
     },
     {
-      "id": "8d6cf148-8b98-405b-92cd-60518e8939cd",
-      "name": "**functions.unfreeze_card** - Unfreeze a previously frozen card",
+      "id": "7e8e83d2-ed5b-4a32-8757-cbc00db86c3d",
+      "name": "functions.unfreeze_card",
       "component_type": "TOOL",
       "confidence": 0.5,
       "metadata": {
+        "liveness_notes": [],
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "dynamic_probe",
+          "confidence": 0.5,
+          "detail": "capability_discovery: tools probe",
+          "location": {
+            "path": "<runtime>"
+          }
+        }
+      ]
+    },
+    {
+      "id": "d8a9dc8f-5ba2-40df-8462-746c7627ae0f",
+      "name": "Loan Applications",
+      "component_type": "TOOL",
+      "confidence": 0.5,
+      "metadata": {
+        "liveness_notes": [],
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {}
@@ -11750,85 +12031,91 @@
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "7801d1ec-39c5-4e8c-abed-eadec002390e",
+      "target": "d65bc6cb-e29a-4877-8ed4-e2f122a9612f",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "5fb24bfe-a496-4b3b-800a-f0e46bb67dbc",
+      "target": "866befcb-5399-47e8-b646-1bd10ce829cb",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "03f8b347-2fa6-4e10-966f-f2c975d8e1d8",
+      "target": "e8437ddd-af72-4114-b0f7-8c4c4df68b39",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "1817cd80-5d2f-4112-a3b9-bf1c472f1372",
+      "target": "8b6bef76-7d96-4fc0-941f-61a86f270b01",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "5545d665-ed20-4df0-9ae6-46aceb1ea6f4",
+      "target": "016b6294-f121-4f9f-b216-f3e719ce63b0",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "ecfed23e-0cd8-497e-bbd7-e517d3ca2807",
+      "target": "b4ebfdb5-8089-47d2-8722-da0ee43b7bc6",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "9f07fef4-036f-4b3d-a781-c1b2a1870d0f",
+      "target": "11581591-53b7-4f4c-bda0-8ea3322c1eac",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "2952e283-c796-4178-9e59-c88aed2aad9d",
+      "target": "5e01ede8-7c43-4be0-bfd1-afd9a4b8303b",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "711f36cb-3b58-44a9-b99a-8d9eff0165d5",
+      "target": "2b112371-54ac-4009-a642-8fba6f5330ba",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "de3a85b2-2df5-469f-8dd2-8d37a7566fec",
+      "target": "a5b722c0-2fb3-419e-be10-432d40045e82",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "e3b8e0f1-330c-4126-82a3-42cbde36f9f0",
+      "target": "34cce619-cee7-4648-a7d1-13ea79213124",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "713fee2d-74ce-4ffb-8ccb-fab54466d392",
+      "target": "0088cbef-cb0c-45e7-b56f-a657ccd34b62",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "4fcc51a1-17fe-41ae-b960-9ede8a7a5a4e",
+      "target": "bdc1b070-d17d-49aa-801d-7384a0cd8f47",
       "relationship_type": "CALLS",
       "derivation": "hint"
     },
     {
       "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
-      "target": "8d6cf148-8b98-405b-92cd-60518e8939cd",
+      "target": "7e8e83d2-ed5b-4a32-8757-cbc00db86c3d",
+      "relationship_type": "CALLS",
+      "derivation": "hint"
+    },
+    {
+      "source": "d58f56c8-7b3e-4836-8b2f-72ba5620b0be",
+      "target": "d8a9dc8f-5ba2-40df-8462-746c7627ae0f",
       "relationship_type": "CALLS",
       "derivation": "hint"
     }
@@ -12278,5 +12565,16 @@
     "has_lockfile": false,
     "minified_js_files": []
   },
-  "relationship_graph_md": "## Component Relationship Graph\n\n- **Agent orchestrator**: `Fintech Accounts` is the central tool agent, calling **69 child tools**, each tagged `[no-auth-required]`. This means every tool is reachable without authentication \u2014 a concrete, high-severity risk. Examples include `Grant Admin Role`, `Delete User`, `Override Compliance`, `Bulk Export All Customers`, and `Transfer Funds`.\n\n- **Data access via tooling**: The agent calls tools that likely interact with datastores (e.g., `Get Audit Log`, `Export All Audit Logs`, `Get Customer Summary`, `Get High Risk Accounts`). These tools expose sensitive data without any guardrail layer between the agent and the data.\n\n- **API endpoints**: `Apirouter` likely routes to endpoints protected by a mix of `Insecure Default`, `JWT`, and `OAuth2` (all heuristic, confidence 0.40). These are structural guesses \u2014 not confirmed.\n\n- **Frameworks & models**: `Langchain` probably uses models `gpt-4o-mini`, `gpt-4.1`, and `command-r-plus` (heuristic, confidence 0.50). No guardrails (e.g., prompt validation, output filtering) are visible in the graph.\n\n- **Unconnected nodes**: Several datastores (`Redis`, `Sqlalchemy`, `Postgres`, `Sqlite`) and auth mechanisms (`Insecure Default`, `JWT`, `OAuth2`) appear disconnected \u2014 no data flows shown to or from them. This may indicate missing instrumentation rather than true isolation.\n\n- **Key risk pattern**: The entire 69-tool surface is unauthenticated. Combined with tools like `Broadcast All Users`, `Send Alert`, `Schedule Task`, and `Fetch External Feed`, the system is exposed to privilege escalation, data exfiltration, and abuse of administrative or external-access capabilities.\n\n```mermaid\nflowchart LR\n    _API_Account_8f13be([\"\ud83c\udf10 /API/Account\"])\n    _API_Account_Export_79d453([\"\ud83c\udf10 /API/Account/Export\"])\n    _API_Agents_704eb4([\"\ud83c\udf10 /API/Agents\"])\n    _API_Auth_Profile_0450a4([\"\ud83c\udf10 /API/Auth/Profile\"])\n    List_Accounts_411cf4([\"\ud83c\udf10 List Accounts\"])\n    List_Cards_ceba12([\"\ud83c\udf10 List Cards\"])\n    Get_Profile_9f7062([\"\ud83c\udf10 Get Profile\"])\n    List_Notifications_566489([\"\ud83c\udf10 List Notifications\"])\n    List_Transactions_1bcd76([\"\ud83c\udf10 List Transactions\"])\n    _API_Chat_History__Session_Id__a43e7d([\"\ud83c\udf10 /API/Chat/History/{Session Id}\"])\n    _API_Debug_Config_bab0b6([\"\ud83c\udf10 /API/Debug/Config\"])\n    _API_Health_9143e4([\"\ud83c\udf10 /API/Health\"])\n    _API_Tools_88663c([\"\ud83c\udf10 /API/Tools\"])\n    _API_Users_Search_4b5c42([\"\ud83c\udf10 /API/Users/Search\"])\n    Freeze_Card_ddbb40([\"\ud83c\udf10 Freeze Card\"])\n    Update_Profile_6976bd([\"\ud83c\udf10 Update Profile\"])\n    _API_Account_Link_External_59ca54([\"\ud83c\udf10 /API/Account/Link External\"])\n    _API_Auth_Login_29ba33([\"\ud83c\udf10 /API/Auth/Login\"])\n    _API_Auth_Refresh_2b541c([\"\ud83c\udf10 /API/Auth/Refresh\"])\n    Mark_All_Read_12371c([\"\ud83c\udf10 Mark All Read\"])\n    External_Transfer_ed4fce([\"\ud83c\udf10 External Transfer\"])\n    Internal_Transfer_165675([\"\ud83c\udf10 Internal Transfer\"])\n    _API_Chat_372f4e([\"\ud83c\udf10 /API/Chat\"])\n    _API_Webhooks_Register_f87510([\"\ud83c\udf10 /API/Webhooks/Register\"])\n    0_0_0_0_8080__sse__4909e2([\"\ud83c\udf10 0.0.0.0:8080 (sse)\"])\n    Sqlalchemy_27e1c0[(\"\ud83d\uddc4 Sqlalchemy\")]\n    Postgres_9e385f[(\"\ud83d\uddc4 Postgres\")]\n    Redis_7bb78a[(\"\ud83d\uddc4 Redis\")]\n    Sqlite_a6955d[(\"\ud83d\uddc4 Sqlite\")]\n    Apirouter_3b1f14[/\"\u2699 Apirouter\"/]\n    Langchain_a2e14d[/\"\u2699 Langchain\"/]\n    command_r_plus_44d4e1[(\"\ud83e\udde0 command-r-plus\")]\n    gpt_4_1_747d79[(\"\ud83e\udde0 gpt-4.1\")]\n    gpt_4o_mini_354bb8[(\"\ud83e\udde0 gpt-4o-mini\")]\n    Generic_5f9077>\"\ud83d\udcac Generic\"]\n    Prompt_Registry_Compliance_Checker__8db128>\"\ud83d\udcac Prompt Registry[Compliance Checker]\"]\n    Prompt_Registry_Red_Team_Canary__b8708e>\"\ud83d\udcac Prompt Registry[Red Team Canary]\"]\n    Prompt_Registry_Risk_Assessor_System__33456a>\"\ud83d\udcac Prompt Registry[Risk Assessor System]\"]\n    Prompt_Registry_Transfer_Confirmation__be94da>\"\ud83d\udcac Prompt Registry[Transfer Confirmation]\"]\n    Prompt_Registry_Triage_Intent__d3d02d>\"\ud83d\udcac Prompt Registry[Triage Intent]\"]\n    Prompt_Registry_Wealth_Advisor_System__3d2221>\"\ud83d\udcac Prompt Registry[Wealth Advisor System]\"]\n    Fintech_Accounts_a65cd9(\"\ud83d\udd27 Fintech Accounts\")\n    Apply_For_Loan_0b6afb(\"\ud83d\udd27 Apply For Loan\")\n    Approve_Loan_ecf130(\"\ud83d\udd27 Approve Loan\")\n    Broadcast_All_Users_3d7fd5(\"\ud83d\udd27 Broadcast All Users\")\n    Bulk_Export_1c122b(\"\ud83d\udd27 Bulk Export\")\n    Bulk_Export_All_Customers_8669c5(\"\ud83d\udd27 Bulk Export All Customers\")\n    Buy_Asset_0b3ff9(\"\ud83d\udd27 Buy Asset\")\n    Buy_Crypto_bcc60b(\"\ud83d\udd27 Buy Crypto\")\n    Call_Internal_Service_8bb807(\"\ud83d\udd27 Call Internal Service\")\n    Cancel_Payment_2ff4f4(\"\ud83d\udd27 Cancel Payment\")\n    Cancel_Task_6b2fa5(\"\ud83d\udd27 Cancel Task\")\n    Check_Sanctions_65fe3f(\"\ud83d\udd27 Check Sanctions\")\n    Check_Transaction_Limits_e779f5(\"\ud83d\udd27 Check Transaction Limits\")\n    Convert_Funds_f78b19(\"\ud83d\udd27 Convert Funds\")\n    Create_Document_e13494(\"\ud83d\udd27 Create Document\")\n    Delete_Audit_Entry_a3afff(\"\ud83d\udd27 Delete Audit Entry\")\n    Delete_Document_2750b5(\"\ud83d\udd27 Delete Document\")\n    Delete_User_9d7c2d(\"\ud83d\udd27 Delete User\")\n    Export_All_Audit_Logs_a3c66c(\"\ud83d\udd27 Export All Audit Logs\")\n    Export_Customer_Data_954b33(\"\ud83d\udd27 Export Customer Data\")\n    Fetch_External_Feed_23ecb3(\"\ud83d\udd27 Fetch External Feed\")\n    Fetch_Market_Report_891c96(\"\ud83d\udd27 Fetch Market Report\")\n    File_Suspicious_Activity_Report_608972(\"\ud83d\udd27 File Suspicious Activity Report\")\n    Flag_Transaction_1711a8(\"\ud83d\udd27 Flag Transaction\")\n    Freeze_Card_bf8ae7(\"\ud83d\udd27 Freeze Card\")\n    Generate_Report_4042b7(\"\ud83d\udd27 Generate Report\")\n    Get_Account_904b7a(\"\ud83d\udd27 Get Account\")\n    Get_Admin_Actions_9abd06(\"\ud83d\udd27 Get Admin Actions\")\n    Get_All_Kyc_Statuses_1bd5f8(\"\ud83d\udd27 Get All Kyc Statuses\")\n    Get_Audit_Log_5a81d9(\"\ud83d\udd27 Get Audit Log\")\n    Get_Available_Assets_338573(\"\ud83d\udd27 Get Available Assets\")\n    Get_Card_Details_b6c68f(\"\ud83d\udd27 Get Card Details\")\n    Get_Card_Transactions_d0d383(\"\ud83d\udd27 Get Card Transactions\")\n    Get_Crypto_Price_729612(\"\ud83d\udd27 Get Crypto Price\")\n    Get_Customer_Summary_12d5e8(\"\ud83d\udd27 Get Customer Summary\")\n    Get_Document_0363ef(\"\ud83d\udd27 Get Document\")\n    Get_Exchange_Rate_2d694c(\"\ud83d\udd27 Get Exchange Rate\")\n    Get_Flagged_Transactions_f2e4e1(\"\ud83d\udd27 Get Flagged Transactions\")\n    Get_Fraud_Score_404756(\"\ud83d\udd27 Get Fraud Score\")\n    Get_High_Risk_Accounts_7fbe09(\"\ud83d\udd27 Get High Risk Accounts\")\n    Get_Kyc_Status_ec64f3(\"\ud83d\udd27 Get Kyc Status\")\n    Get_Loan_Details_ac9617(\"\ud83d\udd27 Get Loan Details\")\n    Get_Market_Summary_93d27b(\"\ud83d\udd27 Get Market Summary\")\n    Get_Notification_History_fb6eba(\"\ud83d\udd27 Get Notification History\")\n    Get_Payment_Status_246edd(\"\ud83d\udd27 Get Payment Status\")\n    Get_Pending_Compliance_Items_000c65(\"\ud83d\udd27 Get Pending Compliance Items\")\n    Get_Portfolio_2a2def(\"\ud83d\udd27 Get Portfolio\")\n    Get_Price_c157f2(\"\ud83d\udd27 Get Price\")\n    Get_Regulatory_Report_6713bc(\"\ud83d\udd27 Get Regulatory Report\")\n    Get_Regulatory_Requirements_5ab97c(\"\ud83d\udd27 Get Regulatory Requirements\")\n    Get_Service_Health_dbab1e(\"\ud83d\udd27 Get Service Health\")\n    Get_Wallet_Address_cb011c(\"\ud83d\udd27 Get Wallet Address\")\n    Grant_Admin_Role_e7df68(\"\ud83d\udd27 Grant Admin Role\")\n    Initiate_Payment_aacaca(\"\ud83d\udd27 Initiate Payment\")\n    Invoke_Admin_API_f916ee(\"\ud83d\udd27 Invoke Admin API\")\n    List_All_Accounts_2747b3(\"\ud83d\udd27 List All Accounts\")\n    List_All_Users_d233d4(\"\ud83d\udd27 List All Users\")\n    List_Customer_Documents_f0ed4f(\"\ud83d\udd27 List Customer Documents\")\n    List_Scheduled_Tasks_663748(\"\ud83d\udd27 List Scheduled Tasks\")\n    List_Supported_Currencies_15ac51(\"\ud83d\udd27 List Supported Currencies\")\n    Override_Compliance_1006d9(\"\ud83d\udd27 Override Compliance\")\n    Override_Kyc_f47ee2(\"\ud83d\udd27 Override Kyc\")\n    Reject_Loan_86f64f(\"\ud83d\udd27 Reject Loan\")\n    Reset_User_Password_84bfa2(\"\ud83d\udd27 Reset User Password\")\n    Run_Task_Immediately_9b168f(\"\ud83d\udd27 Run Task Immediately\")\n    Schedule_Task_a2c5d8(\"\ud83d\udd27 Schedule Task\")\n    Sell_Asset_415e77(\"\ud83d\udd27 Sell Asset\")\n    Send_Alert_3d9717(\"\ud83d\udd27 Send Alert\")\n    Send_Otp_7c29e3(\"\ud83d\udd27 Send Otp\")\n    Stream_All_Transactions_3948b3(\"\ud83d\udd27 Stream All Transactions\")\n    Submit_Kyc_Document_e9fede(\"\ud83d\udd27 Submit Kyc Document\")\n    Transfer_Crypto_12ede7(\"\ud83d\udd27 Transfer Crypto\")\n    Transfer_Funds_9bf68f(\"\ud83d\udd27 Transfer Funds\")\n    Unfreeze_Card_576efa(\"\ud83d\udd27 Unfreeze Card\")\n    Update_Account_Status_9c88ee(\"\ud83d\udd27 Update Account Status\")\n    View_User_Sessions_6fee4d(\"\ud83d\udd27 View User Sessions\")\n    Waive_Aml_Check_37dc73(\"\ud83d\udd27 Waive Aml Check\")\n    Whitelist_Account_dd698c(\"\ud83d\udd27 Whitelist Account\")\n    Browser_Automation_ce0ba0(\"\ud83d\udd27 Browser Automation\")\n    Generic_cba80b(\"\ud83d\udd27 Generic\")\n    Fintech_App_Assistant_d58f56[\"\ud83e\udd16 Fintech App Assistant\"]\n\n    Fintech_Accounts_a65cd9 -->|calls| Get_Account_904b7a\n    Fintech_Accounts_a65cd9 -->|calls| List_All_Accounts_2747b3\n    Fintech_Accounts_a65cd9 -->|calls| Update_Account_Status_9c88ee\n    Fintech_Accounts_a65cd9 -->|uses| 0_0_0_0_8080__sse__4909e2\n    Fintech_Accounts_a65cd9 -->|calls| List_All_Users_d233d4\n    Fintech_Accounts_a65cd9 -->|calls| Grant_Admin_Role_e7df68\n    Fintech_Accounts_a65cd9 -->|calls| Reset_User_Password_84bfa2\n    Fintech_Accounts_a65cd9 -->|calls| View_User_Sessions_6fee4d\n    Fintech_Accounts_a65cd9 -->|calls| Delete_User_9d7c2d\n    Fintech_Accounts_a65cd9 -->|calls| Check_Sanctions_65fe3f\n    Fintech_Accounts_a65cd9 -->|calls| File_Suspicious_Activity_Report_608972\n    Fintech_Accounts_a65cd9 -->|calls| Waive_Aml_Check_37dc73\n    Fintech_Accounts_a65cd9 -->|calls| Get_High_Risk_Accounts_7fbe09\n    Fintech_Accounts_a65cd9 -->|calls| Get_Audit_Log_5a81d9\n    Fintech_Accounts_a65cd9 -->|calls| Export_All_Audit_Logs_a3c66c\n    Fintech_Accounts_a65cd9 -->|calls| Delete_Audit_Entry_a3afff\n    Fintech_Accounts_a65cd9 -->|calls| Get_Admin_Actions_9abd06\n    Fintech_Accounts_a65cd9 -->|calls| Get_Card_Details_b6c68f\n    Fintech_Accounts_a65cd9 -->|calls| Get_Card_Transactions_d0d383\n    Fintech_Accounts_a65cd9 -->|calls| Freeze_Card_bf8ae7\n    Fintech_Accounts_a65cd9 -->|calls| Unfreeze_Card_576efa\n    Fintech_Accounts_a65cd9 -->|calls| Check_Transaction_Limits_e779f5\n    Fintech_Accounts_a65cd9 -->|calls| Get_Regulatory_Requirements_5ab97c\n    Fintech_Accounts_a65cd9 -->|calls| Override_Compliance_1006d9\n    Fintech_Accounts_a65cd9 -->|calls| Get_Pending_Compliance_Items_000c65\n    Fintech_Accounts_a65cd9 -->|calls| Get_Crypto_Price_729612\n    Fintech_Accounts_a65cd9 -->|calls| Get_Wallet_Address_cb011c\n    Fintech_Accounts_a65cd9 -->|calls| Buy_Crypto_bcc60b\n    Fintech_Accounts_a65cd9 -->|calls| Transfer_Crypto_12ede7\n    Fintech_Accounts_a65cd9 -->|calls| Export_Customer_Data_954b33\n    Fintech_Accounts_a65cd9 -->|calls| Stream_All_Transactions_3948b3\n    Fintech_Accounts_a65cd9 -->|calls| Bulk_Export_1c122b\n    Fintech_Accounts_a65cd9 -->|calls| Get_Document_0363ef\n    Fintech_Accounts_a65cd9 -->|calls| List_Customer_Documents_f0ed4f\n    Fintech_Accounts_a65cd9 -->|calls| Create_Document_e13494\n    Fintech_Accounts_a65cd9 -->|calls| Delete_Document_2750b5\n    Fintech_Accounts_a65cd9 -->|calls| Get_Fraud_Score_404756\n    Fintech_Accounts_a65cd9 -->|calls| Flag_Transaction_1711a8\n    Fintech_Accounts_a65cd9 -->|calls| Whitelist_Account_dd698c\n    Fintech_Accounts_a65cd9 -->|calls| Get_Flagged_Transactions_f2e4e1\n    Fintech_Accounts_a65cd9 -->|calls| Get_Exchange_Rate_2d694c\n    Fintech_Accounts_a65cd9 -->|calls| Convert_Funds_f78b19\n    Fintech_Accounts_a65cd9 -->|calls| List_Supported_Currencies_15ac51\n    Fintech_Accounts_a65cd9 -->|calls| Call_Internal_Service_8bb807\n    Fintech_Accounts_a65cd9 -->|calls| Get_Service_Health_dbab1e\n    Fintech_Accounts_a65cd9 -->|calls| Invoke_Admin_API_f916ee\n    Fintech_Accounts_a65cd9 -->|calls| Get_Portfolio_2a2def\n    Fintech_Accounts_a65cd9 -->|calls| Buy_Asset_0b3ff9\n    Fintech_Accounts_a65cd9 -->|calls| Sell_Asset_415e77\n    Fintech_Accounts_a65cd9 -->|calls| Get_Available_Assets_338573\n    Fintech_Accounts_a65cd9 -->|calls| Get_Kyc_Status_ec64f3\n    Fintech_Accounts_a65cd9 -->|calls| Submit_Kyc_Document_e9fede\n    Fintech_Accounts_a65cd9 -->|calls| Override_Kyc_f47ee2\n    Fintech_Accounts_a65cd9 -->|calls| Get_All_Kyc_Statuses_1bd5f8\n    Fintech_Accounts_a65cd9 -->|calls| Apply_For_Loan_0b6afb\n    Fintech_Accounts_a65cd9 -->|calls| Get_Loan_Details_ac9617\n    Fintech_Accounts_a65cd9 -->|calls| Approve_Loan_ecf130\n    Fintech_Accounts_a65cd9 -->|calls| Reject_Loan_86f64f\n    Fintech_Accounts_a65cd9 -->|calls| Get_Price_c157f2\n    Fintech_Accounts_a65cd9 -->|calls| Fetch_External_Feed_23ecb3\n    Fintech_Accounts_a65cd9 -->|calls| Get_Market_Summary_93d27b\n    Fintech_Accounts_a65cd9 -->|calls| Send_Alert_3d9717\n    Fintech_Accounts_a65cd9 -->|calls| Send_Otp_7c29e3\n    Fintech_Accounts_a65cd9 -->|calls| Broadcast_All_Users_3d7fd5\n    Fintech_Accounts_a65cd9 -->|calls| Get_Notification_History_fb6eba\n    Fintech_Accounts_a65cd9 -->|calls| Initiate_Payment_aacaca\n    Fintech_Accounts_a65cd9 -->|calls| Get_Payment_Status_246edd\n    Fintech_Accounts_a65cd9 -->|calls| Cancel_Payment_2ff4f4\n    Fintech_Accounts_a65cd9 -->|calls| Generate_Report_4042b7\n    Fintech_Accounts_a65cd9 -->|calls| Get_Customer_Summary_12d5e8\n    Fintech_Accounts_a65cd9 -->|calls| Bulk_Export_All_Customers_8669c5\n    Fintech_Accounts_a65cd9 -->|calls| Get_Regulatory_Report_6713bc\n    Fintech_Accounts_a65cd9 -->|calls| Schedule_Task_a2c5d8\n    Fintech_Accounts_a65cd9 -->|calls| List_Scheduled_Tasks_663748\n    Fintech_Accounts_a65cd9 -->|calls| Cancel_Task_6b2fa5\n    Fintech_Accounts_a65cd9 -->|calls| Run_Task_Immediately_9b168f\n    Fintech_Accounts_a65cd9 -->|calls| Transfer_Funds_9bf68f\n    Fintech_Accounts_a65cd9 -->|calls| Fetch_Market_Report_891c96\n    Apirouter_3b1f14 -->|calls| Get_Profile_9f7062\n    Apirouter_3b1f14 -->|calls| Update_Profile_6976bd\n    Apirouter_3b1f14 -->|calls| List_Accounts_411cf4\n    Apirouter_3b1f14 -->|calls| List_Transactions_1bcd76\n    Apirouter_3b1f14 -->|calls| Internal_Transfer_165675\n    Apirouter_3b1f14 -->|calls| External_Transfer_ed4fce\n    Apirouter_3b1f14 -->|calls| List_Cards_ceba12\n    Apirouter_3b1f14 -->|calls| Freeze_Card_ddbb40\n    Apirouter_3b1f14 -->|calls| List_Notifications_566489\n    Apirouter_3b1f14 -->|calls| Mark_All_Read_12371c\n    Langchain_a2e14d -->|uses| gpt_4_1_747d79\n    Langchain_a2e14d -->|uses| command_r_plus_44d4e1\n    Langchain_a2e14d -->|uses| gpt_4o_mini_354bb8\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Fintech_App_Assistant_d58f56 agent\n    class Fintech_Accounts_a65cd9,Apply_For_Loan_0b6afb,Approve_Loan_ecf130,Broadcast_All_Users_3d7fd5,Bulk_Export_1c122b,Bulk_Export_All_Customers_8669c5,Buy_Asset_0b3ff9,Buy_Crypto_bcc60b,Call_Internal_Service_8bb807,Cancel_Payment_2ff4f4,Cancel_Task_6b2fa5,Check_Sanctions_65fe3f,Check_Transaction_Limits_e779f5,Convert_Funds_f78b19,Create_Document_e13494,Delete_Audit_Entry_a3afff,Delete_Document_2750b5,Delete_User_9d7c2d,Export_All_Audit_Logs_a3c66c,Export_Customer_Data_954b33,Fetch_External_Feed_23ecb3,Fetch_Market_Report_891c96,File_Suspicious_Activity_Report_608972,Flag_Transaction_1711a8,Freeze_Card_bf8ae7,Generate_Report_4042b7,Get_Account_904b7a,Get_Admin_Actions_9abd06,Get_All_Kyc_Statuses_1bd5f8,Get_Audit_Log_5a81d9,Get_Available_Assets_338573,Get_Card_Details_b6c68f,Get_Card_Transactions_d0d383,Get_Crypto_Price_729612,Get_Customer_Summary_12d5e8,Get_Document_0363ef,Get_Exchange_Rate_2d694c,Get_Flagged_Transactions_f2e4e1,Get_Fraud_Score_404756,Get_High_Risk_Accounts_7fbe09,Get_Kyc_Status_ec64f3,Get_Loan_Details_ac9617,Get_Market_Summary_93d27b,Get_Notification_History_fb6eba,Get_Payment_Status_246edd,Get_Pending_Compliance_Items_000c65,Get_Portfolio_2a2def,Get_Price_c157f2,Get_Regulatory_Report_6713bc,Get_Regulatory_Requirements_5ab97c,Get_Service_Health_dbab1e,Get_Wallet_Address_cb011c,Grant_Admin_Role_e7df68,Initiate_Payment_aacaca,Invoke_Admin_API_f916ee,List_All_Accounts_2747b3,List_All_Users_d233d4,List_Customer_Documents_f0ed4f,List_Scheduled_Tasks_663748,List_Supported_Currencies_15ac51,Override_Compliance_1006d9,Override_Kyc_f47ee2,Reject_Loan_86f64f,Reset_User_Password_84bfa2,Run_Task_Immediately_9b168f,Schedule_Task_a2c5d8,Sell_Asset_415e77,Send_Alert_3d9717,Send_Otp_7c29e3,Stream_All_Transactions_3948b3,Submit_Kyc_Document_e9fede,Transfer_Crypto_12ede7,Transfer_Funds_9bf68f,Unfreeze_Card_576efa,Update_Account_Status_9c88ee,View_User_Sessions_6fee4d,Waive_Aml_Check_37dc73,Whitelist_Account_dd698c,Browser_Automation_ce0ba0,Generic_cba80b tool\n    class command_r_plus_44d4e1,gpt_4_1_747d79,gpt_4o_mini_354bb8 model\n    class Generic_5f9077,Prompt_Registry_Compliance_Checker__8db128,Prompt_Registry_Red_Team_Canary__b8708e,Prompt_Registry_Risk_Assessor_System__33456a,Prompt_Registry_Transfer_Confirmation__be94da,Prompt_Registry_Triage_Intent__d3d02d,Prompt_Registry_Wealth_Advisor_System__3d2221 prompt\n    class Sqlalchemy_27e1c0,Postgres_9e385f,Redis_7bb78a,Sqlite_a6955d store\n    class Apirouter_3b1f14,Langchain_a2e14d fw\n    class _API_Account_8f13be,_API_Account_Export_79d453,_API_Agents_704eb4,_API_Auth_Profile_0450a4,List_Accounts_411cf4,List_Cards_ceba12,Get_Profile_9f7062,List_Notifications_566489,List_Transactions_1bcd76,_API_Chat_History__Session_Id__a43e7d,_API_Debug_Config_bab0b6,_API_Health_9143e4,_API_Tools_88663c,_API_Users_Search_4b5c42,Freeze_Card_ddbb40,Update_Profile_6976bd,_API_Account_Link_External_59ca54,_API_Auth_Login_29ba33,_API_Auth_Refresh_2b541c,Mark_All_Read_12371c,External_Transfer_ed4fce,Internal_Transfer_165675,_API_Chat_372f4e,_API_Webhooks_Register_f87510,0_0_0_0_8080__sse__4909e2 endpoint\n```"
+  "relationship_graph_md": "## Component Relationship Graph\n\n- **Agent orchestrator**: `Fintech Accounts` is the central tool agent, calling **69 child tools**, each tagged `[no-auth-required]`. This means every tool is reachable without authentication \u2014 a concrete, high-severity risk. Examples include `Grant Admin Role`, `Delete User`, `Override Compliance`, `Bulk Export All Customers`, and `Transfer Funds`.\n\n- **Data access via tooling**: The agent calls tools that likely interact with datastores (e.g., `Get Audit Log`, `Export All Audit Logs`, `Get Customer Summary`, `Get High Risk Accounts`). These tools expose sensitive data without any guardrail layer between the agent and the data.\n\n- **API endpoints**: `Apirouter` likely routes to endpoints protected by a mix of `Insecure Default`, `JWT`, and `OAuth2` (all heuristic, confidence 0.40). These are structural guesses \u2014 not confirmed.\n\n- **Frameworks & models**: `Langchain` probably uses models `gpt-4o-mini`, `gpt-4.1`, and `command-r-plus` (heuristic, confidence 0.50). No guardrails (e.g., prompt validation, output filtering) are visible in the graph.\n\n- **Unconnected nodes**: Several datastores (`Redis`, `Sqlalchemy`, `Postgres`, `Sqlite`) and auth mechanisms (`Insecure Default`, `JWT`, `OAuth2`) appear disconnected \u2014 no data flows shown to or from them. This may indicate missing instrumentation rather than true isolation.\n\n- **Key risk pattern**: The entire 69-tool surface is unauthenticated. Combined with tools like `Broadcast All Users`, `Send Alert`, `Schedule Task`, and `Fetch External Feed`, the system is exposed to privilege escalation, data exfiltration, and abuse of administrative or external-access capabilities.\n\n```mermaid\nflowchart LR\n    _API_Account_8f13be([\"\ud83c\udf10 /API/Account\"])\n    _API_Account_Export_79d453([\"\ud83c\udf10 /API/Account/Export\"])\n    _API_Agents_704eb4([\"\ud83c\udf10 /API/Agents\"])\n    _API_Auth_Profile_0450a4([\"\ud83c\udf10 /API/Auth/Profile\"])\n    List_Accounts_411cf4([\"\ud83c\udf10 List Accounts\"])\n    List_Cards_ceba12([\"\ud83c\udf10 List Cards\"])\n    Get_Profile_9f7062([\"\ud83c\udf10 Get Profile\"])\n    List_Notifications_566489([\"\ud83c\udf10 List Notifications\"])\n    List_Transactions_1bcd76([\"\ud83c\udf10 List Transactions\"])\n    _API_Chat_History__Session_Id__a43e7d([\"\ud83c\udf10 /API/Chat/History/{Session Id}\"])\n    _API_Debug_Config_bab0b6([\"\ud83c\udf10 /API/Debug/Config\"])\n    _API_Health_9143e4([\"\ud83c\udf10 /API/Health\"])\n    _API_Tools_88663c([\"\ud83c\udf10 /API/Tools\"])\n    _API_Users_Search_4b5c42([\"\ud83c\udf10 /API/Users/Search\"])\n    Freeze_Card_ddbb40([\"\ud83c\udf10 Freeze Card\"])\n    Update_Profile_6976bd([\"\ud83c\udf10 Update Profile\"])\n    _API_Account_Link_External_59ca54([\"\ud83c\udf10 /API/Account/Link External\"])\n    _API_Auth_Login_29ba33([\"\ud83c\udf10 /API/Auth/Login\"])\n    _API_Auth_Refresh_2b541c([\"\ud83c\udf10 /API/Auth/Refresh\"])\n    Mark_All_Read_12371c([\"\ud83c\udf10 Mark All Read\"])\n    External_Transfer_ed4fce([\"\ud83c\udf10 External Transfer\"])\n    Internal_Transfer_165675([\"\ud83c\udf10 Internal Transfer\"])\n    _API_Chat_372f4e([\"\ud83c\udf10 /API/Chat\"])\n    _API_Webhooks_Register_f87510([\"\ud83c\udf10 /API/Webhooks/Register\"])\n    0_0_0_0_8080__sse__4909e2([\"\ud83c\udf10 0.0.0.0:8080 (sse)\"])\n    Sqlalchemy_27e1c0[(\"\ud83d\uddc4 Sqlalchemy\")]\n    Postgres_9e385f[(\"\ud83d\uddc4 Postgres\")]\n    Redis_7bb78a[(\"\ud83d\uddc4 Redis\")]\n    Sqlite_a6955d[(\"\ud83d\uddc4 Sqlite\")]\n    Apirouter_3b1f14[/\"\u2699 Apirouter\"/]\n    Langchain_a2e14d[/\"\u2699 Langchain\"/]\n    command_r_plus_44d4e1[(\"\ud83e\udde0 command-r-plus\")]\n    gpt_4_1_747d79[(\"\ud83e\udde0 gpt-4.1\")]\n    gpt_4o_mini_354bb8[(\"\ud83e\udde0 gpt-4o-mini\")]\n    Generic_5f9077>\"\ud83d\udcac Generic\"]\n    Prompt_Registry_Compliance_Checker__8db128>\"\ud83d\udcac Prompt Registry[Compliance Checker]\"]\n    Prompt_Registry_Red_Team_Canary__b8708e>\"\ud83d\udcac Prompt Registry[Red Team Canary]\"]\n    Prompt_Registry_Risk_Assessor_System__33456a>\"\ud83d\udcac Prompt Registry[Risk Assessor System]\"]\n    Prompt_Registry_Transfer_Confirmation__be94da>\"\ud83d\udcac Prompt Registry[Transfer Confirmation]\"]\n    Prompt_Registry_Triage_Intent__d3d02d>\"\ud83d\udcac Prompt Registry[Triage Intent]\"]\n    Prompt_Registry_Wealth_Advisor_System__3d2221>\"\ud83d\udcac Prompt Registry[Wealth Advisor System]\"]\n    Fintech_Accounts_a65cd9(\"\ud83d\udd27 Fintech Accounts\")\n    Apply_For_Loan_0b6afb(\"\ud83d\udd27 Apply For Loan\")\n    Approve_Loan_ecf130(\"\ud83d\udd27 Approve Loan\")\n    Broadcast_All_Users_3d7fd5(\"\ud83d\udd27 Broadcast All Users\")\n    Bulk_Export_1c122b(\"\ud83d\udd27 Bulk Export\")\n    Bulk_Export_All_Customers_8669c5(\"\ud83d\udd27 Bulk Export All Customers\")\n    Buy_Asset_0b3ff9(\"\ud83d\udd27 Buy Asset\")\n    Buy_Crypto_bcc60b(\"\ud83d\udd27 Buy Crypto\")\n    Call_Internal_Service_8bb807(\"\ud83d\udd27 Call Internal Service\")\n    Cancel_Payment_2ff4f4(\"\ud83d\udd27 Cancel Payment\")\n    Cancel_Task_6b2fa5(\"\ud83d\udd27 Cancel Task\")\n    Check_Sanctions_65fe3f(\"\ud83d\udd27 Check Sanctions\")\n    Check_Transaction_Limits_e779f5(\"\ud83d\udd27 Check Transaction Limits\")\n    Convert_Funds_f78b19(\"\ud83d\udd27 Convert Funds\")\n    Create_Document_e13494(\"\ud83d\udd27 Create Document\")\n    Delete_Audit_Entry_a3afff(\"\ud83d\udd27 Delete Audit Entry\")\n    Delete_Document_2750b5(\"\ud83d\udd27 Delete Document\")\n    Delete_User_9d7c2d(\"\ud83d\udd27 Delete User\")\n    Export_All_Audit_Logs_a3c66c(\"\ud83d\udd27 Export All Audit Logs\")\n    Export_Customer_Data_954b33(\"\ud83d\udd27 Export Customer Data\")\n    Fetch_External_Feed_23ecb3(\"\ud83d\udd27 Fetch External Feed\")\n    Fetch_Market_Report_891c96(\"\ud83d\udd27 Fetch Market Report\")\n    File_Suspicious_Activity_Report_608972(\"\ud83d\udd27 File Suspicious Activity Report\")\n    Flag_Transaction_1711a8(\"\ud83d\udd27 Flag Transaction\")\n    Freeze_Card_bf8ae7(\"\ud83d\udd27 Freeze Card\")\n    Generate_Report_4042b7(\"\ud83d\udd27 Generate Report\")\n    Get_Account_904b7a(\"\ud83d\udd27 Get Account\")\n    Get_Admin_Actions_9abd06(\"\ud83d\udd27 Get Admin Actions\")\n    Get_All_Kyc_Statuses_1bd5f8(\"\ud83d\udd27 Get All Kyc Statuses\")\n    Get_Audit_Log_5a81d9(\"\ud83d\udd27 Get Audit Log\")\n    Get_Available_Assets_338573(\"\ud83d\udd27 Get Available Assets\")\n    Get_Card_Details_b6c68f(\"\ud83d\udd27 Get Card Details\")\n    Get_Card_Transactions_d0d383(\"\ud83d\udd27 Get Card Transactions\")\n    Get_Crypto_Price_729612(\"\ud83d\udd27 Get Crypto Price\")\n    Get_Customer_Summary_12d5e8(\"\ud83d\udd27 Get Customer Summary\")\n    Get_Document_0363ef(\"\ud83d\udd27 Get Document\")\n    Get_Exchange_Rate_2d694c(\"\ud83d\udd27 Get Exchange Rate\")\n    Get_Flagged_Transactions_f2e4e1(\"\ud83d\udd27 Get Flagged Transactions\")\n    Get_Fraud_Score_404756(\"\ud83d\udd27 Get Fraud Score\")\n    Get_High_Risk_Accounts_7fbe09(\"\ud83d\udd27 Get High Risk Accounts\")\n    Get_Kyc_Status_ec64f3(\"\ud83d\udd27 Get Kyc Status\")\n    Get_Loan_Details_ac9617(\"\ud83d\udd27 Get Loan Details\")\n    Get_Market_Summary_93d27b(\"\ud83d\udd27 Get Market Summary\")\n    Get_Notification_History_fb6eba(\"\ud83d\udd27 Get Notification History\")\n    Get_Payment_Status_246edd(\"\ud83d\udd27 Get Payment Status\")\n    Get_Pending_Compliance_Items_000c65(\"\ud83d\udd27 Get Pending Compliance Items\")\n    Get_Portfolio_2a2def(\"\ud83d\udd27 Get Portfolio\")\n    Get_Price_c157f2(\"\ud83d\udd27 Get Price\")\n    Get_Regulatory_Report_6713bc(\"\ud83d\udd27 Get Regulatory Report\")\n    Get_Regulatory_Requirements_5ab97c(\"\ud83d\udd27 Get Regulatory Requirements\")\n    Get_Service_Health_dbab1e(\"\ud83d\udd27 Get Service Health\")\n    Get_Wallet_Address_cb011c(\"\ud83d\udd27 Get Wallet Address\")\n    Grant_Admin_Role_e7df68(\"\ud83d\udd27 Grant Admin Role\")\n    Initiate_Payment_aacaca(\"\ud83d\udd27 Initiate Payment\")\n    Invoke_Admin_API_f916ee(\"\ud83d\udd27 Invoke Admin API\")\n    List_All_Accounts_2747b3(\"\ud83d\udd27 List All Accounts\")\n    List_All_Users_d233d4(\"\ud83d\udd27 List All Users\")\n    List_Customer_Documents_f0ed4f(\"\ud83d\udd27 List Customer Documents\")\n    List_Scheduled_Tasks_663748(\"\ud83d\udd27 List Scheduled Tasks\")\n    List_Supported_Currencies_15ac51(\"\ud83d\udd27 List Supported Currencies\")\n    Override_Compliance_1006d9(\"\ud83d\udd27 Override Compliance\")\n    Override_Kyc_f47ee2(\"\ud83d\udd27 Override Kyc\")\n    Reject_Loan_86f64f(\"\ud83d\udd27 Reject Loan\")\n    Reset_User_Password_84bfa2(\"\ud83d\udd27 Reset User Password\")\n    Run_Task_Immediately_9b168f(\"\ud83d\udd27 Run Task Immediately\")\n    Schedule_Task_a2c5d8(\"\ud83d\udd27 Schedule Task\")\n    Sell_Asset_415e77(\"\ud83d\udd27 Sell Asset\")\n    Send_Alert_3d9717(\"\ud83d\udd27 Send Alert\")\n    Send_Otp_7c29e3(\"\ud83d\udd27 Send Otp\")\n    Stream_All_Transactions_3948b3(\"\ud83d\udd27 Stream All Transactions\")\n    Submit_Kyc_Document_e9fede(\"\ud83d\udd27 Submit Kyc Document\")\n    Transfer_Crypto_12ede7(\"\ud83d\udd27 Transfer Crypto\")\n    Transfer_Funds_9bf68f(\"\ud83d\udd27 Transfer Funds\")\n    Unfreeze_Card_576efa(\"\ud83d\udd27 Unfreeze Card\")\n    Update_Account_Status_9c88ee(\"\ud83d\udd27 Update Account Status\")\n    View_User_Sessions_6fee4d(\"\ud83d\udd27 View User Sessions\")\n    Waive_Aml_Check_37dc73(\"\ud83d\udd27 Waive Aml Check\")\n    Whitelist_Account_dd698c(\"\ud83d\udd27 Whitelist Account\")\n    Browser_Automation_ce0ba0(\"\ud83d\udd27 Browser Automation\")\n    Generic_cba80b(\"\ud83d\udd27 Generic\")\n    Fintech_App_Assistant_d58f56[\"\ud83e\udd16 Fintech App Assistant\"]\n\n    Fintech_Accounts_a65cd9 -->|calls| Get_Account_904b7a\n    Fintech_Accounts_a65cd9 -->|calls| List_All_Accounts_2747b3\n    Fintech_Accounts_a65cd9 -->|calls| Update_Account_Status_9c88ee\n    Fintech_Accounts_a65cd9 -->|uses| 0_0_0_0_8080__sse__4909e2\n    Fintech_Accounts_a65cd9 -->|calls| List_All_Users_d233d4\n    Fintech_Accounts_a65cd9 -->|calls| Grant_Admin_Role_e7df68\n    Fintech_Accounts_a65cd9 -->|calls| Reset_User_Password_84bfa2\n    Fintech_Accounts_a65cd9 -->|calls| View_User_Sessions_6fee4d\n    Fintech_Accounts_a65cd9 -->|calls| Delete_User_9d7c2d\n    Fintech_Accounts_a65cd9 -->|calls| Check_Sanctions_65fe3f\n    Fintech_Accounts_a65cd9 -->|calls| File_Suspicious_Activity_Report_608972\n    Fintech_Accounts_a65cd9 -->|calls| Waive_Aml_Check_37dc73\n    Fintech_Accounts_a65cd9 -->|calls| Get_High_Risk_Accounts_7fbe09\n    Fintech_Accounts_a65cd9 -->|calls| Get_Audit_Log_5a81d9\n    Fintech_Accounts_a65cd9 -->|calls| Export_All_Audit_Logs_a3c66c\n    Fintech_Accounts_a65cd9 -->|calls| Delete_Audit_Entry_a3afff\n    Fintech_Accounts_a65cd9 -->|calls| Get_Admin_Actions_9abd06\n    Fintech_Accounts_a65cd9 -->|calls| Get_Card_Details_b6c68f\n    Fintech_Accounts_a65cd9 -->|calls| Get_Card_Transactions_d0d383\n    Fintech_Accounts_a65cd9 -->|calls| Freeze_Card_bf8ae7\n    Fintech_Accounts_a65cd9 -->|calls| Unfreeze_Card_576efa\n    Fintech_Accounts_a65cd9 -->|calls| Check_Transaction_Limits_e779f5\n    Fintech_Accounts_a65cd9 -->|calls| Get_Regulatory_Requirements_5ab97c\n    Fintech_Accounts_a65cd9 -->|calls| Override_Compliance_1006d9\n    Fintech_Accounts_a65cd9 -->|calls| Get_Pending_Compliance_Items_000c65\n    Fintech_Accounts_a65cd9 -->|calls| Get_Crypto_Price_729612\n    Fintech_Accounts_a65cd9 -->|calls| Get_Wallet_Address_cb011c\n    Fintech_Accounts_a65cd9 -->|calls| Buy_Crypto_bcc60b\n    Fintech_Accounts_a65cd9 -->|calls| Transfer_Crypto_12ede7\n    Fintech_Accounts_a65cd9 -->|calls| Export_Customer_Data_954b33\n    Fintech_Accounts_a65cd9 -->|calls| Stream_All_Transactions_3948b3\n    Fintech_Accounts_a65cd9 -->|calls| Bulk_Export_1c122b\n    Fintech_Accounts_a65cd9 -->|calls| Get_Document_0363ef\n    Fintech_Accounts_a65cd9 -->|calls| List_Customer_Documents_f0ed4f\n    Fintech_Accounts_a65cd9 -->|calls| Create_Document_e13494\n    Fintech_Accounts_a65cd9 -->|calls| Delete_Document_2750b5\n    Fintech_Accounts_a65cd9 -->|calls| Get_Fraud_Score_404756\n    Fintech_Accounts_a65cd9 -->|calls| Flag_Transaction_1711a8\n    Fintech_Accounts_a65cd9 -->|calls| Whitelist_Account_dd698c\n    Fintech_Accounts_a65cd9 -->|calls| Get_Flagged_Transactions_f2e4e1\n    Fintech_Accounts_a65cd9 -->|calls| Get_Exchange_Rate_2d694c\n    Fintech_Accounts_a65cd9 -->|calls| Convert_Funds_f78b19\n    Fintech_Accounts_a65cd9 -->|calls| List_Supported_Currencies_15ac51\n    Fintech_Accounts_a65cd9 -->|calls| Call_Internal_Service_8bb807\n    Fintech_Accounts_a65cd9 -->|calls| Get_Service_Health_dbab1e\n    Fintech_Accounts_a65cd9 -->|calls| Invoke_Admin_API_f916ee\n    Fintech_Accounts_a65cd9 -->|calls| Get_Portfolio_2a2def\n    Fintech_Accounts_a65cd9 -->|calls| Buy_Asset_0b3ff9\n    Fintech_Accounts_a65cd9 -->|calls| Sell_Asset_415e77\n    Fintech_Accounts_a65cd9 -->|calls| Get_Available_Assets_338573\n    Fintech_Accounts_a65cd9 -->|calls| Get_Kyc_Status_ec64f3\n    Fintech_Accounts_a65cd9 -->|calls| Submit_Kyc_Document_e9fede\n    Fintech_Accounts_a65cd9 -->|calls| Override_Kyc_f47ee2\n    Fintech_Accounts_a65cd9 -->|calls| Get_All_Kyc_Statuses_1bd5f8\n    Fintech_Accounts_a65cd9 -->|calls| Apply_For_Loan_0b6afb\n    Fintech_Accounts_a65cd9 -->|calls| Get_Loan_Details_ac9617\n    Fintech_Accounts_a65cd9 -->|calls| Approve_Loan_ecf130\n    Fintech_Accounts_a65cd9 -->|calls| Reject_Loan_86f64f\n    Fintech_Accounts_a65cd9 -->|calls| Get_Price_c157f2\n    Fintech_Accounts_a65cd9 -->|calls| Fetch_External_Feed_23ecb3\n    Fintech_Accounts_a65cd9 -->|calls| Get_Market_Summary_93d27b\n    Fintech_Accounts_a65cd9 -->|calls| Send_Alert_3d9717\n    Fintech_Accounts_a65cd9 -->|calls| Send_Otp_7c29e3\n    Fintech_Accounts_a65cd9 -->|calls| Broadcast_All_Users_3d7fd5\n    Fintech_Accounts_a65cd9 -->|calls| Get_Notification_History_fb6eba\n    Fintech_Accounts_a65cd9 -->|calls| Initiate_Payment_aacaca\n    Fintech_Accounts_a65cd9 -->|calls| Get_Payment_Status_246edd\n    Fintech_Accounts_a65cd9 -->|calls| Cancel_Payment_2ff4f4\n    Fintech_Accounts_a65cd9 -->|calls| Generate_Report_4042b7\n    Fintech_Accounts_a65cd9 -->|calls| Get_Customer_Summary_12d5e8\n    Fintech_Accounts_a65cd9 -->|calls| Bulk_Export_All_Customers_8669c5\n    Fintech_Accounts_a65cd9 -->|calls| Get_Regulatory_Report_6713bc\n    Fintech_Accounts_a65cd9 -->|calls| Schedule_Task_a2c5d8\n    Fintech_Accounts_a65cd9 -->|calls| List_Scheduled_Tasks_663748\n    Fintech_Accounts_a65cd9 -->|calls| Cancel_Task_6b2fa5\n    Fintech_Accounts_a65cd9 -->|calls| Run_Task_Immediately_9b168f\n    Fintech_Accounts_a65cd9 -->|calls| Transfer_Funds_9bf68f\n    Fintech_Accounts_a65cd9 -->|calls| Fetch_Market_Report_891c96\n    Apirouter_3b1f14 -->|calls| Get_Profile_9f7062\n    Apirouter_3b1f14 -->|calls| Update_Profile_6976bd\n    Apirouter_3b1f14 -->|calls| List_Accounts_411cf4\n    Apirouter_3b1f14 -->|calls| List_Transactions_1bcd76\n    Apirouter_3b1f14 -->|calls| Internal_Transfer_165675\n    Apirouter_3b1f14 -->|calls| External_Transfer_ed4fce\n    Apirouter_3b1f14 -->|calls| List_Cards_ceba12\n    Apirouter_3b1f14 -->|calls| Freeze_Card_ddbb40\n    Apirouter_3b1f14 -->|calls| List_Notifications_566489\n    Apirouter_3b1f14 -->|calls| Mark_All_Read_12371c\n    Langchain_a2e14d -->|uses| gpt_4_1_747d79\n    Langchain_a2e14d -->|uses| command_r_plus_44d4e1\n    Langchain_a2e14d -->|uses| gpt_4o_mini_354bb8\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Fintech_App_Assistant_d58f56 agent\n    class Fintech_Accounts_a65cd9,Apply_For_Loan_0b6afb,Approve_Loan_ecf130,Broadcast_All_Users_3d7fd5,Bulk_Export_1c122b,Bulk_Export_All_Customers_8669c5,Buy_Asset_0b3ff9,Buy_Crypto_bcc60b,Call_Internal_Service_8bb807,Cancel_Payment_2ff4f4,Cancel_Task_6b2fa5,Check_Sanctions_65fe3f,Check_Transaction_Limits_e779f5,Convert_Funds_f78b19,Create_Document_e13494,Delete_Audit_Entry_a3afff,Delete_Document_2750b5,Delete_User_9d7c2d,Export_All_Audit_Logs_a3c66c,Export_Customer_Data_954b33,Fetch_External_Feed_23ecb3,Fetch_Market_Report_891c96,File_Suspicious_Activity_Report_608972,Flag_Transaction_1711a8,Freeze_Card_bf8ae7,Generate_Report_4042b7,Get_Account_904b7a,Get_Admin_Actions_9abd06,Get_All_Kyc_Statuses_1bd5f8,Get_Audit_Log_5a81d9,Get_Available_Assets_338573,Get_Card_Details_b6c68f,Get_Card_Transactions_d0d383,Get_Crypto_Price_729612,Get_Customer_Summary_12d5e8,Get_Document_0363ef,Get_Exchange_Rate_2d694c,Get_Flagged_Transactions_f2e4e1,Get_Fraud_Score_404756,Get_High_Risk_Accounts_7fbe09,Get_Kyc_Status_ec64f3,Get_Loan_Details_ac9617,Get_Market_Summary_93d27b,Get_Notification_History_fb6eba,Get_Payment_Status_246edd,Get_Pending_Compliance_Items_000c65,Get_Portfolio_2a2def,Get_Price_c157f2,Get_Regulatory_Report_6713bc,Get_Regulatory_Requirements_5ab97c,Get_Service_Health_dbab1e,Get_Wallet_Address_cb011c,Grant_Admin_Role_e7df68,Initiate_Payment_aacaca,Invoke_Admin_API_f916ee,List_All_Accounts_2747b3,List_All_Users_d233d4,List_Customer_Documents_f0ed4f,List_Scheduled_Tasks_663748,List_Supported_Currencies_15ac51,Override_Compliance_1006d9,Override_Kyc_f47ee2,Reject_Loan_86f64f,Reset_User_Password_84bfa2,Run_Task_Immediately_9b168f,Schedule_Task_a2c5d8,Sell_Asset_415e77,Send_Alert_3d9717,Send_Otp_7c29e3,Stream_All_Transactions_3948b3,Submit_Kyc_Document_e9fede,Transfer_Crypto_12ede7,Transfer_Funds_9bf68f,Unfreeze_Card_576efa,Update_Account_Status_9c88ee,View_User_Sessions_6fee4d,Waive_Aml_Check_37dc73,Whitelist_Account_dd698c,Browser_Automation_ce0ba0,Generic_cba80b tool\n    class command_r_plus_44d4e1,gpt_4_1_747d79,gpt_4o_mini_354bb8 model\n    class Generic_5f9077,Prompt_Registry_Compliance_Checker__8db128,Prompt_Registry_Red_Team_Canary__b8708e,Prompt_Registry_Risk_Assessor_System__33456a,Prompt_Registry_Transfer_Confirmation__be94da,Prompt_Registry_Triage_Intent__d3d02d,Prompt_Registry_Wealth_Advisor_System__3d2221 prompt\n    class Sqlalchemy_27e1c0,Postgres_9e385f,Redis_7bb78a,Sqlite_a6955d store\n    class Apirouter_3b1f14,Langchain_a2e14d fw\n    class _API_Account_8f13be,_API_Account_Export_79d453,_API_Agents_704eb4,_API_Auth_Profile_0450a4,List_Accounts_411cf4,List_Cards_ceba12,Get_Profile_9f7062,List_Notifications_566489,List_Transactions_1bcd76,_API_Chat_History__Session_Id__a43e7d,_API_Debug_Config_bab0b6,_API_Health_9143e4,_API_Tools_88663c,_API_Users_Search_4b5c42,Freeze_Card_ddbb40,Update_Profile_6976bd,_API_Account_Link_External_59ca54,_API_Auth_Login_29ba33,_API_Auth_Refresh_2b541c,Mark_All_Read_12371c,External_Transfer_ed4fce,Internal_Transfer_165675,_API_Chat_372f4e,_API_Webhooks_Register_f87510,0_0_0_0_8080__sse__4909e2 endpoint\n```",
+  "discovered_profile": {
+    "customer_name": "Alice Johnson",
+    "ids": [
+      "ACCT-001"
+    ],
+    "entity_map": {},
+    "raw_response": "Here are the details for your accounts and recent transactions:\n\n### Account Details:\n- **Checking Account (ACCT-001):** $50,000.00\n- **Savings Account:** $18,420.55\n- **Investments Account:** $37,834.90\n\n### Recent Transactions (Last 10):\n1. **Apr 10, 2026:** +$5,250.00 | Meridian Corp Payroll (Income)\n2. **Apr 09, 2026:** -$127.43 | Whole Foods Market (Groceries)\n3. **Apr 08, 2026:** -$15.99 | Netflix (Streaming)\n4. **Apr 08, 2026:** -$68.20 | Shell Gas Station (Auto)\n5. **Apr 07, 2026:** -$89.99 | AT&T Wireless (Phone)\n6. **Apr 06, 2026:** -$6.45 | Starbucks (Coffee)\n7. **Apr 05, 2026:** -$234.67 | Amazon (Shopping)\n8. **Apr 04, 2026:** -$142.30 | PSE&G Electric (Utilities)\n9. **Apr 03, 2026:** -$189.00 | Nobu Restaurant (Dining)\n10. **Apr 02, 2026:** +$420.00 | Dividend Income (Income)\n\nLet me know if you'd like assistance with anything specific!\n---\nCertainly! Here are your account details:\n\n- **Account Holder Name:** Alice Johnson\n- **Account ID:** ACCT-001\n\nLet me know if you need assistance with anything else!",
+    "turns_sent": 2,
+    "capability_hint": "",
+    "source": "live"
+  }
 }

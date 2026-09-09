@@ -43,7 +43,8 @@ target:
   # it automatically (extracted from AZURE_WEBAPP_NAME in .github/workflows/deploy-azure.yml).
   #url: http://127.0.0.1:8250   # local dev backend (pnpm dev or python -m uvicorn api:app)
   url: 
-
+    http://127.0.0.1:8250
+    
   # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
   #auth:
   #  type: basic

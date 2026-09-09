@@ -244,7 +244,7 @@ async def test_send_exception_is_non_fatal():
 # ---------------------------------------------------------------------------
 
 
-def test_apply_fills_system_prompt_excerpt():
+async def test_apply_fills_system_prompt_excerpt():
     agent = _agent_node()
     doc = AiSbomDocument(target="test-target", nodes=[agent], edges=[])
     gaps = sbom_capability_gaps(doc)
@@ -257,14 +257,14 @@ def test_apply_fills_system_prompt_excerpt():
         },
         probes_sent=1,
     )
-    notes = apply_capability_discovery(doc, gaps, result)
+    notes = await apply_capability_discovery(doc, gaps, result)
     assert agent.metadata.system_prompt_excerpt
     assert "Acme Airlines" in agent.metadata.system_prompt_excerpt
     assert any(e.kind == "dynamic_probe" for e in agent.evidence)
     assert any("system_prompt_excerpt" in n for n in notes)
 
 
-def test_apply_adds_new_tool_node_and_calls_edge():
+async def test_apply_adds_new_tool_node_and_calls_edge():
     agent = _agent_node()
     doc = AiSbomDocument(target="test-target", nodes=[agent], edges=[])
     gaps = sbom_capability_gaps(doc)
@@ -272,7 +272,7 @@ def test_apply_adds_new_tool_node_and_calls_edge():
         raw_responses={"tools": "- Book a flight\n- Cancel a reservation\n- Check in for a flight"},
         probes_sent=1,
     )
-    apply_capability_discovery(doc, gaps, result)
+    await apply_capability_discovery(doc, gaps, result)
     tool_names = {n.name for n in doc.nodes if n.component_type == ComponentType.TOOL}
     assert "Book a flight" in tool_names
     calls_edges = [e for e in doc.edges if e.relationship_type == RelationshipType.CALLS]
@@ -283,7 +283,7 @@ def test_apply_adds_new_tool_node_and_calls_edge():
     assert new_tool.evidence[0].kind == "dynamic_probe"
 
 
-def test_apply_does_not_duplicate_existing_tool():
+async def test_apply_does_not_duplicate_existing_tool():
     agent = _agent_node()
     existing_tool = _tool_node("Book a flight")
     doc = AiSbomDocument(
@@ -297,12 +297,12 @@ def test_apply_does_not_duplicate_existing_tool():
     gaps = sbom_capability_gaps(doc)
     assert gaps[0].needs_tools is True
     result = CapabilityDiscoveryResult(raw_responses={"tools": "- Book a flight"}, probes_sent=1)
-    notes = apply_capability_discovery(doc, gaps, result)
+    notes = await apply_capability_discovery(doc, gaps, result)
     assert notes == []
     assert len([n for n in doc.nodes if n.component_type == ComponentType.TOOL]) == 1
 
 
-def test_apply_adds_subagent_node_and_delegates_to_edge():
+async def test_apply_adds_subagent_node_and_delegates_to_edge():
     agent = _agent_node()
     doc = AiSbomDocument(target="test-target", nodes=[agent], edges=[])
     gaps = sbom_capability_gaps(doc)
@@ -310,7 +310,7 @@ def test_apply_adds_subagent_node_and_delegates_to_edge():
         raw_responses={"subagents": "- Billing Agent\n- Fraud Review Agent"},
         probes_sent=1,
     )
-    apply_capability_discovery(doc, gaps, result)
+    await apply_capability_discovery(doc, gaps, result)
     subagent_names = {
         n.name for n in doc.nodes
         if n.component_type == ComponentType.AGENT and n.id != agent.id
@@ -320,17 +320,17 @@ def test_apply_adds_subagent_node_and_delegates_to_edge():
     assert len(delegates_edges) == 2
 
 
-def test_apply_with_empty_raw_responses_is_noop():
+async def test_apply_with_empty_raw_responses_is_noop():
     agent = _agent_node()
     doc = AiSbomDocument(target="test-target", nodes=[agent], edges=[])
     gaps = sbom_capability_gaps(doc)
-    notes = apply_capability_discovery(doc, gaps, CapabilityDiscoveryResult())
+    notes = await apply_capability_discovery(doc, gaps, CapabilityDiscoveryResult())
     assert notes == []
     assert agent.metadata.system_prompt_excerpt is None
     assert len(doc.nodes) == 1
 
 
-def test_apply_never_overwrites_existing_system_prompt():
+async def test_apply_never_overwrites_existing_system_prompt():
     agent = _agent_node()
     agent.metadata.system_prompt_excerpt = "Original excerpt already present."
     tool = _tool_node("BookFlight")
@@ -351,18 +351,18 @@ def test_apply_never_overwrites_existing_system_prompt():
         },
         probes_sent=2,
     )
-    apply_capability_discovery(doc, gaps, result)
+    await apply_capability_discovery(doc, gaps, result)
     assert agent.metadata.system_prompt_excerpt == "Original excerpt already present."
 
 
-def test_evidence_location_is_runtime_marker():
+async def test_evidence_location_is_runtime_marker():
     agent = _agent_node()
     doc = AiSbomDocument(target="test-target", nodes=[agent], edges=[])
     gaps = sbom_capability_gaps(doc)
     result = CapabilityDiscoveryResult(
         raw_responses={"tools": "- Book a flight"}, probes_sent=1,
     )
-    apply_capability_discovery(doc, gaps, result)
+    await apply_capability_discovery(doc, gaps, result)
     new_tool = next(n for n in doc.nodes if n.name == "Book a flight")
     loc = new_tool.evidence[0].location
     assert isinstance(loc, SourceLocation)

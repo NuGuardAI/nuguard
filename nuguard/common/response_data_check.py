@@ -44,9 +44,25 @@ def _count_records(data: object) -> int:
     return 0
 
 
+def _is_validation_error_envelope(data: object) -> bool:
+    """True for the FastAPI/Pydantic ``{"detail": [{"loc", "msg", "type"}, ...]}``
+    validation-error shape, which naturally satisfies the bulk-record-count
+    heuristic (a list of >1 error dicts) without carrying any real data.
+    """
+    if not isinstance(data, dict):
+        return False
+    detail = data.get("detail")
+    if not isinstance(detail, list) or not detail:
+        return False
+    return all(
+        isinstance(item, dict) and {"loc", "msg"} <= item.keys() for item in detail
+    )
+
+
 def check_response_for_data_exposure(
     response_text: str,
     sensitive_fields: list[str] | None = None,
+    http_status_code: int | None = None,
 ) -> DataExposureResult:
     """Inspect a direct-HTTP response body for evidence of actual data exposure.
 
@@ -54,6 +70,14 @@ def check_response_for_data_exposure(
     ``pii_fields``/``phi_fields``/``pfi_fields`` metadata on the endpoint's
     backing datastore — to carry sensitive data, used to check whether those
     exact field names appear in the response body.
+
+    *http_status_code*, when known, guards the generic bulk-record-count
+    heuristic: a 4xx/5xx response is often a validation-error or not-found
+    envelope whose body incidentally satisfies "record_count > 1" (e.g. a
+    Pydantic ``{"detail": [...]}`` list of field errors) without carrying any
+    real data. PII-shaped values and sensitive-field-name matches still
+    trigger regardless of status — a genuine leak can ride along on an
+    error-labeled response from a misconfigured app.
 
     A record count on its own (a single-object response) is not treated as
     exposure — that's indistinguishable from a normal single-resource GET.
@@ -74,14 +98,23 @@ def check_response_for_data_exposure(
         body_lower = response_text.lower()
         matched_fields = [f for f in sensitive_fields if f.lower() in body_lower]
 
-    exposed = bool(pii_values) or bool(matched_fields) or record_count > 1
+    is_error_status = http_status_code is not None and http_status_code >= 400
+    bulk_record_signal = record_count > 1
+    if bulk_record_signal and is_error_status and _is_validation_error_envelope(data):
+        bulk_record_signal = False
+    elif bulk_record_signal and is_error_status and not pii_values and not matched_fields:
+        # A bare record-count match on an error status, with no corroborating
+        # PII/field-name evidence, is too weak to trust on its own.
+        bulk_record_signal = False
+
+    exposed = bool(pii_values) or bool(matched_fields) or bulk_record_signal
 
     evidence_parts: list[str] = []
     if pii_values:
         evidence_parts.append(f"PII-shaped values: {pii_values[:3]}")
     if matched_fields:
         evidence_parts.append(f"sensitive fields present: {matched_fields[:5]}")
-    if record_count > 1:
+    if bulk_record_signal:
         evidence_parts.append(f"bulk record list (count={record_count})")
 
     return DataExposureResult(

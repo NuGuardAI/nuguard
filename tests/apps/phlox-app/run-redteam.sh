@@ -26,10 +26,10 @@ echo "---"
 mkdir -p "$SCRIPT_DIR/reports"
 echo "Generating AI-SBOM from source: https://github.com/bloodworks-io/phlox ..."
 
-uv run nuguard sbom generate \
-  --config "$CONFIG_PATH" \
-  --format json \
-  -o "$SCRIPT_DIR/phlox.sbom.json"
+#uv run nuguard sbom generate \
+#  --config "$CONFIG_PATH" \
+#  --format json \
+#  -o "$SCRIPT_DIR/phlox.sbom.json"
 
 uv run nuguard redteam \
   --config "$CONFIG_PATH" \

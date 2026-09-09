@@ -135,6 +135,38 @@ _CONTENT_FIELD_NAMES: tuple[str, ...] = (
 )
 
 
+_SIMPLE_SCALAR_TYPES: frozenset[str] = frozenset({
+    "str", "int", "float", "bool", "dict",
+    "list[str]", "list[int]", "list[float]", "list[bool]",
+})
+
+
+def _has_required_structured_field(
+    request_body_schema: "dict[str, str] | None", payload_key: str
+) -> bool:
+    """Detect a required non-scalar field (other than the chat payload key).
+
+    A field is "required" when its type hint has no ``| None`` / ``Optional[...]``
+    marker.  A required field of a custom/structured type (e.g.
+    ``list[VisualDocumentPage]``) can't be synthesised from plain probe text, so
+    the endpoint will reject a normal chat request — a strong signal this is a
+    non-conversational route (document upload, image analysis, etc.) even
+    though its path or payload key looks chat-like.
+    """
+    if not request_body_schema:
+        return False
+    for field_name, type_hint in request_body_schema.items():
+        if field_name == payload_key or not isinstance(type_hint, str):
+            continue
+        normalized = type_hint.replace(" ", "")
+        if "|None" in normalized or normalized.startswith("Optional["):
+            continue
+        if normalized in _SIMPLE_SCALAR_TYPES:
+            continue
+        return True
+    return False
+
+
 def _normalize_payload_key(key: str) -> str:
     """Normalize a payload key for comparison against _RUNTIME_NON_CHAT_KEYS.
 
@@ -282,6 +314,7 @@ def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool, dict | Non
             body_schema = _resolve_openapi_ref(body_schema["$ref"], schema)
 
         props = body_schema.get("properties") or {}
+        required_fields = set(body_schema.get("required") or [])
         for key in _OPENAPI_PAYLOAD_KEYS:
             if key not in props:
                 continue
@@ -289,8 +322,28 @@ def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool, dict | Non
             if isinstance(prop, dict) and "$ref" in prop:
                 prop = _resolve_openapi_ref(prop["$ref"], schema)
             is_list = isinstance(prop, dict) and prop.get("type") == "array"
-            if best is None or score > best[0]:
-                best = (score, path, key, is_list)
+
+            # Penalise a required field (other than the chat key) whose type
+            # isn't a plain scalar — e.g. a required array of document/image
+            # objects. Such a field can't be synthesised from plain probe
+            # text, so the endpoint will reject a normal chat request even
+            # though its path/key looks conversational (see the matching
+            # penalty in discover_chat_candidates_from_sbom).
+            path_score = score
+            for other_field, other_schema in props.items():
+                if other_field == key or other_field not in required_fields:
+                    continue
+                o = other_schema
+                if isinstance(o, dict) and "$ref" in o:
+                    o = _resolve_openapi_ref(o["$ref"], schema)
+                o_type = o.get("type") if isinstance(o, dict) else None
+                if o_type in ("string", "integer", "number", "boolean"):
+                    continue
+                path_score -= 6
+                break
+
+            if best is None or path_score > best[0]:
+                best = (path_score, path, key, is_list)
             break
 
     if best is None:
@@ -500,11 +553,16 @@ async def _try_openapi_detection(
         if _looks_like_chat_response(data, known_response_key) or _is_streaming_response(resp):
             _log.info("endpoint_probe: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
             return ProbeResult(oa_path, oa_key, oa_list, oa_template)
-    elif 400 <= status < 500:
-        # 4xx (not 404/405) — endpoint exists, schema-specified key accepted
+    elif status in (401, 403):
+        # Auth-gated, not a rejected body — the endpoint exists and the
+        # schema-specified key was structurally accepted, just needs
+        # credentials. A plain 400/422 means the body itself was rejected
+        # (e.g. a required field the probe couldn't fill), which is not a
+        # confirmation and must fall through to let the blind probe /
+        # browser-sniff fallback try other candidates instead.
         _log.info("endpoint_probe: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
         return ProbeResult(oa_path, oa_key, oa_list, oa_template)
-    # 5xx — don't block; let the blind probe try this path too
+    # 400/404/405/422/5xx — don't block; let the blind probe try this path too
     return None
 
 
@@ -1005,9 +1063,25 @@ def discover_chat_candidates_from_sbom(
         elif node.confidence >= 0.75:
             score += 1
 
-        if "/chat/message" in endpoint_l:
+        # Path tokens must match whole segments — a substring check would let
+        # e.g. "/respond-visual" falsely match the "/respond" token and
+        # outscore the real "/chat" endpoint.
+        endpoint_segments = [s for s in endpoint_l.strip("/").split("/") if s]
+
+        def _segment_match(token: str) -> bool:
+            tok_segments = [s for s in token.strip("/").split("/") if s]
+            n = len(tok_segments)
+            return any(
+                endpoint_segments[i : i + n] == tok_segments
+                for i in range(len(endpoint_segments) - n + 1)
+            )
+
+        if _segment_match("/chat/message"):
             score += 2
-        elif any(token in endpoint_l for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")):
+        elif any(
+            _segment_match(token)
+            for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")
+        ):
             score += 3
         elif endpoint_l.endswith("/chat"):
             score += 1
@@ -1024,6 +1098,14 @@ def discover_chat_candidates_from_sbom(
         # Penalise nodes that had no explicit payload key (inferred).
         if not meta.chat_payload_key:
             score -= 1
+
+        # Penalise endpoints that require another structured field (e.g. a list
+        # of document/image pages) beyond the chat payload key — a plain-text
+        # probe request can't populate it, so the endpoint will reject every
+        # attack turn with a validation error (e.g. HTTP 400/422) regardless of
+        # how conversational its path or payload key name looks.
+        if _has_required_structured_field(meta.request_body_schema, payload_key):
+            score -= 6
 
         # Penalise path-param routes — they require a real resource ID and will
         # 404 with an unresolved placeholder. Still returned so callers can fall
