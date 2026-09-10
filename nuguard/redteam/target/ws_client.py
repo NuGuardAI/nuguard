@@ -257,6 +257,7 @@ class WebSocketTargetClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         """Send a prompt payload over the WebSocket and return (response_text, tool_calls).
 
@@ -264,7 +265,8 @@ class WebSocketTargetClient:
         message matching ``ws_response_complete_key`` arrives, or until
         ``MAX_DRAIN_MESSAGES`` is reached. Reconnects transparently on a dropped
         connection and raises :class:`TargetUnavailableError` after
-        ``max_consecutive_errors`` consecutive failures.
+        ``max_consecutive_errors`` consecutive failures. ``retry_transient``
+        enables bounded reconnect retries for pre-run warmup calls.
         """
         import websockets  # noqa: PLC0415
 
@@ -303,6 +305,17 @@ class WebSocketTargetClient:
                     f"WebSocket target failed {self._consecutive_errors} consecutive times "
                     f"(last: {exc}) — aborting scan to avoid hammering a broken endpoint."
                 ) from exc
+            if retry_transient:
+                for attempt in range(2):
+                    await asyncio.sleep(2**attempt)
+                    retry_text, retry_calls = await self.send(
+                        payload,
+                        session,
+                        extra_headers,
+                        retry_transient=False,
+                    )
+                    if retry_text:
+                        return retry_text, retry_calls
             return "", []
 
     async def aclose(self) -> None:
