@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlparse
 
 import typer
 import yaml
@@ -265,6 +266,16 @@ async def _discover_browser_async(
     except ValueError:
         relative_cookie_path = str(effective_cookie_file)
 
+    # The sniffed chat request is captured as a full URL (e.g.
+    # "https://getmosaiccare.com/chat"); target.endpoint wants a path
+    # ("/chat"). Without this, a real sniffed endpoint is only ever printed
+    # to the console and discarded — downstream SBOM-fallback / endpoint_probe
+    # discovery has no idea a live browser session just confirmed the actual
+    # chat endpoint, and can pick an unrelated path instead.
+    sniffed_endpoint_path = None
+    if result.sniffed_endpoint:
+        sniffed_endpoint_path = urlparse(result.sniffed_endpoint).path or None
+
     try:
         editable = load_editable_yaml(resolved_config_path)
         before_text = dump_to_string(editable)
@@ -273,6 +284,7 @@ async def _discover_browser_async(
             cookie_file=relative_cookie_path,
             chat_payload_extras=result.candidate_extra_fields,
             ambiguous_extras=result.ambiguous_fields,
+            endpoint=sniffed_endpoint_path,
         )
         after_text = dump_to_string(editable)
     except BrowserLoginError as exc:
