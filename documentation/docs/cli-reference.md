@@ -557,9 +557,9 @@ NUGUARD_REDTEAM_LLM_API_KEY=sk-... \
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
   --guided --guided-max-turns 15 --guided-concurrency 2
 
-# Limit to specific attack families
+# Skip scenarios that mutate/destroy target state
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
-  --scenarios prompt-driven-threat,data-exfiltration
+  --scenarios non-destructive
 
 # Scan with a custom scenario catalog
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
@@ -585,7 +585,7 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `--canary` | — | from `nuguard.yaml` | Canary JSON file path |
 | `--catalog` | — | built-in catalog | Path to a custom scenario catalog YAML. Replaces the built-in catalog. Generate with `nuguard redteam catalog-export` |
 | `--profile` | — | `ci` | `ci` (high-signal only) or `full` (all scenarios) |
-| `--scenarios` | — | all | Comma-separated filter: `prompt-driven-threat`, `policy-violation`, `data-exfiltration`, `privilege-escalation`, `tool-abuse`, `mcp-toxic-flow`, `api-attack`, `agentic-trust-abuse`, `recon-inference`. Stable catalog IDs (e.g. `D01,C03`) also work |
+| `--scenarios` | — | both | Comma-separated filter: `destructive`, `non-destructive` |
 | `--min-impact-score` | — | `0.0` | Exclude scenarios below this pre-score [0–10] |
 | `--guided` / `--no-guided` | — | on when a redteam LLM is configured | Adaptive multi-turn guided conversations (TAP + PAIR) |
 | `--guided-max-turns` | — | `12` | Max turns per guided conversation |
