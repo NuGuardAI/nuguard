@@ -27,8 +27,8 @@ from nuguard.sbom.models import Evidence, Node, SourceLocation
 from nuguard.sbom.types import ComponentType, RelationshipType
 
 if TYPE_CHECKING:
-    from nuguard.common.target_client_builder import TargetClient
     from nuguard.common.llm_client import LLMClient
+    from nuguard.common.target_client_builder import TargetClient
     from nuguard.redteam.target.session import AttackSession
     from nuguard.sbom.models import AiSbomDocument
 
