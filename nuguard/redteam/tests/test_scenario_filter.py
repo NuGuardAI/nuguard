@@ -1,9 +1,10 @@
-"""Unit tests for scenario_filter matching in nuguard.redteam.executor.orchestrator.
+"""Unit tests for the redteam.scenarios destructive/non-destructive filter.
 
-Covers the ``prompt-injection``/``jailbreak`` alias fix: those config tokens
-must match the real prompt-injection/jailbreak family (GoalType.PROMPT_DRIVEN_THREAT)
-even though none of that family's ScenarioType values literally contain the
-substring "prompt_injection" — only ScenarioType.REPO_PROMPT_INJECTION does.
+nuguard.redteam.executor.orchestrator._scenario_matches_filter /
+finding_matches_scenario_filter accept only two normalized tokens —
+'destructive' and 'non_destructive' — classifying via the same keyword
+heuristic (_is_destructive_scenario / _is_destructive_finding) already used
+to order destructive scenarios last in a run. Empty filters means both.
 """
 from __future__ import annotations
 
@@ -17,85 +18,84 @@ from nuguard.redteam.executor.orchestrator import (
 )
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
 
-# ScenarioType values that belong to the prompt-injection/jailbreak family —
-# all carry GoalType.PROMPT_DRIVEN_THREAT but none contain "prompt_injection".
-_PROMPT_INJECTION_FAMILY = [
-    ScenarioType.CONTEXT_FLOODING,
-    ScenarioType.STRUCTURAL_INJECTION,
-    ScenarioType.INDIRECT_INJECTION,
-    ScenarioType.MULTI_TURN_REDIRECTION,
-    ScenarioType.SYSTEM_PROMPT_EXTRACTION,
-    ScenarioType.GUARDRAIL_BYPASS,
-    ScenarioType.MANY_SHOT_JAILBREAK,
-    ScenarioType.CRESCENDO,
-    ScenarioType.SKELETON_KEY,
-    ScenarioType.PAYLOAD_SPLITTING,
-    ScenarioType.FICTIONAL_FRAMING_BYPASS,
-    ScenarioType.FALSE_POLICY_PREMISE,
-]
 
-
-def _make_scenario(scenario_type: ScenarioType, goal_type: GoalType = GoalType.PROMPT_DRIVEN_THREAT) -> AttackScenario:
+def _make_scenario(title: str, description: str = "test") -> AttackScenario:
     return AttackScenario(
         scenario_id="s1",
-        goal_type=goal_type,
-        scenario_type=scenario_type,
-        title=f"{scenario_type.value.title()} — TestAgent",
-        description="test",
+        goal_type=GoalType.TOOL_ABUSE,
+        scenario_type=ScenarioType.DESTRUCTIVE_RECORD_MUTATION,
+        title=title,
+        description=description,
     )
 
 
-def test_prompt_injection_alias_matches_full_family() -> None:
-    for st in _PROMPT_INJECTION_FAMILY:
-        scenario = _make_scenario(st)
-        assert _scenario_matches_filter(scenario, {_normalize_scenario_token("prompt-injection")}), (
-            f"{st.value} should match the 'prompt-injection' filter alias"
-        )
+_DESTRUCTIVE_SCENARIO = _make_scenario("Delete User Record — TestAgent")
+_NON_DESTRUCTIVE_SCENARIO = _make_scenario("Extract System Prompt — TestAgent")
 
 
-def test_jailbreak_alias_matches_full_family() -> None:
-    for st in _PROMPT_INJECTION_FAMILY:
-        scenario = _make_scenario(st)
-        assert _scenario_matches_filter(scenario, {_normalize_scenario_token("jailbreak")})
+def test_empty_filter_matches_both() -> None:
+    assert _scenario_matches_filter(_DESTRUCTIVE_SCENARIO, set())
+    assert _scenario_matches_filter(_NON_DESTRUCTIVE_SCENARIO, set())
 
 
-def test_prompt_injection_alias_does_not_match_unrelated_goal() -> None:
-    scenario = _make_scenario(ScenarioType.SQL_INJECTION, goal_type=GoalType.API_ATTACK)
-    assert not _scenario_matches_filter(scenario, {_normalize_scenario_token("prompt-injection")})
+def test_destructive_filter_matches_only_destructive() -> None:
+    filt = {_normalize_scenario_token("destructive")}
+    assert _scenario_matches_filter(_DESTRUCTIVE_SCENARIO, filt)
+    assert not _scenario_matches_filter(_NON_DESTRUCTIVE_SCENARIO, filt)
 
 
-def test_repo_prompt_injection_also_matches_prompt_injection_alias() -> None:
-    # Coding-agent-specific type, not tagged PROMPT_DRIVEN_THREAT — included in
-    # the alias set explicitly since its name is an obvious match.
-    scenario = _make_scenario(ScenarioType.REPO_PROMPT_INJECTION, goal_type=GoalType.API_ATTACK)
-    assert _scenario_matches_filter(scenario, {_normalize_scenario_token("prompt-injection")})
+def test_non_destructive_filter_matches_only_non_destructive() -> None:
+    filt = {_normalize_scenario_token("non-destructive")}
+    assert not _scenario_matches_filter(_DESTRUCTIVE_SCENARIO, filt)
+    assert _scenario_matches_filter(_NON_DESTRUCTIVE_SCENARIO, filt)
 
 
-def test_existing_tokens_still_match_via_substring_fallback() -> None:
-    """Regression guard: tokens without an alias entry keep working unchanged."""
-    tool_abuse = _make_scenario(ScenarioType.CONFUSED_DEPUTY, goal_type=GoalType.TOOL_ABUSE)
-    assert _scenario_matches_filter(tool_abuse, {_normalize_scenario_token("tool-abuse")})
-
-    data_exfil = _make_scenario(ScenarioType.DIRECT_PII_EXTRACTION, goal_type=GoalType.DATA_EXFILTRATION)
-    assert _scenario_matches_filter(data_exfil, {_normalize_scenario_token("data-exfiltration")})
+def test_both_tokens_together_matches_everything() -> None:
+    filt = {_normalize_scenario_token("destructive"), _normalize_scenario_token("non-destructive")}
+    assert _scenario_matches_filter(_DESTRUCTIVE_SCENARIO, filt)
+    assert _scenario_matches_filter(_NON_DESTRUCTIVE_SCENARIO, filt)
 
 
-def test_validate_scenario_filter_accepts_alias_tokens() -> None:
-    assert validate_scenario_filter(["prompt-injection", "jailbreak"]) == []
+def test_agent_name_with_destructive_word_is_not_a_false_positive() -> None:
+    """Only the attack-action portion of the title (before ' — ') is checked."""
+    scenario = _make_scenario("Extract System Prompt — Cancellation Agent")
+    filt = {_normalize_scenario_token("non-destructive")}
+    assert _scenario_matches_filter(scenario, filt)
 
 
-def test_validate_scenario_filter_still_flags_unknown_tokens() -> None:
-    unrecognized = validate_scenario_filter(["totally-bogus-token-xyz"])
-    assert unrecognized == ["totally-bogus-token-xyz"]
+def test_validate_scenario_filter_accepts_destructive_tokens() -> None:
+    assert validate_scenario_filter(["destructive", "non-destructive", "non_destructive"]) == []
 
 
-def test_finding_matches_scenario_filter_uses_alias_too() -> None:
+def test_validate_scenario_filter_flags_old_family_tokens() -> None:
+    """Regression guard: the old 9-family vocabulary must not silently work again."""
+    unrecognized = validate_scenario_filter(["api-attack", "prompt-driven-threat", "totally-bogus"])
+    assert unrecognized == ["api-attack", "prompt-driven-threat", "totally-bogus"]
+
+
+def test_finding_matches_scenario_filter_empty_matches_all() -> None:
     finding = Finding(
         finding_id="F1",
-        title="Skeleton Key — TestAgent",
+        title="Delete User Record — TestAgent",
         description="test",
         severity=Severity.HIGH,
-        goal_type=GoalType.PROMPT_DRIVEN_THREAT.value,
-        scenario_type=ScenarioType.SKELETON_KEY.value,
     )
-    assert finding_matches_scenario_filter(finding, {_normalize_scenario_token("prompt-injection")})
+    assert finding_matches_scenario_filter(finding, set())
+
+
+def test_finding_matches_scenario_filter_destructive() -> None:
+    destructive_finding = Finding(
+        finding_id="F1",
+        title="Delete User Record — TestAgent",
+        description="test",
+        severity=Severity.HIGH,
+    )
+    non_destructive_finding = Finding(
+        finding_id="F2",
+        title="Extract System Prompt — TestAgent",
+        description="test",
+        severity=Severity.HIGH,
+    )
+    filt = {_normalize_scenario_token("destructive")}
+    assert finding_matches_scenario_filter(destructive_finding, filt)
+    assert not finding_matches_scenario_filter(non_destructive_finding, filt)

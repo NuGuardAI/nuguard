@@ -80,7 +80,7 @@ def redteam(
         "ci", "--profile", help="Scan profile: ci | full."
     ),
     scenarios: Optional[str] = typer.Option(
-        None, "--scenarios", help="Comma-separated scenario types to run (default: all)."
+        None, "--scenarios", help="Comma-separated: destructive, non-destructive (default: both)."
     ),
     min_impact_score: float = typer.Option(
         0.0,
@@ -212,10 +212,8 @@ def redteam(
         if unrecognized_scenarios:
             typer.echo(
                 f"Warning: redteam.scenarios contains unrecognized value(s) "
-                f"{unrecognized_scenarios} — these won't reliably match any scenario "
-                "and may silently drop coverage. Valid values: prompt-driven-threat, "
-                "policy-violation, data-exfiltration, privilege-escalation, tool-abuse, "
-                "mcp-toxic-flow, api-attack, agentic-trust-abuse, recon-inference."
+                f"{unrecognized_scenarios} — these won't match any scenario "
+                "and may silently drop coverage. Valid values: destructive, non-destructive."
             )
 
     # Load custom catalog if provided

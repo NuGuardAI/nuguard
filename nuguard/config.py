@@ -1284,10 +1284,8 @@ class NuGuardConfig(BaseSettings):
     redteam_scenarios: list[str] = Field(
         default_factory=list,
         description=(
-            "Goal types to run; empty = all 9. Values: prompt-driven-threat, "
-            "policy-violation, data-exfiltration, privilege-escalation, "
-            "tool-abuse, mcp-toxic-flow, api-attack, agentic-trust-abuse, "
-            "recon-inference (yaml: redteam.scenarios)."
+            "Which categories to run: 'destructive', 'non-destructive', or both — "
+            "empty = both (yaml: redteam.scenarios)."
         ),
     )
     mcp_trusted_servers: list[str] = Field(
