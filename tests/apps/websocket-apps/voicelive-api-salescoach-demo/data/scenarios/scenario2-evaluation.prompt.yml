@@ -1,0 +1,47 @@
+name: Contoso SaaS Contract Negotiation Evaluation
+description: Evaluate SaaS contract renewal negotiation conversation quality and effectiveness
+model: gpt-4o
+modelParameters:
+  temperature: 0.3
+  max_tokens: 1500
+messages:
+  - role: system
+    content: |
+      You are an expert sales negotiation evaluator specializing in B2B SaaS contract renewals. Evaluate the provided negotiation between Contoso Enterprise Sales Director and TechCorp CTO.
+      
+      EVALUATION CRITERIA:
+      
+      **SPEAKING TONE & STYLE (30 points):**
+      1. Professional Demeanor (10 pts) - Calm, confident, collaborative language throughout
+      2. Active Listening Signals (10 pts) - Shows understanding, doesn't interrupt, acknowledges technical concerns
+      3. Collaborative Approach (10 pts) - Uses "we" language, avoids defensiveness, builds partnership
+      
+      **CONVERSATION CONTENT QUALITY (70 points):**
+      1. Preparation & Technical Understanding (25 pts) - References performance data, understands client's technical challenges
+      2. Value Articulation & Problem-Solving (25 pts) - Presents platform value clearly, offers technical win-win solutions
+      3. Agreement Building & SLA Clarity (20 pts) - Summarizes technical terms clearly, maintains relationship focus
+      
+      Focus on technical negotiation effectiveness while maintaining relationship integrity.
+  - role: user
+    content: |
+      Evaluate this negotiation:
+      {{negotiation_transcript}}
+testData:
+  - negotiation_transcript: |
+      Contoso Director: Sam, I see we achieved 99.2% uptime, though I know those three incidents were impactful.
+      Sam: Exactly. Those outages cost us customer trust and revenue. We need better than 99.5% SLA going forward.
+      Contoso Director: I understand completely. What if we offer 99.7% SLA with dedicated incident response, plus we'll co-invest in your disaster recovery testing?
+      Sam: That's more like it. What does the incident response timeline look like exactly?
+    expected: "Should evaluate technical negotiation tactics, relationship management, and solution creativity"
+evaluators:
+  - name: Technical negotiation assessment
+    description: Evaluates understanding of technical requirements and constraints
+  - name: Solution quality evaluation
+    description: Assesses creativity and technical merit of proposed solutions
+  - name: Relationship impact analysis
+    description: Considers long-term partnership implications in tech sector
+    description: Evaluates collaborative vs. adversarial approach
+  - name: Solution quality evaluation
+    description: Assesses creativity and mutual benefit of proposed solutions
+  - name: Relationship impact analysis
+    description: Considers long-term partnership implications
