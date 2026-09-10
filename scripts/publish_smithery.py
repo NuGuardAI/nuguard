@@ -123,8 +123,10 @@ def _run(
     if dry_run:
         print(f"  [dry-run] {' '.join(cmd)}")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-    result = subprocess.run(cmd, capture_output=capture, text=True, cwd=cwd)
-    return result
+    try:
+        return subprocess.run(cmd, capture_output=capture, text=True, cwd=cwd)
+    except FileNotFoundError as exc:
+        return subprocess.CompletedProcess(cmd, 127, stdout="", stderr=str(exc))
 
 
 def _git_is_clean() -> bool:
@@ -159,7 +161,6 @@ def _git_commits_ahead_of_origin() -> int:
 
 def preflight(version: str, allow_dirty: bool, allow_branch: bool, skip_git_tag: bool) -> list[str]:
     errors: list[str] = []
-    warnings: list[str] = []
 
     # Version consistency
     pyproject_ver = _read_pyproject_version()
@@ -179,11 +180,16 @@ def preflight(version: str, allow_dirty: bool, allow_branch: bool, skip_git_tag:
     try:
         init_ver = _read_init_version()
         if init_ver != version:
-            warnings.append(
+            errors.append(
                 f"nuguard/__init__.py __version__={init_ver!r} differs from pyproject.toml {version!r}"
             )
     except ValueError as e:
-        warnings.append(str(e))
+        errors.append(str(e))
+
+    contract = _run(["node", "scripts/validate-all-plugins.js"])
+    if contract.returncode != 0:
+        details = (contract.stdout + contract.stderr).strip()
+        errors.append(f"Release metadata validation failed:\n{details}")
 
     # Git state
     if not allow_dirty and not _git_is_clean():
@@ -210,9 +216,6 @@ def preflight(version: str, allow_dirty: bool, allow_branch: bool, skip_git_tag:
             errors.append(
                 f"Git tag {tag!r} already exists. Bump the version first."
             )
-
-    for w in warnings:
-        print(f"  WARNING: {w}")
 
     return errors
 
@@ -299,7 +302,7 @@ def _build_smithery_bundle(version: str) -> Path:
             "type": "binary",
             "mcp_config": {
                 "command": "uvx",
-                "args": ["--from", "nuguard[mcp]", "nuguard-mcp"],
+                "args": ["--from", f"nuguard[mcp]=={version}", "nuguard-mcp"],
                 "env": env,
             },
         },
@@ -404,7 +407,7 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
 
-    version = args.version or _read_smithery_version()
+    version = args.version or _read_pyproject_version()
     print(f"nuguard publish {'(dry run) ' if args.dry_run else ''}— v{version}")
     print()
 

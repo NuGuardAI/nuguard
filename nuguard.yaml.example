@@ -74,6 +74,16 @@ target:
   # chat_payload_extras:
   #  user_id: alice
 
+  # Fully custom payload shape: if any value contains the {{message}} token,
+  # the whole dict is sent as-is with tokens substituted (message/history/
+  # session_id/conversation_id) instead of being merged with the
+  # auto-detected shape above.
+  # chat_payload_extras:
+  #   input:
+  #     text: "{{message}}"
+  #     history: "{{history}}"
+  #   session_id: "{{session_id}}"
+
   # Authentication — uncomment ONE option:
   auth:
     # Option A: Login flow (preferred when the app exposes a /login endpoint)

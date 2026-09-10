@@ -1030,7 +1030,7 @@
           },
           "chat_payload_extras": {
             "additionalProperties": true,
-            "description": "Extra static JSON fields merged into every chat POST body (e.g. vehicleState, language). The message key always takes precedence.",
+            "description": "Extra static JSON fields merged into every chat POST body (e.g. vehicleState, language). The message key always takes precedence. If any string value contains the literal token '{{message}}', the entire dict is instead treated as a payload template: it is sent as-is with '{{message}}' substituted for the current turn's message text, and, if present, '{{history}}' (prior turns as a JSON [{role, content}, ...] string), '{{session_id}}', and '{{conversation_id}}' substituted as well. Without '{{message}}', behavior is unchanged.",
             "title": "Chat Payload Extras",
             "type": "object"
           },
@@ -2420,7 +2420,7 @@
           },
           "chat_payload_extras": {
             "additionalProperties": true,
-            "description": "Extra static JSON fields merged into every chat POST body (e.g. vehicleState, language). The message key always takes precedence.",
+            "description": "Extra static JSON fields merged into every chat POST body (e.g. vehicleState, language). The message key always takes precedence. If any string value contains the literal token '{{message}}', the entire dict is instead treated as a payload template: it is sent as-is with '{{message}}' substituted for the current turn's message text, and, if present, '{{history}}' (prior turns as a JSON [{role, content}, ...] string), '{{session_id}}', and '{{conversation_id}}' substituted as well. Without '{{message}}', behavior is unchanged.",
             "title": "Chat Payload Extras",
             "type": "object"
           },
