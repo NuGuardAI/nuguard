@@ -299,6 +299,40 @@ def test_outcome_not_aborted_for_legitimate_guided_abort_reasons():
     assert outcome != "aborted_target_unavailable"
 
 
+def test_outcome_aborted_auth_failure_when_all_records_are_auth_only():
+    """Every scenario aborted specifically on a 401-only streak → the more
+    precise aborted_auth_failure, distinguishing a broken credential from a
+    genuine outage."""
+    records = [
+        _record_with_counters(chain_status="aborted:consecutive_auth_failures"),
+        _record_with_counters(chain_status="aborted:consecutive_auth_failures"),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome == "aborted_auth_failure"
+
+
+def test_outcome_mixed_auth_and_target_unavailable_falls_back_to_target_unavailable():
+    """A mixed cause (some scenarios auth-only, others a genuine outage) must
+    not falsely claim a pure-auth cause — falls back to the generic outcome."""
+    records = [
+        _record_with_counters(chain_status="aborted:consecutive_auth_failures"),
+        _record_with_counters(chain_status="aborted:target_unavailable"),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome == "aborted_target_unavailable"
+
+
+def test_outcome_all_consecutive_request_failures_unaffected_by_auth_fix():
+    """Regression guard: an unrelated failure flavor (plain consecutive
+    request failures, no auth involved) keeps reporting the generic outcome."""
+    records = [
+        _record_with_counters(chain_status="aborted:consecutive_request_failures"),
+        _record_with_counters(chain_status="aborted:consecutive_request_failures"),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome == "aborted_target_unavailable"
+
+
 def test_outcome_inconclusive_strict_all_504():
     """strict=True + ≥80 % server errors → inconclusive_target_errors."""
     records = [_record_with_counters(http_5xx=5, http_2xx=1)]  # 5/6 ≈ 83 %

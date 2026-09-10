@@ -418,3 +418,54 @@ def test_scenario_coverage_table_endpoint_not_found_not_double_counted_as_not_te
     lines = _scenario_coverage_table(records)
     table_body = "\n".join(lines)
     assert "no target authentication configured" not in table_body
+
+
+def _find_summary_line_index(lines: list[str], prefix: str) -> int:
+    for i, line in enumerate(lines):
+        if line.startswith(prefix):
+            return i
+    raise AssertionError(f"no line starting with {prefix!r} found")
+
+
+def test_to_markdown_no_note_for_clean_outcome() -> None:
+    md = to_markdown(_sample_findings(), scan_outcome="findings")
+    assert "- **Scan Outcome**: `findings`" in md
+    assert "**Note:**" not in md
+
+
+def test_to_markdown_aborted_target_unavailable_note() -> None:
+    md = to_markdown([], scan_outcome="aborted_target_unavailable")
+    assert "- **Scan Outcome**: `aborted_target_unavailable`" in md
+    assert "target became unreachable or structurally broken" in md
+    lines = md.splitlines()
+    note_idx = _find_summary_line_index(lines, "> **Note:**")
+    coverage_idx = next(
+        (i for i, ln in enumerate(lines) if ln.startswith("## Scenario Coverage")), None
+    )
+    if coverage_idx is not None:
+        assert note_idx < coverage_idx
+
+
+def test_to_markdown_aborted_auth_failure_note() -> None:
+    md = to_markdown([], scan_outcome="aborted_auth_failure")
+    assert "- **Scan Outcome**: `aborted_auth_failure`" in md
+    assert "authentication to the target failed repeatedly" in md
+    assert "not a" in md and "target-availability issue" in md
+
+
+def test_to_markdown_aborted_endpoint_unreachable_note() -> None:
+    md = to_markdown([], scan_outcome="aborted_endpoint_unreachable")
+    assert "target_endpoint" in md
+
+
+def test_to_markdown_inconclusive_target_errors_note() -> None:
+    md = to_markdown([], scan_outcome="inconclusive_target_errors")
+    assert "Results are inconclusive" in md
+
+
+def test_to_markdown_note_renders_even_with_findings_present() -> None:
+    """No findings-truthy gate: the abort note must still render when findings
+    exist, unlike the behavior report's static_findings-gated pattern."""
+    md = to_markdown(_sample_findings(), scan_outcome="aborted_target_unavailable")
+    assert "**Note:**" in md
+    assert "- **Total Findings**: 1" in md

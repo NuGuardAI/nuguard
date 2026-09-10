@@ -459,6 +459,7 @@ def redteam(
                         scenario_records=scenario_records,
                         catalog_coverage=catalog_coverage,
                         coverage_tracker=coverage_tracker,
+                        scan_outcome=scan_outcome,
                     ),
                     encoding="utf-8",
                 )
@@ -1103,7 +1104,8 @@ def _print_findings(
         typer.echo(
             _findings_to_markdown(findings, meta, remediation_plan=remediation_plan,
                                   scenario_records=scenario_records,
-                                  coverage_tracker=coverage_tracker)
+                                  coverage_tracker=coverage_tracker,
+                                  scan_outcome=scan_outcome)
         )
         return
 
@@ -1125,6 +1127,7 @@ def _findings_to_markdown(
     scenario_records: list | None = None,
     catalog_coverage: object | None = None,
     coverage_tracker: object | None = None,
+    scan_outcome: str = "no_findings",
 ) -> str:
     """Delegate to :func:`nuguard.redteam.report.to_markdown`."""
     from nuguard.redteam.report import to_markdown
@@ -1135,6 +1138,7 @@ def _findings_to_markdown(
         scenario_records=scenario_records,
         catalog_coverage=catalog_coverage,
         coverage_tracker=coverage_tracker,
+        scan_outcome=scan_outcome,
     )
 
 

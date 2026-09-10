@@ -391,8 +391,11 @@ class AuthSession:
     async def refresh_if_needed(self) -> bool:
         """Re-execute login on 401 if the config permits it.
 
-        Returns True if a token refresh was attempted (caller should retry
-        the failed request with the updated headers()), False otherwise.
+        Returns True only if the login attempt actually succeeded and
+        headers() now reflects a fresh token. Returns False both when
+        refresh is not applicable for this auth type/config, and when a
+        refresh was attempted but failed — callers must not retry with the
+        same (still-rejected) headers in that case.
         """
         if (
             self._config.type == "login_flow"
@@ -401,7 +404,7 @@ class AuthSession:
         ):
             _log.info("AuthSession: 401 received — refreshing token via login flow")
             await self._do_login()
-            return True
+            return self._login_error is None
         return False
 
     async def _do_login(self) -> None:

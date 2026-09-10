@@ -237,6 +237,7 @@ class RedteamRunResult(BaseModel):
         "high_findings",
         "findings",
         "aborted_target_unavailable",
+        "aborted_auth_failure",
         "aborted_endpoint_unreachable",
         "inconclusive_target_errors",
         "no_findings",

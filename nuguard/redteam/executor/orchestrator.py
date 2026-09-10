@@ -536,6 +536,15 @@ def _compute_scan_outcome(
         indicating the target was unreachable or structurally broken. A guided
         conversation aborting for a legitimate reason (``"aborted:max_turns"``,
         ``"aborted:hard_refusal"``) does NOT count toward this.
+    ``aborted_auth_failure``
+        Every executed scenario aborted specifically with chain_status
+        ``"aborted:consecutive_auth_failures"`` — the target was reachable
+        (HTTP 401 responses, not 5xx/connection errors) but authentication
+        never succeeded, so the circuit breaker still tripped. Distinguished
+        from ``aborted_target_unavailable`` so the report points at a
+        credentials/auth-config problem instead of an outage. A mixed streak
+        (some scenarios auth-only, others a genuine outage) still reports as
+        ``aborted_target_unavailable``.
     ``aborted_endpoint_unreachable``
         Set directly by :meth:`RedteamOrchestrator.run` (not by this function)
         when pre-flight validation finds the resolved chat endpoint returning
@@ -547,6 +556,7 @@ def _compute_scan_outcome(
         "skipped",
         "aborted:target_unavailable",
         "aborted:consecutive_request_failures",
+        "aborted:consecutive_auth_failures",
         "target_unreachable",
     )
     if findings:
@@ -562,6 +572,8 @@ def _compute_scan_outcome(
 
     # Check for full abort (circuit breaker fired on every scenario)
     if records and all(r.chain_status in _HEALTH_ABORT_STATUSES for r in records):
+        if all(r.chain_status == "aborted:consecutive_auth_failures" for r in records):
+            return "aborted_auth_failure"
         return "aborted_target_unavailable"
 
     if strict and records:
@@ -991,7 +1003,7 @@ class RedteamOrchestrator:
         self.prompt_cache_hit: bool = False            # True when payloads loaded from cache
         self.llm_scenario_variants: dict[str, int] = {}  # scenario_title → variant_count
         # Scan-level outcome — populated by run()
-        # Values: critical_findings | high_findings | findings | no_findings | inconclusive_target_errors | aborted_target_unavailable
+        # Values: critical_findings | high_findings | findings | no_findings | inconclusive_target_errors | aborted_target_unavailable | aborted_auth_failure
         self.scan_outcome: str = "no_findings"
         # Run-level configuration notices (e.g. automatic URL resolution).
         self.config_notes: list[str] = []
@@ -1955,6 +1967,7 @@ class RedteamOrchestrator:
                     tree_breadth=_tap_breadth,
                     tree_max_depth=_tap_depth,
                     evaluator=_tap_evaluator,
+                    auth_session=bootstrapper.session,
                 )
 
             findings, executed, records = await self._run_scenarios(scenarios, executor, guided_executor)
@@ -2384,6 +2397,7 @@ class RedteamOrchestrator:
                     if getattr(_record, "chain_status", "") in (
                         "aborted:target_unavailable",
                         "aborted:consecutive_request_failures",
+                        "aborted:consecutive_auth_failures",
                     ):
                         consecutive_unavailable += 1
                         if consecutive_unavailable >= _ABORT_THRESHOLD:
