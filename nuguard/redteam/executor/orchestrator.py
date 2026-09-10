@@ -3496,6 +3496,22 @@ class RedteamOrchestrator:
 
         return findings
 
+    def _chat_endpoint_confirmed(self, path: str) -> bool:
+        """True if the SBOM already carries a runtime-probe-confirmed payload
+        shape for this exact endpoint (from this run's enrichment load or a
+        prior behavior/redteam run persisted into the enriched SBOM)."""
+        for node in self._sbom.nodes:
+            meta = node.metadata
+            if (
+                node.component_type == NodeType.API_ENDPOINT
+                and meta is not None
+                and meta.endpoint == path
+                and meta.chat_payload_key is not None
+                and (meta.extras or {}).get("source") == "runtime_probe"
+            ):
+                return True
+        return False
+
     async def _maybe_probe_endpoints(self) -> None:
         """Live-probe SBOM endpoints when no explicit chat path is configured.
 
@@ -3512,8 +3528,16 @@ class RedteamOrchestrator:
 
         if self._chat_path:
             # Option B: path already resolved — detect nested payload shape only.
-            if self._chat_payload_key != "message":
-                return  # key explicitly set too; nothing to detect
+            # "message" is both the unresolved default *and* a common real
+            # payload key, so it can't tell "never probed" from "confirmed and
+            # happens to be message" on its own — check the SBOM for a prior
+            # runtime-probe confirmation on this exact endpoint too (issue:
+            # redteam re-probing live on every run despite a behavior run
+            # already having confirmed and persisted this endpoint's shape).
+            if self._chat_payload_key != "message" or self._chat_endpoint_confirmed(
+                self._chat_path
+            ):
+                return  # key explicitly set, or already confirmed via a prior probe
             _log.info(
                 "redteam: endpoint known (%s) — probing payload structure via OpenAPI",
                 self._chat_path,
