@@ -28,7 +28,7 @@ from nuguard.sbom.types import ComponentType, RelationshipType
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
-    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.common.target_client_builder import TargetClient
     from nuguard.redteam.target.session import AttackSession
     from nuguard.sbom.models import AiSbomDocument
 
@@ -296,7 +296,7 @@ def _domain_task_messages(use_case: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 async def run_discovery_conversation(
-    client: "TargetAppClient",
+    client: "TargetClient",
     session: "AttackSession",
     use_case: str = "",
     max_turns: int = 3,
@@ -524,7 +524,7 @@ class TargetDiscoveryResult(BaseModel):
 
 
 async def run_discovery(
-    client: "TargetAppClient",
+    client: "TargetClient",
     session: "AttackSession",
     request: DiscoveryRequest,
 ) -> DiscoveryOutcome:
@@ -845,7 +845,7 @@ def _extract_list_items(text: str) -> list[str]:
 
 
 async def run_capability_discovery(
-    client: "TargetAppClient",
+    client: "TargetClient",
     session: "AttackSession",
     gaps: list[AgentCapabilityGap],
 ) -> CapabilityDiscoveryResult:
