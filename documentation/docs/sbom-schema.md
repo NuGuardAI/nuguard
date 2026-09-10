@@ -599,8 +599,9 @@ When the SBOM includes supply-chain node types (populated by the second pass dur
 | Lifecycle scripts (NGA-SC-011–016) | `LIFECYCLE_SCRIPT` nodes: `script_phase`, `script_body`, `invokes_network`, `invokes_shell`, `downloads_binary`, `references_credentials` |
 | Oversized/high-entropy/minified payloads (NGA-SC-017–019) | `DEVELOPER_TOOL_CONFIG` nodes: `file_size_bytes`, `content_entropy`; `summary.minified_js_files` |
 | Dependency integrity (NGA-SC-023–025) | `deps` array: `name`, `version_spec`, `purl`; `summary.has_package_json`, `summary.has_lockfile`; threat-intel feeds matched against `name` |
+| Workflow governance (NGA-SC-026–027) | Read directly from `.github/workflows/*.yml` at `--source` — no SBOM node fields yet; requires a local `source_path` |
 
-MITRE ATLAS annotations and supply-chain findings are produced by `nuguard analyze`. They appear on analysis findings, not on the SBOM document itself. See [docs/static-analysis-guide.md](static-analysis-guide.md) for the full rule reference.
+MITRE ATLAS annotations and supply-chain findings are produced by `nuguard analyze`. They appear on analysis findings, not on the SBOM document itself. Every `NGA-SC-*` finding also carries an `owasp_cicd_ref` (OWASP Top 10 CI/CD Security Risks category, e.g. `CICD-SEC-4`) via `nuguard.common.control_mappings.cicd`. See [docs/static-analysis-guide.md](static-analysis-guide.md) for the full rule reference.
 
 ---
 

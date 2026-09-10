@@ -273,6 +273,18 @@
             "default": null,
             "title": "Owasp Llm Ref"
           },
+          "owasp_cicd_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Cicd Ref"
+          },
           "mitre_atlas_technique": {
             "anyOf": [
               {
@@ -5750,6 +5762,18 @@
             "default": null,
             "title": "Owasp Llm Ref"
           },
+          "owasp_cicd_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Cicd Ref"
+          },
           "mitre_atlas_technique": {
             "anyOf": [
               {
@@ -7183,6 +7207,18 @@
             ],
             "default": null,
             "title": "Owasp Llm Ref"
+          },
+          "owasp_cicd_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Cicd Ref"
           },
           "mitre_atlas_technique": {
             "anyOf": [

@@ -30,6 +30,11 @@ Rule taxonomy (all ``NGA-SC-*``):
   NGA-SC-023  MEDIUM    Dependency declared via mutable ref: git URL / tarball URL / file:
   NGA-SC-024  LOW       Declared package not found in lockfile
   NGA-SC-025  CRITICAL  Package matches known-malicious IOC in threat-intel feed
+  NGA-SC-026  HIGH      Deploy/publish job has no environment protection gate
+  NGA-SC-027  MEDIUM    Security-relevant CI step silently swallows failures
+
+Rules are additionally tagged with their OWASP Top 10 CI/CD Security Risk
+category (CICD-SEC-1..10) in ``nuguard.common.control_mappings.cicd``.
 """
 
 from __future__ import annotations
@@ -71,6 +76,24 @@ _AUTO_EXEC_RE = re.compile(r'"auto_run"\s*:\s*true|auto_run:\s*true|auto_approve
 _MUTABLE_DEP_RE = re.compile(r"git\+https?://|\.git#|tarball|\.tgz|\.tar\.gz|file:", re.IGNORECASE)
 _UNPINNED_GLOBAL_RE = re.compile(r"\bnpm\s+install\s+-g\b|\bnpm\s+i\s+-g\b|\bnpx\b(?!\s+--yes)", re.IGNORECASE)
 _HIDDEN_TOOL_DIRS = {".claude", ".cursor", ".codex", ".gemini", ".vscode"}
+_ENVIRONMENT_KEY_RE = re.compile(r"^\s*environment\s*:", re.MULTILINE)
+_STEP_START_RE = re.compile(r"^\s*-\s", re.MULTILINE)
+_SECURITY_STEP_RE = re.compile(
+    r"(name|run)\s*:\s*.*\b(scan|audit|nuguard|lint|test|checkov|trivy|semgrep|grype)\b",
+    re.IGNORECASE,
+)
+_CONTINUE_ON_ERROR_RE = re.compile(r"continue-on-error\s*:\s*true", re.IGNORECASE)
+_STEP_DEBUG_DISABLE_RE = re.compile(r"ACTIONS_STEP_DEBUG\s*:\s*['\"]?false['\"]?", re.IGNORECASE)
+_SKIP_CI_RE = re.compile(r"\[skip ci\]|\[ci skip\]", re.IGNORECASE)
+_SECURITY_SENSITIVE_PATH_PREFIXES = (".github/workflows", ".claude", ".cursor", ".codex", ".gemini")
+_SECURITY_SENSITIVE_PATH_SUFFIXES = (
+    "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
+    "requirements.txt", "pyproject.toml", "Pipfile.lock", "poetry.lock",
+)
+_MANIFEST_LOCKFILE_SUFFIXES = (
+    "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
+    "requirements.txt", "pyproject.toml", "Pipfile.lock", "poetry.lock",
+)
 
 # ── Profiles ─────────────────────────────────────────────────────────────────
 # ci: highest-signal checks only
@@ -85,7 +108,7 @@ _CI_RULES = {
 _STANDARD_RULES = _CI_RULES | {
     "NGA-SC-003", "NGA-SC-006", "NGA-SC-008", "NGA-SC-015", "NGA-SC-016",
     "NGA-SC-017", "NGA-SC-018", "NGA-SC-019",
-    "NGA-SC-023", "NGA-SC-024",
+    "NGA-SC-023", "NGA-SC-024", "NGA-SC-026", "NGA-SC-027",
 }
 _FULL_RULES = _STANDARD_RULES | {
     "NGA-SC-020", "NGA-SC-021", "NGA-SC-022",
@@ -199,6 +222,15 @@ _RULE_META: list[dict[str, str]] = [
      "title": "Package matches known-malicious IOC",
      "checks": "SBOM dependencies and lifecycle script nodes against threat-intel IOC feeds",
      "pass_reason": "No packages matched known-malicious IOC entries in loaded threat-intel feeds"},
+    {"rule_id": "NGA-SC-026", "severity": "HIGH",
+     "title": "Deploy/publish job has no environment protection gate",
+     "checks": "Workflow files for a publish-capable job with no `environment:` key",
+     "pass_reason": "No publish-capable workflow found without an environment protection gate"},
+    {"rule_id": "NGA-SC-027", "severity": "MEDIUM",
+     "title": "Security-relevant CI step silently swallows failures",
+     "checks": "Workflow steps for continue-on-error:true on scan/audit/lint/test steps, "
+               "or ACTIONS_STEP_DEBUG:false",
+     "pass_reason": "No security-relevant CI steps found silently swallowing failures"},
 ]
 
 
@@ -270,6 +302,7 @@ class SupplyChainScanner:
 
         # SC-017..019 are now in standard profile (SBOM-native) and full profile (filesystem)
         findings.extend(self._scan_large_payloads(source_path, nodes, self._sbom_summary))
+        findings.extend(self._scan_workflow_governance(source_path))
         if self.profile == "full":
             findings.extend(self._scan_git_history(source_path))
 
@@ -377,6 +410,9 @@ class SupplyChainScanner:
             ti = ctx.get("threat_intel", {})
             return {"deps_checked": ti.get("deps_checked", 0),
                     "ioc_entries": ti.get("ioc_entries", 0)}
+        if rule_id in {"NGA-SC-026", "NGA-SC-027"}:
+            wg = ctx.get("workflow_governance", {})
+            return {"workflow_files_examined": wg.get("workflow_files", 0)}
         return {}
 
     # ------------------------------------------------------------------
@@ -887,6 +923,26 @@ class SupplyChainScanner:
                     remediation="Pin all actions to SHA. Apply least-privilege permissions per job.",
                 ))
 
+        if "NGA-SC-006" in self._enabled and is_publish and not uses_oidc:
+            findings.append(_finding(
+                rule_id="NGA-SC-006",
+                severity="critical",
+                title="Publish workflow provenance cannot be tied to repo/ref/SHA",
+                description=(
+                    f"Workflow '{name}' publishes to {publishes_to} without OIDC token "
+                    "issuance (`id-token: write`). Without OIDC, the publish step has no "
+                    "cryptographically verifiable link between the published artifact and "
+                    "the repository/ref/commit SHA that produced it (e.g. via Sigstore/cosign "
+                    "keyless signing) — a static long-lived token was used instead."
+                ),
+                affected=[name],
+                remediation=(
+                    "Switch the publish step to OIDC-based trusted publishing "
+                    "(`id-token: write` + a provenance-generating publish action) so the "
+                    "artifact can be traced back to the exact repo/ref/SHA that built it."
+                ),
+            ))
+
         return findings
 
     def _check_workflow_text(self, text: str, rel: str) -> list[dict[str, Any]]:
@@ -960,6 +1016,24 @@ class SupplyChainScanner:
                 remediation=(
                     "Pin global install commands to an exact version "
                     "(e.g. `npm install -g smithery@1.2.3`) and verify integrity."
+                ),
+            ))
+
+        if "NGA-SC-006" in self._enabled and is_publish and not uses_oidc:
+            findings.append(_finding(
+                rule_id="NGA-SC-006",
+                severity="critical",
+                title="Publish workflow provenance cannot be tied to repo/ref/SHA",
+                description=(
+                    f"Workflow '{rel}' publishes packages without OIDC token issuance "
+                    "(`id-token: write`). Without OIDC, there is no cryptographically "
+                    "verifiable link between the published artifact and the repo/ref/SHA "
+                    "that produced it."
+                ),
+                affected=[rel],
+                remediation=(
+                    "Switch the publish step to OIDC-based trusted publishing so the "
+                    "artifact can be traced back to the exact repo/ref/SHA that built it."
                 ),
             ))
 
@@ -1562,23 +1636,23 @@ class SupplyChainScanner:
 
             for line in commits:
                 lower = line.lower()
+                sha = line.split()[0]
+                changed = subprocess.run(
+                    ["git", "-C", str(source_path), "diff-tree", "--no-commit-id", "-r",
+                     "--name-only", sha],
+                    capture_output=True, text=True, timeout=10,
+                )
+                files = changed.stdout.splitlines()
+
                 if any(kw in lower for kw in ("dependency update", "chore: update", "bump deps")):
-                    # Check what files actually changed
-                    sha = line.split()[0]
-                    changed = subprocess.run(
-                        ["git", "-C", str(source_path), "diff-tree", "--no-commit-id", "-r",
-                         "--name-only", sha],
-                        capture_output=True, text=True, timeout=10,
-                    )
-                    changed_files = changed.stdout.splitlines()
                     ai_files = [
-                        f for f in changed_files
+                        f for f in files
                         if any(f.startswith(d) for d in (".claude", ".cursor", ".codex", ".gemini"))
                         or f.endswith((".yml", ".yaml"))
                         or "package.json" in f
                     ]
                     manifest_files = [
-                        f for f in changed_files
+                        f for f in files
                         if any(f.endswith(m) for m in ("requirements.txt", "pyproject.toml", "package-lock.json"))
                     ]
                     if "NGA-SC-020" in self._enabled and ai_files and not manifest_files:
@@ -1595,9 +1669,127 @@ class SupplyChainScanner:
                             affected=[sha],
                             remediation="Review this commit carefully.",
                         ))
+
+                if "NGA-SC-021" in self._enabled and _SKIP_CI_RE.search(line):
+                    sensitive_files = [
+                        f for f in files
+                        if f.startswith(_SECURITY_SENSITIVE_PATH_PREFIXES)
+                        or f.endswith(_SECURITY_SENSITIVE_PATH_SUFFIXES)
+                    ]
+                    if sensitive_files:
+                        findings.append(_finding(
+                            rule_id="NGA-SC-021",
+                            severity="high",
+                            title="[skip ci] on security-sensitive file change",
+                            description=(
+                                f"Commit {sha!r} ({line}) skips CI while changing "
+                                f"security-sensitive file(s): {sensitive_files[:5]}. "
+                                "Skipping CI on workflow, AI-agent config, or lockfile changes "
+                                "bypasses the only automated review those changes would get."
+                            ),
+                            affected=[sha],
+                            remediation=(
+                                "Never combine [skip ci] with changes to workflows, AI-agent "
+                                "configs, or lockfiles. Require CI to run on these paths regardless "
+                                "of commit message."
+                            ),
+                        ))
+
+                if "NGA-SC-022" in self._enabled:
+                    workflow_files = [f for f in files if f.startswith(".github/workflows/")
+                                       and f.endswith((".yml", ".yaml"))]
+                    manifest_files = [f for f in files if f.endswith(_MANIFEST_LOCKFILE_SUFFIXES)]
+                    if workflow_files and not manifest_files:
+                        findings.append(_finding(
+                            rule_id="NGA-SC-022",
+                            severity="high",
+                            title="Workflow changed without manifest/lockfile change",
+                            description=(
+                                f"Commit {sha!r} changes workflow file(s) {workflow_files[:5]} "
+                                "without touching any dependency manifest or lockfile. "
+                                "A workflow-only change is a common pipeline-poisoning pattern — "
+                                "review it as carefully as a dependency change."
+                            ),
+                            affected=[sha],
+                            remediation="Review workflow-only commits with the same scrutiny as dependency changes.",
+                        ))
         except Exception as exc:
             _log.debug("Git history scan failed: %s", exc)
             self._ctx["git_history"] = {"git_available": False}
+
+        return findings
+
+    # ------------------------------------------------------------------
+    # Sub-scanner: workflow governance (environment gates, swallowed failures)
+    # ------------------------------------------------------------------
+
+    def _scan_workflow_governance(self, source_path: Path) -> list[dict[str, Any]]:
+        """SC-026/SC-027: read workflow files directly — no SBOM-node equivalent exists yet."""
+        findings: list[dict[str, Any]] = []
+        workflows_dir = source_path / ".github" / "workflows"
+        if not workflows_dir.is_dir():
+            self._ctx["workflow_governance"] = {"workflow_files": 0}
+            return findings
+
+        wf_files = sorted(workflows_dir.glob("*.yml")) + sorted(workflows_dir.glob("*.yaml"))
+        self._ctx["workflow_governance"] = {"workflow_files": len(wf_files)}
+
+        for wf in wf_files:
+            try:
+                text = wf.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            rel = str(wf.relative_to(source_path))
+            is_publish = bool(_PUBLISH_STEP_RE.search(text)) or "deploy" in wf.stem.lower()
+
+            if "NGA-SC-026" in self._enabled and is_publish and not _ENVIRONMENT_KEY_RE.search(text):
+                findings.append(_finding(
+                    rule_id="NGA-SC-026",
+                    severity="high",
+                    title="Deploy/publish job has no environment protection gate",
+                    description=(
+                        f"Workflow '{rel}' deploys or publishes but declares no `environment:` "
+                        "key on any job. Without an environment, GitHub cannot enforce required "
+                        "reviewers, wait timers, or branch restrictions before the job runs."
+                    ),
+                    affected=[rel],
+                    remediation=(
+                        "Add an `environment:` key to the deploy/publish job and configure "
+                        "required reviewers and allowed branches on that environment."
+                    ),
+                ))
+
+            if "NGA-SC-027" in self._enabled:
+                if _STEP_DEBUG_DISABLE_RE.search(text):
+                    findings.append(_finding(
+                        rule_id="NGA-SC-027",
+                        severity="medium",
+                        title="Security-relevant CI step silently swallows failures",
+                        description=(
+                            f"Workflow '{rel}' sets `ACTIONS_STEP_DEBUG: false`, which is used "
+                            "to hide step debug output. This can mask a failing security gate."
+                        ),
+                        affected=[rel],
+                        remediation="Remove ACTIONS_STEP_DEBUG overrides; keep step logs visible.",
+                    ))
+                for step in _STEP_START_RE.split(text)[1:]:
+                    if _SECURITY_STEP_RE.search(step) and _CONTINUE_ON_ERROR_RE.search(step):
+                        findings.append(_finding(
+                            rule_id="NGA-SC-027",
+                            severity="medium",
+                            title="Security-relevant CI step silently swallows failures",
+                            description=(
+                                f"Workflow '{rel}' has a scan/audit/lint/test step with "
+                                "`continue-on-error: true`. A failing security check in this "
+                                "step will not fail the pipeline, and may go unnoticed."
+                            ),
+                            affected=[rel],
+                            remediation=(
+                                "Remove `continue-on-error: true` from security-relevant steps, "
+                                "or route their failure into a required status check."
+                            ),
+                        ))
+                        break  # one finding per workflow is enough
 
         return findings
 

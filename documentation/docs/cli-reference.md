@@ -206,7 +206,7 @@ Runs up to seven scanners in sequence. External scanners are silently skipped wh
 | Scanner | Checks | Requires |
 |---|---|:---:|
 | **NGA** structural rules | AI-specific structural risks (NGA-001–018) | *(built in)* |
-| **Supply-chain** threat pack | Lifecycle scripts, CI/CD publish paths, AI-agent config poisoning (NGA-SC-001–025) | *(built in)* |
+| **Supply-chain** threat pack | Lifecycle scripts, CI/CD publish paths, AI-agent config poisoning (NGA-SC-001–027; also mapped to the OWASP Top 10 CI/CD Security Risks) | *(built in)* |
 | **OSV** | Dependency CVE lookup | *(built in)* |
 | **Grype** | Package / container CVEs | `grype` on PATH |
 | **Checkov** | Infrastructure-as-code misconfigurations | `checkov` on PATH |
@@ -242,7 +242,7 @@ nuguard analyze --sbom app.sbom.json --format json --format markdown --output re
 | `--checkov` / `--no-checkov` | on | Checkov IaC scan (requires `checkov` on PATH) |
 | `--trivy` / `--no-trivy` | on | Trivy container/fs scan (requires `trivy` on PATH) |
 | `--semgrep` / `--no-semgrep` | on | Semgrep AI-security rules (requires `semgrep` on PATH) |
-| `--supply-chain` / `--no-supply-chain` | on | Supply-chain threat pack (NGA-SC-001–025) |
+| `--supply-chain` / `--no-supply-chain` | on | Supply-chain threat pack (NGA-SC-001–027) |
 | `--supply-chain-profile` | `standard` | `ci` \| `standard` \| `full` — `full` adds git-history checks |
 | `--supply-chain-verify` | `off` | Artifact registry verification: `off` \| `warn` \| `fail` |
 | `--llm` | off | LLM enrichment in the ATLAS annotation pass |
