@@ -46,6 +46,27 @@ A real scan of a live fintech agent — Pinnacle Bank Assistant — walking thro
 
 [**→ Open the interactive demo**](../documentation/docs/pinnacle-bank-demo.html) — scroll through the full walkthrough yourself.
 
+## Framework Coverage
+
+NuGuard's AI-SBOM extractor understands framework-specific code, not just generic regex — it recognizes agent/tool/model declarations natively across:
+
+| Language | Frameworks |
+|---|---|
+| **Python** | LangChain, LangGraph, OpenAI Agents SDK, CrewAI (code + YAML), AutoGen (code + YAML), Google ADK, LlamaIndex, Agno, AWS BedrockAgentCore, Azure AI Agent Service, Azure Semantic Kernel, Guardrails AI, MCP Server (FastMCP + low-level) |
+| **TypeScript / JavaScript** | LangChain.js, LangGraph.js, OpenAI Agents (TS), Azure AI Agents (TS), Agno (TS), MCP Server (TS) |
+| **Go** | LangChainGo, Eino, Genkit, Anthropic SDK, OpenAI SDK, Google GenAI, MCP Server, net/http, Gorilla Mux, gqlgen |
+| **C#** | Azure Semantic Kernel, ASP.NET Core, ML.NET |
+
+Beyond the AI stack itself, the supply-chain/infrastructure analysis covers:
+
+| Category | Coverage |
+|---|---|
+| **Infrastructure & Configuration** | Terraform, CloudFormation, Azure Bicep, Kubernetes manifests, GCP Deployment Manager, GitHub Actions, Dockerfiles, Nginx configs |
+| **Data & Storage** | SQL schemas (PHI/PII classification), SQLAlchemy models, Django models, Pydantic models, prompt files (`.txt`/`.md`/`.jinja`) |
+| **Output formats** | SARIF, CycloneDX, SPDX, Markdown |
+
+See the [full framework matrix](../documentation/docs/index.html#frameworks) for details.
+
 ## Comparison
 
 <p align="center">
@@ -141,8 +162,7 @@ Filter by category or profile, or set `enabled: false` per scenario in a catalog
 
 <sub>
 <strong>Docs:</strong>
-<a href="../documentation/docs/getting-started.md">Getting started</a> ·
-<a href="../documentation/docs/quick-start.md">Quick start</a> ·
+<a href="../documentation/docs/quick-start.md">Getting started / Quick start</a> ·
 <a href="../documentation/docs/cli-reference.md">CLI reference</a> ·
 <a href="../documentation/docs/policy-engine-guide.md">Policy engine</a> ·
 <a href="../documentation/docs/static-analysis-guide.md">Static analysis</a> ·
