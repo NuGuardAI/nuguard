@@ -2,6 +2,8 @@
 
 This document describes the canonical AI-SBOM document shape used by NuGuard. The schema is defined by `AiSbomDocument` in the Pydantic models and enforced by the bundled JSON Schema at `nuguard/sbom/schemas/aibom.schema.json`.
 
+Use this as a reference when writing code that reads or generates AI-SBOMs directly (custom tooling, CI checks, framework adapters) — for running `nuguard sbom generate` itself, see the [Quick Start Guide](quick-start.md) instead.
+
 Current schema version: **1.5.0**
 
 Schema URI: `https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json`
