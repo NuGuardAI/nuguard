@@ -53,6 +53,7 @@ HARD_REFUSAL_TOKENS: frozenset[str] = frozenset({
     "i decline", "i must decline", "not within my", "i'd rather not",
     "i'd prefer not to", "not something i'm comfortable",
     "not equipped to", "prohibit me", "prohibits me",
+    "i must adhere to", "i have to adhere to", "i need to adhere to",
 })
 
 # Soft refusals — topic-change, deflection, or generic non-answer.

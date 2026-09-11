@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ...normalization import canonicalize_text
+from ...normalization import canonicalize_text, humanize_context_name
 from ...types import ComponentType
 from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
 from ..models_kb import (
@@ -681,6 +681,16 @@ class LangGraphAdapter(FrameworkAdapter):
             )
             # Canonical matches the display name for clean, readable output
             canon = canonicalize_text(dname.lower())
+            prompt_rels: list[RelationshipHint] = [
+                RelationshipHint(
+                    source_canonical=agent_canon,
+                    source_type=ComponentType.AGENT,
+                    target_canonical=canon,
+                    target_type=ComponentType.PROMPT,
+                    relationship_type="USES",
+                )
+                for agent_canon in agent_canonicals
+            ]
             detected.append(
                 ComponentDetection(
                     component_type=ComponentType.PROMPT,
@@ -702,6 +712,7 @@ class LangGraphAdapter(FrameworkAdapter):
                     line=inst.line,
                     snippet=f"{inst.class_name}(content=...)",
                     evidence_kind="ast_instantiation",
+                    relationships=prompt_rels,
                 )
             )
 
@@ -723,6 +734,16 @@ class LangGraphAdapter(FrameworkAdapter):
                 if content
                 else f"ChatPromptTemplate.{call.function_name}(...)"
             )
+            prompt_rels = [
+                RelationshipHint(
+                    source_canonical=agent_canon,
+                    source_type=ComponentType.AGENT,
+                    target_canonical=canon,
+                    target_type=ComponentType.PROMPT,
+                    relationship_type="USES",
+                )
+                for agent_canon in agent_canonicals
+            ]
             detected.append(
                 ComponentDetection(
                     component_type=ComponentType.PROMPT,
@@ -744,6 +765,7 @@ class LangGraphAdapter(FrameworkAdapter):
                     line=call.line,
                     snippet=snippet,
                     evidence_kind="ast_call",
+                    relationships=prompt_rels,
                 )
             )
 
@@ -872,6 +894,16 @@ class LangGraphAdapter(FrameworkAdapter):
             template_vars = _TEMPLATE_VAR_RE.findall(lit.value)
             dname = _prompt_display_name(lit.value, lit.context or "", lit.line)
             canon = canonicalize_text(dname.lower())
+            prompt_rels = [
+                RelationshipHint(
+                    source_canonical=agent_canon,
+                    source_type=ComponentType.AGENT,
+                    target_canonical=canon,
+                    target_type=ComponentType.PROMPT,
+                    relationship_type="USES",
+                )
+                for agent_canon in agent_canonicals
+            ]
             detected.append(
                 ComponentDetection(
                     component_type=ComponentType.PROMPT,
@@ -892,6 +924,7 @@ class LangGraphAdapter(FrameworkAdapter):
                     line=lit.line,
                     snippet=lit.value[:80] + ("..." if len(lit.value) > 80 else ""),
                     evidence_kind="ast_call",
+                    relationships=prompt_rels,
                 )
             )
 
@@ -1007,13 +1040,9 @@ def _infer_var_from_source(source: str, line: int) -> str | None:
 
 def _prompt_display_name(content: str, context: str, line: int) -> str:
     """Derive a human-readable name for a detected prompt."""
-    ctx = context.strip()
-    if ctx:
-        # Split camelCase/PascalCase into words before lowercasing
-        ctx_words = re.sub(r"([a-z])([A-Z])", r"\1_\2", ctx)
-        slug = re.sub(r"[^a-z0-9_]", "_", ctx_words.lower()).strip("_")
-        if slug and slug not in {"prompt", "template", "message", "content", "text", "str"}:
-            return slug.replace("_", " ").title()
+    humanized = humanize_context_name(context)
+    if humanized:
+        return humanized
     cl = content.lower()[:400]
     if re.search(r"\byou are\s", cl):
         return "System Prompt"

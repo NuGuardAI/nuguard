@@ -111,3 +111,53 @@ def test_backfill_matches_by_finding_id_not_position():
 
     assert f1.remediation == FALLBACK_REMEDIATION_TEXT
     assert f2.remediation == "Only for f2."
+
+
+def test_backfill_uses_per_finding_rationale_when_artefact_was_merged():
+    # A merged artefact's own `rationale` is a joined blob covering several
+    # findings; each finding must get back its OWN text, not a sibling's,
+    # even though both finding_ids point at the same artefact object.
+    f1 = _finding("f1")
+    f2 = _finding("f2")
+    merged = _artefact(
+        ["f1", "f2"],
+        rationale="f1's own text.\nf2's own text.",
+    )
+    merged.per_finding_rationale = {
+        "f1": "f1's own text.",
+        "f2": "f2's own text.",
+    }
+
+    backfill_finding_remediation([f1, f2], [merged])
+
+    assert f1.remediation == "f1's own text."
+    assert f2.remediation == "f2's own text."
+
+
+def test_backfill_truncation_does_not_cross_contaminate_merged_findings():
+    # Regression test: before per_finding_rationale, truncating the merged
+    # blob at max_len could leave only f1's text visible while f2's own
+    # remediation field silently became a copy of f1's — even though the two
+    # findings are unrelated. Confirm each finding's remediation is bounded
+    # to its own content only.
+    f1 = _finding("f1")
+    f2 = _finding("f2")
+    merged = _artefact(["f1", "f2"], rationale="f1 rationale text.\nf2 rationale text.")
+    merged.per_finding_rationale = {
+        "f1": "f1 rationale text.",
+        "f2": "f2 rationale text.",
+    }
+
+    backfill_finding_remediation([f1, f2], [merged], max_len=15)
+
+    assert "f2" not in f1.remediation
+    assert "f1" not in f2.remediation
+
+
+def test_backfill_falls_back_to_shared_rationale_when_not_merged():
+    finding = _finding("f1")
+    artefact = _artefact(["f1"], rationale="Unmerged rationale.")
+
+    backfill_finding_remediation([finding], [artefact])
+
+    assert finding.remediation == "Unmerged rationale."

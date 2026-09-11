@@ -546,6 +546,86 @@ class BrowserLoginSession:
         return path
 
 
+def _find_chat_payload_key(body: dict[str, Any], message: str) -> tuple[str, bool] | None:
+    """Identify which field in a sniffed request *body* carries *message*.
+
+    Generic by construction: we sent this exact string, so whichever field
+    holds it back is the chat-text field — no naming-convention guessing
+    (``"message"`` vs ``"prompt"`` vs ``"query"`` vs an app-invented name) is
+    needed. Also checks one level into list-of-dict fields (the common
+    ``messages: [{"role": "user", "content": "..."}]`` history shape).
+    Returns ``(key, is_list)`` or ``None`` when the message isn't found
+    verbatim anywhere in the body (e.g. the app transformed it).
+    """
+    for key, value in body.items():
+        if value == message:
+            return key, False
+    for key, value in body.items():
+        if not isinstance(value, list):
+            continue
+        for item in value:
+            if isinstance(item, dict) and message in item.values():
+                return key, True
+    return None
+
+
+async def sniff_chat_endpoint_headless(
+    target_url: str,
+    *,
+    chat_message: str = "Hello",
+    timeout_s: int = 30,
+) -> tuple[str, str, bool] | None:
+    """Ground-truth chat-endpoint discovery: open *target_url* in a headless
+    browser, drive its own chat UI, and observe which request it actually
+    fires — no static SBOM heuristics or endpoint-naming assumptions.
+
+    Unlike :meth:`BrowserLoginSession.run`, this never attempts a login flow
+    (no credentials required), so it also covers ``auth.type: none`` targets.
+    Intended as the last-resort fallback in
+    :func:`nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint`
+    after both the SBOM-ranked candidates and the blind HTTP probe fail to
+    find a working endpoint.
+
+    Returns ``(path, payload_key, payload_is_list)`` from the observed
+    request, or ``None`` on any failure (missing Playwright/Chromium, no
+    chat UI found, no outgoing request captured, or the request body doesn't
+    contain *chat_message* verbatim) — always best-effort, never raises.
+    """
+    from urllib.parse import urlparse  # noqa: PLC0415
+
+    from nuguard.common.auth import AuthConfig  # noqa: PLC0415
+    from nuguard.common.browser_login.config import BrowserDiscoveryConfig  # noqa: PLC0415
+
+    try:
+        async with BrowserLoginSession(
+            target_url,
+            AuthConfig(type="none"),
+            BrowserDiscoveryConfig(),
+            headless=True,
+            timeout_s=timeout_s,
+        ) as session:
+            await session._navigate()  # noqa: SLF001 — no login step needed for this fallback
+            url, body = await session._sniff_chat_request(chat_message)  # noqa: SLF001
+    except BrowserLoginError as exc:
+        _log.info("browser_login: headless chat sniff unavailable: %s", exc)
+        return None
+    except Exception as exc:  # noqa: BLE001 — best-effort fallback, never raise
+        _log.info("browser_login: headless chat sniff failed: %s", exc)
+        return None
+
+    if url is None or body is None:
+        return None
+    key_info = _find_chat_payload_key(body, chat_message)
+    if key_info is None:
+        _log.info(
+            "browser_login: sniffed a chat request but could not identify the message "
+            "field in its body — giving up on this fallback"
+        )
+        return None
+    payload_key, is_list = key_info
+    return urlparse(url).path, payload_key, is_list
+
+
 def write_netscape_cookies(cookies: list[dict[str, Any]], path: Path) -> None:
     """Serialize Playwright cookie objects to a Netscape-format cookies.txt,
     matching exactly the format ``_parse_netscape_cookies()`` in

@@ -11,6 +11,18 @@ from nuguard.common.streaming_models import StreamEvent
 T = TypeVar("T")
 
 
+class StreamExecutionError(RuntimeError):
+    """Sanitized public error raised when a stream worker fails."""
+
+    def __init__(self, error_code: str, message: str) -> None:
+        super().__init__(message)
+        self.error_code = error_code
+
+
+class StreamCancelledError(asyncio.CancelledError):
+    """Sanitized cancellation error preserving CancelledError compatibility."""
+
+
 @dataclass
 class _StreamController:
     run_id: str
@@ -85,6 +97,10 @@ class _StreamController:
         if not self._final_result.done():
             self._final_result.set_exception(exc)
 
+    @property
+    def final_result_settled(self) -> bool:
+        return self._final_result.done()
+
     async def final_result(self) -> Any:
         return await self._final_result
 
@@ -119,8 +135,78 @@ class StreamRunHandle(Generic[T]):
 def create_stream_handle(
     run_id: str,
     task_coro: Callable[[_StreamController], Coroutine[Any, Any, None]],
+    *,
+    heartbeat_interval: float | None = None,
 ) -> StreamRunHandle[Any]:
     """Create a stream controller and schedule the worker coroutine."""
     controller = _StreamController(run_id=run_id)
-    task = asyncio.create_task(task_coro(controller))
+
+    async def _heartbeat() -> None:
+        assert heartbeat_interval is not None
+        while True:
+            await asyncio.sleep(heartbeat_interval)
+            controller.publish(event_type="heartbeat", phase="runtime", payload={})
+
+    async def _run() -> None:
+        heartbeat_task = (
+            asyncio.create_task(_heartbeat())
+            if heartbeat_interval is not None and heartbeat_interval > 0
+            else None
+        )
+        try:
+            await task_coro(controller)
+        except asyncio.CancelledError as exc:
+            if not controller.final_result_settled:
+                controller.publish_terminal(
+                    event_type="failed",
+                    phase="finalize",
+                    payload={
+                        "status": "failed",
+                        "failure_stage": "cancelled",
+                        "error_type": "stream_cancelled",
+                        "error_message": "Stream execution cancelled",
+                    },
+                )
+                controller.set_final_exception(StreamCancelledError("Stream execution cancelled"))
+            raise exc
+        except Exception:
+            if not controller.final_result_settled:
+                controller.publish_terminal(
+                    event_type="failed",
+                    phase="finalize",
+                    payload={
+                        "status": "failed",
+                        "failure_stage": "runtime",
+                        "error_type": "stream_execution_failed",
+                        "error_message": "Stream execution failed",
+                    },
+                )
+                controller.set_final_exception(
+                    StreamExecutionError("stream_execution_failed", "Stream execution failed")
+                )
+        finally:
+            if heartbeat_task is not None:
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+
+    task = asyncio.create_task(_run())
+
+    def _settle_unstarted_task(completed_task: asyncio.Task[None]) -> None:
+        if completed_task.cancelled() and not controller.final_result_settled:
+            controller.publish_terminal(
+                event_type="failed",
+                phase="finalize",
+                payload={
+                    "status": "failed",
+                    "failure_stage": "cancelled",
+                    "error_type": "stream_cancelled",
+                    "error_message": "Stream execution cancelled",
+                },
+            )
+            controller.set_final_exception(StreamCancelledError("Stream execution cancelled"))
+
+    task.add_done_callback(_settle_unstarted_task)
     return StreamRunHandle(controller, task)

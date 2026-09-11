@@ -60,3 +60,22 @@ class TestExtractListItems:
         assert "book flights" in items
         assert "cancel reservations" in items
         assert "check in" in items
+
+    def test_json_looking_text_not_split_into_capability_names(self) -> None:
+        # Regression test: when an SSE/streaming response's event shape isn't
+        # recognized, a raw JSON dump could previously reach this parser and
+        # get its keys/fragments ("content_block", "chunk", "conversation_id")
+        # harvested as fake discovered tool/sub-agent names.
+        text = '{"type": "content_block", "chunk": "answering", "conversation_id": "abc-123"}'
+        assert _extract_list_items(text) == []
+
+    def test_json_array_input_not_split_into_capability_names(self) -> None:
+        text = '[{"type": "chunk"}, {"type": "content_block"}]'
+        assert _extract_list_items(text) == []
+
+    def test_normal_comma_list_still_extracted(self) -> None:
+        text = "I can check balance, transfer funds, and apply for a loan."
+        items = _extract_list_items(text)
+        assert "check balance" in items
+        assert "transfer funds" in items
+        assert "apply for a loan" in items

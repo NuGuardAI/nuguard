@@ -14,6 +14,7 @@ from ...core.go_parser import GoParseResult, parse_go
 from ...types import ComponentType
 from ..base import ComponentDetection, RelationshipHint
 from ._go_base import GoFrameworkAdapter
+from ._http_endpoint_metadata import enrich_http_endpoint_detections
 
 _MODULE = "net/http"
 _HANDLER_CALLS = {"HandleFunc", "Handle"}
@@ -87,7 +88,16 @@ class NetHTTPAdapter(GoFrameworkAdapter):
             )
             detections.append(endpoint)
 
-        return detections
+        return enrich_http_endpoint_detections(
+            content,
+            result,
+            detections,
+            framework=self.name,
+            verb_names={
+                name: "ANY"
+                for name in _HANDLER_CALLS
+            },
+        )
 
 
 __all__ = ["NetHTTPAdapter"]

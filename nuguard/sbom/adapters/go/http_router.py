@@ -18,6 +18,7 @@ from ...core.go_parser import GoParseResult, parse_go
 from ...types import ComponentType
 from ..base import ComponentDetection, RelationshipHint
 from ._go_base import GoFrameworkAdapter
+from ._http_endpoint_metadata import enrich_http_endpoint_detections
 
 # Method spellings as they appear in each framework's call sites, mapped to
 # the canonical uppercase HTTP method used in node metadata/canonical names.
@@ -111,7 +112,13 @@ class _GoHTTPVerbRouterAdapter(GoFrameworkAdapter):
             )
             detections.append(endpoint)
 
-        return detections
+        return enrich_http_endpoint_detections(
+            content,
+            result,
+            detections,
+            framework=self.name,
+            verb_names=self.verb_names,
+        )
 
 
 class GinAdapter(_GoHTTPVerbRouterAdapter):

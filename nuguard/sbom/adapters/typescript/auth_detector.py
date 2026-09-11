@@ -55,10 +55,33 @@ _TOKEN_METHOD_RE = re.compile(
 )
 _SIGN_CALL_RE = re.compile(r"\.sign(?:Async)?\s*\(")
 
+# jsonwebtoken's `jwt.verify(token, secretOrPublicKey[, options])` accepts
+# ANY algorithm the token itself claims unless `options.algorithms` pins an
+# explicit allow-list — the classic alg-confusion / alg:none bypass surface.
+_JWT_VERIFY_CALL_RE = re.compile(r"\bjwt\.verify\s*\(")
+_ALGORITHMS_OPTION_RE = re.compile(r"\balgorithms\s*:")
+# Bound the "same call" window rather than balancing parens (this adapter is
+# regex-based throughout, not an AST) — generous enough for a multi-line
+# verify(...) call with an inline options object.
+_VERIFY_CALL_WINDOW = 300
+
 
 def _line_at(content: str, offset: int) -> int:
     """1-indexed line number for a character offset into *content*."""
     return _line_index_at(content, offset) + 1
+
+
+def _jwt_verify_algorithm_restriction(content: str) -> bool | None:
+    """Whether the first `jwt.verify(...)` call site in *content* pins an
+    explicit `algorithms:` allow-list.  Returns None when no verify call is
+    found at all — most call sites live in signing-only files, and "not
+    found in this file" is not evidence of a missing restriction elsewhere.
+    """
+    m = _JWT_VERIFY_CALL_RE.search(content)
+    if not m:
+        return None
+    window = content[m.end() : m.end() + _VERIFY_CALL_WINDOW]
+    return bool(_ALGORITHMS_OPTION_RE.search(window))
 
 
 class NestJSAuthTSAdapter(TSFrameworkAdapter):
@@ -156,6 +179,10 @@ class NestJSAuthTSAdapter(TSFrameworkAdapter):
                     break
             if sign_line is None:
                 continue
+            auth_detail: dict[str, Any] = {"protocols": ["jwt"]}
+            algo_restricted = _jwt_verify_algorithm_restriction(content)
+            if algo_restricted is not None:
+                auth_detail["jwt_algorithm_restricted"] = algo_restricted
             detected.append(
                 ComponentDetection(
                     component_type=ComponentType.AUTH,
@@ -170,7 +197,7 @@ class NestJSAuthTSAdapter(TSFrameworkAdapter):
                     metadata={
                         "framework": "jsonwebtoken",
                         "auth_type": "jwt",
-                        "auth_detail": {"protocols": ["jwt"]},
+                        "auth_detail": auth_detail,
                         "language": "typescript",
                     },
                     file_path=file_path,

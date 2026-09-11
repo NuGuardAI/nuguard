@@ -1,4 +1,5 @@
 """nuguard target — target connectivity and auth verification commands."""
+
 from __future__ import annotations
 
 import asyncio
@@ -22,6 +23,27 @@ if TYPE_CHECKING:
 
 target_app = typer.Typer(name="target", help="Target connectivity and auth verification.")
 console = Console()
+
+_AUTH_REJECTION_STATUS_CODES = frozenset({401, 403})
+_BROWSER_SESSION_REFRESH_COMMAND = "nuguard target discover-browser --write --yes"
+
+
+def _browser_session_refresh_hint(
+    *,
+    status_code: int | None,
+    identity: str,
+    auth_type: str,
+) -> str | None:
+    if (
+        identity == "default"
+        and auth_type == "cookie_file"
+        and status_code in _AUTH_REJECTION_STATUS_CODES
+    ):
+        return (
+            "The saved browser session may have expired. "
+            f"Refresh it with: {_BROWSER_SESSION_REFRESH_COMMAND}"
+        )
+    return None
 
 
 @target_app.command(name="verify")
@@ -139,7 +161,9 @@ async def _verify_async(
     auth = auth_runtime.auth_config
 
     if not target_url:
-        console.print("[red]Error:[/red] No target URL. Set redteam.target in nuguard.yaml or pass --target.")
+        console.print(
+            "[red]Error:[/red] No target URL. Set redteam.target in nuguard.yaml or pass --target."
+        )
         raise typer.Exit(code=1)
 
     # Load canary (for tenant token verification)
@@ -354,7 +378,9 @@ async def _verify_async(
     console.print(table)
 
     if discovery_skip_note:
-        console.print(f"\n[dim]Skipping account/golden-data discovery — {discovery_skip_note}.[/dim]")
+        console.print(
+            f"\n[dim]Skipping account/golden-data discovery — {discovery_skip_note}.[/dim]"
+        )
     elif sbom_doc is not None and not effective_skip_discovery:
         _print_discovery_footnote(profile)
 
@@ -370,6 +396,13 @@ async def _verify_async(
                     f"  → [cyan]{f.identity}[/cyan]: authentication rejected "
                     f"(HTTP {f.http_status_code}). Check credentials."
                 )
+                hint = _browser_session_refresh_hint(
+                    status_code=f.http_status_code,
+                    identity=f.identity,
+                    auth_type=auth.type,
+                )
+                if hint is not None:
+                    console.print(f"   [yellow]{hint}[/yellow]")
             else:
                 console.print(
                     f"  → [cyan]{f.identity}[/cyan]: target unreachable. "
@@ -421,12 +454,17 @@ async def _run_pre_scan_discovery(
         return None
 
 
-
 # Field names checked (in order) for a configured user/account identity to
 # display alongside the discovered name — covers the common shapes apps use
 # to carry identity in the chat POST body (e.g. Pinnacle Bank's user_id: alice).
 _IDENTITY_EXTRA_KEYS = (
-    "user_id", "userId", "username", "user", "account_id", "customer_id", "tenant_id",
+    "user_id",
+    "userId",
+    "username",
+    "user",
+    "account_id",
+    "customer_id",
+    "tenant_id",
 )
 
 

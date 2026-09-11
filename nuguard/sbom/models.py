@@ -119,14 +119,58 @@ class ToolParameter(BaseModel):
 class RateLimitDetail(BaseModel):
     """Structured rate limit configuration extracted from code or IaC."""
 
-    requests_per_minute: int | None = Field(default=None, description="Maximum requests allowed per minute")
-    requests_per_hour: int | None = Field(default=None, description="Maximum requests allowed per hour")
-    requests_per_day: int | None = Field(default=None, description="Maximum requests allowed per day")
-    burst_size: int | None = Field(default=None, description="Burst/concurrency limit above the steady-state rate")
-    window_seconds: int | None = Field(default=None, description="Duration of the rate limit window in seconds")
+    requests_per_minute: int | None = Field(
+        default=None, description="Maximum requests allowed per minute"
+    )
+    requests_per_hour: int | None = Field(
+        default=None, description="Maximum requests allowed per hour"
+    )
+    requests_per_day: int | None = Field(
+        default=None, description="Maximum requests allowed per day"
+    )
+    burst_size: int | None = Field(
+        default=None, description="Burst/concurrency limit above the steady-state rate"
+    )
+    window_seconds: int | None = Field(
+        default=None, description="Duration of the rate limit window in seconds"
+    )
     enforcement_type: str | None = Field(
         default=None,
         description="How the rate limit is enforced, e.g. 'decorator', 'middleware', 'api_gateway'",
+    )
+
+
+class SecurityHeaderDetail(BaseModel):
+    """HTTP security-header posture extracted from code or IaC."""
+
+    csp: bool | None = Field(
+        default=None, description="True when a Content-Security-Policy header is set"
+    )
+    x_frame_options: bool | None = Field(
+        default=None, description="True when an X-Frame-Options header is set"
+    )
+    hsts: bool | None = Field(
+        default=None, description="True when a Strict-Transport-Security header is set"
+    )
+    missing: list[str] = Field(
+        default_factory=list,
+        description="Security headers confirmed absent, e.g. ['csp', 'x_frame_options', 'hsts']",
+    )
+
+
+class CorsPolicyDetail(BaseModel):
+    """CORS configuration extracted from code or IaC."""
+
+    origin: str | None = Field(
+        default=None, description="Configured allowed origin(s), e.g. '*' or 'https://example.com'"
+    )
+    allow_credentials: bool | None = Field(
+        default=None,
+        description="True when the CORS policy allows credentialed cross-origin requests",
+    )
+    wildcard_with_credentials: bool = Field(
+        default=False,
+        description="True when origin is wildcarded AND credentials are allowed — the dangerous combination",
     )
 
 
@@ -137,8 +181,12 @@ class AuthDetail(BaseModel):
         default_factory=list,
         description="Auth protocols in use, e.g. ['oauth2', 'bearer', 'api_key', 'basic']",
     )
-    token_expiry_seconds: int | None = Field(default=None, description="Token TTL in seconds when detectable")
-    mfa_required: bool | None = Field(default=None, description="True when MFA is required for access")
+    token_expiry_seconds: int | None = Field(
+        default=None, description="Token TTL in seconds when detectable"
+    )
+    mfa_required: bool | None = Field(
+        default=None, description="True when MFA is required for access"
+    )
     credential_rotation_policy: str | None = Field(
         default=None, description="Rotation policy description, e.g. '90-day', 'on-demand'"
     )
@@ -149,12 +197,24 @@ class AuthDetail(BaseModel):
         default_factory=list,
         description="Roles or scopes required for access, e.g. ['admin', 'read:users']",
     )
+    jwt_algorithm_restricted: bool | None = Field(
+        default=None,
+        description=(
+            "True when a JWT verification call site pins an explicit expected "
+            "algorithm (e.g. `algorithms: ['HS256']`); False when a verify call "
+            "was found with no such restriction, which admits alg-confusion "
+            "attacks (a forged token can switch the algorithm, e.g. to `none`, "
+            "and be accepted); None when no verification call site was found."
+        ),
+    )
 
 
 class EncryptionDetail(BaseModel):
     """Encryption and redaction posture for a component."""
 
-    in_transit: bool | None = Field(default=None, description="True when data is encrypted in transit (TLS/SSL)")
+    in_transit: bool | None = Field(
+        default=None, description="True when data is encrypted in transit (TLS/SSL)"
+    )
     at_rest: bool | None = Field(default=None, description="True when data is encrypted at rest")
     algorithm: str | None = Field(
         default=None, description="Encryption algorithm, e.g. 'AES256', 'aws:kms', 'RSA-4096'"
@@ -180,14 +240,18 @@ class DataHandlingDetail(BaseModel):
 
     retention_days: int | None = Field(default=None, description="Data retention period in days")
     purge_schedule: str | None = Field(
-        default=None, description="Schedule or trigger for data purge, e.g. 'weekly', 'on-account-deletion'"
+        default=None,
+        description="Schedule or trigger for data purge, e.g. 'weekly', 'on-account-deletion'",
     )
     backup_frequency: str | None = Field(
         default=None, description="Backup frequency, e.g. 'daily', 'hourly', '7-day-retention'"
     )
-    backup_encrypted: bool | None = Field(default=None, description="True when backups are encrypted")
+    backup_encrypted: bool | None = Field(
+        default=None, description="True when backups are encrypted"
+    )
     anonymization_method: str | None = Field(
-        default=None, description="Anonymization or pseudonymization technique, e.g. 'tokenization', 'k-anonymity'"
+        default=None,
+        description="Anonymization or pseudonymization technique, e.g. 'tokenization', 'k-anonymity'",
     )
     consent_required: bool | None = Field(
         default=None, description="True when user consent is required before processing data"
@@ -207,8 +271,12 @@ class InstrumentationDetail(BaseModel):
     log_level: str | None = Field(
         default=None, description="Configured log level, e.g. 'DEBUG', 'INFO', 'WARNING'"
     )
-    tracing_enabled: bool | None = Field(default=None, description="True when distributed tracing is configured")
-    metrics_enabled: bool | None = Field(default=None, description="True when metrics collection is configured")
+    tracing_enabled: bool | None = Field(
+        default=None, description="True when distributed tracing is configured"
+    )
+    metrics_enabled: bool | None = Field(
+        default=None, description="True when metrics collection is configured"
+    )
     sampling_rate: float | None = Field(
         default=None, description="Trace or log sampling rate [0.0, 1.0] when detectable"
     )
@@ -217,7 +285,9 @@ class InstrumentationDetail(BaseModel):
 class TestingDetail(BaseModel):
     """Testing, validation, and CI/CD posture for a component or application."""
 
-    has_unit_tests: bool | None = Field(default=None, description="True when unit test files are detected")
+    has_unit_tests: bool | None = Field(
+        default=None, description="True when unit test files are detected"
+    )
     has_integration_tests: bool | None = Field(
         default=None, description="True when integration test files or suites are detected"
     )
@@ -226,14 +296,16 @@ class TestingDetail(BaseModel):
         description="Test frameworks detected, e.g. ['pytest', 'jest', 'vitest', 'hypothesis']",
     )
     ci_cd_pipeline: str | None = Field(
-        default=None, description="CI/CD platform detected, e.g. 'github_actions', 'gitlab_ci', 'jenkins'"
+        default=None,
+        description="CI/CD platform detected, e.g. 'github_actions', 'gitlab_ci', 'jenkins'",
     )
     quality_gates: list[str] = Field(
         default_factory=list,
         description="Quality gate tools detected, e.g. ['codecov', 'sonarqube', 'snyk']",
     )
     test_coverage_tool: str | None = Field(
-        default=None, description="Coverage measurement tool detected, e.g. 'coverage.py', 'istanbul'"
+        default=None,
+        description="Coverage measurement tool detected, e.g. 'coverage.py', 'istanbul'",
     )
 
 
@@ -447,6 +519,31 @@ class NodeMetadata(BaseModel):
             "Used by the red-team scenario generator to craft context-authentic payloads."
         ),
     )
+    # PROMPT node attributes (populated by prompt-detecting adapters)
+    role: str | None = Field(
+        default=None,
+        description="Prompt role, e.g. 'system', 'user'. PROMPT nodes only.",
+    )
+    content: str | None = Field(
+        default=None,
+        description="Full prompt/instructions text. PROMPT nodes only.",
+    )
+    char_count: int | None = Field(
+        default=None,
+        description="Character count of the prompt content. PROMPT nodes only.",
+    )
+    is_template: bool | None = Field(
+        default=None,
+        description="True when the prompt content contains '{variable}' placeholders. PROMPT nodes only.",
+    )
+    template_variables: list[str] | None = Field(
+        default=None,
+        description="Template variable names found in the prompt content, e.g. ['user_name']. PROMPT nodes only.",
+    )
+    prompt_type: str | None = Field(
+        default=None,
+        description="Prompt kind set by some adapters, e.g. 'instructions', 'agent_input'. PROMPT nodes only.",
+    )
     # GUARDRAIL node attributes (populated by guardrail adapters / enricher)
     rules_excerpt: str | None = Field(
         default=None,
@@ -484,6 +581,23 @@ class NodeMetadata(BaseModel):
     rate_limited: bool | None = Field(
         default=None,
         description="True when rate limiting is configured for this endpoint",
+    )
+    operational: bool | None = Field(
+        default=None,
+        description=(
+            "True when a live authenticated ping to this API endpoint returned a "
+            "reachable response (including a 401/403 auth-correctly-enforced "
+            "response); False when it hit a rotation-trigger 4xx (404/405/400/422) "
+            "or a network-level failure; None when never probed."
+        ),
+    )
+    liveness_checked_at: str | None = Field(
+        default=None,
+        description="ISO8601 timestamp of the last liveness probe.",
+    )
+    liveness_notes: list[str] = Field(
+        default_factory=list,
+        description="Notes from the last liveness probe (status codes, timeouts, rotation).",
     )
     idor_surface: bool | None = Field(
         default=None,
@@ -571,6 +685,18 @@ class NodeMetadata(BaseModel):
     descriptive_name: str | None = Field(
         default=None,
         description="LLM-generated human-readable label, e.g. 'User Authentication API'",
+    )
+    security_headers_detail: SecurityHeaderDetail | None = Field(
+        default=None,
+        description="HTTP security-header posture extracted from code or IaC",
+    )
+    cors_policy: CorsPolicyDetail | None = Field(
+        default=None,
+        description="CORS configuration extracted from code or IaC",
+    )
+    debug_error_leak: bool | None = Field(
+        default=None,
+        description="True when the app runs in a debug/verbose-error mode that leaks stack traces",
     )
     rate_limit_detail: RateLimitDetail | None = Field(
         default=None,
@@ -760,6 +886,31 @@ class Node(BaseModel):
     )
 
 
+def is_soft_rejected(node: "Node | dict[str, Any]") -> bool:
+    """True when the SBOM's own pipeline flagged this node as not-really-real.
+
+    Covers two independent flags with identical "keep for provenance, exclude
+    from downstream counts/findings/scenarios" semantics: ``llm_soft_rejected``
+    (LLM verification judged a deterministic node a likely false positive) and
+    ``bulk_catalog_truncated`` (a node beyond the first few representative
+    entries collapsed from a bulk data-catalog/fixture file — see
+    ``nuguard.sbom.extractor.postprocess._collapse_bulk_catalog_files``).
+
+    Accepts either a ``Node`` model instance or a raw serialized-dict node
+    (``{"metadata": {"extras": {...}}}``) so callers operating on parsed JSON
+    (e.g. analysis rule plugins) don't need a model round-trip. Consumers of
+    the SBOM (analysis, policy, behavior, redteam, node_counts summaries)
+    must all honor this flag consistently — a flagged node stays in the SBOM
+    for provenance but should never drive findings, scenarios, or counts.
+    """
+    if isinstance(node, dict):
+        extras = (node.get("metadata") or {}).get("extras") or {}
+    else:
+        meta = getattr(node, "metadata", None)
+        extras = (getattr(meta, "extras", None) or {}) if meta is not None else {}
+    return bool(extras.get("llm_soft_rejected")) or bool(extras.get("bulk_catalog_truncated"))
+
+
 class Edge(BaseModel):
     """A directed relationship between two Nodes."""
 
@@ -832,7 +983,18 @@ class ScanSummary(BaseModel):
     )
     node_counts: dict[str, int] = Field(
         default_factory=dict,
-        description="Count of nodes per ComponentType, e.g. {'AGENT': 3, 'MODEL': 2}",
+        description=(
+            "Count of effective nodes per ComponentType. "
+            "Nodes carrying llm_soft_rejected=true are excluded."
+        ),
+    )
+    node_counts_soft_rejected: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Count of deterministic nodes retained for audit after LLM "
+            "verification rejected them. These nodes remain in document.nodes "
+            "but are excluded from effective summaries and red-team generation."
+        ),
     )
     # Security & resilience aggregate fields (populated from IaC/Dockerfile adapter output)
     secret_stores: list[str] = Field(
@@ -1078,5 +1240,16 @@ class AiSbomDocument(BaseModel):
             "relationships (AGENT → TOOL → DATASTORE, guardrail coverage, etc.) "
             "plus an LLM-written plain-English narrative. "
             "Only populated when enable_llm=True during SBOM generation."
+        ),
+    )
+    discovered_profile: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Cached pre-scan identity discovery result (a serialized "
+            "nuguard.common.discovery.DiscoveredProfile), persisted here after a "
+            "behavior/redteam run successfully discovers the authenticated test "
+            "user's real identity via a live DISCOVER conversation. Later runs "
+            "against this SBOM reuse it instead of re-running discovery. Delete "
+            "or regenerate the enriched SBOM file to force a fresh discovery."
         ),
     )

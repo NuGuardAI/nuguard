@@ -39,22 +39,21 @@ target:
   url: http://127.0.0.1:3000 
 
   # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
-  # The backend (python-backend/api.py) only recognizes Authorization: Bearer <token>
-  # obtained via /login — it does not understand HTTP Basic auth.
+  # Juice Shop's backend only recognizes Authorization: Bearer <token> obtained via
+  # /rest/user/login — it does not understand HTTP Basic auth, and the SBOM's
+  # request_body_schema for that endpoint is empty, so nuguard can't auto-upgrade a
+  # basic-auth config into a login_flow the way it can for apps with a fuller schema.
+  # The token is nested at authentication.token in the login response, not top-level.
   auth:
-    type: basic
-    username: ${JUICE_SHOP_USERNAME}
-    password: ${JUICE_SHOP_PASSWORD}
-
-  #  type: login_flow
-  #  login_flow:
-  #    endpoint: /login
-  #    payload:
-  #      username: alice
-  #      password: alice123
-  #    token_response_key: token
-  #    token_header: "Authorization: Bearer"
-  #    refresh_on_401: true
+    type: login_flow
+    login_flow:
+      endpoint: /rest/user/login
+      payload:
+        email: ${JUICE_SHOP_USERNAME}
+        password: ${JUICE_SHOP_PASSWORD}
+      token_response_key: authentication.token
+      token_header: "Authorization: Bearer"
+      refresh_on_401: true
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 # nuguard behavior exercises the AI app's happy path to verify capabilities work

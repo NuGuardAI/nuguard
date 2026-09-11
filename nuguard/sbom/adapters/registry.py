@@ -34,7 +34,13 @@ MODEL_NAME_PATTERNS: tuple[re.Pattern[str], ...] = (
         # Ollama colon-tag format: require a meaningful prefix containing
         # at least one letter, and omit 'latest' (too generic — it just
         # means "pull the newest image" and is not a real model name).
-        r"|[\w.-]+:(?:7b|13b|70b|3b|1b|8b|14b|32b|mini|instruct|chat)\b)\b",
+        # Negative lookahead excludes self-referential "word:word" text
+        # (e.g. "chat:chat") where both sides are the same generic word-only
+        # tag — never a real model spec, but a shape that turns up when an
+        # unrelated flattened key-path (e.g. "chat:chat" from a JSON key
+        # collapsed with its own value) happens to match the tag alternation.
+        r"|(?!(?:chat|mini|instruct):(?:chat|mini|instruct)\b)"
+        r"[\w.-]+:(?:7b|13b|70b|3b|1b|8b|14b|32b|mini|instruct|chat)\b)\b",
         re.IGNORECASE,
     ),
     re.compile(
@@ -182,6 +188,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
     )
     from .typescript import (
         AgentOrchestratorTSAdapter,
+        AgentRegistryTSAdapter,
         AgnoTSAdapter,
         AWSBedrockGuardrailsTSAdapter,
         AzureAIAgentsTSAdapter,
@@ -246,6 +253,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         AgnoTSAdapter(),
         AzureAIAgentsTSAdapter(),
         AgentOrchestratorTSAdapter(),
+        AgentRegistryTSAdapter(),
         AWSBedrockGuardrailsTSAdapter(),
         AzureContentSafetyTSAdapter(),
         GCPModelArmorTSAdapter(),
@@ -789,6 +797,12 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                     ),
                 ),
                 canonical_name="prompt:generic",
+                # .json data files (redteam/behavior report artifacts, fixtures,
+                # config) frequently *discuss* prompts/prompt injection without
+                # containing an actual application prompt — restrict this
+                # keyword-only fallback to source/doc files where a real hit is
+                # more likely a genuine prompt reference.
+                skip_extensions=frozenset({".json"}),
             ),
         ]
     )

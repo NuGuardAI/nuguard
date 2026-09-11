@@ -39,3 +39,39 @@ def test_name_followed_by_has_still_matched() -> None:
     text = "Mary Jones has requested a refund."
     hits = find_pii_values(text)
     assert "Mary Jones" in hits
+
+
+# ---------------------------------------------------------------------------
+# Gap B: pinnacle-bank-app false-positive narrowing (brand name / marketing
+# dollar figure matching as PII in a refused BOLA/BFLA/mass-assignment probe).
+# ---------------------------------------------------------------------------
+
+
+def test_bank_name_before_is_not_matched_as_person_name() -> None:
+    text = "Pinnacle Bank is committed to protecting your account."
+    hits = find_pii_values(text)
+    assert "Pinnacle Bank" not in hits
+
+
+def test_corp_name_before_has_not_matched_as_person_name() -> None:
+    text = "Acme Corp has updated its privacy policy."
+    hits = find_pii_values(text)
+    assert "Acme Corp" not in hits
+
+
+def test_bare_marketing_dollar_amount_not_matched() -> None:
+    text = "Refer a friend and get a $50 bonus — no fees under $0."
+    hits = find_pii_values(text)
+    assert not any("$50" in h or "$0" in h for h in hits)
+
+
+def test_balance_context_dollar_amount_still_matched() -> None:
+    text = "Your current balance is $1,204.55."
+    hits = find_pii_values(text)
+    assert any("$1,204.55" in h for h in hits)
+
+
+def test_account_context_dollar_amount_still_matched() -> None:
+    text = "Account transfer of $500 completed successfully."
+    hits = find_pii_values(text)
+    assert any("$500" in h for h in hits)

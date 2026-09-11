@@ -725,6 +725,69 @@ class FastAPIAdapter(FrameworkAdapter):
                             det.metadata.setdefault("rate_limit_detail", rld)
                             det.metadata["rate_limited"] = True
 
+        # Fourth pass: CORS policy, debug/verbose-error mode, and security-header
+        # posture. FastAPI sets no security headers by default (unlike frameworks
+        # with a headers middleware baked in), so any recognized non-CORS
+        # middleware registration is treated as evidence headers are handled;
+        # its absence is treated as all three headers being missing.
+        cors_policy: dict[str, Any] | None = None
+        debug_leak = False
+        has_header_middleware = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _get_call_name(node) == "add_middleware":
+                mw_name = node.args[0].id if node.args and isinstance(node.args[0], ast.Name) else None
+                if mw_name == "CORSMiddleware":
+                    origin: str | None = None
+                    allow_credentials: bool | None = None
+                    for kw in node.keywords:
+                        if kw.arg == "allow_origins":
+                            if isinstance(kw.value, ast.List):
+                                origins = [
+                                    elt.value for elt in kw.value.elts
+                                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+                                ]
+                                if "*" in origins:
+                                    origin = "*"
+                                elif origins:
+                                    origin = ",".join(origins)
+                            elif isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                                origin = kw.value.value
+                        elif kw.arg == "allow_credentials" and isinstance(kw.value, ast.Constant):
+                            allow_credentials = bool(kw.value.value)
+                    cors_policy = {
+                        "origin": origin,
+                        "allow_credentials": allow_credentials,
+                        "wildcard_with_credentials": origin == "*" and allow_credentials is True,
+                    }
+                elif mw_name is not None:
+                    has_header_middleware = True
+            elif isinstance(node, ast.Call) and _get_call_name(node) in _AGENT_CLASSES:
+                for kw in node.keywords:
+                    if kw.arg == "debug" and isinstance(kw.value, ast.Constant) and kw.value.value is True:
+                        debug_leak = True
+            elif (
+                isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Constant)
+                and node.value.value is True
+                and any(isinstance(t, ast.Attribute) and t.attr == "debug" for t in node.targets)
+            ):
+                debug_leak = True
+
+        security_headers_detail = (
+            None if has_header_middleware
+            else {"missing": ["csp", "x_frame_options", "hsts"]}
+        )
+        if cors_policy is not None or debug_leak or security_headers_detail is not None:
+            for det in detections:
+                if det.component_type != ComponentType.API_ENDPOINT:
+                    continue
+                if cors_policy is not None:
+                    det.metadata.setdefault("cors_policy", cors_policy)
+                if debug_leak:
+                    det.metadata["debug_error_leak"] = True
+                if security_headers_detail is not None:
+                    det.metadata.setdefault("security_headers_detail", security_headers_detail)
+
         return detections
 
 

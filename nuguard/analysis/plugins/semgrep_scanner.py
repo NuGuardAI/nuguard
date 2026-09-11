@@ -1,7 +1,14 @@
 """Semgrep static code analysis plugin for nuguard.
 
-Runs the bundled ``ai-security.yaml`` ruleset (and any additional rules in
-``config["semgrep_rules"]``) against source paths extracted from the SBOM.
+Runs two bundled rulesets — ``ai-security.yaml`` (AI/LLM-specific
+anti-patterns, Python/Go) and ``generic-security.yaml`` (classic
+Injection/XSS/path-traversal/insecure-deserialization/weak-crypto/
+hardcoded-secret patterns, JavaScript/TypeScript) — plus any additional
+rules in ``config["semgrep_rules"]``, against source paths extracted from
+the SBOM. The two bundled rulesets are deliberately non-overlapping in
+language coverage: ``ai-security.yaml`` targets AI-application code
+(Python/Go), ``generic-security.yaml`` targets the non-AI JS/TS backends
+NuGuard's AI-security rules don't otherwise touch.
 
 The plugin is silently skipped (returns status ``"skipped"``) when:
 - ``semgrep`` is not installed / not on PATH
@@ -39,10 +46,12 @@ from nuguard.common.logging import get_logger
 
 _log = get_logger("analysis.plugins.semgrep")
 
-# Bundled AI-security ruleset (ships with nuguard)
-_BUNDLED_RULES: Path = (
-    Path(__file__).parent / "semgrep_rules" / "ai-security.yaml"
-)
+# Bundled rulesets (ship with nuguard): AI/LLM-specific patterns (Python/Go)
+# plus classic non-AI vulnerability classes (JavaScript/TypeScript).
+_BUNDLED_RULES: list[Path] = [
+    Path(__file__).parent / "semgrep_rules" / "ai-security.yaml",
+    Path(__file__).parent / "semgrep_rules" / "generic-security.yaml",
+]
 
 # Semgrep severity → nuguard severity label
 _SEV_MAP: dict[str, str] = {
@@ -57,7 +66,7 @@ def _semgrep_path() -> str | None:
 
 
 class SemgrepScannerPlugin(AnalysisPlugin):
-    """Run Semgrep static analysis with the bundled AI-security ruleset."""
+    """Run Semgrep static analysis with the bundled AI-security + generic-security rulesets."""
 
     name = "semgrep"
 
@@ -65,8 +74,9 @@ class SemgrepScannerPlugin(AnalysisPlugin):
         """Scan source paths referenced in the SBOM with Semgrep.
 
         Source paths are extracted from node ``metadata.source_path`` or
-        ``metadata.extras.source_path``.  The bundled ``ai-security.yaml``
-        ruleset is always included; additional rules can be specified via
+        ``metadata.extras.source_path``.  Both bundled rulesets
+        (``ai-security.yaml``, ``generic-security.yaml``) are always
+        included; additional rules can be specified via
         ``config["semgrep_rules"]``.
         """
         binary = _semgrep_path()
@@ -90,7 +100,7 @@ class SemgrepScannerPlugin(AnalysisPlugin):
                 message="no source paths found in SBOM — semgrep scan skipped",
             )
 
-        rule_files: list[str] = [str(_BUNDLED_RULES)]
+        rule_files: list[str] = [str(p) for p in _BUNDLED_RULES]
         extra_rules = config.get("semgrep_rules")
         if extra_rules and Path(str(extra_rules)).exists():
             rule_files.append(str(extra_rules))

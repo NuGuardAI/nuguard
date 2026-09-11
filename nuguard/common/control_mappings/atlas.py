@@ -389,6 +389,22 @@ NGA_TO_ATLAS: dict[str, list[tuple[str, str]]] = {
         ("AML.T0029", "HIGH"),    # Denial of ML Service — unbounded request volume/cost
         ("AML.T0040", "MEDIUM"),  # ML Model Inference API Access — unmetered API abuse
     ],
+    # NGA-027: AI endpoint missing security headers (CSP/X-Frame-Options/HSTS)
+    "NGA-027": [
+        ("AML.T0024", "MEDIUM"),  # Exfiltration via ML Inference API — weaker response-side controls
+    ],
+    # NGA-028: API endpoint has an overly permissive CORS policy
+    "NGA-028": [
+        ("AML.T0024", "HIGH"),    # Exfiltration via ML Inference API — cross-origin credentialed reads
+    ],
+    # NGA-029: API endpoint's error handler leaks stack traces
+    "NGA-029": [
+        ("AML.T0024", "MEDIUM"),  # Exfiltration via ML Inference API — internals leaked via error responses
+    ],
+    # NGA-030: JWT verification with no pinned algorithm allow-list
+    "NGA-030": [
+        ("AML.T0040", "HIGH"),    # ML Model Inference API Access — forged token accepted as valid identity
+    ],
     # ── NGA-SC-xxx: supply-chain rules ──────────────────────────────────────
     "NGA-SC-001": [("AML.T0010", "HIGH"), ("AML.T0048", "MEDIUM")],
     "NGA-SC-002": [("AML.T0010", "HIGH"), ("AML.T0036", "MEDIUM")],

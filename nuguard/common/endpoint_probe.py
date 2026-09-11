@@ -13,7 +13,9 @@ docs, callbacks) are skipped regardless of HTTP status.
 """
 from __future__ import annotations
 
+import base64
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -23,6 +25,7 @@ import httpx
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
+    from nuguard.common.llm_client import LLMClient
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
@@ -96,6 +99,9 @@ _OPENAPI_SCHEMA_PATHS: tuple[str, ...] = (
     "/swagger/v1/swagger.json",
 )
 
+# Fallback WebSocket paths tried when the SBOM has no declared WS endpoints.
+_WS_FALLBACK_PATHS: tuple[str, ...] = ("/ws", "/ws/chat", "/socket", "/realtime")
+
 # Chat-signal tokens used to score OpenAPI endpoint paths.
 _OPENAPI_CHAT_TOKENS: frozenset[str] = frozenset({
     "chat", "message", "messages", "completions", "complete", "generate",
@@ -132,6 +138,38 @@ _CHAT_TEXT_SENTINEL = "__nuguard_chat_text__"
 _CONTENT_FIELD_NAMES: tuple[str, ...] = (
     "content", "text", "message", "body", "input", "prompt", "query", "msg",
 )
+
+
+_SIMPLE_SCALAR_TYPES: frozenset[str] = frozenset({
+    "str", "int", "float", "bool", "dict",
+    "list[str]", "list[int]", "list[float]", "list[bool]",
+})
+
+
+def _has_required_structured_field(
+    request_body_schema: "dict[str, str] | None", payload_key: str
+) -> bool:
+    """Detect a required non-scalar field (other than the chat payload key).
+
+    A field is "required" when its type hint has no ``| None`` / ``Optional[...]``
+    marker.  A required field of a custom/structured type (e.g.
+    ``list[VisualDocumentPage]``) can't be synthesised from plain probe text, so
+    the endpoint will reject a normal chat request — a strong signal this is a
+    non-conversational route (document upload, image analysis, etc.) even
+    though its path or payload key looks chat-like.
+    """
+    if not request_body_schema:
+        return False
+    for field_name, type_hint in request_body_schema.items():
+        if field_name == payload_key or not isinstance(type_hint, str):
+            continue
+        normalized = type_hint.replace(" ", "")
+        if "|None" in normalized or normalized.startswith("Optional["):
+            continue
+        if normalized in _SIMPLE_SCALAR_TYPES:
+            continue
+        return True
+    return False
 
 
 def _normalize_payload_key(key: str) -> str:
@@ -281,6 +319,7 @@ def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool, dict | Non
             body_schema = _resolve_openapi_ref(body_schema["$ref"], schema)
 
         props = body_schema.get("properties") or {}
+        required_fields = set(body_schema.get("required") or [])
         for key in _OPENAPI_PAYLOAD_KEYS:
             if key not in props:
                 continue
@@ -288,8 +327,28 @@ def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool, dict | Non
             if isinstance(prop, dict) and "$ref" in prop:
                 prop = _resolve_openapi_ref(prop["$ref"], schema)
             is_list = isinstance(prop, dict) and prop.get("type") == "array"
-            if best is None or score > best[0]:
-                best = (score, path, key, is_list)
+
+            # Penalise a required field (other than the chat key) whose type
+            # isn't a plain scalar — e.g. a required array of document/image
+            # objects. Such a field can't be synthesised from plain probe
+            # text, so the endpoint will reject a normal chat request even
+            # though its path/key looks conversational (see the matching
+            # penalty in discover_chat_candidates_from_sbom).
+            path_score = score
+            for other_field, other_schema in props.items():
+                if other_field == key or other_field not in required_fields:
+                    continue
+                o = other_schema
+                if isinstance(o, dict) and "$ref" in o:
+                    o = _resolve_openapi_ref(o["$ref"], schema)
+                o_type = o.get("type") if isinstance(o, dict) else None
+                if o_type in ("string", "integer", "number", "boolean"):
+                    continue
+                path_score -= 6
+                break
+
+            if best is None or path_score > best[0]:
+                best = (path_score, path, key, is_list)
             break
 
     if best is None:
@@ -304,6 +363,31 @@ def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool, dict | Non
         value_template = _build_object_template(raw_prop, schema)
 
     return path, key, is_list, value_template
+
+
+def _sbom_websocket_paths(sbom: "AiSbomDocument") -> list[str]:
+    """Return WebSocket endpoint paths declared in the SBOM.
+
+    These come from API_ENDPOINT nodes with ``metadata.method == "WEBSOCKET"``
+    (e.g. FastAPI ``@app.websocket(...)`` routes detected by the SBOM adapter).
+    """
+    from nuguard.sbom.models import NodeType  # noqa: PLC0415
+
+    paths: list[str] = []
+    for node in sbom.nodes:
+        if node.component_type != NodeType.API_ENDPOINT:
+            continue
+        meta = node.metadata
+        if not meta or not meta.method or meta.method.upper() != "WEBSOCKET":
+            continue
+        path: str = (meta.endpoint or "").strip()
+        if not path or not path.startswith("/"):
+            continue
+        if _HAS_PATH_PARAM_RE.search(path):
+            continue
+        if path not in paths:
+            paths.append(path)
+    return paths
 
 
 def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
@@ -428,6 +512,7 @@ async def _try_openapi_detection(
     timeout: float,
     known_response_key: str | None,
     probe_payload_extras: "dict[str, object] | None",
+    llm: "LLMClient | None" = None,
 ) -> "ProbeResult | None":
     """Option 1: fetch OpenAPI/Swagger spec and verify the discovered endpoint.
 
@@ -456,9 +541,15 @@ async def _try_openapi_detection(
 
     config = _chat_config_from_openapi(schema)
     if config is None:
-        return None
-
-    oa_path, oa_key, oa_list, oa_template = config
+        if llm is None:
+            return None
+        llm_res = await _llm_chat_key_from_openapi(schema, llm)
+        if llm_res is None:
+            return None
+        oa_path, oa_key, oa_list = llm_res
+        oa_template: "dict | None" = None
+    else:
+        oa_path, oa_key, oa_list, oa_template = config
     _log.info("endpoint_probe: OpenAPI config — path=%s key=%r list=%s template=%s",
               oa_path, oa_key, oa_list, bool(oa_template))
 
@@ -492,11 +583,16 @@ async def _try_openapi_detection(
         if _looks_like_chat_response(data, known_response_key) or _is_streaming_response(resp):
             _log.info("endpoint_probe: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
             return ProbeResult(oa_path, oa_key, oa_list, oa_template)
-    elif 400 <= status < 500:
-        # 4xx (not 404/405) — endpoint exists, schema-specified key accepted
+    elif status in (401, 403):
+        # Auth-gated, not a rejected body — the endpoint exists and the
+        # schema-specified key was structurally accepted, just needs
+        # credentials. A plain 400/422 means the body itself was rejected
+        # (e.g. a required field the probe couldn't fill), which is not a
+        # confirmation and must fall through to let the blind probe /
+        # browser-sniff fallback try other candidates instead.
         _log.info("endpoint_probe: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
         return ProbeResult(oa_path, oa_key, oa_list, oa_template)
-    # 5xx — don't block; let the blind probe try this path too
+    # 400/404/405/422/5xx — don't block; let the blind probe try this path too
     return None
 
 
@@ -543,6 +639,79 @@ def _try_read_first_streaming_json(resp: "httpx.Response") -> "dict | None":
     return None
 
 
+async def _llm_extract_error_field_names(body_text: str, llm: "LLMClient") -> list[str]:
+    """Use LLM to extract a required field name from a non-standard 4xx error body."""
+    try:
+        prompt = (
+            "An HTTP endpoint returned this error when sent a chat probe:\n"
+            f"{body_text[:800]}\n\n"
+            "What JSON field name does the request body need for the user message?\n"
+            "Reply with ONLY the field name (e.g. 'query'). If unknown, reply: none"
+        )
+        text = (await llm.complete(prompt, label="probe-error-field")).strip().strip('"\' ').lower()
+        if text and text != "none" and len(text) <= 64 and text.replace("_", "").replace("-", "").isalnum():
+            return [text]
+    except Exception:  # noqa: BLE001
+        pass
+    return []
+
+
+async def _llm_chat_key_from_openapi(
+    schema: dict, llm: "LLMClient"
+) -> "tuple[str, str, bool] | None":
+    """Use LLM to find a chat endpoint/key in an OpenAPI schema when structural parsing fails."""
+    try:
+        schema_text = json.dumps(schema, separators=(",", ":"))[:3000]
+        prompt = (
+            "Find the POST endpoint for chat/conversation in this OpenAPI schema:\n"
+            f"{schema_text}\n\n"
+            'Reply as JSON: {"path": "/endpoint", "key": "fieldName", "is_list": false}\n'
+            "key = the request body field that holds the user message. Reply null if none."
+        )
+        text = (await llm.complete(prompt, label="probe-openapi-key")).strip()
+        if text.lower() == "null":
+            return None
+        obj = json.loads(text)
+        path = str(obj.get("path", ""))
+        key = str(obj.get("key", ""))
+        is_list = bool(obj.get("is_list", False))
+        if path.startswith("/") and key:
+            return path, key, is_list
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+async def _llm_confirms_chat_response(data: dict, llm: "LLMClient") -> bool:
+    """Ask LLM whether an ambiguous or non-standard response body is from a chat endpoint."""
+    try:
+        resp_text = json.dumps(data, separators=(",", ":"))[:600]
+        prompt = (
+            'A probe sent "hello" to an endpoint and got:\n'
+            f"{resp_text}\n\n"
+            "Is this from a chat/conversation AI endpoint? Reply: yes or no"
+        )
+        text = (await llm.complete(prompt, label="probe-chat-confirm")).strip().lower()
+        return text.startswith("y")
+    except Exception:  # noqa: BLE001
+        return True  # safe default: don't block on LLM failure
+
+
+def _has_known_chat_key(data: dict, response_key: str | None) -> bool:
+    """True when *data* contains an explicit chat-response key (not just the ≥2-keys rule)."""
+    if response_key and response_key in data:
+        return True
+    for key in (
+        "response", "content", "prognosis", "text", "output",
+        "answer", "result", "reply", "choices", "messages",
+        "bot_response", "assistant_message", "assistant_reply",
+        "generated_text", "completion", "delta", "llm_output", "llm_response", "data",
+    ):
+        if key in data:
+            return True
+    return False
+
+
 def _extract_422_field_names(resp: "httpx.Response") -> list[str]:
     """Extract required body field names from a FastAPI/Pydantic 422 response.
 
@@ -579,6 +748,7 @@ async def _blind_probe(
     probe_payload_extras: "dict[str, object] | None",
     *,
     known_payload_key: str | None = None,
+    llm: "LLMClient | None" = None,
 ) -> "ProbeResult | None":
     """Fallback: try each path with each payload shape until one responds usefully."""
     server_error_fallback: ProbeResult | None = None
@@ -622,7 +792,12 @@ async def _blind_probe(
                     data = resp.json()
                 except Exception:
                     data = _try_read_first_streaming_json(resp) or {}
-                if _looks_like_chat_response(data, known_response_key):
+                chat_like = _looks_like_chat_response(data, known_response_key)
+                if llm is not None and isinstance(data, dict) and data:
+                    # LLM re-checks ambiguous ≥2-key matches and catches non-standard response keys
+                    if not chat_like or not _has_known_chat_key(data, known_response_key):
+                        chat_like = await _llm_confirms_chat_response(data, llm)
+                if chat_like:
                     _log.info("endpoint_probe: selected %s (key=%r, status=%d)", path, pay_key, status)
                     return ProbeResult(path, pay_key, pay_list)
                 # A parsed body that is *only* an error envelope (e.g. a streaming
@@ -658,9 +833,12 @@ async def _blind_probe(
                 _log.info("endpoint_probe: selected %s (key=%r known, status=%d)", path, pay_key, status)
                 return ProbeResult(path, pay_key, pay_list)
 
-            # 422 — FastAPI/Pydantic validation error: body tells us the correct field name
+            # 422 — body tells us the correct field name; LLM handles non-FastAPI formats
             if status == 422:
-                for hint_key in _extract_422_field_names(resp):
+                hint_keys = _extract_422_field_names(resp)
+                if not hint_keys and llm is not None:
+                    hint_keys = await _llm_extract_error_field_names(resp.text or "", llm)
+                for hint_key in hint_keys:
                     if hint_key in tried_keys:
                         continue
                     tried_keys.add(hint_key)
@@ -712,6 +890,55 @@ async def _blind_probe(
     return None
 
 
+def compute_websocket_accept(key: str) -> str:
+    """Compute the RFC 6455 §4.2.2 ``Sec-WebSocket-Accept`` value for *key*.
+
+    ``base64(sha1(key + "258EAFA455E4B4CE-C5B58384CD9835B4"))`` — the value a
+    genuine WebSocket server must echo back to prove it actually validated the
+    handshake, rather than just answering 101/426 unconditionally (used both
+    by the live upgrade probe and by tests that need to mock a real response).
+    """
+    import hashlib  # noqa: PLC0415
+
+    digest = hashlib.sha1((key + "258EAFA455E4B4CE-C5B58384CD9835B4").encode()).digest()
+    return base64.b64encode(digest).decode()
+
+
+async def _probe_websocket_upgrade(client: httpx.AsyncClient, path: str) -> bool:
+    """Return True if *path* answers an HTTP Upgrade request as a WebSocket endpoint.
+
+    httpx cannot complete a real WS handshake, but the response can still be
+    verified per RFC 6455 §4.2.2: a genuine WS server responds 101 with a
+    ``Sec-WebSocket-Accept`` header equal to
+    ``compute_websocket_accept(key)``. A bare 101 (or 426) with no matching
+    Accept header is NOT trusted — some infrastructure (e.g. Cloud Run's
+    front-end proxy) performs a generic HTTP/1.1 Upgrade handshake for *any*
+    path regardless of whether the application actually implements WebSocket
+    there, which produced a false positive against a real deployed app that
+    has no WebSocket route at all. A 426 (Upgrade Required) is accepted only
+    when its ``Upgrade`` header explicitly names ``websocket`` (RFC 9110
+    §15.5.22) — still not a full guarantee, but the best signal available for
+    a rejected-but-WS-aware server.
+    """
+    ws_key = base64.b64encode(os.urandom(16)).decode()
+    expected_accept = compute_websocket_accept(ws_key)
+    headers = {
+        "Connection": "Upgrade",
+        "Upgrade": "websocket",
+        "Sec-WebSocket-Version": "13",
+        "Sec-WebSocket-Key": ws_key,
+    }
+    try:
+        resp = await client.get(path, headers=headers)
+    except Exception:  # noqa: BLE001 — any transport failure means "not WS here"
+        return False
+    if resp.status_code == 101:
+        return resp.headers.get("sec-websocket-accept", "") == expected_accept
+    if resp.status_code == 426:
+        return "websocket" in resp.headers.get("upgrade", "").lower()
+    return False
+
+
 async def _detect_chat_endpoint(
     base: str,
     paths: list[str],
@@ -721,6 +948,8 @@ async def _detect_chat_endpoint(
     probe_payload_extras: "dict[str, object] | None",
     known_payload_key: str | None = None,
     known_payload_list: bool = False,
+    ws_paths: list[str] | None = None,
+    llm: "LLMClient | None" = None,
 ) -> "ProbeResult | None":
     """Ordered detection pipeline — smarter options first, blind probe as final fallback.
 
@@ -736,11 +965,16 @@ async def _detect_chat_endpoint(
     ) as client:
         if not known_payload_key:
             # Option 1: OpenAPI/Swagger schema
-            result = await _try_openapi_detection(client, timeout, known_response_key, probe_payload_extras)
+            result = await _try_openapi_detection(client, timeout, known_response_key, probe_payload_extras, llm=llm)
             if result is not None:
                 return result
 
-            # Option 2+: future detection options go here
+            # Option 2: WebSocket upgrade probe — confirms WS-candidate paths via
+            # a 101/426 response before falling back to the blind HTTP probe.
+            for ws_path in ws_paths or ():
+                if await _probe_websocket_upgrade(client, ws_path):
+                    _log.info("endpoint_probe: detected WebSocket endpoint at %s", ws_path)
+                    return ProbeResult(ws_path, "__websocket__", False)
 
         # Final: blind multi-shape probe (or single-shape when key is known)
         payload_shapes = (
@@ -750,6 +984,7 @@ async def _detect_chat_endpoint(
             client, paths, payload_shapes,
             known_response_key, probe_payload_extras,
             known_payload_key=known_payload_key,
+            llm=llm,
         )
 
 
@@ -763,6 +998,7 @@ async def probe_chat_endpoints(
     known_response_key: str | None = None,
     probe_payload_extras: "dict[str, object] | None" = None,
     hint_path: str | None = None,
+    llm: "LLMClient | None" = None,
 ) -> "ProbeResult | None":
     """Probe SBOM POST endpoints and return the first chat-capable one.
 
@@ -778,6 +1014,7 @@ async def probe_chat_endpoints(
     the probe verifies paths with that key only.
     """
     paths = _sbom_post_paths(sbom)
+    ws_paths = _sbom_websocket_paths(sbom)
 
     # ── ADK fast-path (framework shortcut — skip all detection) ──────────────
     # Google ADK uses a fixed RunAgentRequest protocol; the generic payload
@@ -800,11 +1037,17 @@ async def probe_chat_endpoints(
     for fallback in ("/chat", "/run", "/api/chat", "/v1/chat", "/query", "/agent"):
         if fallback not in paths:
             paths.append(fallback)
+    for ws_fallback in _WS_FALLBACK_PATHS:
+        if ws_fallback not in ws_paths:
+            ws_paths.append(ws_fallback)
 
     # Option B: caller provided a specific path — probe only that path to detect
-    # the payload key, ignoring SBOM paths and fallbacks entirely.
+    # the payload key, ignoring SBOM paths and fallbacks entirely. Still check
+    # it as a WS candidate (a user-configured target_endpoint may itself be a
+    # WebSocket route) instead of dropping WS detection altogether.
     if hint_path:
         paths = [hint_path]
+        ws_paths = [hint_path]
     if not paths:
         _log.debug("endpoint_probe: no probe-eligible paths")
         return None
@@ -822,6 +1065,8 @@ async def probe_chat_endpoints(
         known_response_key, probe_payload_extras,
         known_payload_key=known_payload_key,
         known_payload_list=known_payload_list,
+        ws_paths=ws_paths,
+        llm=llm,
     )
 
 
@@ -858,7 +1103,22 @@ def discover_chat_candidates_from_sbom(
         meta = node.metadata
         if not meta:
             continue
-        if meta.method and meta.method.upper() != "POST":
+        method_u = (meta.method or "").upper()
+        if method_u == "WEBSOCKET":
+            ws_path = (meta.endpoint or "").strip()
+            if not ws_path or not ws_path.startswith("/"):
+                continue
+            ws_score = 3 if node.confidence >= 0.9 else 1
+            # Penalise (don't drop) path-param WS routes — same treatment as
+            # the HTTP branch below: a thread/session-scoped stream route
+            # (e.g. /api/threads/{thread_id}/browser/stream) is still a valid
+            # fallback candidate when nothing parameter-free is available;
+            # path_param_sources (when declared) lets the bootstrap resolve it.
+            if _HAS_PATH_PARAM_RE.search(ws_path):
+                ws_score -= 5
+            candidates.append((ws_score, ws_path, "__websocket__", False, node.name, None))
+            continue
+        if method_u and method_u != "POST":
             continue
 
         discovered_path = meta.endpoint or chat_path
@@ -911,9 +1171,25 @@ def discover_chat_candidates_from_sbom(
         elif node.confidence >= 0.75:
             score += 1
 
-        if "/chat/message" in endpoint_l:
+        # Path tokens must match whole segments — a substring check would let
+        # e.g. "/respond-visual" falsely match the "/respond" token and
+        # outscore the real "/chat" endpoint.
+        endpoint_segments = [s for s in endpoint_l.strip("/").split("/") if s]
+
+        def _segment_match(token: str) -> bool:
+            tok_segments = [s for s in token.strip("/").split("/") if s]
+            n = len(tok_segments)
+            return any(
+                endpoint_segments[i : i + n] == tok_segments
+                for i in range(len(endpoint_segments) - n + 1)
+            )
+
+        if _segment_match("/chat/message"):
             score += 2
-        elif any(token in endpoint_l for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")):
+        elif any(
+            _segment_match(token)
+            for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")
+        ):
             score += 3
         elif endpoint_l.endswith("/chat"):
             score += 1
@@ -930,6 +1206,14 @@ def discover_chat_candidates_from_sbom(
         # Penalise nodes that had no explicit payload key (inferred).
         if not meta.chat_payload_key:
             score -= 1
+
+        # Penalise endpoints that require another structured field (e.g. a list
+        # of document/image pages) beyond the chat payload key — a plain-text
+        # probe request can't populate it, so the endpoint will reject every
+        # attack turn with a validation error (e.g. HTTP 400/422) regardless of
+        # how conversational its path or payload key name looks.
+        if _has_required_structured_field(meta.request_body_schema, payload_key):
+            score -= 6
 
         # Penalise path-param routes — they require a real resource ID and will
         # 404 with an unresolved placeholder. Still returned so callers can fall
@@ -962,6 +1246,31 @@ def discover_chat_candidates_from_sbom(
         [(c[1], c[2]) for c in candidates[:5]],
     )
     return [(c[1], c[2], c[3], c[5]) for c in candidates]
+
+
+def sbom_indicates_websocket(
+    sbom: "AiSbomDocument | None",
+    chat_path: str = "",
+    chat_payload_key: str = "message",
+) -> bool:
+    """Return True if *chat_path* (or the top SBOM candidate, when unset) is a WebSocket route.
+
+    Zero-I/O — used to decide, *before* any bootstrap/live-probe network call,
+    whether to open a WS handshake or send an HTTP POST. Errors are swallowed
+    (treated as "not WebSocket") since this is a best-effort pre-check; the
+    fuller live-probe-based discovery elsewhere still applies afterwards.
+    """
+    if chat_payload_key == "__websocket__":
+        return True
+    if sbom is None:
+        return False
+    try:
+        candidates = discover_chat_candidates_from_sbom(sbom, chat_path=chat_path)
+    except Exception:
+        return False
+    if chat_path:
+        return any(path == chat_path and key == "__websocket__" for path, key, _l, _r in candidates)
+    return bool(candidates) and candidates[0][1] == "__websocket__"
 
 
 def discover_chat_config_from_sbom(

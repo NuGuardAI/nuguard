@@ -1,0 +1,41 @@
+# Secrets & credentials - NEVER commit these
+.env
+.env.*
+*.key
+*.pem
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+build/
+.pnpm-store/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log.local
+
+# Azure Developer CLI
+.azure/
+
+# Large binary/data files to exclude from versioningg (keep tracked ones)
+# (test result outputs are intentionally committed)

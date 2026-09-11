@@ -17,22 +17,24 @@ from pydantic import ValidationError
 
 from nuguard.behavior.models import (
     BehaviorAnalysisResult,
-    IntentProfile,
     BehaviorRunResult,
     BehaviorScenario,
     BehaviorScenarioType,
+    IntentProfile,
 )
 from nuguard.behavior.public_api import (
     BehaviorAnalysisRequest,
     BehaviorRunRequest,
+    analyze_behavior,
     analyze_behavior_static,
     analyze_behavior_stream,
-    analyze_behavior,
     discover_behavior_profile,
     run_behavior_scenarios,
 )
 from nuguard.common.discovery import DiscoveredProfile
 from nuguard.config import BehaviorConfig
+from nuguard.models.policy import CognitivePolicy
+from nuguard.policy import CognitivePolicyParseResult
 
 
 def _scenario(name: str = "s1") -> BehaviorScenario:
@@ -93,10 +95,12 @@ def test_behavior_run_request_pre_scan_profile_defaults_none():
 
 @pytest.mark.asyncio
 async def test_analyze_behavior_constructs_analyzer_and_forwards_mode():
+    """The analyzer receives the policy model unwrapped from a public parse result."""
     sentinel_result = MagicMock(spec=BehaviorAnalysisResult)
     config = BehaviorConfig(target="http://localhost:9999")
     sbom = MagicMock()
-    policy = MagicMock()
+    policy = CognitivePolicy(allowed_topics=["Support"])
+    parsed_policy = CognitivePolicyParseResult(success=True, policy=policy)
     controls = [MagicMock()]
     llm_client = MagicMock()
 
@@ -106,7 +110,11 @@ async def test_analyze_behavior_constructs_analyzer_and_forwards_mode():
 
         request = BehaviorAnalysisRequest(config=config, mode="dynamic")
         result = await analyze_behavior(
-            request, sbom=sbom, policy=policy, controls=controls, llm_client=llm_client
+            request,
+            sbom=sbom,
+            policy=parsed_policy,
+            controls=controls,
+            llm_client=llm_client,
         )
 
     mock_cls.assert_called_once_with(
@@ -148,7 +156,8 @@ async def test_run_behavior_scenarios_constructs_runner_and_forwards_args():
     scenarios = [_scenario("a")]
     profile = DiscoveredProfile(customer_name="Bob", source="config")
     sbom = MagicMock()
-    policy = MagicMock()
+    policy = CognitivePolicy(allowed_topics=["Support"])
+    parsed_policy = CognitivePolicyParseResult(success=True, policy=policy)
     intent = MagicMock()
     llm_client = MagicMock()
     judge_cache = MagicMock()
@@ -161,7 +170,7 @@ async def test_run_behavior_scenarios_constructs_runner_and_forwards_args():
         result = await run_behavior_scenarios(
             request,
             sbom=sbom,
-            policy=policy,
+            policy=parsed_policy,
             intent=intent,
             llm_client=llm_client,
             judge_cache=judge_cache,

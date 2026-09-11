@@ -131,6 +131,29 @@ class TestResearchAssistant:
                 f"Unexpected model_card_url: {card_url!r}"
             )
 
+    def test_agent_connected_to_its_prompt(self, doc: AiSbomDocument) -> None:
+        """Regression: PROMPT nodes must not be isolated in the graph — each
+        agent's instructions should produce an AGENT --USES--> PROMPT edge."""
+        agent_ids = {n.id for n in nodes(doc, ComponentType.AGENT)}
+        prompt_ids = {n.id for n in nodes(doc, ComponentType.PROMPT)}
+        assert prompt_ids, "Expected at least one PROMPT node"
+        edges_to_prompt = [
+            e
+            for e in doc.edges
+            if e.source in agent_ids
+            and e.target in prompt_ids
+            and e.relationship_type == RelationshipType.USES
+        ]
+        assert edges_to_prompt, (
+            "Expected at least one AGENT --USES--> PROMPT edge; PROMPT nodes "
+            "are isolated in the graph"
+        )
+        connected_prompts = {e.target for e in edges_to_prompt}
+        assert connected_prompts == prompt_ids, (
+            f"Not all PROMPT nodes are connected to an agent: "
+            f"missing {prompt_ids - connected_prompts}"
+        )
+
 
 class TestRagPipeline:
     """LlamaIndex RAG pipeline: vector store, two LLM providers, ReAct agent."""
@@ -271,6 +294,22 @@ class TestLangGraphResearchAgent:
             "Expected at least one PROMPT node for SYSTEM_PROMPT constant"
         )
 
+    def test_prompts_connected_to_agent(self, doc: AiSbomDocument) -> None:
+        """Regression: PROMPT nodes must not be isolated in the graph."""
+        agent_ids = {n.id for n in nodes(doc, ComponentType.AGENT)}
+        prompt_ids = {n.id for n in nodes(doc, ComponentType.PROMPT)}
+        assert prompt_ids
+        connected = {
+            e.target
+            for e in doc.edges
+            if e.source in agent_ids
+            and e.target in prompt_ids
+            and e.relationship_type == RelationshipType.USES
+        }
+        assert connected == prompt_ids, (
+            f"PROMPT nodes not connected to any agent: {prompt_ids - connected}"
+        )
+
     def test_agent_to_model_edges(self, doc: AiSbomDocument) -> None:
         uses_edges = [e for e in doc.edges if e.relationship_type.value == "USES"]
         assert uses_edges, "Expected AGENT--USES-->MODEL edges"
@@ -312,6 +351,36 @@ class TestOpenAIAgentsTriage:
 
     def test_detects_instructions_as_prompts(self, doc: AiSbomDocument) -> None:
         assert nodes(doc, ComponentType.PROMPT), "Expected PROMPT nodes from agent instructions"
+
+    def test_prompt_nodes_have_typed_metadata_fields(self, doc: AiSbomDocument) -> None:
+        """PROMPT content/role/char_count/is_template are typed NodeMetadata
+        fields (also mirrored to extras for backward compatibility)."""
+        prompts = nodes(doc, ComponentType.PROMPT)
+        assert prompts
+        for p in prompts:
+            assert p.metadata.role == "system"
+            assert p.metadata.content
+            assert p.metadata.char_count == len(p.metadata.content)
+            assert p.metadata.is_template is not None
+            # Backward-compat mirror in extras
+            assert p.metadata.extras.get("content") == p.metadata.content
+
+    def test_prompts_connected_to_owning_agent(self, doc: AiSbomDocument) -> None:
+        """Regression: PROMPT nodes must not be isolated — each agent's
+        instructions should produce an AGENT --USES--> PROMPT edge."""
+        agent_ids = {n.id for n in nodes(doc, ComponentType.AGENT)}
+        prompt_ids = {n.id for n in nodes(doc, ComponentType.PROMPT)}
+        assert prompt_ids
+        edges_to_prompt = {
+            e.target
+            for e in doc.edges
+            if e.source in agent_ids
+            and e.target in prompt_ids
+            and e.relationship_type == RelationshipType.USES
+        }
+        assert edges_to_prompt == prompt_ids, (
+            f"PROMPT nodes not connected to any agent: {prompt_ids - edges_to_prompt}"
+        )
 
     def test_model_has_openai_provider(self, doc: AiSbomDocument) -> None:
         gpt_nodes = [

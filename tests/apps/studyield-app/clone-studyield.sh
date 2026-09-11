@@ -11,7 +11,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$SCRIPT_DIR/repo"
-REPO_URL="https://github.com/studyield/studyield.git"
+REPO_URL="https://github.com/infoinletdevFive/studyield.git"
 REF="${1:-main}"
 
 if [[ -d "$REPO_DIR/.git" ]]; then

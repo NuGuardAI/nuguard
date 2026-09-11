@@ -13,8 +13,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from nuguard.analysis.public_api import AnalysisRunRequest, AnalysisRunResult
-from nuguard.behavior.public_api import BehaviorAnalysisRequest, BehaviorRunRequest
 from nuguard.behavior.models import BehaviorAnalysisResult, BehaviorRunResult
+from nuguard.behavior.public_api import BehaviorAnalysisRequest, BehaviorRunRequest
 from nuguard.common.discovery import TargetDiscoveryResult
 from nuguard.common.streaming_models import (
     BehaviorProgressState,
@@ -40,18 +40,29 @@ from nuguard.output.public_api import (
     ValidationReportExportResult,
     ValidationReportMetaModel,
 )
+from nuguard.policy.public_api import (
+    CognitivePolicyParseDetail,
+    CognitivePolicyParseRequest,
+    CognitivePolicyParseResult,
+)
 from nuguard.redteam.public_api import (
+    RedteamAuthConfig,
     RedteamExecutionResult,
+    RedteamLoginFlowConfig,
     RedteamRunRequest,
     RedteamRunResult,
 )
 from nuguard.sbom.public_api import (
+    SbomEnrichmentLlmConfig,
+    SbomEnrichmentRequest,
+    SbomEnrichmentResult,
     SbomExportRequest,
     SbomExportResult,
     SbomGenerateRequest,
     SbomGenerateResult,
     SbomParseRequest,
     SbomParseResult,
+    SbomProbeAuthConfig,
     SbomRenderRequest,
     SbomRenderResult,
 )
@@ -92,9 +103,17 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "output.ValidationReportExportRequest": ValidationReportExportRequest,
     "output.ValidationReportExportResult": ValidationReportExportResult,
     "output.ValidationReportMetaModel": ValidationReportMetaModel,
+    "policy.CognitivePolicyParseDetail": CognitivePolicyParseDetail,
+    "policy.CognitivePolicyParseRequest": CognitivePolicyParseRequest,
+    "policy.CognitivePolicyParseResult": CognitivePolicyParseResult,
+    "redteam.RedteamAuthConfig": RedteamAuthConfig,
     "redteam.RedteamExecutionResult": RedteamExecutionResult,
+    "redteam.RedteamLoginFlowConfig": RedteamLoginFlowConfig,
     "redteam.RedteamRunRequest": RedteamRunRequest,
     "redteam.RedteamRunResult": RedteamRunResult,
+    "sbom.SbomEnrichmentLlmConfig": SbomEnrichmentLlmConfig,
+    "sbom.SbomEnrichmentRequest": SbomEnrichmentRequest,
+    "sbom.SbomEnrichmentResult": SbomEnrichmentResult,
     "sbom.SbomExportRequest": SbomExportRequest,
     "sbom.SbomExportResult": SbomExportResult,
     "sbom.SbomGenerateRequest": SbomGenerateRequest,
@@ -103,6 +122,7 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "sbom.SbomParseResult": SbomParseResult,
     "sbom.SbomRenderRequest": SbomRenderRequest,
     "sbom.SbomRenderResult": SbomRenderResult,
+    "sbom.SbomProbeAuthConfig": SbomProbeAuthConfig,
     "sbom.toolbox.ToolboxListPluginsRequest": ToolboxListPluginsRequest,
     "sbom.toolbox.ToolboxListPluginsResult": ToolboxListPluginsResult,
     "sbom.toolbox.ToolboxRunAllRequest": ToolboxRunAllRequest,

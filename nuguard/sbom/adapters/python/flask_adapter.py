@@ -85,8 +85,14 @@ def _get_decorator_name(decorator: ast.expr) -> str | None:
 
 def _parse_route_decorator(
     decorator: ast.expr,
+    constants: dict[str, str] | None = None,
 ) -> tuple[str, str, list[str]] | None:
-    """Parse @app.route("/path", methods=[...]) → (receiver, path_str, methods) or None."""
+    """Parse @app.route("/path", methods=[...]) → (receiver, path_str, methods) or None.
+
+    ``constants`` resolves a module-level string-constant name used as the path
+    argument (e.g. ``WEBSOCKET_ENDPOINT = "/ws/voice"`` then
+    ``@sock.route(WEBSOCKET_ENDPOINT)``) since plain AST has no constant folding.
+    """
     if not isinstance(decorator, ast.Call):
         return None
     func = decorator.func
@@ -104,6 +110,8 @@ def _parse_route_decorator(
         first_arg = decorator.args[0]
         if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
             path_str = first_arg.value
+        elif isinstance(first_arg, ast.Name) and constants and first_arg.id in constants:
+            path_str = constants[first_arg.id]
 
     methods: list[str] = []
     for kw in decorator.keywords:
@@ -113,6 +121,25 @@ def _parse_route_decorator(
                     methods.append(elt.value)
 
     return receiver, path_str, methods
+
+
+def _collect_module_string_constants(tree: ast.Module) -> dict[str, str]:
+    """Return {name: value} for simple module-level ``NAME = "literal"`` assignments.
+
+    Used to resolve constant names passed as decorator arguments (Flask route
+    paths are sometimes defined once and reused, e.g. flask_sock's
+    ``@sock.route(WEBSOCKET_ENDPOINT)``).
+    """
+    constants: dict[str, str] = {}
+    for stmt in tree.body:
+        if not isinstance(stmt, ast.Assign):
+            continue
+        if not isinstance(stmt.value, ast.Constant) or not isinstance(stmt.value.value, str):
+            continue
+        for target in stmt.targets:
+            if isinstance(target, ast.Name):
+                constants[target.id] = stmt.value.value
+    return constants
 
 
 _REQUEST_ACCESSORS = frozenset({
@@ -198,7 +225,7 @@ class FlaskAdapter(FrameworkAdapter):
 
     name = "flask"
     priority = 50
-    handles_imports = ["flask", "flask.blueprints", "flask_restful", "flask_restx"]
+    handles_imports = ["flask", "flask.blueprints", "flask_restful", "flask_restx", "flask_sock"]
 
     def extract(
         self,
@@ -217,6 +244,8 @@ class FlaskAdapter(FrameworkAdapter):
         detections: list[ComponentDetection] = []
         agent_vars: dict[str, str] = {}   # var_name -> canonical_name
         auth_seen: set[str] = set()
+        sock_vars: set[str] = set()       # var names bound to flask_sock.Sock(app) instances
+        module_constants = _collect_module_string_constants(tree)
 
         # First pass: Flask() / Blueprint(...) instantiations
         for stmt in ast.walk(tree):
@@ -226,6 +255,10 @@ class FlaskAdapter(FrameworkAdapter):
                 continue
             call = stmt.value
             class_name = _get_call_name(call)
+            if class_name == "Sock":
+                if stmt.targets and isinstance(stmt.targets[0], ast.Name):
+                    sock_vars.add(stmt.targets[0].id)
+                continue
             if class_name not in ("Flask", "Blueprint"):
                 continue
             if not stmt.targets or not isinstance(stmt.targets[0], ast.Name):
@@ -267,7 +300,7 @@ class FlaskAdapter(FrameworkAdapter):
             auth_decorator_names: list[str] = []
 
             for decorator in node.decorator_list:
-                ri = _parse_route_decorator(decorator)
+                ri = _parse_route_decorator(decorator, module_constants)
                 if ri is not None:
                     route_info = ri
                     continue
@@ -297,7 +330,8 @@ class FlaskAdapter(FrameworkAdapter):
             # Endpoint node
             if route_info is not None:
                 receiver, path_str, methods = route_info
-                method = methods[0].upper() if methods else "GET"
+                is_websocket = receiver in sock_vars
+                method = "WEBSOCKET" if is_websocket else (methods[0].upper() if methods else "GET")
                 func_name = node.name
                 # Key on HTTP method + route path only (no framework prefix) so
                 # the same endpoint defined across multiple Blueprint/service
@@ -318,7 +352,10 @@ class FlaskAdapter(FrameworkAdapter):
                 chat_key: str | None = None
                 chat_is_message_history = False
                 ctx_fields: dict[str, str] = {}
-                if "POST" in [m.upper() for m in methods]:
+                # flask_sock handlers read frames off the socket object itself
+                # (ws.receive()), not request.json/.form — the HTTP-only body-key
+                # inference below does not apply.
+                if not is_websocket and "POST" in [m.upper() for m in methods]:
                     chat_key, chat_is_message_history = _infer_chat_payload_key(node)
                     ctx_fields = _infer_context_payload_fields(node, chat_key)
 
@@ -358,5 +395,66 @@ class FlaskAdapter(FrameworkAdapter):
                         target_type=ComponentType.API_ENDPOINT,
                         relationship_type="CALLS",
                     ))
+
+        # Third pass: CORS policy (Flask-CORS), debug/verbose-error mode, and
+        # security-header posture. Flask sets no security headers by default;
+        # a Talisman(...) call (flask-talisman) is treated as evidence headers
+        # are handled, its absence as all three headers being missing.
+        cors_policy: dict[str, Any] | None = None
+        debug_leak = False
+        has_header_middleware = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                call_name = _get_call_name(node)
+                if call_name == "CORS":
+                    origin: str | None = None
+                    allow_credentials: bool | None = None
+                    for kw in node.keywords:
+                        if kw.arg in ("origins", "resources"):
+                            if isinstance(kw.value, ast.Constant) and kw.value.value == "*":
+                                origin = "*"
+                            elif isinstance(kw.value, ast.List) and any(
+                                isinstance(elt, ast.Constant) and elt.value == "*"
+                                for elt in kw.value.elts
+                            ):
+                                origin = "*"
+                        elif kw.arg == "supports_credentials" and isinstance(kw.value, ast.Constant):
+                            allow_credentials = bool(kw.value.value)
+                    if origin is None and len(node.args) <= 1:
+                        # CORS(app) with no restriction kwargs defaults to allow-all.
+                        origin = "*"
+                    cors_policy = {
+                        "origin": origin,
+                        "allow_credentials": allow_credentials,
+                        "wildcard_with_credentials": origin == "*" and allow_credentials is True,
+                    }
+                elif call_name == "Talisman":
+                    has_header_middleware = True
+                elif call_name == "run":
+                    for kw in node.keywords:
+                        if kw.arg == "debug" and isinstance(kw.value, ast.Constant) and kw.value.value is True:
+                            debug_leak = True
+            elif (
+                isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Constant)
+                and node.value.value is True
+                and any(isinstance(t, ast.Attribute) and t.attr == "debug" for t in node.targets)
+            ):
+                debug_leak = True
+
+        security_headers_detail = (
+            None if has_header_middleware
+            else {"missing": ["csp", "x_frame_options", "hsts"]}
+        )
+        if cors_policy is not None or debug_leak or security_headers_detail is not None:
+            for det in detections:
+                if det.component_type != ComponentType.API_ENDPOINT:
+                    continue
+                if cors_policy is not None:
+                    det.metadata.setdefault("cors_policy", cors_policy)
+                if debug_leak:
+                    det.metadata["debug_error_leak"] = True
+                if security_headers_detail is not None:
+                    det.metadata.setdefault("security_headers_detail", security_headers_detail)
 
         return detections

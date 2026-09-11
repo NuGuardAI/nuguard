@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 from nuguard.behavior._utils import extract_json_object
 from nuguard.behavior.models import BehaviorScenario, BehaviorScenarioType
 from nuguard.behavior.sbom_graph import SbomGraph
+from nuguard.common.endpoint_scenario_gate import should_skip_direct_http_scenario
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
@@ -1838,6 +1839,14 @@ def _endpoint_coverage_scenarios(
         if endpoint_path in seen_paths:
             continue
         seen_paths.add(endpoint_path)
+
+        _skip, _skip_reason = should_skip_direct_http_scenario(meta, endpoint=endpoint_path)
+        if _skip:
+            _log.info(
+                "_endpoint_coverage_scenarios: skipped '%s': %s",
+                getattr(node, "name", endpoint_path), _skip_reason,
+            )
+            continue
 
         # Collect context field names from request schemas (non-chat fields).
         context_fields: list[str] = []

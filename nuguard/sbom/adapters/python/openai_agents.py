@@ -217,6 +217,23 @@ class OpenAIAgentsAdapter(FrameworkAdapter):
                 meta.update({k: v for k, v in details.items() if v is not None})
 
             comp_type = ComponentType.GUARDRAIL if is_guardrail else ComponentType.AGENT
+
+            # Instructions → PROMPT edge (added to rels before the AGENT/GUARDRAIL
+            # ComponentDetection is built below, so it's included in relationships=rels).
+            prompt_canon = None
+            if instructions and len(instructions) >= 40:
+                prompt_display = f"{agent_name} Instructions"
+                prompt_canon = canonicalize_text(prompt_display.lower())
+                rels.append(
+                    RelationshipHint(
+                        source_canonical=canon,
+                        source_type=comp_type,
+                        target_canonical=prompt_canon,
+                        target_type=ComponentType.PROMPT,
+                        relationship_type="USES",
+                    )
+                )
+
             detected.append(
                 ComponentDetection(
                     component_type=comp_type,
@@ -237,9 +254,8 @@ class OpenAIAgentsAdapter(FrameworkAdapter):
                 agent_canonicals.append(canon)
 
             # Instructions as PROMPT node
-            if instructions and len(instructions) >= 40:
+            if instructions and len(instructions) >= 40 and prompt_canon is not None:
                 prompt_display = f"{agent_name} Instructions"
-                prompt_canon = canonicalize_text(prompt_display.lower())
                 detected.append(
                     ComponentDetection(
                         component_type=ComponentType.PROMPT,

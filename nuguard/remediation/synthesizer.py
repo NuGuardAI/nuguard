@@ -318,6 +318,7 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "SCHEMA_IDENTITY_OVERRIDE": "privilege_escalation",
     "SCRIPTED_IDENTITY_ESCALATION": "privilege_escalation",
     "SCRIPTED_ROLE_ESCALATION": "privilege_escalation",
+    "JWT_TAMPERING": "privilege_escalation",
     # -- data_leak: data/PII exfiltration, including covert channels
     "DIRECT_PII_EXTRACTION": "data_leak",
     "CROSS_TENANT_EXFILTRATION": "data_leak",
@@ -372,6 +373,9 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "DATASTORE_SQL_INJECTION": "risky_tool",
     "SHELL_INJECTION": "risky_tool",
     "SANDBOX_ESCAPE": "risky_tool",
+    "PATH_TRAVERSAL": "risky_tool",
+    "OPEN_REDIRECT": "risky_tool",
+    "REFLECTED_XSS": "risky_tool",
     # -- policy_violation_generic: safe default — no confident domain-specific
     # fit yet (mostly RAG-pipeline/architectural and reconnaissance/oracle
     # techniques); _patch_generic_violation embeds the finding's own
@@ -569,12 +573,20 @@ def _merge_artefacts(artefacts: list[RemediationArtefact]) -> list[RemediationAr
         finding_ids: list[str] = []
         patch_parts: list[str] = []
         rationale_parts: list[str] = []
+        per_finding_rationale: dict[str, str] = {}
         for a in group:
             finding_ids.extend(a.finding_ids)
             if a.patch_text:
                 patch_parts.append(a.patch_text)
             if a.rationale:
                 rationale_parts.append(a.rationale)
+                # Each finding this pre-merge artefact addresses keeps its OWN
+                # rationale text, so backfill can recover it even after the
+                # combined `rationale` below is truncated for display — a
+                # finding's remediation must never be reconstructed from a
+                # sibling finding's text (see backfill.py).
+                for fid in a.finding_ids:
+                    per_finding_rationale[fid] = a.rationale
         base = group[0]
         merged.append(RemediationArtefact(
             finding_ids=finding_ids,
@@ -591,6 +603,7 @@ def _merge_artefacts(artefacts: list[RemediationArtefact]) -> list[RemediationAr
             # report even when several findings land on the same patch.
             rationale="\n".join(dict.fromkeys(rationale_parts))
             or f"Merged {len(group)} system prompt patches for {comp}",
+            per_finding_rationale=per_finding_rationale,
         ))
 
     # Sort by priority
@@ -1090,7 +1103,14 @@ class RemediationSynthesizer:
         fields = list(_seen_fields)
 
         if not fields:
-            fields = ["account_number", "routing_number", "ssn", "card_number",
+            # Domain-neutral default: covers common PII alongside financial/
+            # credential fields, so this doesn't assume a banking app when the
+            # SBOM has no classified fields for this node (e.g. a healthcare
+            # finding about an email/name leak would otherwise get a rationale
+            # about "financial routing numbers" that has nothing to do with
+            # the actual evidence).
+            fields = ["name", "email", "phone", "address", "date_of_birth",
+                      "ssn", "account_number", "routing_number", "card_number",
                       "password", "api_key", "token"]
 
         return [RemediationArtefact(
@@ -1172,6 +1192,61 @@ class RemediationSynthesizer:
     # 7. Privilege escalation — unauthenticated agent + high-privilege tool (BA-005)
     # ------------------------------------------------------------------
 
+    def _resolve_privilege_tool_name(self, finding: dict) -> str:
+        """Resolve the specific high-privilege tool name from *finding*, or ""
+        when none can be identified.
+
+        Tries the finding title first ("...can access high-privilege tool
+        'X'"), then falls back to any SBOM TOOL node flagged
+        ``metadata.high_privilege``. Shared by the sync and async privilege
+        remediation paths so they can never re-diverge on tool-name
+        resolution the way they did before (the async path used to fall back
+        to a literal ``"high-privilege-tool"`` placeholder instead of calling
+        this).
+        """
+        tool_match = re.search(r"tool '([^']+)'", str(finding.get("title", "")), re.IGNORECASE)
+        if tool_match:
+            return tool_match.group(1)
+        high_priv_names = [
+            n.name for n in getattr(self._sbom, "nodes", [])
+            if getattr(getattr(n, "metadata", None), "high_privilege", False)
+        ]
+        return high_priv_names[0] if high_priv_names else ""
+
+    def _generic_privilege_review_artefact(
+        self,
+        component: str,
+        node: "Node | None",
+        finding_id: str,
+        desc: str,
+    ) -> list[RemediationArtefact]:
+        """Generic architectural-review artefact for a privilege-escalation
+        finding with no specific tool name resolved — emitted instead of a
+        placeholder that reads as a real component (e.g. 'high-privilege-tool')."""
+        return [RemediationArtefact(
+            finding_ids=[finding_id],
+            component=component,
+            component_type=_node_type(node) if node else "AGENT",
+            artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
+            priority="high",
+            change_description=(
+                f"Review and restrict the privilege level of tools accessible by '{component}'"
+            ),
+            change_detail=(
+                f"Agent '{component}' can reach tools with elevated privileges without "
+                f"authentication.\n\n"
+                f"Recommended changes:\n"
+                f"1. Audit all TOOL nodes reachable from '{component}' and label "
+                f"   high-privilege ones (high_privilege=true in the SBOM).\n"
+                f"2. Add an AUTH node protecting '{component}' and each high-privilege tool.\n"
+                f"3. Ensure the application verifies a valid session token before any "
+                f"   high-privilege tool invocation.\n"
+                f"4. Remove or scope-limit any tools that do not require root/admin access."
+            ),
+            requires_auth=True,
+            rationale=desc,
+        )]
+
     def _remediate_privilege_escalation(
         self,
         component: str,
@@ -1181,19 +1256,7 @@ class RemediationSynthesizer:
         priority: str,
     ) -> list[RemediationArtefact]:
         desc = finding.get("description", "")
-        # Extract tool name from finding title: "Unauthenticated agent '...' can access high-privilege tool '...'"
-        tool_match = re.search(r"tool '([^']+)'", str(finding.get("title", "")), re.IGNORECASE)
-        tool_name = tool_match.group(1) if tool_match else ""
-        if not tool_name:
-            # Try to resolve from SBOM: look for high-privilege tools attached to this component
-            high_priv_names = [
-                n.name for n in getattr(self._sbom, "nodes", [])
-                if getattr(getattr(n, "metadata", None), "high_privilege", False)
-            ]
-            if high_priv_names:
-                tool_name = high_priv_names[0]
-            else:
-                tool_name = ""  # will use generic recommendation below
+        tool_name = self._resolve_privilege_tool_name(finding)
         tool_node = self._node_by_name.get(tool_name)
         tool_desc = str(_node_meta(tool_node, "description") or "") if tool_node else ""
 
@@ -1220,29 +1283,7 @@ class RemediationSynthesizer:
         # When no specific tool name could be resolved, emit a generic architectural
         # recommendation rather than a placeholder that reads as 'the high-privilege tool'.
         if not tool_name:
-            return [RemediationArtefact(
-                finding_ids=[finding_id],
-                component=component,
-                component_type=_node_type(node) if node else "AGENT",
-                artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
-                priority="high",
-                change_description=(
-                    f"Review and restrict the privilege level of tools accessible by '{component}'"
-                ),
-                change_detail=(
-                    f"Agent '{component}' can reach tools with elevated privileges without "
-                    f"authentication.\n\n"
-                    f"Recommended changes:\n"
-                    f"1. Audit all TOOL nodes reachable from '{component}' and label "
-                    f"   high-privilege ones (high_privilege=true in the SBOM).\n"
-                    f"2. Add an AUTH node protecting '{component}' and each high-privilege tool.\n"
-                    f"3. Ensure the application verifies a valid session token before any "
-                    f"   high-privilege tool invocation.\n"
-                    f"4. Remove or scope-limit any tools that do not require root/admin access."
-                ),
-                requires_auth=True,
-                rationale=desc,
-            )]
+            return self._generic_privilege_review_artefact(component, node, finding_id, desc)
         patch_text = self._llm_privilege_patch(
             agent_name=component,
             tool_name=tool_name,
@@ -1268,10 +1309,15 @@ class RemediationSynthesizer:
         finding_id: str,
         priority: str,
     ) -> list[RemediationArtefact]:
-        # Resolve the privilege path — same logic as the sync version
-        priv_names = self._privilege_map.get(component, [])
-        tool_name = str(finding.get("tool_name", "")) or (priv_names[0].split(":")[-1] if priv_names else "high-privilege-tool")
+        # Resolve the privilege path — same logic and helpers as the sync version.
+        desc = str(finding.get("description", ""))
+        tool_name = str(finding.get("tool_name", "")) or self._resolve_privilege_tool_name(finding)
         tool_desc = str(finding.get("tool_description", "") or finding.get("description", ""))[:200]
+
+        # Determine privilege scope from the privilege_map, tool_name first
+        # (matching the sync path) so both paths select the same
+        # _PRIVILEGE_STRATEGY entry for a given tool.
+        priv_names = self._privilege_map.get(tool_name, [])
         priv_scope = ""
         if priv_names:
             priv_scope = priv_names[0].split(":")[-1].strip()
@@ -1286,6 +1332,11 @@ class RemediationSynthesizer:
         risk: str = str(strategy.get("risk", "privilege escalation"))
 
         hitl_note = " Require manager HITL approval before executing." if requires_hitl else ""
+
+        # When no specific tool name could be resolved, emit a generic architectural
+        # recommendation rather than a placeholder that reads as 'the high-privilege tool'.
+        if not tool_name:
+            return self._generic_privilege_review_artefact(component, node, finding_id, desc)
         patch_text = await self._llm_privilege_patch_async(
             agent_name=component,
             tool_name=tool_name,

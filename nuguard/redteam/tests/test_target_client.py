@@ -378,6 +378,56 @@ async def test_default_headers_sent_with_invoke_endpoint():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_strip_auth_removes_real_auth_but_extra_headers_of_same_name_survive():
+    """A caller-supplied extra_headers entry (e.g. a forged
+    Authorization: Bearer <token> for JWT-tampering probes) must survive
+    strip_auth=True — regression guard for the bug where strip_auth deleted
+    ANY header matching a tracked auth-header name, including one the
+    caller had just supplied via extra_headers, not just the real default."""
+    route = respx.post(f"{BASE}/api/resource").mock(
+        return_value=httpx.Response(200, json={"id": 1})
+    )
+    client = TargetAppClient(
+        base_url=BASE,
+        chat_path=CHAT,
+        timeout=5.0,
+        default_headers={"Authorization": "Bearer real-token"},
+    )
+    async with client:
+        status, _text, _json = await client.invoke_endpoint(
+            "/api/resource",
+            method="POST",
+            extra_headers={"Authorization": "Bearer forged-token"},
+            strip_auth=True,
+        )
+    assert status == 200
+    sent_request = route.calls[0].request
+    assert sent_request.headers.get("authorization") == "Bearer forged-token"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_strip_auth_with_no_extra_headers_removes_auth_entirely():
+    route = respx.post(f"{BASE}/api/resource").mock(
+        return_value=httpx.Response(200, json={"id": 1})
+    )
+    client = TargetAppClient(
+        base_url=BASE,
+        chat_path=CHAT,
+        timeout=5.0,
+        default_headers={"Authorization": "Bearer real-token"},
+    )
+    async with client:
+        status, _text, _json = await client.invoke_endpoint(
+            "/api/resource", method="POST", strip_auth=True,
+        )
+    assert status == 200
+    sent_request = route.calls[0].request
+    assert "authorization" not in sent_request.headers
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_no_default_headers_backward_compatible():
     """When no default_headers are supplied the client still works as before."""
     respx.post(f"{BASE}{CHAT}").mock(
@@ -549,3 +599,73 @@ async def test_invoke_endpoint_success_resets_endpoint_probe_counter():
         status, _text, _json = await client.invoke_endpoint("/api/resource", method="POST")
     assert status == 404
     assert client._consecutive_endpoint_errors == 0
+
+
+# ── retry_transient opt-in (warmup/health-check callers without a semaphore) ──
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_retry_transient_false_uses_bare_send_impl_without_semaphore(monkeypatch):
+    """Default behavior (retry_transient=False, no semaphore) must be unchanged:
+    a single bare _send_impl call, no routing through the retry/backoff path."""
+    respx.post(f"{BASE}{CHAT}").mock(return_value=httpx.Response(503, text="down"))
+    client = await _client()
+    assert client._request_sem is None
+    calls: list[str] = []
+    orig = client._send_with_transient_retry
+
+    async def _spy(*args, **kwargs):
+        calls.append("retry")
+        return await orig(*args, **kwargs)
+
+    monkeypatch.setattr(client, "_send_with_transient_retry", _spy)
+    async with client:
+        text, _ = await client.send("hi", _session())
+    assert text == "[HTTP 503]"
+    assert calls == []
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_retry_transient_true_routes_through_transient_retry(monkeypatch):
+    """retry_transient=True must route through _send_with_transient_retry even
+    with no semaphore configured — this is what lets warmup pings absorb a
+    cold-start gateway error via the existing classify+backoff loop."""
+    respx.post(f"{BASE}{CHAT}").mock(return_value=httpx.Response(200, json={"response": "ok"}))
+    client = await _client()
+    assert client._request_sem is None
+    calls: list[str] = []
+    orig = client._send_with_transient_retry
+
+    async def _spy(*args, **kwargs):
+        calls.append("retry")
+        return await orig(*args, **kwargs)
+
+    monkeypatch.setattr(client, "_send_with_transient_retry", _spy)
+    async with client:
+        text, _ = await client.send("hi", _session(), retry_transient=True)
+    assert text == "ok"
+    assert calls == ["retry"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_semaphore_mode_unaffected_by_retry_transient_flag(monkeypatch):
+    """When max_concurrent_requests is configured, behavior is unchanged regardless
+    of retry_transient — the semaphore path already always retries transient errors."""
+    respx.post(f"{BASE}{CHAT}").mock(return_value=httpx.Response(200, json={"response": "ok"}))
+    client = TargetAppClient(base_url=BASE, chat_path=CHAT, timeout=5.0, max_concurrent_requests=1)
+    assert client._request_sem is not None
+    calls: list[str] = []
+    orig = client._send_with_transient_retry
+
+    async def _spy(*args, **kwargs):
+        calls.append("retry")
+        return await orig(*args, **kwargs)
+
+    monkeypatch.setattr(client, "_send_with_transient_retry", _spy)
+    async with client:
+        text, _ = await client.send("hi", _session(), retry_transient=False)
+    assert text == "ok"
+    assert calls == ["retry"]

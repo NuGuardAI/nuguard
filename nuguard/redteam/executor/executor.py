@@ -20,6 +20,7 @@ from nuguard.common.turn_helpers import handle_mid_turn_interrupts
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthSession
     from nuguard.common.discovery import DiscoveredProfile
+    from nuguard.common.target_client_builder import TargetClient
     from nuguard.redteam.llm_engine.judge_cache import JudgeCache
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
@@ -38,7 +39,7 @@ from nuguard.redteam.llm_engine.response_evaluator import LLMResponseEvaluator
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 from nuguard.redteam.target.action_logger import ActionLogger
 from nuguard.redteam.target.canary import CanaryScanner
-from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
+from nuguard.redteam.target.client import TargetUnavailableError
 from nuguard.redteam.target.session import AttackSession
 
 from .chain_assembler import ChainAssembler
@@ -360,7 +361,7 @@ class AttackExecutor:
 
     def __init__(
         self,
-        client: TargetAppClient,
+        client: "TargetClient",
         policy: CognitivePolicy | None = None,
         canary: CanaryScanner | None = None,
         logger: ActionLogger | None = None,
@@ -837,6 +838,7 @@ class AttackExecutor:
                 method=step.http_method,
                 body=step.http_body,
                 params=step.http_params or None,
+                extra_headers=step.extra_headers or None,
                 strip_auth=step.strip_auth,
             )
             # A 401 retry-with-refreshed-auth makes no sense for a step whose
@@ -856,6 +858,7 @@ class AttackExecutor:
                     method=step.http_method,
                     body=step.http_body,
                     params=step.http_params or None,
+                    extra_headers=step.extra_headers or None,
                     strip_auth=step.strip_auth,
                 )
             tool_calls: list[dict] = []
@@ -895,7 +898,7 @@ class AttackExecutor:
             # after the LLM-eval block below, since it only applies when no
             # LLM judge actually adjudicated this step.
             result.data_exposure = check_response_for_data_exposure(
-                response, step.sensitive_fields
+                response, step.sensitive_fields, http_status_code=status_code
             )
             result.resolved_payload = _resolved_payload
         else:
@@ -1140,6 +1143,7 @@ class AttackExecutor:
                 golden_data=session.golden_data,
                 app_log_context=app_log_context,
                 sensitive_fields=step.sensitive_fields if step.target_path else None,
+                http_status_code=result.http_status_code,
             )
             if llm_eval.get("confidence") in ("high", "medium"):
                 result.success_signal_found = bool(llm_eval.get("succeeded", False))
@@ -1155,6 +1159,19 @@ class AttackExecutor:
                     result.llm_eval_confidence,
                     result.llm_eval_evidence,
                 )
+
+        # Dedicated "was this a refusal" signal for the policy evaluator below —
+        # distinct from result.success_signal_found, which reflects the ATTACK's
+        # own success criterion and can be False for reasons unrelated to
+        # refusal (e.g. a keyword success_signal that simply didn't match).
+        # refusal_reason is a closed taxonomy ("content_filter", "policy_detector",
+        # "hitl_check", ..., "none" when the target actually complied), so
+        # non-empty and not "none" is an unambiguous "the judge classified this
+        # response as a refusal" signal — only set when the judge actually ran
+        # with confidence high/medium (see the block above).
+        llm_judged_refusal = bool(
+            result.llm_eval_refusal_reason
+        ) and result.llm_eval_refusal_reason != "none"
 
         # Deterministic fallback gate for direct-HTTP HTTP_2XX_SENTINEL steps
         # (AUTH_BYPASS/BFLA/RATE_LIMIT_PROBE/IDOR) when no LLM judge actually
@@ -1200,6 +1217,7 @@ class AttackExecutor:
                 response=response,
                 tool_calls=tool_calls,
                 step_succeeded=result.success_signal_found,
+                llm_judged_refusal=llm_judged_refusal,
             )
 
         # Log

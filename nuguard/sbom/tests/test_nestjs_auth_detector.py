@@ -110,6 +110,50 @@ class TestJwtSigningEvidence:
         assert "signAsync(" in jwt_nodes[0].snippet
 
 
+class TestJwtVerifyAlgorithmRestriction:
+    def test_verify_without_algorithms_option_flagged_unrestricted(self) -> None:
+        code = (
+            "import * as jwt from 'jsonwebtoken';\n"
+            "export class AuthService {\n"
+            "  generateTokens(userId: string) {\n"
+            "    return jwt.sign({ sub: userId }, this.secret);\n"
+            "  }\n"
+            "  verify(token: string) {\n"
+            "    return jwt.verify(token, this.secret);\n"
+            "  }\n"
+            "}\n"
+        )
+        [jwt_node] = [n for n in _auth_nodes(code) if n.metadata["auth_type"] == "jwt"]
+        assert jwt_node.metadata["auth_detail"]["jwt_algorithm_restricted"] is False
+
+    def test_verify_with_algorithms_option_flagged_restricted(self) -> None:
+        code = (
+            "import * as jwt from 'jsonwebtoken';\n"
+            "export class AuthService {\n"
+            "  generateTokens(userId: string) {\n"
+            "    return jwt.sign({ sub: userId }, this.secret);\n"
+            "  }\n"
+            "  verify(token: string) {\n"
+            "    return jwt.verify(token, this.secret, { algorithms: ['HS256'] });\n"
+            "  }\n"
+            "}\n"
+        )
+        [jwt_node] = [n for n in _auth_nodes(code) if n.metadata["auth_type"] == "jwt"]
+        assert jwt_node.metadata["auth_detail"]["jwt_algorithm_restricted"] is True
+
+    def test_no_verify_call_leaves_restriction_unset(self) -> None:
+        code = (
+            "import * as jwt from 'jsonwebtoken';\n"
+            "export class AuthService {\n"
+            "  generateTokens(userId: string) {\n"
+            "    return jwt.sign({ sub: userId }, this.secret);\n"
+            "  }\n"
+            "}\n"
+        )
+        [jwt_node] = [n for n in _auth_nodes(code) if n.metadata["auth_type"] == "jwt"]
+        assert "jwt_algorithm_restricted" not in jwt_node.metadata["auth_detail"]
+
+
 class TestCanonicalNamesMergeWithGenericKeywordAdapters:
     """OAuth2/JWT nodes must share the same canonical_name as registry.py's
     generic `auth_oauth`/`auth_jwt` keyword RegexAdapters, so this detector's
