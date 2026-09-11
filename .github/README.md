@@ -23,7 +23,7 @@
 
 ---
 
-NuGuard is an open source AI application security toolkit. It generates an AI Bill of Materials (AI-SBOM) for your agentic application, statically analyzes it for structural risk, then red-teams a running instance with a catalog of 100+ adversarial scenarios — prompt injection, tool abuse, data exfiltration, and more — so you find the finding before an attacker does.
+NuGuard is an open source AI application safety & security toolkit. It generates an AI Software Bill of Materials (AI-SBOM) for your agentic application, statically analyzes it for structural risk in the AI Stack and the software infrastructure. It then red-teams a sandboxed instance with a catalog of 100+ adversarial scenarios — prompt injection, tool abuse, data exfiltration, and more — so you find the issues before an attacker does. An automated judge evaluates the findings based on their impact and provides actionable remediation guidance.
 
 ## What It Does
 
@@ -104,18 +104,26 @@ Install the NuGuard plugin and run SBOM, analysis, behavior, and red-team scans 
 
 ## Hosted Version
 
+> **Running NuGuard at organizational scale?** The managed SaaS adds what a CISO or VP Engineering needs on top of everything in this repo — no infra to stand up or maintain.
+
 <table align="center">
 <tr>
-<td align="center" width="600">
+<td align="center" width="120">
+<img src="../documentation/docs/assets/logo-sm.png" alt="NuGuard.ai" width="72">
+</td>
+<td>
 
-### <img src="../documentation/docs/assets/logo-sm.png" alt="NuGuard.ai" width="24"> [NuGuard.ai](http://nuguard.ai)
+### [NuGuard.ai](http://nuguard.ai) — Managed SaaS for Security & Engineering Leaders
 
-A managed SaaS version of NuGuard, with additional features and support on top of everything in this repo.
-Free trial available.
+- 🔐 **RBAC** — role-based access across teams and business units
+- 📊 **Executive dashboards** — risk posture and trends, board-ready
+- 📋 **Audit-ready reports** — compliance-mapped to OWASP & MITRE ATLAS
+- 🔗 **Enterprise integrations** — ServiceNow AI Control Tower, and more
+- 🛟 **Managed support** — dedicated onboarding and SLAs
 
-Supports RBAC, executive dashboards, audit-ready reports, policy checks, and integrations (ServiceNow AI Control Tower).
+**Free trial available — no credit card required.**
 
-[![Visit NuGuard.ai](https://img.shields.io/badge/→_Visit_NuGuard.ai-111111?style=for-the-badge)](http://nuguard.ai)
+[![Start Free Trial →](https://img.shields.io/badge/Start_Free_Trial_→-111111?style=for-the-badge)](http://nuguard.ai)
 
 </td>
 </tr>
