@@ -91,29 +91,27 @@ async def _build_remediation_plan(
 ) -> list[RemediationArtefact]:
     """Synthesize per-SBOM-node remediation artefacts from analysis findings.
 
-    Mirrors ``nuguard.redteam.public_api._build_remediation_plan``.
-    Best-effort: returns ``[]`` on missing SBOM, no findings, or any failure.
+    Mirrors ``nuguard.redteam.public_api._build_remediation_plan``. Returns
+    ``[]`` only when there's no SBOM or no findings to synthesize against —
+    an actual synthesis failure (e.g. a broken LLM client) propagates so it
+    surfaces as a visible run error instead of a silently empty plan.
     """
     if sbom is None or not findings:
         return []
-    try:
-        from nuguard.remediation.synthesizer import RemediationSynthesizer  # noqa: PLC0415
+    from nuguard.remediation.synthesizer import RemediationSynthesizer  # noqa: PLC0415
 
-        synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
-        finding_dicts = [
-            {
-                "finding_id": f.finding_id,
-                "title": f.title,
-                "description": f.description or "",
-                "affected_component": f.affected_component or "unknown",
-                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
-            }
-            for f in findings
-        ]
-        return await synthesizer.synthesize_findings_async(finding_dicts)
-    except Exception as exc:  # noqa: BLE001
-        _log.warning("run_analysis: remediation synthesis failed — skipping plan: %s", exc)
-        return []
+    synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
+    finding_dicts = [
+        {
+            "finding_id": f.finding_id,
+            "title": f.title,
+            "description": f.description or "",
+            "affected_component": f.affected_component or "unknown",
+            "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
+        }
+        for f in findings
+    ]
+    return await synthesizer.synthesize_findings_async(finding_dicts)
 
 
 async def run_analysis(

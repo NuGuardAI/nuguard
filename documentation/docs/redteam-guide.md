@@ -100,30 +100,61 @@ which is what produced the 111-scenario run described in [Red-Team the Live App]
 nuguard redteam -c nuguard.yaml --profile ci --format sarif --output results.sarif --fail-on high
 ```
 
-### Scenarios (attack family filter)
+### Scenarios (destructive / non-destructive filter)
 
-`redteam.scenarios` (`--scenarios` on the CLI) restricts the run to specific `GoalType` attack families. Leave it empty to run all families. Values: `prompt-driven-threat`, `policy-violation`, `data-exfiltration`, `privilege-escalation`, `tool-abuse`, `mcp-toxic-flow`, `api-attack`, `agentic-trust-abuse`, `recon-inference`. Stable catalog IDs (e.g. `D01,C03`) also work.
+`redteam.scenarios` (`--scenarios` on the CLI) restricts the run by whether a scenario is likely to mutate or destroy target state. Leave it empty to run both. Values: `destructive`, `non-destructive`.
 
-For the customer-service demo, its most sensitive surfaces are `cancel_flight` (restricted action, reachable from every agent) and the SQLite booking/account datastores — so a targeted scan focuses on the goal types that probe those:
+A scenario is classified `destructive` when its title/description matches a keyword like *cancel, delete, close, remove, purge, refund, terminate, deactivate, wipe, revoke, unsubscribe, deregister* — the same classification the engine already uses to always run destructive scenarios last, after every non-destructive scenario, so mutating actions don't corrupt account state a non-destructive scenario still needs to probe.
+
+For a first pass against a shared or production-like target, restrict to non-destructive scenarios only:
 
 ```yaml
 redteam:
   scenarios:
-    - data-exfiltration
-    - privilege-escalation
-    - prompt-driven-threat
+    - non-destructive
 ```
 
 Equivalent CLI form:
 
 ```bash
-nuguard redteam -c nuguard.yaml \
-  --scenarios data-exfiltration,privilege-escalation,prompt-driven-threat
+nuguard redteam -c nuguard.yaml --scenarios non-destructive
 ```
 
-The full unfiltered run (all 9 families) is what the [example walkthrough](example-openai-cs-agents.md) uses in its `nuguard.yaml`, alongside `canary`, `similar_miss_threshold`, `scenario_timeout`, and `guided_conversations` settings — see [Set Up Project Config](example-openai-cs-agents.md#4-set-up-project-config) for the complete file.
+Once you're confident the target can tolerate mutating actions (a throwaway/staging environment, seeded test data you can re-seed), run both:
 
-For the full list of attack vectors behind each family — 125 scenarios across 18 categories, with per-scenario impact scores and safe-execution modes — see the [Red-Team Scenario Catalog](redteam-scenario-catalog.md).
+```yaml
+redteam:
+  scenarios:
+    - non-destructive
+    - destructive
+```
+
+The full unfiltered run (both categories) is what the [example walkthrough](example-openai-cs-agents.md) uses in its `nuguard.yaml`, alongside `canary`, `similar_miss_threshold`, `scenario_timeout`, and `guided_conversations` settings — see [Set Up Project Config](example-openai-cs-agents.md#4-set-up-project-config) for the complete file.
+
+For the full list of attack vectors — 125 scenarios across 18 categories, with per-scenario impact scores, goal types, and safe-execution modes — see the [Red-Team Scenario Catalog](redteam-scenario-catalog.md).
+
+### Resuming an aborted run
+
+If a run is interrupted (crash, circuit breaker trip, `Ctrl-C`) after at least one scenario has
+completed, NuGuard writes a checkpoint file under `prompt_cache_dir` and raises a
+`PartialRunError` naming that file. Pass it back with `--resume` to pick up where the run left
+off — already-completed scenarios are skipped and the final report combines the checkpointed and
+newly-run results:
+
+```bash
+nuguard redteam -c nuguard.yaml --resume nuguard-reports/.cache/redteam-<key>.json
+```
+
+Equivalent config:
+
+```yaml
+redteam:
+  resume: nuguard-reports/.cache/redteam-<key>.json
+```
+
+The checkpoint is fingerprinted against the SBOM and policy it was created with — resuming
+against a different SBOM/policy raises a `CheckpointMismatchError` instead of silently mixing
+results. On a fully successful run the checkpoint file is deleted automatically.
 
 ### 📖 Need every flag?
 

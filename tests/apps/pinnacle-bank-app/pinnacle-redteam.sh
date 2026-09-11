@@ -73,11 +73,11 @@ echo "Running redteam tests ..."
 uv run nuguard redteam \
   --config "$SCRIPT_DIR/nuguard-azure.yaml" \
    --format markdown \
-  --output "$SCRIPT_DIR/reports/pinnacle-bank-redteam-v1.md" || {
+  --output "$SCRIPT_DIR/reports/pinnacle-bank-redteam-new.md" || {
     _exit=$?
     [[ $_exit -eq 2 ]] || { echo "ERROR: redteam failed (exit $_exit)" >&2; exit $_exit; }
   }
 
 # Wait for the tee log-capture background process to flush all output before exiting.
 # Without this, the exec > >(tee) pipe may close before the last lines reach the log file.
-wait
+#wait

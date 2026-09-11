@@ -260,6 +260,17 @@ rules:
       - requires: FORMATTED
         patterns:
           - pattern: $CLIENT.Models.GenerateContentStream($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+      # Hand-rolled provider calls (#180 follow-up): apps that talk to an LLM
+      # over raw net/http instead of an official SDK client (e.g. a local
+      # callAnthropic()/callOpenAI() helper building the request body and
+      # POSTing it directly) have no $CLIENT.$METHOD(...) call shape to match
+      # above. Catch the wrapper call itself by name instead of its internals.
+      - requires: FORMATTED
+        patterns:
+          - pattern: $FN(...)
+          - metavariable-regex:
+              metavariable: $FN
+              regex: (?i)^(call)?(anthropic|openai|azureopenai|gemini|claude|gpt|bedrock|llm|chatcompletion|generatetext|sendmessage)
     message: >
       Potential prompt injection: untrusted string input is interpolated into an
       LLM prompt via fmt.Sprintf and passed to an AI/LLM API call. Validate and

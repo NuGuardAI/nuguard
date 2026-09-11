@@ -273,6 +273,18 @@
             "default": null,
             "title": "Owasp Llm Ref"
           },
+          "owasp_cicd_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Cicd Ref"
+          },
           "mitre_atlas_technique": {
             "anyOf": [
               {
@@ -5750,6 +5762,18 @@
             "default": null,
             "title": "Owasp Llm Ref"
           },
+          "owasp_cicd_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Cicd Ref"
+          },
           "mitre_atlas_technique": {
             "anyOf": [
               {
@@ -6251,6 +6275,7 @@
           "high_findings",
           "findings",
           "aborted_target_unavailable",
+          "aborted_auth_failure",
           "aborted_endpoint_unreachable",
           "inconclusive_target_errors",
           "no_findings",
@@ -7184,6 +7209,18 @@
             "default": null,
             "title": "Owasp Llm Ref"
           },
+          "owasp_cicd_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Cicd Ref"
+          },
           "mitre_atlas_technique": {
             "anyOf": [
               {
@@ -7685,6 +7722,7 @@
           "high_findings",
           "findings",
           "aborted_target_unavailable",
+          "aborted_auth_failure",
           "aborted_endpoint_unreachable",
           "inconclusive_target_errors",
           "no_findings",
@@ -9457,6 +9495,19 @@
             "default": null,
             "description": "Inferred primary response text field in the response body",
             "title": "Response Text Key"
+          },
+          "login_token_response_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Dotted key path to the authentication token in a login endpoint's response body, e.g. 'access_token' or 'tokens.accessToken' for a one-level-nested DTO. Never holds the actual token value \u2014 only the field-name path used to locate it. See extras['login_token_response_key_source'] for whether this was resolved via static DTO schema extraction ('static_dto') or LLM inference ('llm_frontend_inferred').",
+            "title": "Login Token Response Key"
           },
           "context_payload_fields": {
             "anyOf": [
@@ -12544,6 +12595,19 @@
             "description": "Inferred primary response text field in the response body",
             "title": "Response Text Key"
           },
+          "login_token_response_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Dotted key path to the authentication token in a login endpoint's response body, e.g. 'access_token' or 'tokens.accessToken' for a one-level-nested DTO. Never holds the actual token value \u2014 only the field-name path used to locate it. See extras['login_token_response_key_source'] for whether this was resolved via static DTO schema extraction ('static_dto') or LLM inference ('llm_frontend_inferred').",
+            "title": "Login Token Response Key"
+          },
           "context_payload_fields": {
             "anyOf": [
               {
@@ -14150,6 +14214,21 @@
           "verification_max_verifications": {
             "title": "Verification Max Verifications",
             "type": "integer"
+          },
+          "auth_schema_inference_enabled": {
+            "default": true,
+            "title": "Auth Schema Inference Enabled",
+            "type": "boolean"
+          },
+          "auth_schema_inference_max_calls": {
+            "default": 2,
+            "title": "Auth Schema Inference Max Calls",
+            "type": "integer"
+          },
+          "auth_schema_inference_max_cost_usd": {
+            "default": 0.5,
+            "title": "Auth Schema Inference Max Cost Usd",
+            "type": "number"
           },
           "google_api_key": {
             "anyOf": [
@@ -15829,6 +15908,19 @@
             "default": null,
             "description": "Inferred primary response text field in the response body",
             "title": "Response Text Key"
+          },
+          "login_token_response_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Dotted key path to the authentication token in a login endpoint's response body, e.g. 'access_token' or 'tokens.accessToken' for a one-level-nested DTO. Never holds the actual token value \u2014 only the field-name path used to locate it. See extras['login_token_response_key_source'] for whether this was resolved via static DTO schema extraction ('static_dto') or LLM inference ('llm_frontend_inferred').",
+            "title": "Login Token Response Key"
           },
           "context_payload_fields": {
             "anyOf": [
@@ -18823,6 +18915,19 @@
             "default": null,
             "description": "Inferred primary response text field in the response body",
             "title": "Response Text Key"
+          },
+          "login_token_response_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Dotted key path to the authentication token in a login endpoint's response body, e.g. 'access_token' or 'tokens.accessToken' for a one-level-nested DTO. Never holds the actual token value \u2014 only the field-name path used to locate it. See extras['login_token_response_key_source'] for whether this was resolved via static DTO schema extraction ('static_dto') or LLM inference ('llm_frontend_inferred').",
+            "title": "Login Token Response Key"
           },
           "context_payload_fields": {
             "anyOf": [

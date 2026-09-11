@@ -55,6 +55,45 @@ export interface SendMessageDto {
 }
 '''
 
+_LOGIN_CONTROLLER = '''
+import { Controller, Post, Body } from '@nestjs/common';
+
+interface TokensDto {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+interface LoginResponseDto {
+  user: UserDto;
+  tokens: TokensDto;
+  subscription: SubscriptionDto;
+}
+
+@Controller('auth')
+export class AuthController {
+  @Post('login')
+  async login(@Body() dto: LoginDto): Promise<LoginResponseDto> {
+    return this.authService.login(dto);
+  }
+
+  @Post('refresh')
+  async refresh(@Body() dto: RefreshDto): LoginResponseDto {
+    return this.authService.refresh(dto);
+  }
+
+  @Post('logout')
+  async logout(@Body() dto: LogoutDto): Promise<void> {
+    return this.authService.logout(dto);
+  }
+
+  @Post('ping')
+  async ping() {
+    return { ok: true };
+  }
+}
+'''
+
 _PUBLIC_ROUTE_CONTROLLER = '''
 import { Controller, Post, Body, UseGuards } from '@nestjs/common';
 import { Public } from '../auth/public.decorator';
@@ -261,3 +300,71 @@ class TestGlobalRoutePrefix:
         dets = _endpoints(adapter.extract(_CONTROLLER, "chat.controller.ts", None))
         excluded_ep = next(d for d in dets if d.metadata["endpoint"].endswith("/chat/conversations") and "api/v1" not in d.metadata["endpoint"])
         assert excluded_ep.metadata["endpoint"] == "/chat/conversations"
+
+
+class TestResponseBodySchemaFromReturnType:
+    """Return-type annotation resolution — mirrors FastAPI's response_model
+    extraction so NestJS response schemas flow into node.metadata.response_schema
+    (via extractor/core.py's existing merge) for login/chat token-key detection."""
+
+    def test_promise_wrapped_dto_resolved_to_response_body_schema(self) -> None:
+        adapter = NestJSAdapter()
+        dets = _endpoints(adapter.extract(_LOGIN_CONTROLLER, "auth.controller.ts", None))
+        by_path = {d.metadata["endpoint"]: d for d in dets}
+        resp = by_path["/auth/login"].metadata["response_body_schema"]
+        assert resp["tokens"] == "TokensDto"
+
+    def test_nested_dto_flattened_one_level_into_dotted_keys(self) -> None:
+        adapter = NestJSAdapter()
+        dets = _endpoints(adapter.extract(_LOGIN_CONTROLLER, "auth.controller.ts", None))
+        by_path = {d.metadata["endpoint"]: d for d in dets}
+        resp = by_path["/auth/login"].metadata["response_body_schema"]
+        assert resp["tokens.accessToken"] == "string"
+        assert resp["tokens.refreshToken"] == "string"
+        assert resp["tokens.expiresIn"] == "number"
+
+    def test_bare_dto_without_promise_wrapper_also_resolved(self) -> None:
+        adapter = NestJSAdapter()
+        dets = _endpoints(adapter.extract(_LOGIN_CONTROLLER, "auth.controller.ts", None))
+        by_path = {d.metadata["endpoint"]: d for d in dets}
+        resp = by_path["/auth/refresh"].metadata["response_body_schema"]
+        assert resp["tokens.accessToken"] == "string"
+
+    def test_void_return_type_leaves_response_body_schema_unset(self) -> None:
+        adapter = NestJSAdapter()
+        dets = _endpoints(adapter.extract(_LOGIN_CONTROLLER, "auth.controller.ts", None))
+        by_path = {d.metadata["endpoint"]: d for d in dets}
+        assert "response_body_schema" not in by_path["/auth/logout"].metadata
+
+    def test_missing_return_type_annotation_leaves_response_body_schema_unset(self) -> None:
+        adapter = NestJSAdapter()
+        dets = _endpoints(adapter.extract(_LOGIN_CONTROLLER, "auth.controller.ts", None))
+        by_path = {d.metadata["endpoint"]: d for d in dets}
+        assert "response_body_schema" not in by_path["/auth/ping"].metadata
+
+    def test_cross_file_return_type_dto_resolution(self) -> None:
+        controller = '''
+import { Controller, Post, Body } from '@nestjs/common';
+
+@Controller('auth')
+export class AuthController {
+  @Post('login')
+  async login(@Body() dto: LoginDto): Promise<LoginResponseDto> {
+    return this.authService.login(dto);
+  }
+}
+'''
+        dtos = '''
+export interface TokensDto {
+  accessToken: string;
+}
+export interface LoginResponseDto {
+  tokens: TokensDto;
+}
+'''
+        adapter = NestJSAdapter()
+        adapter.set_global_model_schemas(collect_dto_schemas(dtos))
+        dets = _endpoints(adapter.extract(controller, "auth.controller.ts", None))
+        by_path = {d.metadata["endpoint"]: d for d in dets}
+        resp = by_path["/auth/login"].metadata["response_body_schema"]
+        assert resp["tokens.accessToken"] == "string"

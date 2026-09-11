@@ -72,52 +72,6 @@ def _normalize_scenario_token(value: str) -> str:
     return value.strip().lower().replace("-", "_")
 
 
-# Canonical config/CLI filter tokens whose intended scope doesn't reduce to a
-# fragile substring match against GoalType/ScenarioType enum values.
-#
-# "prompt-injection" is the motivating case: the real prompt-injection/jailbreak
-# family (context flooding, structural injection, indirect injection, system-prompt
-# extraction, guardrail bypass, Many-Shot Jailbreak, Crescendo, Skeleton Key,
-# Payload Splitting, fictional-framing bypass, false-policy-premise) all share
-# GoalType.PROMPT_DRIVEN_THREAT, but none of their ScenarioType values contain the
-# literal substring "prompt_injection" — only ScenarioType.REPO_PROMPT_INJECTION
-# (a coding-agent-specific type) does. Without this alias, a config listing
-# "prompt-injection" under redteam.scenarios silently drops the entire family and
-# a user has no way to discover it short of reading generator source.
-_PROMPT_INJECTION_MATCH_SET: set[str] = {
-    _normalize_scenario_token(GoalType.PROMPT_DRIVEN_THREAT.value),
-    # Coding-agent-specific type — not tagged PROMPT_DRIVEN_THREAT, but the name
-    # makes it an obvious match for anyone filtering on "prompt-injection".
-    _normalize_scenario_token(ScenarioType.REPO_PROMPT_INJECTION.value),
-}
-_FILTER_ALIASES: dict[str, set[str]] = {
-    "prompt_injection": _PROMPT_INJECTION_MATCH_SET,
-    "prompt_injections": _PROMPT_INJECTION_MATCH_SET,
-    "jailbreak": _PROMPT_INJECTION_MATCH_SET,
-    "jailbreaks": _PROMPT_INJECTION_MATCH_SET,
-    "jailbreaking": _PROMPT_INJECTION_MATCH_SET,
-}
-
-
-def _token_matches(token: str, goal: str, scenario_type: str, title: str) -> bool:
-    """Match one normalized filter token against a scenario's identity fields.
-
-    Checks the :data:`_FILTER_ALIASES` canonical mapping first (exact
-    goal-type match — precise, not fooled by accidental substring overlaps),
-    then falls back to the historical both-directions substring rule so
-    already-working tokens (``tool-abuse``, ``data-exfiltration``, etc., whose
-    GoalType values literally contain the token) keep matching unchanged.
-    """
-    alias = _FILTER_ALIASES.get(token)
-    if alias is not None:
-        return goal in alias or scenario_type in alias
-    return (
-        token in goal or goal in token
-        or (bool(scenario_type) and (token in scenario_type or scenario_type in token))
-        or token in title
-    )
-
-
 def _dedup_findings(findings: list[Finding]) -> list[Finding]:
     """Collapse near-duplicate findings, keeping the highest-severity instance.
 
@@ -250,75 +204,46 @@ def _dedup_findings_by_evidence_similarity(findings: list[Finding]) -> list[Find
     return result
 
 
-def _matches_scenario_tokens(goal: str, scenario_type: str, title: str, filters: set[str]) -> bool:
-    """Shared substring-match rule for both the pre-run and post-run filter checks."""
-    return any(_token_matches(token, goal, scenario_type, title) for token in filters)
+_DESTRUCTIVE_FILTER_TOKENS = frozenset({"destructive", "non_destructive"})
 
 
 def _scenario_matches_filter(scenario: AttackScenario, filters: set[str]) -> bool:
+    """redteam.scenarios filter: 'destructive' / 'non-destructive' (empty = both)."""
     if not filters:
         return True
-    goal = _normalize_scenario_token(scenario.goal_type.value)
-    scenario_type = _normalize_scenario_token(scenario.scenario_type.value)
-    title = _normalize_scenario_token(scenario.title)
-    return _matches_scenario_tokens(goal, scenario_type, title, filters)
+    is_destructive = _is_destructive_scenario(scenario)
+    return (
+        ("destructive" in filters and is_destructive)
+        or ("non_destructive" in filters and not is_destructive)
+    )
 
 
 def finding_matches_scenario_filter(finding: Finding, filters: set[str]) -> bool:
     """Post-run counterpart to :func:`_scenario_matches_filter`.
 
-    ``run_redteam()`` re-checks the scenario_filter against the *findings*
-    it got back (a defensive re-check after the orchestrator's own,
+    ``run_redteam()`` re-checks the scenario_filter against the *findings* it
+    got back (a defensive re-check after the orchestrator's own,
     already-correct pre-run filtering) — but findings only carry
-    ``goal_type``/``scenario_type``/``title`` as plain strings, not an
-    ``AttackScenario``, so this mirrors the same three-field, both-directions
-    substring rule rather than sharing code directly with
-    :func:`_scenario_matches_filter`.
-
-    A finding with no ``goal_type`` at all always passes (preserves prior
-    behaviour for findings from paths that don't set it, e.g. non-redteam
-    origins reusing this same filter).
+    ``title``/``description``, not an ``AttackScenario``, so this uses
+    :func:`_is_destructive_finding` instead of :func:`_is_destructive_scenario`.
     """
     if not filters:
         return True
-    if not finding.goal_type:
-        return True
-    goal = _normalize_scenario_token(finding.goal_type)
-    scenario_type = _normalize_scenario_token(finding.scenario_type) if finding.scenario_type else ""
-    title = _normalize_scenario_token(finding.title or "")
-    return _matches_scenario_tokens(goal, scenario_type, title, filters)
-
-
-def _known_scenario_filter_tokens() -> set[str]:
-    """Normalized set of every valid GoalType and ScenarioType value.
-
-    Used to detect scenario_filter entries that cannot ever match anything
-    on purpose — only by accident of the fuzzy substring rule in
-    _scenario_matches_filter (e.g. a mistyped goal name that happens to be a
-    substring of some scenario's title).
-    """
+    is_destructive = _is_destructive_finding(finding)
     return (
-        {_normalize_scenario_token(g.value) for g in GoalType}
-        | {_normalize_scenario_token(s.value) for s in ScenarioType}
-        | set(_FILTER_ALIASES)
+        ("destructive" in filters and is_destructive)
+        or ("non_destructive" in filters and not is_destructive)
     )
 
 
 def validate_scenario_filter(filters: list[str]) -> list[str]:
-    """Return the subset of *filters* that don't match any known GoalType/ScenarioType.
-
-    Mirrors the substring rule used by _scenario_matches_filter at match time,
-    so a token is only flagged when it could not have matched intentionally —
-    it would only ever hit a scenario by accident (e.g. matching a raw policy
-    clause embedded in a title).
-    """
-    known = _known_scenario_filter_tokens()
+    """Return the subset of *filters* that aren't 'destructive'/'non-destructive'."""
     unrecognized: list[str] = []
     for raw in filters:
         token = _normalize_scenario_token(raw)
         if not token:
             continue
-        if any(token in k or k in token for k in known):
+        if token in _DESTRUCTIVE_FILTER_TOKENS:
             continue
         unrecognized.append(raw)
     return unrecognized
@@ -536,6 +461,15 @@ def _compute_scan_outcome(
         indicating the target was unreachable or structurally broken. A guided
         conversation aborting for a legitimate reason (``"aborted:max_turns"``,
         ``"aborted:hard_refusal"``) does NOT count toward this.
+    ``aborted_auth_failure``
+        Every executed scenario aborted specifically with chain_status
+        ``"aborted:consecutive_auth_failures"`` — the target was reachable
+        (HTTP 401 responses, not 5xx/connection errors) but authentication
+        never succeeded, so the circuit breaker still tripped. Distinguished
+        from ``aborted_target_unavailable`` so the report points at a
+        credentials/auth-config problem instead of an outage. A mixed streak
+        (some scenarios auth-only, others a genuine outage) still reports as
+        ``aborted_target_unavailable``.
     ``aborted_endpoint_unreachable``
         Set directly by :meth:`RedteamOrchestrator.run` (not by this function)
         when pre-flight validation finds the resolved chat endpoint returning
@@ -547,6 +481,7 @@ def _compute_scan_outcome(
         "skipped",
         "aborted:target_unavailable",
         "aborted:consecutive_request_failures",
+        "aborted:consecutive_auth_failures",
         "target_unreachable",
     )
     if findings:
@@ -562,6 +497,8 @@ def _compute_scan_outcome(
 
     # Check for full abort (circuit breaker fired on every scenario)
     if records and all(r.chain_status in _HEALTH_ABORT_STATUSES for r in records):
+        if all(r.chain_status == "aborted:consecutive_auth_failures" for r in records):
+            return "aborted_auth_failure"
         return "aborted_target_unavailable"
 
     if strict and records:
@@ -591,19 +528,36 @@ _DESTRUCTIVE_KEYWORDS = frozenset({
 })
 
 
+def _is_destructive_text(title: str, description: str) -> bool:
+    """Return True when title/description text suggests a destructive/mutating action.
+
+    Shared by :func:`_is_destructive_scenario` (execution ordering + the
+    redteam.scenarios destructive/non-destructive filter) and
+    :func:`_is_destructive_finding` (the same filter applied post-run to
+    Finding objects, which have no AttackScenario to inspect directly).
+
+    Only the attack-action portion of the title (before the " — Agent Name" suffix,
+    when present) is checked, to avoid false matches on agent names such as
+    "Cancellation Agent".
+    """
+    attack_part = title.split(" — ")[0]
+    text = (attack_part + " " + description).lower()
+    return any(k in text for k in _DESTRUCTIVE_KEYWORDS)
+
+
 def _is_destructive_scenario(scenario: AttackScenario) -> bool:
     """Return True when the scenario is likely to destroy or mutate user data.
 
     Destructive scenarios are sorted to the end of the run so non-destructive
-    scenarios execute against intact account data first.
-
-    Only the attack-action portion of the title (before the " — Agent Name" suffix)
-    is checked, to avoid false matches on agent names such as "Cancellation Agent".
+    scenarios execute against intact account data first, and are excluded by
+    the redteam.scenarios "non-destructive" filter value.
     """
-    # Titles follow "Attack Name — Agent Name" convention; check only the attack part.
-    attack_part = scenario.title.split(" — ")[0]
-    text = (attack_part + " " + scenario.description).lower()
-    return any(k in text for k in _DESTRUCTIVE_KEYWORDS)
+    return _is_destructive_text(scenario.title, scenario.description)
+
+
+def _is_destructive_finding(finding: Finding) -> bool:
+    """Post-run counterpart to :func:`_is_destructive_scenario` for Finding objects."""
+    return _is_destructive_text(finding.title, finding.description)
 
 
 def _detect_cross_tenant_leak(
@@ -890,13 +844,11 @@ class RedteamOrchestrator:
         }
         unrecognized_filters = validate_scenario_filter(scenario_filter or [])
         if unrecognized_filters:
-            valid_goal_types = ", ".join(_normalize_scenario_token(g.value).replace("_", "-") for g in GoalType)
             _log.warning(
-                "redteam.scenarios contains unrecognized value(s) %s — these will only "
-                "match scenarios by coincidence (e.g. a substring shared with a policy "
-                "clause), silently dropping most intended coverage. Valid values: %s",
+                "redteam.scenarios contains unrecognized value(s) %s — these will not "
+                "match any scenario, silently dropping intended coverage. Valid values: "
+                "destructive, non-destructive.",
                 unrecognized_filters,
-                valid_goal_types,
             )
         self._finding_triggers = finding_triggers
         self._verbose = verbose
@@ -991,7 +943,7 @@ class RedteamOrchestrator:
         self.prompt_cache_hit: bool = False            # True when payloads loaded from cache
         self.llm_scenario_variants: dict[str, int] = {}  # scenario_title → variant_count
         # Scan-level outcome — populated by run()
-        # Values: critical_findings | high_findings | findings | no_findings | inconclusive_target_errors | aborted_target_unavailable
+        # Values: critical_findings | high_findings | findings | no_findings | inconclusive_target_errors | aborted_target_unavailable | aborted_auth_failure
         self.scan_outcome: str = "no_findings"
         # Run-level configuration notices (e.g. automatic URL resolution).
         self.config_notes: list[str] = []
@@ -1619,18 +1571,15 @@ class RedteamOrchestrator:
             ]
 
         if self._scenario_filter:
-            _pre_filter_goals = {s.goal_type.value for s in scenarios}
+            _pre_filter_count = len(scenarios)
             scenarios = [
                 s for s in scenarios if _scenario_matches_filter(s, self._scenario_filter)
             ]
-            _post_filter_goals = {s.goal_type.value for s in scenarios}
-            _dropped_goals = _pre_filter_goals - _post_filter_goals
-            if _dropped_goals:
+            if not scenarios and _pre_filter_count:
                 _filter_note = (
-                    f"scenario_filter {sorted(self._scenario_filter)!r} dropped every "
-                    f"scenario for goal type(s) {sorted(_dropped_goals)!r} — check "
-                    "'redteam.scenarios' tokens against the GoalType/ScenarioType "
-                    "taxonomy in nuguard/models/exploit_chain.py if this wasn't intended."
+                    f"scenario_filter {sorted(self._scenario_filter)!r} dropped all "
+                    f"{_pre_filter_count} candidate scenario(s) — check 'redteam.scenarios' "
+                    "is set to 'destructive'/'non-destructive' if this wasn't intended."
                 )
                 _log.warning(_filter_note)
                 self.config_notes.append(_filter_note)
@@ -1955,6 +1904,7 @@ class RedteamOrchestrator:
                     tree_breadth=_tap_breadth,
                     tree_max_depth=_tap_depth,
                     evaluator=_tap_evaluator,
+                    auth_session=bootstrapper.session,
                 )
 
             findings, executed, records = await self._run_scenarios(scenarios, executor, guided_executor)
@@ -2384,6 +2334,7 @@ class RedteamOrchestrator:
                     if getattr(_record, "chain_status", "") in (
                         "aborted:target_unavailable",
                         "aborted:consecutive_request_failures",
+                        "aborted:consecutive_auth_failures",
                     ):
                         consecutive_unavailable += 1
                         if consecutive_unavailable >= _ABORT_THRESHOLD:
@@ -3497,6 +3448,22 @@ class RedteamOrchestrator:
 
         return findings
 
+    def _chat_endpoint_confirmed(self, path: str) -> bool:
+        """True if the SBOM already carries a runtime-probe-confirmed payload
+        shape for this exact endpoint (from this run's enrichment load or a
+        prior behavior/redteam run persisted into the enriched SBOM)."""
+        for node in self._sbom.nodes:
+            meta = node.metadata
+            if (
+                node.component_type == NodeType.API_ENDPOINT
+                and meta is not None
+                and meta.endpoint == path
+                and meta.chat_payload_key is not None
+                and (meta.extras or {}).get("source") == "runtime_probe"
+            ):
+                return True
+        return False
+
     async def _maybe_probe_endpoints(self) -> None:
         """Live-probe SBOM endpoints when no explicit chat path is configured.
 
@@ -3513,8 +3480,16 @@ class RedteamOrchestrator:
 
         if self._chat_path:
             # Option B: path already resolved — detect nested payload shape only.
-            if self._chat_payload_key != "message":
-                return  # key explicitly set too; nothing to detect
+            # "message" is both the unresolved default *and* a common real
+            # payload key, so it can't tell "never probed" from "confirmed and
+            # happens to be message" on its own — check the SBOM for a prior
+            # runtime-probe confirmation on this exact endpoint too (issue:
+            # redteam re-probing live on every run despite a behavior run
+            # already having confirmed and persisted this endpoint's shape).
+            if self._chat_payload_key != "message" or self._chat_endpoint_confirmed(
+                self._chat_path
+            ):
+                return  # key explicitly set, or already confirmed via a prior probe
             _log.info(
                 "redteam: endpoint known (%s) — probing payload structure via OpenAPI",
                 self._chat_path,

@@ -2848,6 +2848,30 @@ class AiSbomExtractor:
         doc.nodes = apply_verification_results(doc.nodes, results)
         _log.info("llm verification: %s", v_stats.to_dict())
 
+        # Step 1.5: Auth token-key inference fallback — only fires when
+        # static DTO extraction (adapters + enricher.py::_enrich_login_token_key)
+        # left a login endpoint's token key unresolved.
+        try:
+            from ..core.auth_schema_inference import (  # noqa: PLC0415
+                infer_login_token_key,
+            )
+            from ..core.gap_fill.budget import GapFillBudget as _AuthBudget  # noqa: PLC0415
+
+            auth_budget = _AuthBudget(
+                max_calls=config.auth_schema_inference_max_calls,
+                max_cost_usd=config.auth_schema_inference_max_cost_usd,
+            )
+            auth_stats = await infer_login_token_key(
+                doc,
+                file_contents,
+                _llm_call,
+                budget=auth_budget,
+                enabled=config.auth_schema_inference_enabled,
+            )
+            _log.info("auth-schema-inference: %s", auth_stats.to_dict())
+        except Exception as exc:
+            _log.warning("auth-schema-inference: unexpected error — continuing without: %s", exc)
+
         # Step 2: Re-aggregate confidence with LLM scores
         doc.nodes, a_stats = aggregate_node_confidence(doc.nodes)
         _log.info("llm confidence aggregation: %s", a_stats.to_dict())
