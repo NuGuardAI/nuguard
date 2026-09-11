@@ -10,7 +10,7 @@ The built-in catalog ships **125 scenario specs** across **18 attack categories*
 
 Every catalog entry carries:
 
-- **`goal_type`** — one of 9 high-level attack goals (see [GoalType taxonomy](#goaltype-taxonomy)). This is what `redteam.scenarios` / `--scenarios` filters on.
+- **`goal_type`** — one of 9 high-level attack goals (see [GoalType taxonomy](#goaltype-taxonomy)); shown in reports and findings, but not itself a `redteam.scenarios` filter axis (see below).
 - **`base_impact`** (0–10) — a pre-score used by `redteam.profile` / `--profile` to decide whether the scenario is worth running (see [Profile filtering](redteam-guide.md#redteam-profile-ci-vs-full)).
 - **`required_capabilities`** — SBOM signals (e.g. `rag`, `multi_session`, `sensitive_context`) that must be present for the scenario to apply.
 - **`safe_execution`** — the containment strategy used so the attack can run against a real target without causing real-world harm (see [Safe execution modes](#safe-execution-modes)).
@@ -21,9 +21,9 @@ Every catalog entry carries:
 
 ## GoalType taxonomy
 
-`redteam.scenarios` (`--scenarios`) filters by these 9 values. Each maps to one or more catalog categories below:
+Every scenario is tagged with one of 9 high-level attack goals, shown in reports and findings for context. `redteam.scenarios` / `--scenarios` no longer filters on `GoalType` — see [Scenarios (destructive / non-destructive filter)](redteam-guide.md#scenarios-destructive--non-destructive-filter) in the guide for the current filter axis. Each `GoalType` maps to one or more catalog categories below:
 
-| GoalType (yaml/CLI value) | Description | Catalog categories |
+| GoalType | Description | Catalog categories |
 |---|---|---|
 | `prompt-driven-threat` | Prompt injection, jailbreaks, guardrail bypass, system-prompt extraction | `I`, `J`, plus parts of `E`, `O`, `R`, `S`, `V` |
 | `data-exfiltration` | PII/PHI/secret disclosure, cross-tenant leaks, covert encoding | `C`, `D`, plus parts of `N`, `O`, `R`, `S`, `V` |
@@ -39,7 +39,7 @@ Every catalog entry carries:
 
 ## Categories and scenarios
 
-Prefix letters are the stable catalog ID prefix (e.g. `D01`–`D08`). IDs are referenced directly by `--scenarios D01,C03` or in `redteam.scenarios`.
+Prefix letters are the stable catalog ID prefix (e.g. `D01`–`D08`), used to identify individual scenarios in reports and a custom `--catalog` file — not a `redteam.scenarios` filter value (see [Scenarios (destructive / non-destructive filter)](redteam-guide.md#scenarios-destructive--non-destructive-filter)).
 
 ### A — Authorization Failures (8)
 

@@ -98,7 +98,7 @@ enough for pre-commit hooks and CI gates.
 
 ## 1. AI-SBOM Generation (`nuguard sbom`)
 
-Scans Python, TypeScript/JavaScript, Jupyter notebooks, SQL schemas, Dockerfiles,
+Scans Python, TypeScript/JavaScript, Go, C#, Jupyter notebooks, SQL schemas, Dockerfiles,
 Terraform, CloudFormation, Azure Bicep, Kubernetes manifests, and Nginx configs.
 
 **Component types detected:** AGENT, MODEL, TOOL, PROMPT, DATASTORE, GUARDRAIL,

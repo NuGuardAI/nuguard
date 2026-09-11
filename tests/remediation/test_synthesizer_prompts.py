@@ -1,6 +1,8 @@
 """Tests for RemediationSynthesizer's LLM-authored "surgical fix" prompts:
-which handlers get LLM-authored patch_text vs. rationale, the shared
-canned-response guard, and graceful fallback to template text on failure."""
+which handlers get LLM-authored patch_text vs. rationale, and that an
+unavailable LLM client (not configured at all) falls back to template text
+while an actual LLM failure (canned response, exception) propagates loudly
+instead of being silently swallowed."""
 from __future__ import annotations
 
 import pytest
@@ -14,11 +16,17 @@ from nuguard.remediation.synthesizer import RemediationSynthesizer
 
 
 class _FakeLLM:
-    """Minimal LLMClient stand-in recording every complete_stream() call."""
+    """Minimal LLMClient stand-in recording every complete_stream() call.
+
+    Carries a non-empty ``api_key`` so it's treated as an explicitly
+    configured client — the synthesizer only silently no-ops for a client
+    with no key at all; once a key is set, any failure must propagate.
+    """
 
     def __init__(self, response: str = "surgical fix text") -> None:
         self._response = response
         self.calls: list[dict] = []
+        self.api_key = "fake-key"
 
     async def complete_stream(self, prompt, system=None, label=""):
         self.calls.append({"prompt": prompt, "system": system, "label": label})
@@ -75,30 +83,30 @@ async def test_guardrail_dtype_upgrades_rationale_but_keeps_spec_deterministic()
 
 
 @pytest.mark.asyncio
-async def test_canned_response_falls_back_to_template_text():
+async def test_canned_response_raises_instead_of_silently_falling_back():
+    # A canned response means the configured LLM client is broken (no API
+    # key, bad credentials, etc.) — that must surface as a loud failure, not
+    # silently downgrade every remediation to generic template text.
     llm = _FakeLLM(response="[NUGUARD_CANNED_RESPONSE] Template analysis for: x")
     synth = RemediationSynthesizer(llm_client=llm)
 
-    artefacts = await synth.synthesize_findings_async([_blocked_topics_finding()])
-
-    patch = next(a for a in artefacts if a.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH)
-    assert "[NUGUARD_CANNED_RESPONSE]" not in patch.patch_text
-    assert "Out of Scope" in patch.patch_text  # falls back to the deterministic template
+    with pytest.raises(RuntimeError, match="canned fallback response"):
+        await synth.synthesize_findings_async([_blocked_topics_finding()])
 
 
 @pytest.mark.asyncio
-async def test_llm_exception_falls_back_to_template_text():
+async def test_llm_exception_propagates_instead_of_silently_falling_back():
     class _RaisingLLM:
+        api_key = "fake-key"
+
         async def complete_stream(self, prompt, system=None, label=""):
             raise RuntimeError("provider down")
             yield  # pragma: no cover - make this an async generator
 
     synth = RemediationSynthesizer(llm_client=_RaisingLLM())
 
-    artefacts = await synth.synthesize_findings_async([_blocked_topics_finding()])
-
-    patch = next(a for a in artefacts if a.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH)
-    assert "Out of Scope" in patch.patch_text
+    with pytest.raises(RuntimeError, match="provider down"):
+        await synth.synthesize_findings_async([_blocked_topics_finding()])
 
 
 @pytest.mark.asyncio

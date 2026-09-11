@@ -634,10 +634,12 @@ class RemediationSynthesizer:
         sbom: "AiSbomDocument | None" = None,
         policy: "CognitivePolicy | None" = None,
         llm_client: "LLMClient | None" = None,
+        intent_purpose: str = "",
     ) -> None:
         self._sbom = sbom
         self._policy = policy
         self._llm = llm_client
+        self._intent_purpose = intent_purpose
 
         self._node_by_name: dict[str, Node] = {}
         self._prompt_by_agent: dict[str, Node] = {}
@@ -648,6 +650,17 @@ class RemediationSynthesizer:
                 _build_lookup_maps(sbom)
             )
 
+    def _agent_purpose(self, node: "Node | None") -> str:
+        """Best available "what is this agent for" text for a prompt.
+
+        Prefers the specific agent node's own SBOM description over the
+        app-wide ``intent_purpose`` passed at construction, since a
+        per-agent description grounds the remediation prompt more precisely
+        than a single application-level purpose string.
+        """
+        node_desc = str(_node_meta(node, "description") or "") if node is not None else ""
+        return node_desc or self._intent_purpose
+
     async def synthesize_findings_async(
         self,
         findings: list[dict],
@@ -656,21 +669,20 @@ class RemediationSynthesizer:
         behavior, redteam, and analysis alike.
 
         Fires all ``_synthesize_one_async()`` coroutines concurrently with
-        ``asyncio.gather``, including any LLM calls inside each. Falls back
-        gracefully on exceptions.
+        ``asyncio.gather``, including any LLM calls inside each. A failure in
+        any one finding's LLM call (bad credentials, wrong model, network
+        error) propagates rather than being silently dropped — remediation
+        quality must not degrade to generic templates without the caller
+        knowing.
         """
         import asyncio
 
         batches = await asyncio.gather(
             *(self._synthesize_one_async(f) for f in findings),
-            return_exceptions=True,
         )
         artefacts: list[RemediationArtefact] = []
         seen_keys: set[str] = set()
         for batch in batches:
-            if isinstance(batch, BaseException):
-                _log.debug("synthesize_findings_async: one finding failed: %s", batch)
-                continue
             for art in batch:
                 key = _artefact_dedup_key(art)
                 if key not in seen_keys:
@@ -748,9 +760,9 @@ class RemediationSynthesizer:
         component: str,
         finding: dict,
     ) -> None:
-        """Best-effort: replace patch_text/rationale on *artefacts* in place
-        with LLM-authored surgical text. Leaves template text on any failure
-        or when the LLM is unavailable/returns a canned response."""
+        """Replace patch_text/rationale on *artefacts* in place with
+        LLM-authored surgical text. Leaves template text only when no LLM
+        client is configured; an actual LLM failure propagates."""
         # Prefer the specific, technique-grounded evidence (the exact
         # substring of the agent's response that proves the breach, or the
         # evaluator's one-sentence reasoning) over the generic telemetry
@@ -772,7 +784,7 @@ class RemediationSynthesizer:
                     section=artefact.patch_section or "Security Rules",
                     violation=evidence,
                     prompt_excerpt=_prompt_content(prompt_node)[:400],
-                    intent_purpose="",
+                    intent_purpose=self._agent_purpose(self._node_by_name.get(component)),
                 )
                 if new_text:
                     artefact.patch_text = new_text
@@ -853,7 +865,7 @@ class RemediationSynthesizer:
             section="Data Handling Rules",
             violation=finding.get("description", "Agent asks for sensitive credentials"),
             prompt_excerpt=existing[:400],
-            intent_purpose=getattr(getattr(self, "_intent", None), "app_purpose", ""),
+            intent_purpose=self._agent_purpose(node),
         ) or (
             "## Data Handling Rules\n"
             "- NEVER ask the user for their password, PIN, or full card number.\n"
@@ -889,7 +901,7 @@ class RemediationSynthesizer:
             section="Data Handling Rules",
             violation=finding.get("description", "Agent asks for sensitive credentials"),
             prompt_excerpt=existing[:400],
-            intent_purpose=getattr(getattr(self, "_intent", None), "app_purpose", ""),
+            intent_purpose=self._agent_purpose(node),
         ) or (
             "## Data Handling Rules\n"
             "- NEVER ask the user for their password, PIN, or full card number.\n"
@@ -1651,7 +1663,14 @@ class RemediationSynthesizer:
             patch_location=location or None,
             patch_section=policy_label,
             patch_text=patch_text,
-            rationale=desc or title,
+            # Not `desc or title` — that would just echo the finding's own
+            # description back as "the fix", which isn't actionable. Point
+            # at the concrete enforcement steps in patch_text instead.
+            rationale=(
+                f"Add an input guardrail that blocks this request pattern before it "
+                f"reaches the agent, and back it with a standard refusal — see the "
+                f"'{policy_label}' patch for the exact wording."
+            ),
         )]
 
     # ------------------------------------------------------------------
@@ -1800,22 +1819,33 @@ class RemediationSynthesizer:
     # ------------------------------------------------------------------
 
     async def _call_llm_async(self, prompt: str, *, system: str, label: str) -> str:
-        """Shared LLM invocation: streams a completion, guards against the
-        no-API-key canned response, and swallows errors. Returns "" on any
-        failure so every caller falls back to its deterministic template."""
-        if self._llm is None:
+        """Shared LLM invocation: streams a completion for one remediation call.
+
+        Returns ``""`` when no LLM is configured at all — either no client
+        was passed in, or the client has no API key (LLM enrichment is
+        optional everywhere, see CLAUDE.md; a bare, key-less default model
+        string is not an explicit opt-in). That's an intentional no-op, not
+        a failure, so callers fall back to their deterministic template.
+
+        Once an API key *is* configured, any actual failure (a canned
+        error response from the client, or an exception from the underlying
+        completion call) propagates instead of being swallowed — a
+        misconfigured or unreachable LLM the user explicitly set up must
+        surface as a loud, visible error rather than silently downgrading
+        every remediation to generic template text.
+        """
+        if self._llm is None or not getattr(self._llm, "api_key", None):
             return ""
-        try:
-            result = ""
-            async for chunk in self._llm.complete_stream(prompt, system=system, label=label):
-                result += chunk
-            result = result.strip()
-            if result.startswith(_CANNED_RESPONSE_PREFIX):
-                return ""
-            return result
-        except Exception as exc:
-            _log.debug("RemediationSynthesizer: LLM call failed (%s): %s", label, exc)
-            return ""
+        result = ""
+        async for chunk in self._llm.complete_stream(prompt, system=system, label=label):
+            result += chunk
+        result = result.strip()
+        if result.startswith(_CANNED_RESPONSE_PREFIX):
+            raise RuntimeError(
+                f"remediation LLM call ({label}) returned a canned fallback response — "
+                "check the configured LLM credentials/model"
+            )
+        return result
 
     async def _llm_patch_async(
         self,
@@ -1826,7 +1856,8 @@ class RemediationSynthesizer:
     ) -> str:
         """Generate contextual system prompt patch text using the LLM (async).
 
-        Returns empty string on failure so caller falls back to template.
+        Returns empty string only when no LLM client is configured; an
+        actual LLM failure propagates rather than falling back silently.
         """
         prompt = SYSTEM_PROMPT_PATCH_USER.format(
             agent_purpose=intent_purpose or "an AI assistant",

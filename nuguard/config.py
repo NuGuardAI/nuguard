@@ -213,6 +213,16 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "cost_budget" in sbom_verification:
         flat["sbom_verification_cost_budget"] = float(sbom_verification["cost_budget"])
 
+    auth_schema_inference = sbom_gen.get("auth_schema_inference", {}) or {}
+    if "enabled" in auth_schema_inference:
+        flat["sbom_auth_schema_inference_enabled"] = bool(auth_schema_inference["enabled"])
+    if "max_calls" in auth_schema_inference:
+        flat["sbom_auth_schema_inference_max_calls"] = int(auth_schema_inference["max_calls"])
+    if "max_cost_usd" in auth_schema_inference:
+        flat["sbom_auth_schema_inference_max_cost_usd"] = float(
+            auth_schema_inference["max_cost_usd"]
+        )
+
     # ── Shared target block ────────────────────────────────────────────────────
     # target: at the top level acts as a shared default for both behavior and
     # redteam.  Section-level keys (redteam.target, behavior.target) take
@@ -1145,6 +1155,30 @@ class NuGuardConfig(BaseSettings):
             "env: AISBOM_VERIFICATION_COST_BUDGET, default 20.0)."
         ),
     )
+    sbom_auth_schema_inference_enabled: bool = Field(
+        default=True,
+        description=(
+            "Master switch for the LLM auth/chat-schema inference fallback "
+            "pass, only fires when static DTO extraction couldn't resolve a "
+            "login endpoint's token-key or a confident chat endpoint "
+            "(yaml: sbom_generation.auth_schema_inference.enabled)."
+        ),
+    )
+    sbom_auth_schema_inference_max_calls: int = Field(
+        default=2,
+        description=(
+            "Max LLM calls for auth/chat-schema inference — fires at most "
+            "twice per SBOM (once for auth, once for chat), not per-endpoint "
+            "(yaml: sbom_generation.auth_schema_inference.max_calls)."
+        ),
+    )
+    sbom_auth_schema_inference_max_cost_usd: float = Field(
+        default=0.5,
+        description=(
+            "Max estimated USD spend for auth/chat-schema inference "
+            "(yaml: sbom_generation.auth_schema_inference.max_cost_usd)."
+        ),
+    )
 
     # ------------------------------------------------------- Redteam
     target_url: str | None = Field(
@@ -1250,10 +1284,8 @@ class NuGuardConfig(BaseSettings):
     redteam_scenarios: list[str] = Field(
         default_factory=list,
         description=(
-            "Goal types to run; empty = all 9. Values: prompt-driven-threat, "
-            "policy-violation, data-exfiltration, privilege-escalation, "
-            "tool-abuse, mcp-toxic-flow, api-attack, agentic-trust-abuse, "
-            "recon-inference (yaml: redteam.scenarios)."
+            "Which categories to run: 'destructive', 'non-destructive', or both — "
+            "empty = both (yaml: redteam.scenarios)."
         ),
     )
     mcp_trusted_servers: list[str] = Field(
@@ -1680,7 +1712,7 @@ class NuGuardConfig(BaseSettings):
     analyze_nga_only: bool = Field(
         default=False,
         description=(
-            "Run only NGA structural rules (NGA-001–018), skipping external tool "
+            "Run only NGA structural rules (NGA-001–030), skipping external tool "
             "scans (yaml: analyze.nga_only, CLI: --nga)."
         ),
     )

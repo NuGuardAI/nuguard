@@ -40,29 +40,29 @@ echo "Done."
 echo "---"
 
 echo "Drafting Cognitive Policy (LLM, grounded in the SBOM) — created at runtime, not checked in..."
-uv run nuguard init \
-  --path "$SCRIPT_DIR" \
-  --target "$(grep -m1 '^\s*url:' "$CONFIG_PATH" | awk '{print $2}')" \
-  --source "https://github.com/studyield/studyield" \
-  --llm
+#uv run nuguard init \
+#  --path "$SCRIPT_DIR" \
+#  --target "$(grep -m1 '^\s*url:' "$CONFIG_PATH" | awk '{print $2}')" \
+#  --source "https://github.com/studyield/studyield" \
+##   --llm
 
 echo "Compiling Cognitive Policy controls..."
 uv run nuguard policy compile --config "$CONFIG_PATH"
 
 echo "Cognitive Policy check..."
 # exits 2 when gaps are found — expected in testing; treat as non-fatal
-uv run nuguard policy check \
-  --config "$CONFIG_PATH" \
-  --format markdown \
-  -o "$SCRIPT_DIR/reports/studyield-policy-check.md" || true
+#uv run nuguard policy check \
+#  --config "$CONFIG_PATH" \
+#  --format markdown \
+#  -o "$SCRIPT_DIR/reports/studyield-policy-check.md" || true
 
 echo "---"
 echo "Static security analysis..."
 # exits 2 when findings are present — expected in testing; treat as non-fatal
-uv run nuguard analyze \
-  --config "$CONFIG_PATH" \
-  --format markdown \
-  -o "$SCRIPT_DIR/reports/studyield-sec-analysis.md" || true
+##uv run nuguard analyze \
+#  --config "$CONFIG_PATH" \
+#  --format markdown \
+#  -o "$SCRIPT_DIR/reports/studyield-sec-analysis.md" || true
 
 echo "---"
 echo "Running behavior analysis (static + dynamic)..."

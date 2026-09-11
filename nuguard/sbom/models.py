@@ -639,6 +639,18 @@ class NodeMetadata(BaseModel):
         default=None,
         description="Inferred primary response text field in the response body",
     )
+    login_token_response_key: str | None = Field(
+        default=None,
+        description=(
+            "Dotted key path to the authentication token in a login "
+            "endpoint's response body, e.g. 'access_token' or "
+            "'tokens.accessToken' for a one-level-nested DTO. Never holds "
+            "the actual token value — only the field-name path used to "
+            "locate it. See extras['login_token_response_key_source'] for "
+            "whether this was resolved via static DTO schema extraction "
+            "('static_dto') or LLM inference ('llm_frontend_inferred')."
+        ),
+    )
     context_payload_fields: dict[str, str] | None = Field(
         default=None,
         description=(

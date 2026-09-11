@@ -1494,6 +1494,19 @@
           "description": "Inferred primary response text field in the response body",
           "title": "Response Text Key"
         },
+        "login_token_response_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dotted key path to the authentication token in a login endpoint's response body, e.g. 'access_token' or 'tokens.accessToken' for a one-level-nested DTO. Never holds the actual token value \u2014 only the field-name path used to locate it. See extras['login_token_response_key_source'] for whether this was resolved via static DTO schema extraction ('static_dto') or LLM inference ('llm_frontend_inferred').",
+          "title": "Login Token Response Key"
+        },
         "context_payload_fields": {
           "anyOf": [
             {

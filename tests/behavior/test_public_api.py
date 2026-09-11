@@ -240,8 +240,9 @@ async def test_run_behavior_scenarios_populates_remediation_plan():
 
 
 @pytest.mark.asyncio
-async def test_run_behavior_scenarios_remediation_synthesis_failure_is_swallowed():
-    """Remediation synthesis is best-effort — a failure must not fail the run."""
+async def test_run_behavior_scenarios_remediation_synthesis_failure_propagates():
+    """A broken remediation LLM client must fail the run loudly, not
+    silently produce a report with an empty remediation plan."""
     sentinel_result = BehaviorRunResult(
         run_id="run1",
         findings=[{"finding_id": "f1", "title": "t", "description": "d", "affected_component": "c", "severity": "low"}],
@@ -259,9 +260,8 @@ async def test_run_behavior_scenarios_remediation_synthesis_failure_is_swallowed
     ):
         mock_runner_cls.return_value.run = AsyncMock(return_value=sentinel_result)
         request = BehaviorRunRequest(config=config, scenarios=[_scenario("a")])
-        result = await run_behavior_scenarios(request, sbom=SimpleNamespace(nodes=[], edges=[]))
-
-    assert result.remediation_plan == []
+        with pytest.raises(RuntimeError, match="boom"):
+            await run_behavior_scenarios(request, sbom=SimpleNamespace(nodes=[], edges=[]))
 
 
 # ---------------------------------------------------------------------------

@@ -491,6 +491,11 @@ class AttackExecutor:
         steps = ChainAssembler.sort_steps(chain)
         results: list[StepResult] = []
         _consecutive_failures = 0
+        # Tracks whether every failure in the current streak was specifically
+        # an HTTP 401 — lets the abort be labeled "auth failure" (a config
+        # problem) instead of "target unavailable" (an outage) when that's
+        # what actually happened. Reset alongside _consecutive_failures.
+        _consecutive_failures_all_401 = True
         # Chain-level "we've proven the vulnerability" flag.  Once set, the loop
         # below short-circuits remaining variants — running additional turns
         # after a confirmed high-confidence hit only wastes requests on the
@@ -589,16 +594,27 @@ class AttackExecutor:
                 or any(pat in _resp_lower_run for pat in APP_TRANSIENT_ERROR_PATTERNS)
             ) and not is_rate_limited(result.response):
                 _consecutive_failures += 1
+                _is_401_failure = (
+                    result.response.startswith("[HTTP 401]")
+                    or result.http_status_code == 401
+                )
+                _consecutive_failures_all_401 = (
+                    _consecutive_failures_all_401 and _is_401_failure
+                )
                 if _consecutive_failures >= self.MAX_CONSECUTIVE_FAILURES:
-                    _log.warning(
-                        "Chain %s aborted after %d consecutive request failures",
-                        chain.chain_id, _consecutive_failures,
-                    )
                     chain.status = "aborted"
-                    chain.abort_reason = "consecutive_request_failures"
+                    if _consecutive_failures_all_401:
+                        chain.abort_reason = "consecutive_auth_failures"
+                    else:
+                        chain.abort_reason = "consecutive_request_failures"
+                    _log.warning(
+                        "Chain %s aborted after %d consecutive request failures (%s)",
+                        chain.chain_id, _consecutive_failures, chain.abort_reason,
+                    )
                     break
             else:
                 _consecutive_failures = 0
+                _consecutive_failures_all_401 = True
 
             if result.success_signal_found:
                 session.add_evidence(step.step_id, result.response)
