@@ -61,3 +61,24 @@ class TestRealPromptsStillDetected(object):
             "user: {question}\n"
         )
         assert _is_likely_prompt(_lit(text, context="template")) is True
+
+
+class TestI18nUiCopyNotFlaggedAsPrompt:
+    """Regression: a "prompt"-suffixed i18n key path (e.g.
+    "desktop.updateAfterDownloaded.prompt") survives context extraction as
+    just "prompt" (only the last dotted segment is captured), which used to
+    be a strong-enough signal on its own to flag any string over 30 chars —
+    including plain UI copy with no instructional shape at all
+    (docs/sbom-accuracy-plan.md #2)."""
+
+    def test_ui_copy_value_with_prompt_context_not_flagged(self) -> None:
+        text = "A new version has been downloaded and is ready to install now"
+        assert _is_likely_prompt(_lit(text, context="prompt")) is False
+
+    def test_short_ui_label_with_prompt_context_not_flagged(self) -> None:
+        text = "Restart the app to finish updating"
+        assert _is_likely_prompt(_lit(text, context="prompt")) is False
+
+    def test_natural_language_instruction_with_prompt_context_still_flagged(self) -> None:
+        text = "Please summarize the document and return your answer in JSON format."
+        assert _is_likely_prompt(_lit(text, context="prompt")) is True

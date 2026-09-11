@@ -45,6 +45,7 @@ class TargetVerifyRequest(BaseModel):
     auth_username: str | None = None
     auth_password: str | None = None
     login_flow: LoginFlowConfig | None = None
+    headers: dict[str, str] | None = None
     chat_payload_key: str = "message"
     chat_payload_list: bool = False
     chat_response_key: str | None = None
@@ -56,6 +57,11 @@ class TargetVerifyRequest(BaseModel):
     def _validate_login_flow(self) -> "TargetVerifyRequest":
         if self.auth_type.strip().lower() == "login_flow" and self.login_flow is None:
             raise ValueError("auth_type=login_flow requires login_flow configuration")
+        if self.auth_type.strip().lower() == "cookie_file" and not self.auth_value:
+            raise ValueError(
+                "auth_type=cookie_file requires auth_value to be the path to a "
+                "Netscape-format cookies.txt"
+            )
         return self
 
 
@@ -87,6 +93,7 @@ class TargetSessionResolveRequest(BaseModel):
     auth_username: str | None = None
     auth_password: str | None = None
     login_flow: LoginFlowConfig | None = None
+    headers: dict[str, str] | None = None
     chat_payload_key: str = "message"
     chat_payload_list: bool = False
     chat_response_key: str | None = None
@@ -97,6 +104,11 @@ class TargetSessionResolveRequest(BaseModel):
     def _validate_login_flow(self) -> "TargetSessionResolveRequest":
         if self.auth_type.strip().lower() == "login_flow" and self.login_flow is None:
             raise ValueError("auth_type=login_flow requires login_flow configuration")
+        if self.auth_type.strip().lower() == "cookie_file" and not self.auth_value:
+            raise ValueError(
+                "auth_type=cookie_file requires auth_value to be the path to a "
+                "Netscape-format cookies.txt"
+            )
         return self
 
 
@@ -139,7 +151,26 @@ def _build_auth_config(request: TargetVerifyRequest | TargetSessionResolveReques
         value = request.auth_value or ""
         header = value if ":" in value else f"X-API-Key: {value}"
         return AuthConfig(type="api_key", header=header)
+    if auth_type == "cookie_file":
+        return AuthConfig(type="cookie_file", cookie_file=request.auth_value or "")
     return AuthConfig(type="none")
+
+
+def _merge_headers(
+    request: "TargetVerifyRequest | TargetSessionResolveRequest",
+    *header_dicts: dict[str, str] | None,
+) -> dict[str, str]:
+    """Merge request.headers underneath the given auth/bootstrap headers.
+
+    Custom headers apply to every request; auth-derived headers win on any
+    key conflict, mirroring how BehaviorConfig.headers is merged in
+    ``BehaviorRunner._build_client``.
+    """
+    merged: dict[str, str] = dict(request.headers or {})
+    for headers in header_dicts:
+        if headers:
+            merged.update(headers)
+    return merged
 
 
 def _check_from_health(check: CredentialCheckResult) -> TargetVerifyCheck:
@@ -210,7 +241,7 @@ async def verify_target(
     endpoint, payload_key, payload_list, response_key, endpoint_source = await _resolve_endpoint_plan(
         target_url=resolved_url,
         sbom=sbom,
-        auth_headers=auth_config.to_headers() or None,
+        auth_headers=_merge_headers(request, auth_config.to_headers()) or None,
         chat_path=request.chat_path,
         chat_payload_key=request.chat_payload_key,
         chat_payload_list=request.chat_payload_list,
@@ -240,7 +271,10 @@ async def verify_target(
             payload_list=payload_list,
             response_key=response_key,
             timeout=request.request_timeout,
-            auth_headers=bootstrapper.session.headers() or auth_config.to_headers() or None,
+            auth_headers=_merge_headers(
+                request, auth_config.to_headers(), bootstrapper.session.headers()
+            )
+            or None,
             sbom=sbom,
             payload_extras=request.chat_payload_extras or None,
         )
@@ -289,7 +323,7 @@ async def resolve_target_session_public(
         endpoint, payload_key, payload_list, response_key, endpoint_source = await _resolve_endpoint_plan(
             target_url=resolved_url,
             sbom=sbom,
-            auth_headers=auth_config.to_headers() or None,
+            auth_headers=_merge_headers(request, auth_config.to_headers()) or None,
             chat_path=request.chat_path,
             chat_payload_key=request.chat_payload_key,
             chat_payload_list=request.chat_payload_list,
@@ -300,7 +334,7 @@ async def resolve_target_session_public(
             target_url=resolved_url,
             sbom=sbom,
             auth_config=auth_config,
-            extra_headers={},
+            extra_headers=dict(request.headers or {}),
             chat_path=endpoint,
             chat_payload_key=payload_key,
             chat_payload_list=payload_list,

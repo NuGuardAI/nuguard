@@ -40,6 +40,7 @@ def _make_scan_summary(d: dict) -> ScanSummary:
         deployment_urls=d.get("deployment_urls") or [],
         iac_accounts=d.get("subscription_account_project") or [],
         node_counts=d.get("node_type_counts") or {},
+        node_counts_soft_rejected=(d.get("node_type_counts_soft_rejected") or {}),
         data_classification=d.get("data_classification") or [],
         classified_tables=d.get("classified_tables") or [],
         # IaC security / resilience aggregate fields
@@ -148,9 +149,7 @@ def _dedup_by_name_prefix(
             if winner_key is not None:
                 node_map[winner_key].evidence.extend(node_map[key_a].evidence)
                 keys_to_remove.add(key_a)
-                _log.debug(
-                    "dedup_by_name_prefix: dropped %s → kept %s", key_a, winner_key
-                )
+                _log.debug("dedup_by_name_prefix: dropped %s → kept %s", key_a, winner_key)
 
     for k in keys_to_remove:
         del node_map[k]
@@ -272,7 +271,10 @@ def _dedup_by_location(
             # trivially contains the keyword as a substring) must not absorb
             # that node's unrelated evidence from every other file. Keep both
             # kinds separate so each gets its own node in the SBOM.
-            if winner[0] in (ComponentType.FRAMEWORK, ComponentType.DEPLOYMENT) and winner[1] != loser[1]:
+            if (
+                winner[0] in (ComponentType.FRAMEWORK, ComponentType.DEPLOYMENT)
+                and winner[1] != loser[1]
+            ):
                 continue
             # MODEL nodes: two canonical names at the same location are
             # usually the same model detected twice with different boundaries
@@ -301,6 +303,67 @@ def _dedup_by_location(
         del node_map[k]
 
 
+def _collapse_bulk_catalog_files(
+    node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
+    *,
+    threshold: int,
+    keep: int,
+) -> None:
+    """Collapse bulk data-catalog/fixture files into a few representative nodes.
+
+    A single (file, adapter, component_type) group with far more than
+    ``threshold`` accumulators is almost certainly an enumerable data catalog
+    (e.g. a test fixture JSON listing hundreds of model names), not code that
+    references that many distinct components individually — the
+    ``model_generic`` regex detector has no per-file volume awareness and
+    fires once per matching string literal regardless of source shape.
+
+    Only accumulators whose evidence comes entirely from one file are
+    considered (a component corroborated across multiple files is treated as
+    real, not catalog noise). The first ``keep`` accumulators (sorted by
+    canonical name, for determinism) are kept as representative nodes; the
+    rest are flagged ``bulk_catalog_truncated`` in extras rather than
+    deleted — the same "keep for provenance, exclude from downstream counts"
+    shape already used for ``llm_soft_rejected``
+    (:func:`nuguard.sbom.core.verification.apply_verification_results`) and
+    honored by the same :func:`nuguard.sbom.models.is_soft_rejected` helper.
+    """
+    if threshold <= 0:
+        return
+    groups: dict[tuple[str, str, ComponentType], list[tuple[ComponentType, str]]] = {}
+    for key, acc in node_map.items():
+        paths = {ev.location.path for ev in acc.evidence if ev.location}
+        if len(paths) != 1:
+            continue
+        (file_path,) = paths
+        groups.setdefault((file_path, acc.adapter_name, key[0]), []).append(key)
+
+    for (file_path, adapter_name, component_type), keys in groups.items():
+        if len(keys) <= threshold:
+            continue
+        keys_sorted = sorted(keys, key=lambda k: k[1])
+        kept_keys, truncated_keys = keys_sorted[:keep], keys_sorted[keep:]
+        _log.info(
+            "bulk-catalog collapse: %s (%s, %s) — %d detections, kept %d representative, truncated %d",
+            file_path,
+            adapter_name,
+            component_type.value,
+            len(keys_sorted),
+            len(kept_keys),
+            len(truncated_keys),
+        )
+        summary = (
+            f"{len(keys_sorted)} similar {component_type.value} entries found in "
+            f"{file_path} (bulk data/fixture file) — {len(truncated_keys)} additional "
+            "entries truncated as bulk_catalog_truncated"
+        )
+        for tkey in truncated_keys:
+            node_map[tkey].metadata["bulk_catalog_truncated"] = True
+            node_map[tkey].metadata["bulk_catalog_file"] = file_path
+        for kkey in kept_keys:
+            node_map[kkey].metadata["bulk_catalog_summary"] = summary
+
+
 # ---------------------------------------------------------------------------
 # Auth / deployment name improvement
 # ---------------------------------------------------------------------------
@@ -313,15 +376,32 @@ _AUTH_NAME_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\boauth2?\b", re.IGNORECASE), "oauth_auth"),
     (re.compile(r"\b(api[_-]?key|apikey)\b", re.IGNORECASE), "api_key_auth"),
     (re.compile(r"\b(bcrypt|passlib|argon2|pbkdf2|scrypt)\b", re.IGNORECASE), "password_auth"),
-    (re.compile(r"\b(session[_.]cookie|cookie[_.]jar|csrf[_.]token)\b", re.IGNORECASE), "session_auth"),
+    (
+        re.compile(r"\b(session[_.]cookie|cookie[_.]jar|csrf[_.]token)\b", re.IGNORECASE),
+        "session_auth",
+    ),
 ]
 
 _DEPLOY_NAME_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bgcloud\b", re.IGNORECASE), "gcloud_deployment"),
     (re.compile(r"\bgsutil\b", re.IGNORECASE), "gcloud_deployment"),
-    (re.compile(r"\b(kubectl|kubernetes|kustomize|skaffold|argocd|fluxcd)\b", re.IGNORECASE), "kubernetes_deployment"),
-    (re.compile(r"\b(az\s+(?:login|group|webapp|container|acr|aks|functionapp)|azure[_-]cli|azd)\b", re.IGNORECASE), "azure_deployment"),
-    (re.compile(r"\baws\s+(?:ec2|s3|lambda|ecs|eks|rds|cloudformation|deploy|ecr)\b", re.IGNORECASE), "aws_deployment"),
+    (
+        re.compile(r"\b(kubectl|kubernetes|kustomize|skaffold|argocd|fluxcd)\b", re.IGNORECASE),
+        "kubernetes_deployment",
+    ),
+    (
+        re.compile(
+            r"\b(az\s+(?:login|group|webapp|container|acr|aks|functionapp)|azure[_-]cli|azd)\b",
+            re.IGNORECASE,
+        ),
+        "azure_deployment",
+    ),
+    (
+        re.compile(
+            r"\baws\s+(?:ec2|s3|lambda|ecs|eks|rds|cloudformation|deploy|ecr)\b", re.IGNORECASE
+        ),
+        "aws_deployment",
+    ),
     (re.compile(r"\b(terraform|pulumi|cdktf)\b", re.IGNORECASE), "terraform_deployment"),
     (re.compile(r"\bansible\b", re.IGNORECASE), "ansible_deployment"),
     (re.compile(r"\bhelm\b", re.IGNORECASE), "helm_deployment"),
@@ -455,7 +535,9 @@ def _dedup_generic_endpoints(
     alone rather than risk merging evidence into the wrong endpoint.
     """
     endpoint_keys = [key for key in node_map if key[0] == ComponentType.API_ENDPOINT]
-    generic_keys = [key for key in endpoint_keys if node_map[key].metadata.get("_generic_endpoint_fallback")]
+    generic_keys = [
+        key for key in endpoint_keys if node_map[key].metadata.get("_generic_endpoint_fallback")
+    ]
     real_keys = [key for key in endpoint_keys if key not in generic_keys]
     if not generic_keys or not real_keys:
         return
@@ -560,8 +642,7 @@ def _dedup_deployment_nodes(doc: "AiSbomDocument") -> None:
     # proxy_pass node) — those would then satisfy the substring check against
     # their own canonical name and get wrongly removed.
     generic_nodes = [
-        n for n in deployment_nodes
-        if n.metadata.extras.get("adapter") == "deployment_generic"
+        n for n in deployment_nodes if n.metadata.extras.get("adapter") == "deployment_generic"
     ]
     nodes_to_remove = []
 
@@ -582,7 +663,9 @@ def _dedup_deployment_nodes(doc: "AiSbomDocument") -> None:
 
     for generic_node in generic_nodes:
         generic_canon = (generic_node.metadata.extras.get("canonical_name") or "").lower()
-        if generic_canon and any(generic_canon in specific for specific in specific_canonical_names):
+        if generic_canon and any(
+            generic_canon in specific for specific in specific_canonical_names
+        ):
             if generic_node not in nodes_to_remove:
                 nodes_to_remove.append(generic_node)
 
@@ -593,7 +676,8 @@ def _dedup_deployment_nodes(doc: "AiSbomDocument") -> None:
         cloud_providers: list[str] = gha_node.metadata.extras.get("cloud_providers") or []
         for provider in cloud_providers:
             cloud_nodes = [
-                n for n in by_target.get(provider, [])
+                n
+                for n in by_target.get(provider, [])
                 if n not in nodes_to_remove
                 and n.metadata.extras.get("adapter") != "deployment_generic"
             ]

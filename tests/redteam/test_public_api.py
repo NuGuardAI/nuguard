@@ -17,15 +17,24 @@ import dataclasses
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
-from nuguard.common.auth import AuthConfig
-from nuguard.config import RedteamFindingTriggers
+from nuguard.common.auth import AuthConfig, LoginFlowConfig
+from nuguard.config import AppAuthConfig, RedteamFindingTriggers
 from nuguard.models.finding import Finding, Severity
 from nuguard.models.health_report import TargetHealthReport
+from nuguard.models.policy import CognitivePolicy
 from nuguard.models.token_usage import TokenUsage
+from nuguard.policy import CognitivePolicyParseResult
 from nuguard.redteam.coverage.tracker import CoverageTracker
-from nuguard.redteam.public_api import RedteamRunRequest, RedteamRunResult, run_redteam, run_redteam_stream
+from nuguard.redteam.public_api import (
+    RedteamAuthConfig,
+    RedteamLoginFlowConfig,
+    RedteamRunRequest,
+    RedteamRunResult,
+    run_redteam,
+    run_redteam_stream,
+)
 from nuguard.redteam.target.canary import CanaryConfig
 
 
@@ -94,6 +103,157 @@ def test_redteam_run_request_json_roundtrip():
     assert restored.canary_config is not None
 
 
+@pytest.mark.parametrize(
+    "auth",
+    [
+        AppAuthConfig(type="bearer", header="Authorization: Bearer token"),
+        AppAuthConfig(type="api_key", header="X-API-Key: token"),
+        AppAuthConfig(type="basic", username="user", password="password"),
+        AppAuthConfig(
+            type="login_flow",
+            login_flow=LoginFlowConfig(payload={"username": "user", "password": "password"}),
+        ),
+        AppAuthConfig(type="cookie_file", cookie_file="cookies.txt"),
+        AppAuthConfig(type="none"),
+    ],
+)
+def test_redteam_request_accepts_app_auth_config(auth: AppAuthConfig) -> None:
+    """App-level auth models retain every runtime value behind the public boundary."""
+    request = RedteamRunRequest(target_url="http://localhost:9999", auth_config=auth)
+
+    assert isinstance(request.auth_config, RedteamAuthConfig)
+    assert request.auth_config.to_internal().model_dump() == auth.model_dump()
+
+
+def test_redteam_request_accepts_legacy_auth_config_with_nested_login_payload() -> None:
+    """The existing internal auth model remains accepted without losing payload values."""
+    auth = AuthConfig(
+        type="login_flow",
+        login_flow=LoginFlowConfig(
+            endpoint="/session",
+            method="POST",
+            base_url="https://identity.example.test",
+            payload={
+                "identity": {
+                    "username": "legacy-user",
+                    "factors": ["legacy-password", {"otp": "123456"}],
+                },
+                "remember": True,
+                "attempt": 2,
+                "optional": None,
+            },
+            token_response_key="data.access_token",
+            token_header="X-Session-Token:",
+            refresh_on_401=False,
+        ),
+    )
+
+    request = RedteamRunRequest(target_url="http://localhost:9999", auth_config=auth)
+
+    assert isinstance(request.auth_config, RedteamAuthConfig)
+    assert request.auth_config.to_internal().model_dump() == auth.model_dump()
+
+
+@pytest.mark.parametrize(
+    ("auth_data", "message"),
+    [
+        ({"type": "bearer"}, "requires auth.header"),
+        ({"type": "api_key"}, "requires auth.header"),
+        ({"type": "basic", "username": "user"}, "requires auth.username and auth.password"),
+        ({"type": "login_flow"}, "requires auth.login_flow block"),
+        ({"type": "cookie_file"}, "requires auth.cookie_file"),
+    ],
+)
+def test_redteam_auth_config_rejects_missing_required_fields(
+    auth_data: dict[str, object],
+    message: str,
+) -> None:
+    """The secret-safe auth model preserves the runtime model's validation contract."""
+    with pytest.raises(ValidationError, match=message):
+        RedteamAuthConfig.model_validate(auth_data)
+
+
+@pytest.mark.parametrize(
+    ("auth", "secrets"),
+    [
+        (RedteamAuthConfig(type="bearer", header="Authorization: Bearer bearer-secret"), ["bearer-secret"]),
+        (RedteamAuthConfig(type="api_key", header="X-API-Key: api-secret"), ["api-secret"]),
+        (
+            RedteamAuthConfig(type="basic", username="basic-user", password="basic-password"),
+            ["basic-user", "basic-password"],
+        ),
+        (
+            RedteamAuthConfig(
+                type="login_flow",
+                login_flow=RedteamLoginFlowConfig(
+                    payload={
+                        "username": "login-user",
+                        "password": "login-password",
+                        "nested": {"token": "nested-secret"},
+                    }
+                ),
+            ),
+            ["login-user", "login-password", "nested-secret"],
+        ),
+    ],
+)
+def test_redteam_auth_secrets_are_redacted_from_serialization(
+    auth: RedteamAuthConfig,
+    secrets: list[str],
+) -> None:
+    request = RedteamRunRequest(target_url="http://localhost:9999", auth_config=auth)
+
+    serialized = request.model_dump_json()
+
+    for secret in secrets:
+        assert secret not in serialized
+
+
+def test_redteam_request_header_and_confirmation_credentials_are_redacted() -> None:
+    """Header overrides and confirmation credentials never serialize as plaintext."""
+    request = RedteamRunRequest(
+        target_url="http://localhost:9999",
+        extra_headers={"Authorization": "Bearer header-secret"},
+        credentials={"account": "credential-secret"},
+    )
+
+    serialized = request.model_dump_json()
+
+    assert "header-secret" not in serialized
+    assert "credential-secret" not in serialized
+
+
+def test_nested_login_payload_is_secret_safe_and_preserves_non_string_values() -> None:
+    """Nested objects and arrays redact strings without changing JSON scalar values."""
+    payload = {
+        "identity": {
+            "username": "nested-user",
+            "factors": ["nested-password", {"otp": "654321"}],
+        },
+        "remember": True,
+        "attempt": 2,
+        "optional": None,
+    }
+    login_flow = RedteamLoginFlowConfig(payload=payload)
+
+    serialized = login_flow.model_dump(mode="json")
+    restored_payload = login_flow.to_internal().payload
+
+    assert isinstance(login_flow.payload["identity"]["username"], SecretStr)
+    assert isinstance(login_flow.payload["identity"]["factors"][0], SecretStr)
+    assert isinstance(login_flow.payload["identity"]["factors"][1]["otp"], SecretStr)
+    assert serialized["payload"] == {
+        "identity": {
+            "username": "**********",
+            "factors": ["**********", {"otp": "**********"}],
+        },
+        "remember": True,
+        "attempt": 2,
+        "optional": None,
+    }
+    assert restored_payload == payload
+
+
 def test_redteam_run_request_defaults_match_orchestrator_constructor():
     req = RedteamRunRequest(target_url="http://x")
     assert req.profile == "ci"
@@ -142,15 +302,17 @@ def test_redteam_run_result_rejects_invalid_scan_outcome():
 
 @pytest.mark.asyncio
 async def test_run_redteam_constructs_orchestrator_and_builds_result():
+    """The orchestrator receives the policy model unwrapped from a parse result."""
     findings = [_finding("prompt_driven_threat"), _finding("data_exfiltration")]
     mock_instance = _make_mock_orchestrator(findings)
     sbom = MagicMock()
-    policy = MagicMock()
+    policy = CognitivePolicy(allowed_topics=["Support"])
+    parsed_policy = CognitivePolicyParseResult(success=True, policy=policy)
 
     with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
         mock_cls.return_value = mock_instance
         request = RedteamRunRequest(target_url="http://target", profile="standard")
-        result = await run_redteam(request, sbom=sbom, policy=policy)
+        result = await run_redteam(request, sbom=sbom, policy=parsed_policy)
 
     mock_cls.assert_called_once()
     _, kwargs = mock_cls.call_args
@@ -181,6 +343,30 @@ async def test_run_redteam_constructs_orchestrator_and_builds_result():
 
 
 @pytest.mark.asyncio
+async def test_run_redteam_normalizes_parse_result_for_remediation() -> None:
+    """Remediation receives a CognitivePolicy, not the public parse envelope."""
+    policy = CognitivePolicy(restricted_topics=["Credentials"])
+    parsed_policy = CognitivePolicyParseResult(success=True, policy=policy)
+    mock_instance = _make_mock_orchestrator([_finding()])
+
+    with (
+        patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls,
+        patch(
+            "nuguard.redteam.public_api._build_remediation_plan",
+            new=AsyncMock(return_value=[]),
+        ) as remediation_mock,
+    ):
+        mock_cls.return_value = mock_instance
+        await run_redteam(
+            RedteamRunRequest(target_url="http://target"),
+            sbom=MagicMock(),
+            policy=parsed_policy,
+        )
+
+    assert remediation_mock.await_args.kwargs["policy"] is policy
+
+
+@pytest.mark.asyncio
 async def test_run_redteam_passes_config_scalar_and_embedded_model_fields():
     """Every RedteamRunRequest field must reach the orchestrator constructor by
     attribute (never via model_dump(), which would serialize nested Pydantic
@@ -205,10 +391,88 @@ async def test_run_redteam_passes_config_scalar_and_embedded_model_fields():
 
     _, kwargs = mock_cls.call_args
     assert kwargs["canary_config"] is canary
-    assert kwargs["auth_config"] is auth
+    assert isinstance(kwargs["auth_config"], AuthConfig)
+    assert kwargs["auth_config"].model_dump() == auth.model_dump()
     assert kwargs["finding_triggers"] is triggers
     assert kwargs["guided_mutation_mode"] == "soft"
     assert kwargs["tree_breadth"] == 2
+
+
+@pytest.mark.asyncio
+async def test_run_redteam_reveals_secrets_only_for_orchestrator() -> None:
+    """The public wrapper reveals protected values only at the runtime boundary."""
+    mock_instance = _make_mock_orchestrator([])
+    request = RedteamRunRequest(
+        target_url="http://target",
+        auth_config=RedteamAuthConfig(
+            type="login_flow",
+            login_flow=RedteamLoginFlowConfig(
+                payload={"username": "runtime-user", "password": "runtime-password"}
+            ),
+        ),
+        extra_headers={"X-API-Key": "runtime-header"},
+        credentials={"pin": "runtime-pin"},
+    )
+
+    with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
+        mock_cls.return_value = mock_instance
+        await run_redteam(request, sbom=MagicMock())
+
+    _, kwargs = mock_cls.call_args
+    assert kwargs["auth_config"].login_flow.payload == {
+        "username": "runtime-user",
+        "password": "runtime-password",
+    }
+    assert kwargs["extra_headers"] == {"X-API-Key": "runtime-header"}
+    assert kwargs["credentials"] == {"pin": "runtime-pin"}
+
+
+@pytest.mark.asyncio
+async def test_cli_orchestrator_adapter_protects_auth_values_before_public_call() -> None:
+    """The CLI passes only secret-safe request values into the public API wrapper."""
+    from nuguard.cli.commands.redteam import _run_orchestrator
+
+    result = RedteamRunResult(
+        findings=[],
+        scenario_records=[],
+        scan_outcome="no_findings",
+        token_usage=TokenUsage(),
+        resolved_chat_path="/chat",
+        resolved_chat_path_source="configured",
+    )
+    auth = AuthConfig(
+        type="login_flow",
+        login_flow=LoginFlowConfig(
+            payload={"identity": {"password": "cli-login-secret"}}
+        ),
+    )
+
+    with patch(
+        "nuguard.redteam.public_api.run_redteam",
+        new=AsyncMock(return_value=result),
+    ) as run_mock:
+        await _run_orchestrator(
+            sbom_doc=object(),
+            target_url="http://target",
+            cognitive_policy=None,
+            canary_config=None,
+            profile="ci",
+            min_impact_score=0.0,
+            scenario_filter=None,
+            auth_config=auth,
+            extra_headers={"X-API-Key": "cli-header-secret"},
+            credentials={"pin": "cli-credential-secret"},
+        )
+
+    request = run_mock.await_args.args[0]
+    assert isinstance(request.auth_config, RedteamAuthConfig)
+    assert isinstance(request.auth_config.login_flow.payload["identity"]["password"], SecretStr)
+    assert isinstance(request.extra_headers["X-API-Key"], SecretStr)
+    assert isinstance(request.credentials["pin"], SecretStr)
+    serialized = request.model_dump_json()
+    assert "cli-login-secret" not in serialized
+    assert "cli-header-secret" not in serialized
+    assert "cli-credential-secret" not in serialized
 
 
 @pytest.mark.asyncio

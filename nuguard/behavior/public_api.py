@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from nuguard.behavior.models import IntentProfile
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy, PolicyControl
+    from nuguard.policy.public_api import CognitivePolicyParseResult
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
@@ -62,10 +63,11 @@ async def analyze_behavior(
     *,
     sbom: "AiSbomDocument | None" = None,
     sbom_path: "Path | None" = None,
-    policy: "CognitivePolicy | None" = None,
+    policy: "CognitivePolicy | CognitivePolicyParseResult | None" = None,
     controls: "list[PolicyControl] | None" = None,
     llm_client: "LLMClient | None" = None,
     remediation_llm_client: "LLMClient | None" = None,
+    _progress_sink: Callable[[dict[str, Any]], None] | None = None,
 ) -> BehaviorAnalysisResult:
     """Run static+dynamic behavior analysis from a JSON-safe request.
 
@@ -75,15 +77,21 @@ async def analyze_behavior(
     or live/stateful collaborators, not run configuration.
     """
     _log.debug("analyze_behavior: mode=%s", request.mode)
-    analyzer = BehaviorAnalyzer(
-        config=request.config,
-        sbom=sbom,
-        sbom_path=sbom_path,
-        policy=policy,
-        controls=controls,
-        llm_client=llm_client,
-        remediation_llm_client=remediation_llm_client,
-    )
+    from nuguard.policy.public_api import normalize_cognitive_policy  # noqa: PLC0415
+
+    normalized_policy = normalize_cognitive_policy(policy)
+    analyzer_kwargs: dict[str, Any] = {
+        "config": request.config,
+        "sbom": sbom,
+        "sbom_path": sbom_path,
+        "policy": normalized_policy,
+        "controls": controls,
+        "llm_client": llm_client,
+        "remediation_llm_client": remediation_llm_client,
+    }
+    if _progress_sink is not None:
+        analyzer_kwargs["progress_sink"] = _progress_sink
+    analyzer = BehaviorAnalyzer(**analyzer_kwargs)
     return await analyzer.analyze(mode=request.mode)
 
 
@@ -127,7 +135,7 @@ async def run_behavior_scenarios(
     *,
     sbom: "AiSbomDocument | None" = None,
     sbom_path: "Path | None" = None,
-    policy: "CognitivePolicy | None" = None,
+    policy: "CognitivePolicy | CognitivePolicyParseResult | None" = None,
     intent: "IntentProfile | None" = None,
     llm_client: "LLMClient | None" = None,
     remediation_llm_client: "LLMClient | None" = None,
@@ -145,11 +153,14 @@ async def run_behavior_scenarios(
     never raises, and simply leaves ``remediation_plan`` empty on failure.
     """
     _log.debug("run_behavior_scenarios: %d scenario(s)", len(request.scenarios))
+    from nuguard.policy.public_api import normalize_cognitive_policy  # noqa: PLC0415
+
+    normalized_policy = normalize_cognitive_policy(policy)
     runner_kwargs: dict[str, Any] = {
         "config": request.config,
         "sbom": sbom,
         "sbom_path": sbom_path,
-        "policy": policy,
+        "policy": normalized_policy,
         "intent": intent,
         "llm_client": llm_client,
         "judge_cache": judge_cache,
@@ -159,7 +170,10 @@ async def run_behavior_scenarios(
     runner = BehaviorRunner(**runner_kwargs)
     result = await runner.run(request.scenarios, pre_scan_profile=request.pre_scan_profile)
     result.remediation_plan = await _synthesize_behavior_remediation_plan(
-        result.findings, sbom=sbom, policy=policy, llm_client=remediation_llm_client or llm_client
+        result.findings,
+        sbom=sbom,
+        policy=normalized_policy,
+        llm_client=remediation_llm_client or llm_client,
     )
     backfill_finding_remediation(result.findings, result.remediation_plan)
     return result
@@ -170,7 +184,7 @@ async def discover_behavior_profile(
     *,
     sbom: "AiSbomDocument | None" = None,
     sbom_path: "Path | None" = None,
-    policy: "CognitivePolicy | None" = None,
+    policy: "CognitivePolicy | CognitivePolicyParseResult | None" = None,
     intent: "IntentProfile | None" = None,
     llm_client: "LLMClient | None" = None,
 ) -> DiscoveredProfile | None:
@@ -178,8 +192,15 @@ async def discover_behavior_profile(
 
     Thin wrapper around ``BehaviorRunner(...).discover()``.
     """
+    from nuguard.policy.public_api import normalize_cognitive_policy  # noqa: PLC0415
+
     runner = BehaviorRunner(
-        config=config, sbom=sbom, sbom_path=sbom_path, policy=policy, intent=intent, llm_client=llm_client,
+        config=config,
+        sbom=sbom,
+        sbom_path=sbom_path,
+        policy=normalize_cognitive_policy(policy),
+        intent=intent,
+        llm_client=llm_client,
     )
     return await runner.discover()
 
@@ -192,6 +213,63 @@ def _stream_finding_view(f: dict[str, Any]) -> dict[str, Any]:
         "goal_type": f.get("goal_type"),
         "scenario_type": f.get("scenario_type"),
     }
+
+
+def _publish_behavior_progress(controller: Any, update: dict[str, Any]) -> None:
+    kind = update.get("kind")
+    phase = str(update.get("phase") or "execution")
+    total = int(update.get("scenarios_total") or 0)
+    completed = int(update.get("scenarios_completed") or 0)
+    payload = {
+        "scenarios_total": total,
+        "scenarios_completed": completed,
+        "progress_pct": completed / total if total else 0.0,
+        "current_scenario_type": update.get("scenario_type"),
+        "scenario_id": update.get("scenario_id"),
+        "scenario_title": update.get("scenario_title"),
+        "scenario_status": update.get("scenario_status"),
+    }
+    if kind == "plan":
+        controller.publish(
+            event_type="scenario_plan_ready",
+            phase="planning",
+            payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
+        )
+    elif kind == "scenario_started":
+        controller.publish(
+            event_type="scenario_started",
+            phase="execution",
+            payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
+        )
+    elif kind == "scenario_finished":
+        controller.publish(
+            event_type="scenario_progress",
+            phase="execution",
+            payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
+        )
+        turn_report_added = update.get("turn_report_added") or []
+        if turn_report_added:
+            controller.publish(
+                event_type="findings_delta",
+                phase="execution",
+                payload=StreamDeltaPayload(
+                    turn_report_added=turn_report_added,
+                ).model_dump(mode="json"),
+            )
+    elif kind == "findings":
+        controller.publish(
+            event_type="findings_delta",
+            phase=phase,
+            payload=StreamDeltaPayload(
+                findings_added=update.get("findings_added") or [],
+            ).model_dump(mode="json"),
+        )
+    elif kind == "phase":
+        controller.publish(
+            event_type="scenario_progress",
+            phase=phase,
+            payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
+        )
 
 
 def analyze_behavior_static(result: BehaviorAnalysisResult) -> BehaviorAnalysisResult:
@@ -207,7 +285,7 @@ async def analyze_behavior_stream(
     request: BehaviorRunRequest,
     *,
     sbom: "AiSbomDocument | None" = None,
-    policy: "CognitivePolicy | None" = None,
+    policy: "CognitivePolicy | CognitivePolicyParseResult | None" = None,
     intent: "IntentProfile | None" = None,
     llm_client: "LLMClient | None" = None,
     remediation_llm_client: "LLMClient | None" = None,
@@ -218,45 +296,7 @@ async def analyze_behavior_stream(
 
     async def _worker(controller):
         def _publish_progress(update: dict[str, Any]) -> None:
-            kind = update.get("kind")
-            total = int(update.get("scenarios_total") or 0)
-            completed = int(update.get("scenarios_completed") or 0)
-            payload = {
-                "scenarios_total": total,
-                "scenarios_completed": completed,
-                "progress_pct": completed / total if total else 0.0,
-                "current_scenario_type": update.get("scenario_type"),
-                "scenario_id": update.get("scenario_id"),
-                "scenario_title": update.get("scenario_title"),
-                "scenario_status": update.get("scenario_status"),
-            }
-            if kind == "plan":
-                controller.publish(
-                    event_type="scenario_plan_ready",
-                    phase="planning",
-                    payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
-                )
-            elif kind == "scenario_started":
-                controller.publish(
-                    event_type="scenario_started",
-                    phase="execution",
-                    payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
-                )
-            elif kind == "scenario_finished":
-                controller.publish(
-                    event_type="scenario_progress",
-                    phase="execution",
-                    payload=StreamProgressPayload.model_validate(payload).model_dump(mode="json"),
-                )
-                turn_report_added = update.get("turn_report_added") or []
-                if turn_report_added:
-                    controller.publish(
-                        event_type="findings_delta",
-                        phase="execution",
-                        payload=StreamDeltaPayload(
-                            turn_report_added=turn_report_added,
-                        ).model_dump(mode="json"),
-                    )
+            _publish_behavior_progress(controller, update)
 
         controller.publish(
             event_type="run_started",
@@ -294,32 +334,57 @@ async def analyze_behavior_stream(
                 ).model_dump(mode="json"),
             )
             controller.set_final_result(result)
-        except asyncio.CancelledError as exc:
-            controller.publish_terminal(
-                event_type="failed",
-                phase="finalize",
-                payload=StreamTerminalPayload(
-                    status="failed",
-                    failure_stage="cancelled",
-                    error_type=type(exc).__name__,
-                    error_message="Behavior stream cancelled",
-                ).model_dump(mode="json"),
-            )
-            controller.set_final_exception(exc)
+        except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
-            controller.publish_terminal(
-                event_type="failed",
-                phase="finalize",
-                payload=StreamTerminalPayload(
-                    status="failed",
-                    summary={},
-                    is_retryable=False,
-                    failure_stage="run_behavior_scenarios",
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
-                ).model_dump(mode="json"),
-            )
-            controller.set_final_exception(exc)
 
     return create_stream_handle(run_id, _worker)
+
+
+async def analyze_behavior_analysis_stream(
+    request: BehaviorAnalysisRequest,
+    *,
+    sbom: "AiSbomDocument | None" = None,
+    sbom_path: "Path | None" = None,
+    policy: "CognitivePolicy | CognitivePolicyParseResult | None" = None,
+    controls: "list[PolicyControl] | None" = None,
+    llm_client: "LLMClient | None" = None,
+    remediation_llm_client: "LLMClient | None" = None,
+) -> StreamRunHandle[BehaviorAnalysisResult]:
+    """Run the complete behavior-analysis lifecycle with typed progress events."""
+    run_id = str(uuid.uuid4())
+
+    async def _worker(controller: Any) -> None:
+        controller.publish(
+            event_type="run_started",
+            phase="init",
+            payload={"mode": request.mode},
+        )
+
+        def _publish_progress(update: dict[str, Any]) -> None:
+            _publish_behavior_progress(controller, update)
+
+        result = await analyze_behavior(
+            request,
+            sbom=sbom,
+            sbom_path=sbom_path,
+            policy=policy,
+            controls=controls,
+            llm_client=llm_client,
+            remediation_llm_client=remediation_llm_client,
+            _progress_sink=_publish_progress,
+        )
+        controller.publish_terminal(
+            event_type="completed",
+            phase="finalize",
+            payload=StreamTerminalPayload(
+                status="completed",
+                summary={
+                    "scan_outcome": result.scan_outcome,
+                    "findings_count": len(result.static_findings) + len(result.dynamic_findings),
+                    "scenarios_executed": len(result.scenario_results),
+                },
+            ).model_dump(mode="json"),
+        )
+        controller.set_final_result(result)
+
+    return create_stream_handle(run_id, _worker, heartbeat_interval=15.0)

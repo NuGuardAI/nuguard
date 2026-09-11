@@ -453,8 +453,18 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
     after a real, completed execution. Counting that as "not tested" was
     previously deflating goal-type coverage percentages (e.g. API Attack)
     even though the scenario table showed those chains ran with real results.
+
+    Not Reached (separate from Not Tested) = the scenario DID execute, but
+    every attempt got HTTP 404 — the SBOM-declared endpoint doesn't exist on
+    the live target (a stale or misresolved REST path). This is different
+    from a defended attack (a live endpoint that rejected the attempt) and
+    different from never-executed — it's execution against a dead attack
+    surface, which reads as a passed test unless called out separately.
+    ``chain_status == "completed:endpoint_not_found"`` (see
+    ``orchestrator._maybe_mark_endpoint_not_found``).
     """
     _NOT_TESTED = {"skipped", "similar_miss", "failed", "target_unreachable", "timeout"}
+    _ENDPOINT_UNREACHABLE = {"completed:endpoint_not_found"}
 
     # Accumulate per-goal-type counts
     goal_data: dict[str, dict[str, int]] = {}
@@ -462,14 +472,17 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
         gt = _r(r, "goal_type", None) or "UNKNOWN"
         status = _r(r, "chain_status", "completed") or "completed"
         if gt not in goal_data:
-            goal_data[gt] = {"total": 0, "not_tested": 0}
+            goal_data[gt] = {"total": 0, "not_tested": 0, "not_reached": 0}
         goal_data[gt]["total"] += 1
-        if status in _NOT_TESTED or status.startswith("aborted:"):
+        if status in _ENDPOINT_UNREACHABLE:
+            goal_data[gt]["not_reached"] += 1
+        elif status in _NOT_TESTED or status.startswith("aborted:"):
             goal_data[gt]["not_tested"] += 1
 
     total_all = sum(d["total"] for d in goal_data.values())
     total_not_tested = sum(d["not_tested"] for d in goal_data.values())
-    total_completed = total_all - total_not_tested
+    total_not_reached = sum(d["not_reached"] for d in goal_data.values())
+    total_completed = total_all - total_not_tested - total_not_reached
     overall_pct = round(total_completed / total_all * 100) if total_all else 0
 
     # Sort by scenario count descending
@@ -480,15 +493,33 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
         "",
         f"- **Coverage**: {overall_pct}% ({total_completed}/{total_all} scenarios completed)",
         "",
-        "| Goal Type | Scenarios | Not Tested | Coverage |",
-        "|---|---|---|---|",
     ]
+    if total_not_reached:
+        lines.append(
+            f"- **Not Reached**: {total_not_reached} scenario(s) hit a dead/stale "
+            f"endpoint (HTTP 404 on every attempt) — attack surface never tested"
+        )
+        lines.append("")
+    header = "| Goal Type | Scenarios | Not Tested |"
+    sep = "|---|---|---|"
+    if total_not_reached:
+        header += " Not Reached |"
+        sep += "---|"
+    header += " Coverage |"
+    sep += "---|"
+    lines.append(header)
+    lines.append(sep)
     for gt, data in sorted_types:
         label = _GOAL_LABEL.get(gt, gt.replace("_", " ").title())
         total = data["total"]
         not_tested = data["not_tested"]
-        pct = round((total - not_tested) / total * 100) if total else 0
-        lines.append(f"| {label} | {total} | {not_tested} | {pct}% |")
+        not_reached = data["not_reached"]
+        pct = round((total - not_tested - not_reached) / total * 100) if total else 0
+        row = f"| {label} | {total} | {not_tested} |"
+        if total_not_reached:
+            row += f" {not_reached} |"
+        row += f" {pct}% |"
+        lines.append(row)
     lines.append("")
     return lines
 
@@ -635,6 +666,7 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
     total_turns = 0
     findings_count = 0
     inconclusive_no_auth_count = 0
+    endpoint_not_found_count = 0
 
     for idx, r in enumerate(records, start=1):
         title_str = _r(r, "title", "") or ""
@@ -646,6 +678,7 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         finding_cell = (
             "**YES**" if had_finding
             else "no*" if chain_status_str.startswith("inconclusive:")
+            else "n/r†" if chain_status_str.startswith("completed:endpoint_not_found")
             else "no"
         )
         turns_used = _r(r, "turns_used", None)
@@ -665,6 +698,8 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
             findings_count += 1
         if finding_cell == "no*":
             inconclusive_no_auth_count += 1
+        if finding_cell == "n/r†":
+            endpoint_not_found_count += 1
 
         lines.append(
             f"| {idx} | {title} | {goal} | {finding_cell} "
@@ -688,6 +723,16 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
             f"requires auth at all, not that object-level authorization is "
             f"enforced. Configure `target.auth` in nuguard.yaml to test these "
             f"meaningfully._"
+        )
+    if endpoint_not_found_count:
+        lines.append("")
+        lines.append(
+            f"_† {endpoint_not_found_count} scenario(s) got HTTP 404 on every "
+            f"attempt — the SBOM-declared endpoint path does not exist on the "
+            f"live target (stale/misresolved route), so the attack surface was "
+            f"never actually reached. This is NOT a passed test — it's absent "
+            f"data. Distinct from a plain \"no\", which means the endpoint was "
+            f"reached and the attack was defended._"
         )
     lines.append("")
     return lines

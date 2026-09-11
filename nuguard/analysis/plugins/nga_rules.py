@@ -45,6 +45,7 @@ from nuguard.analysis.graph import AnalysisGraph
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
 from nuguard.common.logging import get_logger
+from nuguard.common.soft_reject import is_soft_rejected as _is_soft_rejected
 
 _log = get_logger("analysis.nga_rules")
 
@@ -53,8 +54,15 @@ _SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
 
 # ── External LLM providers whose APIs leave your trust boundary ───────────────
 _EXTERNAL_PROVIDERS = {
-    "openai", "anthropic", "google", "cohere", "mistral",
-    "deepseek", "ai21", "amazon", "azure",
+    "openai",
+    "anthropic",
+    "google",
+    "cohere",
+    "mistral",
+    "deepseek",
+    "ai21",
+    "amazon",
+    "azure",
 }
 
 # ── Trusted model registries (NGA-008) ───────────────────────────────────────
@@ -80,15 +88,24 @@ _READ_ONLY_TOOL_PREFIXES = re.compile(
 # Any TOOL node with one of these scopes is always considered irreversible,
 # regardless of its name.
 _WRITE_PRIVILEGE_SCOPES = {
-    "DB_WRITE", "FILESYSTEM_WRITE", "CODE_EXECUTION",
-    "EMAIL_OUT", "SOCIAL_MEDIA_OUT",
+    "DB_WRITE",
+    "FILESYSTEM_WRITE",
+    "CODE_EXECUTION",
+    "EMAIL_OUT",
+    "SOCIAL_MEDIA_OUT",
 }
 
 # ── HITL pattern indicators in AGENT metadata (NGA-012) ──────────────────────
 _HITL_PATTERNS = {
-    "interrupt", "interrupt_before", "interrupt_after",
-    "human_input", "requires_action", "HumanApprovalCallbackHandler",
-    "hitl", "human_in_the_loop", "human_approval",
+    "interrupt",
+    "interrupt_before",
+    "interrupt_after",
+    "human_input",
+    "requires_action",
+    "HumanApprovalCallbackHandler",
+    "hitl",
+    "human_in_the_loop",
+    "human_approval",
 }
 
 # ── GitHub Actions patterns (NGA-010/011/014) ─────────────────────────────────
@@ -96,10 +113,8 @@ _PATTERN_PR_TARGET_INJECTION = re.compile(
     r"pull_request_target.*\$\{\{.*github\.event\.pull_request\.",
     re.DOTALL,
 )
-_PATTERN_GITHUB_ENV_INJECTION = re.compile(
-    r'echo\s+.*\$\{\{.*\}\}.*>>\s*\$GITHUB_ENV'
-)
-_PATTERN_DEBUG_SECRET = re.compile(r'ACTIONS_RUNNER_DEBUG')
+_PATTERN_GITHUB_ENV_INJECTION = re.compile(r"echo\s+.*\$\{\{.*\}\}.*>>\s*\$GITHUB_ENV")
+_PATTERN_DEBUG_SECRET = re.compile(r"ACTIONS_RUNNER_DEBUG")
 
 # ── Component type sets ──────────────────────────────────────────────────────
 _GUARDRAIL_TYPES = {"GUARDRAIL"}
@@ -114,19 +129,9 @@ _IAM_TYPES = {"IAM"}
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
+
 def _node_extras(node: dict[str, Any]) -> dict[str, Any]:
     return node.get("metadata", {}).get("extras", {}) or {}
-
-
-def _is_soft_rejected(node: dict[str, Any]) -> bool:
-    """True when SBOM LLM verification flagged this node as a likely false positive.
-
-    Same convention as ``policy/checker.py``'s ``_is_soft_rejected`` and
-    ``behavior/runner.py``'s coverage-target filter: don't raise findings
-    against a component the SBOM's own verification step already flagged as
-    not real (e.g. a mock model/order-ID string in a unit test).
-    """
-    return bool(_node_extras(node).get("llm_soft_rejected"))
 
 
 def _depl_meta(node: dict[str, Any]) -> dict[str, Any]:
@@ -135,12 +140,27 @@ def _depl_meta(node: dict[str, Any]) -> dict[str, Any]:
     extras: dict[str, Any] = meta.get("extras") or {}
     merged = dict(extras)
     for key in (
-        "deployment_target", "secret_store", "encryption_at_rest",
-        "encryption_key_ref", "runs_as_root", "has_health_check",
-        "has_resource_limits", "no_resource_limits", "ha_mode", "availability_zones",
-        "iam_type", "permissions", "iam_scope", "trust_principals",
-        "base_image", "image_name", "image_tag",
-        "has_network_policy", "source_url", "integrity_hash", "checksum",
+        "deployment_target",
+        "secret_store",
+        "encryption_at_rest",
+        "encryption_key_ref",
+        "runs_as_root",
+        "has_health_check",
+        "has_resource_limits",
+        "no_resource_limits",
+        "ha_mode",
+        "availability_zones",
+        "iam_type",
+        "permissions",
+        "iam_scope",
+        "trust_principals",
+        "base_image",
+        "image_name",
+        "image_tag",
+        "has_network_policy",
+        "source_url",
+        "integrity_hash",
+        "checksum",
     ):
         v = meta.get(key)
         if v is not None:
@@ -227,9 +247,7 @@ def _rule_nga001_phi_to_external_llm(
             continue
         extras = _node_extras(n)
         provider = (
-            extras.get("provider")
-            or (n.get("metadata") or {}).get("provider")
-            or ""
+            extras.get("provider") or (n.get("metadata") or {}).get("provider") or ""
         ).lower()
         if any(ep in provider for ep in _EXTERNAL_PROVIDERS):
             external_model_map[str(n["id"])] = (n, provider)
@@ -267,10 +285,12 @@ def _rule_nga001_phi_to_external_llm(
                     ds_name = ds.get("name", "")
                     interm_name = interm.get("name", "") if interm else None
                     if interm_name:
-                        path = (f"'{agent_name}' → CALLS → '{interm_name}' "
-                                f"→ ACCESSES[{access_type or 'read'}] → '{ds_name}' "
-                                f"(data_classification={ds_labels}) "
-                                f"→ USES → '{model_name}' (provider={provider_str})")
+                        path = (
+                            f"'{agent_name}' → CALLS → '{interm_name}' "
+                            f"→ ACCESSES[{access_type or 'read'}] → '{ds_name}' "
+                            f"(data_classification={ds_labels}) "
+                            f"→ USES → '{model_name}' (provider={provider_str})"
+                        )
                         affected = [agent_name, interm_name, ds_name, model_name]
                         remediation = (
                             f"Add output filtering on '{interm_name}' before data reaches "
@@ -278,25 +298,30 @@ def _rule_nga001_phi_to_external_llm(
                             f"'{interm_name}' output before the '{model_name}' call."
                         )
                     else:
-                        path = (f"'{agent_name}' → ACCESSES[{access_type or 'read'}] "
-                                f"→ '{ds_name}' (data_classification={ds_labels}) "
-                                f"→ USES → '{model_name}' (provider={provider_str})")
+                        path = (
+                            f"'{agent_name}' → ACCESSES[{access_type or 'read'}] "
+                            f"→ '{ds_name}' (data_classification={ds_labels}) "
+                            f"→ USES → '{model_name}' (provider={provider_str})"
+                        )
                         affected = [agent_name, ds_name, model_name]
                         remediation = (
                             f"Add output filtering on '{agent_name}' before data reaches "
                             f"'{model_name}'. Mask or redact {ds_labels} fields before "
                             f"the '{model_name}' call."
                         )
-                    findings.append(_finding(
-                        "NGA-001", "CRITICAL",
-                        f"PII/PHI data flow to external LLM: '{agent_name}' → '{model_name}'",
-                        f"Data flow detected: {path}. Regulated data (PII/PHI) may be "
-                        "transmitted outside your trust boundary, potentially violating "
-                        "applicable data protection regulations.",
-                        affected,
-                        remediation,
-                        evidence=path,
-                    ))
+                    findings.append(
+                        _finding(
+                            "NGA-001",
+                            "CRITICAL",
+                            f"PII/PHI data flow to external LLM: '{agent_name}' → '{model_name}'",
+                            f"Data flow detected: {path}. Regulated data (PII/PHI) may be "
+                            "transmitted outside your trust boundary, potentially violating "
+                            "applicable data protection regulations.",
+                            affected,
+                            remediation,
+                            evidence=path,
+                        )
+                    )
         if findings:
             return findings
         # Agent→Model edges present but no datastore paths found: fall through to summary check
@@ -306,7 +331,8 @@ def _rule_nga001_phi_to_external_llm(
     external_model_names = [n.get("name", "") for n, _ in external_model_map.values()]
     return [
         _finding(
-            "NGA-001", "CRITICAL",
+            "NGA-001",
+            "CRITICAL",
             "PII/PHI data handled by external LLM providers",
             f"The SBOM contains {', '.join(sorted(set(dc_labels)))} data "
             f"({len(phi_tables)} classified table(s)) and calls external LLM "
@@ -341,9 +367,7 @@ def _rule_nga002_insufficient_guardrails(
     findings: list[dict[str, Any]] = []
 
     # Count global guardrail nodes to detect potential SBOM extraction gaps.
-    global_guardrail_count = sum(
-        1 for n in nodes if n.get("component_type") in _GUARDRAIL_TYPES
-    )
+    global_guardrail_count = sum(1 for n in nodes if n.get("component_type") in _GUARDRAIL_TYPES)
 
     def _gap_note(description: str) -> str:
         """Append an SBOM modeling gap note when guardrail nodes exist without PROTECTS edges."""
@@ -364,7 +388,9 @@ def _rule_nga002_insufficient_guardrails(
                 continue
             if graph.has_protection(str(model["id"])):
                 continue
-            using_agents = [a for a in graph.sources(str(model["id"]), "USES") if not _is_soft_rejected(a)]
+            using_agents = [
+                a for a in graph.sources(str(model["id"]), "USES") if not _is_soft_rejected(a)
+            ]
             unprotected_agents = [a for a in using_agents if not graph.has_protection(str(a["id"]))]
             if using_agents and len(unprotected_agents) < len(using_agents):
                 # At least one calling agent is protected — model is covered
@@ -376,16 +402,19 @@ def _rule_nga002_insufficient_guardrails(
                 f"MODEL '{model_name}' has no GUARDRAIL on its PROTECTS path. "
                 f"Used by: {agent_names or ['(no agent edges)']}"
             )
-            findings.append(_finding(
-                "NGA-002", "HIGH",
-                f"LLM model '{model_name}' has no output guardrail (sub-check A)",
-                _gap_note(evidence),
-                affected,
-                f"Attach a guardrail (e.g. LlamaGuard, NeMo Guardrails) to "
-                f"'{model_name}' or to each calling agent: {agent_names or ['unknown']}.",
-                evidence=evidence,
-                modeling_gap_risk=bool(global_guardrail_count),
-            ))
+            findings.append(
+                _finding(
+                    "NGA-002",
+                    "HIGH",
+                    f"LLM model '{model_name}' has no output guardrail (sub-check A)",
+                    _gap_note(evidence),
+                    affected,
+                    f"Attach a guardrail (e.g. LlamaGuard, NeMo Guardrails) to "
+                    f"'{model_name}' or to each calling agent: {agent_names or ['unknown']}.",
+                    evidence=evidence,
+                    modeling_gap_risk=bool(global_guardrail_count),
+                )
+            )
 
         # Sub-check B: per unauthenticated API_ENDPOINT exposing an AGENT
         for ep in graph.nodes_of_type("API_ENDPOINT"):
@@ -396,7 +425,8 @@ def _rule_nga002_insufficient_guardrails(
             # Find agents the endpoint protects or that call it
             exposed_agents = graph.sources(ep_id, "PROTECTS") + graph.targets(ep_id, "CALLS")
             agent_exposed = [
-                a for a in exposed_agents
+                a
+                for a in exposed_agents
                 if (a.get("component_type") or "").upper() == "AGENT" and not _is_soft_rejected(a)
             ]
             if not agent_exposed:
@@ -413,15 +443,18 @@ def _rule_nga002_insufficient_guardrails(
                     f"Endpoint '{ep_name}' is publicly reachable and exposes "
                     f"agent '{agent_name}' without a guardrail."
                 )
-                findings.append(_finding(
-                    "NGA-002", "HIGH",
-                    f"Internet-capable agent '{agent_name}' has no output guardrail (sub-check B)",
-                    _gap_note(evidence),
-                    [ep_name, agent_name],
-                    f"Place a guardrail before '{agent_name}' on endpoint '{ep_name}'.",
-                    evidence=evidence,
-                    modeling_gap_risk=bool(global_guardrail_count),
-                ))
+                findings.append(
+                    _finding(
+                        "NGA-002",
+                        "HIGH",
+                        f"Internet-capable agent '{agent_name}' has no output guardrail (sub-check B)",
+                        _gap_note(evidence),
+                        [ep_name, agent_name],
+                        f"Place a guardrail before '{agent_name}' on endpoint '{ep_name}'.",
+                        evidence=evidence,
+                        modeling_gap_risk=bool(global_guardrail_count),
+                    )
+                )
 
         # Sub-check C: DELEGATES_TO edges where neither side is protected
         for src_agent in graph.nodes_of_type("AGENT"):
@@ -439,40 +472,45 @@ def _rule_nga002_insufficient_guardrails(
                 evidence = (
                     f"'{src_name}' DELEGATES_TO '{tgt_name}' with no guardrail on either agent."
                 )
-                findings.append(_finding(
-                    "NGA-002", "HIGH",
-                    f"Unguarded delegation: '{src_name}' → '{tgt_name}' (sub-check C)",
-                    _gap_note(evidence),
-                    [src_name, tgt_name],
-                    f"Add a guardrail between '{src_name}' and '{tgt_name}' to prevent "
-                    "prompt injection from propagating across the delegation boundary.",
-                    evidence=evidence,
-                    modeling_gap_risk=bool(global_guardrail_count),
-                ))
+                findings.append(
+                    _finding(
+                        "NGA-002",
+                        "HIGH",
+                        f"Unguarded delegation: '{src_name}' → '{tgt_name}' (sub-check C)",
+                        _gap_note(evidence),
+                        [src_name, tgt_name],
+                        f"Add a guardrail between '{src_name}' and '{tgt_name}' to prevent "
+                        "prompt injection from propagating across the delegation boundary.",
+                        evidence=evidence,
+                        modeling_gap_risk=bool(global_guardrail_count),
+                    )
+                )
 
         return findings
 
     # Fallback: flat-list checks (no graph available)
     guardrail_ids = {n["id"] for n in nodes if n.get("component_type") in _GUARDRAIL_TYPES}
     model_nodes = [
-        n for n in nodes
-        if n.get("component_type") in _MODEL_TYPES and not _is_soft_rejected(n)
+        n for n in nodes if n.get("component_type") in _MODEL_TYPES and not _is_soft_rejected(n)
     ]
     if model_nodes and not guardrail_ids:
         desc = (
             f"{len(model_nodes)} LLM model node(s) produce output with no output-validation "
             "or guardrail step detected anywhere in the SBOM graph."
         )
-        findings.append(_finding(
-            "NGA-002", "HIGH",
-            "LLM models with no output guardrail (sub-check A)",
-            _gap_note(desc),
-            [n.get("name", "") for n in model_nodes],
-            "Implement structured output parsing and validation. Add a GUARDRAIL component "
-            "(response classifier, PII filter, or output validator) between model output "
-            "and downstream consumers.",
-            modeling_gap_risk=bool(global_guardrail_count),
-        ))
+        findings.append(
+            _finding(
+                "NGA-002",
+                "HIGH",
+                "LLM models with no output guardrail (sub-check A)",
+                _gap_note(desc),
+                [n.get("name", "") for n in model_nodes],
+                "Implement structured output parsing and validation. Add a GUARDRAIL component "
+                "(response classifier, PII filter, or output validator) between model output "
+                "and downstream consumers.",
+                modeling_gap_risk=bool(global_guardrail_count),
+            )
+        )
     api_endpoint_ids = {n["id"] for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES}
     if api_endpoint_ids and not guardrail_ids:
         agents_with_outbound = set()
@@ -480,7 +518,8 @@ def _rule_nga002_insufficient_guardrails(
             if e.get("target") in api_endpoint_ids:
                 agents_with_outbound.add(e.get("source", ""))
         agent_nodes_outbound = [
-            n for n in nodes
+            n
+            for n in nodes
             if n.get("component_type") in _AGENT_TYPES
             and n["id"] in agents_with_outbound
             and not _is_soft_rejected(n)
@@ -491,15 +530,18 @@ def _rule_nga002_insufficient_guardrails(
                 "guardrail detected. Internet-capable agents without output filtering can "
                 "exfiltrate data or be manipulated by adversarial external content."
             )
-            findings.append(_finding(
-                "NGA-002", "HIGH",
-                "Internet-capable agent with no output guardrail (sub-check B)",
-                _gap_note(desc),
-                [n.get("name", "") for n in agent_nodes_outbound],
-                "Add an output guardrail or content filter between the agent and any external "
-                "API endpoints it calls. Log all outbound requests for audit purposes.",
-                modeling_gap_risk=bool(global_guardrail_count),
-            ))
+            findings.append(
+                _finding(
+                    "NGA-002",
+                    "HIGH",
+                    "Internet-capable agent with no output guardrail (sub-check B)",
+                    _gap_note(desc),
+                    [n.get("name", "") for n in agent_nodes_outbound],
+                    "Add an output guardrail or content filter between the agent and any external "
+                    "API endpoints it calls. Log all outbound requests for audit purposes.",
+                    modeling_gap_risk=bool(global_guardrail_count),
+                )
+            )
     return findings
 
 
@@ -541,7 +583,8 @@ def _rule_nga003_secrets_in_env(
     )
     return [
         _finding(
-            "NGA-003", "HIGH",
+            "NGA-003",
+            "HIGH",
             "Secrets exposed as env vars or no secret store configured",
             detail,
             affected,
@@ -561,7 +604,8 @@ def _rule_nga004_runs_as_root(
     """HIGH — Container images or K8s workloads running as root."""
     security_findings: list[str] = summary.get("security_findings") or []
     root_nodes = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.get("component_type") in ("DEPLOYMENT", "CONTAINER_IMAGE")
         and _depl_meta(n).get("runs_as_root") is True
     ]
@@ -573,7 +617,8 @@ def _rule_nga004_runs_as_root(
         return []
     return [
         _finding(
-            "NGA-004", "HIGH",
+            "NGA-004",
+            "HIGH",
             "Containers running as root",
             f"{len(root_nodes)} container/workload node(s) run as root (UID 0). "
             "Root containers can write to the host filesystem via volume mounts and "
@@ -603,7 +648,8 @@ def _rule_nga005_unencrypted_pii_datastore(
         return []
 
     unencrypted = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.get("component_type") in _DATASTORE_TYPES
         and _depl_meta(n).get("encryption_at_rest") is False
     ]
@@ -635,21 +681,24 @@ def _rule_nga005_unencrypted_pii_datastore(
             f"{node_labels}.{write_note}"
         )
         affected = [ds_name] + write_agent_names
-        findings.append(_finding(
-            "NGA-005", "HIGH",
-            f"Unencrypted datastore '{ds_name}' contains PII/PHI",
-            evidence,
-            affected,
-            f"Enable encryption at rest for '{ds_name}'. "
-            + (
-                f"Restrict write access — currently granted to: {', '.join(write_agent_names)}. "
-                if write_agent_names
-                else ""
+        findings.append(
+            _finding(
+                "NGA-005",
+                "HIGH",
+                f"Unencrypted datastore '{ds_name}' contains PII/PHI",
+                evidence,
+                affected,
+                f"Enable encryption at rest for '{ds_name}'. "
+                + (
+                    f"Restrict write access — currently granted to: {', '.join(write_agent_names)}. "
+                    if write_agent_names
+                    else ""
+                )
+                + "Rotate encryption keys on a schedule and store them "
+                "in a dedicated key management service (KMS).",
+                evidence=evidence,
             )
-            + "Rotate encryption keys on a schedule and store them "
-            "in a dedicated key management service (KMS).",
-            evidence=evidence,
-        ))
+        )
     return findings
 
 
@@ -665,10 +714,13 @@ def _rule_nga006_missing_auth_on_api_endpoint(
     """HIGH — Missing authentication on external AI API endpoint."""
     auth_ids = {n["id"] for n in nodes if n.get("component_type") == "AUTH"}
     guardrail_ids = {n["id"] for n in nodes if n.get("component_type") in _GUARDRAIL_TYPES}
-    protected_targets = {e.get("target") for e in edges if e.get("source") in auth_ids | guardrail_ids}
+    protected_targets = {
+        e.get("target") for e in edges if e.get("source") in auth_ids | guardrail_ids
+    }
 
     unprotected = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.get("component_type") in _API_ENDPOINT_TYPES
         and n["id"] not in protected_targets
         and (
@@ -687,11 +739,18 @@ def _rule_nga006_missing_auth_on_api_endpoint(
             ep_name = ep.get("name", "")
             ep_id = str(ep["id"])
             # Find agents exposed via this endpoint
-            exposed = (
-                graph.sources(ep_id, "PROTECTS")
-                + [n for n in graph.targets(ep_id, "CALLS") if (n.get("component_type") or "").upper() == "AGENT"]
+            exposed = graph.sources(ep_id, "PROTECTS") + [
+                n
+                for n in graph.targets(ep_id, "CALLS")
+                if (n.get("component_type") or "").upper() == "AGENT"
+            ]
+            exposed_agent_names = list(
+                {
+                    a.get("name", "")
+                    for a in exposed
+                    if (a.get("component_type") or "").upper() == "AGENT"
+                }
             )
-            exposed_agent_names = list({a.get("name", "") for a in exposed if (a.get("component_type") or "").upper() == "AGENT"})
             # Note if any exposed agent touches PII data
             pii_note = ""
             if graph and exposed_agent_names:
@@ -714,25 +773,29 @@ def _rule_nga006_missing_auth_on_api_endpoint(
                 + pii_note
             )
             affected = [ep_name] + exposed_agent_names
-            findings.append(_finding(
-                "NGA-006", "HIGH",
-                f"Missing authentication on API endpoint '{ep_name}'",
-                evidence,
-                affected,
-                f"Add authentication middleware (API key, JWT, OAuth 2.0) to '{ep_name}'. "
-                + (
-                    f"The exposed agents ({', '.join(exposed_agent_names)}) require "
-                    "verified caller identity before processing requests."
-                    if exposed_agent_names
-                    else "Use an API gateway to centralise auth enforcement."
-                ),
-                evidence=evidence,
-            ))
+            findings.append(
+                _finding(
+                    "NGA-006",
+                    "HIGH",
+                    f"Missing authentication on API endpoint '{ep_name}'",
+                    evidence,
+                    affected,
+                    f"Add authentication middleware (API key, JWT, OAuth 2.0) to '{ep_name}'. "
+                    + (
+                        f"The exposed agents ({', '.join(exposed_agent_names)}) require "
+                        "verified caller identity before processing requests."
+                        if exposed_agent_names
+                        else "Use an API gateway to centralise auth enforcement."
+                    ),
+                    evidence=evidence,
+                )
+            )
         return findings
 
     return [
         _finding(
-            "NGA-006", "HIGH",
+            "NGA-006",
+            "HIGH",
             "Missing authentication on external AI API endpoint",
             f"{len(unprotected)} API endpoint(s) lack an AUTH or GUARDRAIL edge "
             "in the SBOM graph, indicating no authentication layer was detected. "
@@ -779,7 +842,8 @@ def _rule_nga007_overly_permissive_iam(
 
     return [
         _finding(
-            "NGA-007", "HIGH",
+            "NGA-007",
+            "HIGH",
             "Overly permissive IAM role for AI workload",
             f"{len(overpermissive)} IAM role(s) attached to AI deployment(s) grant "
             "wildcard ('*') or admin-level permissions. AI workloads with excessive IAM "
@@ -800,27 +864,19 @@ def _rule_nga008_untrusted_model_registry(
     nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
 ) -> list[dict[str, Any]]:
     """HIGH — LLM model weight loaded from untrusted registry."""
-    trusted: set[str] = _DEFAULT_TRUSTED_REGISTRIES | set(
-        summary.get("trusted_registries") or []
-    )
+    trusted: set[str] = _DEFAULT_TRUSTED_REGISTRIES | set(summary.get("trusted_registries") or [])
 
     untrusted = []
     for n in nodes:
         if n.get("component_type") not in _MODEL_TYPES:
             continue
         meta = n.get("metadata") or {}
-        source_url: str = (
-            meta.get("source_url")
-            or meta.get("extras", {}).get("source_url")
-            or ""
-        )
+        source_url: str = meta.get("source_url") or meta.get("extras", {}).get("source_url") or ""
         if not source_url:
             continue
         is_trusted = any(r in source_url for r in trusted)
         has_digest = bool(
-            meta.get("digest")
-            or meta.get("extras", {}).get("digest")
-            or meta.get("checksum")
+            meta.get("digest") or meta.get("extras", {}).get("digest") or meta.get("checksum")
         )
         if not is_trusted and not has_digest:
             untrusted.append(n)
@@ -830,7 +886,8 @@ def _rule_nga008_untrusted_model_registry(
 
     return [
         _finding(
-            "NGA-008", "HIGH",
+            "NGA-008",
+            "HIGH",
             "LLM model weights loaded from untrusted registry",
             f"{len(untrusted)} model(s) are loaded from sources not in the trusted registry "
             f"allowlist ({', '.join(sorted(trusted))}) and have no checksum/digest for "
@@ -847,12 +904,19 @@ def _rule_nga008_untrusted_model_registry(
 # ── NGA-009 ──────────────────────────────────────────────────────────────────
 
 _AUDIT_LIBS = {
-    "opentelemetry", "langfuse", "arize", "whylogs",
-    "mlflow", "wandb", "helicone",
+    "opentelemetry",
+    "langfuse",
+    "arize",
+    "whylogs",
+    "mlflow",
+    "wandb",
+    "helicone",
 }
 _AUDIT_MIDDLEWARE = {
-    "RequestLoggingMiddleware", "AuditLogHandler",
-    "RotatingFileHandler", "TimedRotatingFileHandler",
+    "RequestLoggingMiddleware",
+    "AuditLogHandler",
+    "RotatingFileHandler",
+    "TimedRotatingFileHandler",
 }
 
 
@@ -869,9 +933,7 @@ def _rule_nga009_no_audit_logging(
 
     has_audit_lib = any(lib in frameworks for lib in _AUDIT_LIBS)
     has_log_paths = bool(log_paths)
-    has_middleware = any(
-        mw in str(summary) for mw in _AUDIT_MIDDLEWARE
-    )
+    has_middleware = any(mw in str(summary) for mw in _AUDIT_MIDDLEWARE)
     has_instrumentation = bool(summary.get("instrumentation"))
 
     if has_audit_lib or has_log_paths or has_middleware or has_instrumentation:
@@ -879,7 +941,8 @@ def _rule_nga009_no_audit_logging(
 
     return [
         _finding(
-            "NGA-009", "HIGH",
+            "NGA-009",
+            "HIGH",
             "AI application has no audit logging enabled",
             f"{len(agent_nodes)} agent(s) detected but no audit logging evidence found "
             "(no log paths, no logging middleware, no observability library such as "
@@ -904,14 +967,16 @@ def _rule_nga010_pr_target_injection(
     """HIGH — GitHub Actions: pull_request_target with untrusted context injection."""
     # Preferred: structured findings emitted by GitHubActionsAdapter
     structured = [
-        f for f in (summary.get("workflow_security_findings") or [])
+        f
+        for f in (summary.get("workflow_security_findings") or [])
         if f.get("rule_signal") == "NGA-010"
     ]
     if structured:
         first = structured[0]
         return [
             _finding(
-                "NGA-010", "HIGH",
+                "NGA-010",
+                "HIGH",
                 "GitHub Actions: pull_request_target with untrusted context injection",
                 f"Detected in {first['path']} (line {first['line']}): {first['snippet']}",
                 ["GitHub Actions workflow"],
@@ -938,7 +1003,8 @@ def _rule_nga010_pr_target_injection(
 
     return [
         _finding(
-            "NGA-010", "HIGH",
+            "NGA-010",
+            "HIGH",
             "GitHub Actions: pull_request_target with untrusted context injection",
             "A workflow uses the 'pull_request_target' trigger and references "
             "'${{ github.event.pull_request... }}' in run steps or env — this allows "
@@ -962,14 +1028,16 @@ def _rule_nga011_github_env_injection(
     """HIGH — GitHub Actions: GITHUB_ENV written from untrusted input."""
     # Preferred: structured findings emitted by GitHubActionsAdapter
     structured = [
-        f for f in (summary.get("workflow_security_findings") or [])
+        f
+        for f in (summary.get("workflow_security_findings") or [])
         if f.get("rule_signal") == "NGA-011"
     ]
     if structured:
         first = structured[0]
         return [
             _finding(
-                "NGA-011", "HIGH",
+                "NGA-011",
+                "HIGH",
                 "GitHub Actions: GITHUB_ENV written from untrusted input",
                 f"Detected in {first['path']} (line {first['line']}): {first['snippet']}",
                 ["GitHub Actions workflow"],
@@ -994,7 +1062,8 @@ def _rule_nga011_github_env_injection(
 
     return [
         _finding(
-            "NGA-011", "HIGH",
+            "NGA-011",
+            "HIGH",
             "GitHub Actions: GITHUB_ENV written from untrusted input",
             "A workflow step writes to '$GITHUB_ENV' using an expression that includes "
             "untrusted input (e.g. PR title, body, or comment). This allows an attacker "
@@ -1053,9 +1122,7 @@ def _rule_nga012_missing_hitl(
             agent_name = agent.get("name", "")
             agent_id = str(agent["id"])
             # O(n) indexed BFS follows CALLS and DELEGATES_TO edges
-            reachable_tools = graph.reachable_of_type(
-                agent_id, ["CALLS", "DELEGATES_TO"], "TOOL"
-            )
+            reachable_tools = graph.reachable_of_type(agent_id, ["CALLS", "DELEGATES_TO"], "TOOL")
             for tool in reachable_tools:
                 is_irrev, matched = _tool_is_irreversible(tool)
                 if not is_irrev:
@@ -1069,17 +1136,20 @@ def _rule_nga012_missing_hitl(
                     f"'{agent_name}' can reach irreversible tool '{tool_name}' "
                     f"(matched pattern: '{matched}') without a HITL checkpoint."
                 )
-                findings.append(_finding(
-                    "NGA-012", "HIGH",
-                    f"Agent '{agent_name}' can invoke '{tool_name}' without HITL approval",
-                    evidence,
-                    [agent_name, tool_name],
-                    f"Add an interrupt/approval step in '{agent_name}' before calling "
-                    f"'{tool_name}'. Use LangGraph 'interrupt_before', CrewAI 'human_input=True', "
-                    "OpenAI Assistants 'requires_action' event, or LangChain "
-                    "'HumanApprovalCallbackHandler'. Log all irreversible tool calls.",
-                    evidence=evidence,
-                ))
+                findings.append(
+                    _finding(
+                        "NGA-012",
+                        "HIGH",
+                        f"Agent '{agent_name}' can invoke '{tool_name}' without HITL approval",
+                        evidence,
+                        [agent_name, tool_name],
+                        f"Add an interrupt/approval step in '{agent_name}' before calling "
+                        f"'{tool_name}'. Use LangGraph 'interrupt_before', CrewAI 'human_input=True', "
+                        "OpenAI Assistants 'requires_action' event, or LangChain "
+                        "'HumanApprovalCallbackHandler'. Log all irreversible tool calls.",
+                        evidence=evidence,
+                    )
+                )
         return findings
 
     # Fallback: O(n²) BFS (no graph)
@@ -1090,14 +1160,17 @@ def _rule_nga012_missing_hitl(
         if _agent_has_hitl(agent):
             continue
         reachable = _nodes_reachable_from(agent["id"], edges, nodes_by_id)
-        reachable_tools = [nodes_by_id[nid] for nid in reachable if nid in tool_ids and nid in nodes_by_id]
+        reachable_tools = [
+            nodes_by_id[nid] for nid in reachable if nid in tool_ids and nid in nodes_by_id
+        ]
         if any(_tool_is_irreversible(t)[0] for t in reachable_tools):
             risky_agents.append(agent)
     if not risky_agents:
         return []
     return [
         _finding(
-            "NGA-012", "HIGH",
+            "NGA-012",
+            "HIGH",
             "Agent pipeline lacks HITL approval for high-risk tool actions",
             f"{len(risky_agents)} agent(s) can invoke irreversible or high-impact tools "
             "(email send, database write/delete, payment, file deletion, external API mutation) "
@@ -1122,7 +1195,8 @@ def _rule_nga013_no_k8s_network_policy(
 ) -> list[dict[str, Any]]:
     """MEDIUM — No network policy for AI workload in K8s."""
     k8s_deployments = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.get("component_type") in _DEPLOYMENT_TYPES
         and (
             _depl_meta(n).get("deployment_target", "").lower() in ("kubernetes", "k8s")
@@ -1138,16 +1212,19 @@ def _rule_nga013_no_k8s_network_policy(
     policy_namespaces: set[str] = set(summary.get("k8s_network_policy_namespaces") or [])
 
     no_netpol = [
-        n for n in k8s_deployments
+        n
+        for n in k8s_deployments
         if not _depl_meta(n).get("has_network_policy")  # same-file coverage
-        and (n.get("metadata") or {}).get("extras", {}).get("k8s_namespace", "") not in policy_namespaces
+        and (n.get("metadata") or {}).get("extras", {}).get("k8s_namespace", "")
+        not in policy_namespaces
     ]
     if not no_netpol:
         return []
 
     return [
         _finding(
-            "NGA-013", "MEDIUM",
+            "NGA-013",
+            "MEDIUM",
             "No Kubernetes NetworkPolicy for AI workload",
             f"{len(no_netpol)} K8s deployment(s) have no NetworkPolicy detected. "
             "Without network policies, any compromised pod in the cluster can reach "
@@ -1169,14 +1246,16 @@ def _rule_nga014_actions_runner_debug(
     """MEDIUM — GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed."""
     # Preferred: structured findings emitted by GitHubActionsAdapter
     structured = [
-        f for f in (summary.get("workflow_security_findings") or [])
+        f
+        for f in (summary.get("workflow_security_findings") or [])
         if f.get("rule_signal") == "NGA-014"
     ]
     if structured:
         first = structured[0]
         return [
             _finding(
-                "NGA-014", "MEDIUM",
+                "NGA-014",
+                "MEDIUM",
                 "GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed",
                 f"Detected in {first['path']} (line {first['line']}): {first['snippet']}",
                 ["GitHub Actions workflow"],
@@ -1200,7 +1279,8 @@ def _rule_nga014_actions_runner_debug(
 
     return [
         _finding(
-            "NGA-014", "MEDIUM",
+            "NGA-014",
+            "MEDIUM",
             "GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed",
             "The workflow references 'ACTIONS_RUNNER_DEBUG'. When set to 'true', "
             "this leaks verbose runner debug output to public workflow logs, including "
@@ -1235,7 +1315,8 @@ def _rule_nga015_no_resource_limits(
     affected = limited_nodes if limited_nodes else depl_nodes
     return [
         _finding(
-            "NGA-015", "LOW",
+            "NGA-015",
+            "LOW",
             "AI workloads without resource limits",
             f"{len(affected)} deployment node(s) have no CPU or memory resource limits "
             "configured. Unbounded AI workloads can starve co-located services, "
@@ -1253,12 +1334,11 @@ def _rule_nga015_no_resource_limits(
 # ── NGA-016 ──────────────────────────────────────────────────────────────────
 
 
-def _rule_nga016_latest_image_tag(
-    nodes: list[dict[str, Any]], **_: Any
-) -> list[dict[str, Any]]:
+def _rule_nga016_latest_image_tag(nodes: list[dict[str, Any]], **_: Any) -> list[dict[str, Any]]:
     """LOW — Container image using 'latest' tag."""
     latest_images = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.get("component_type") in _CONTAINER_TYPES
         and (
             _depl_meta(n).get("image_tag", "").lower() in ("latest", "")
@@ -1271,7 +1351,8 @@ def _rule_nga016_latest_image_tag(
 
     return [
         _finding(
-            "NGA-016", "LOW",
+            "NGA-016",
+            "LOW",
             "Container image using 'latest' tag",
             f"{len(latest_images)} container image(s) use the 'latest' tag or have no "
             "explicit tag. The 'latest' tag is mutable — a registry push can silently "
@@ -1293,7 +1374,8 @@ def _rule_nga017_missing_health_check(
 ) -> list[dict[str, Any]]:
     """LOW — AI workload missing health check."""
     no_health = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.get("component_type") in (_DEPLOYMENT_TYPES | _CONTAINER_TYPES)
         and not _depl_meta(n).get("has_health_check")
     ]
@@ -1302,7 +1384,8 @@ def _rule_nga017_missing_health_check(
 
     return [
         _finding(
-            "NGA-017", "LOW",
+            "NGA-017",
+            "LOW",
             "AI workload missing health check",
             f"{len(no_health)} deployment/container node(s) have no health check configured. "
             "Without a health check, orchestration platforms cannot detect a hung or "
@@ -1357,28 +1440,28 @@ def _rule_nga018_shared_datastore_no_iam_isolation(
                 affected_names.append(agent_name)
                 if interm is not None:
                     indirect_paths.append(
-                        f"'{agent_name}'→CALLS→'{interm.get('name', '')}'"
-                        f"→ACCESSES→'{ds_name}'"
+                        f"'{agent_name}'→CALLS→'{interm.get('name', '')}'→ACCESSES→'{ds_name}'"
                     )
             indirect_note = (
-                f" Indirect paths: {'; '.join(indirect_paths)}."
-                if indirect_paths
-                else ""
+                f" Indirect paths: {'; '.join(indirect_paths)}." if indirect_paths else ""
             )
             agent_names = [a.get("name", "") for a, _ in agent_map.values()]
             evidence = (
                 f"Datastore '{ds_name}' is accessible by {len(agent_map)} agents "
                 f"without IAM isolation: {', '.join(agent_names)}.{indirect_note}"
             )
-            findings.append(_finding(
-                "NGA-018", "LOW",
-                f"Agents share datastore '{ds_name}' with no IAM isolation",
-                evidence,
-                affected_names,
-                f"Add IAM policies to scope each agent's access to '{ds_name}'. "
-                "Consider separate datastores or row-level security per tenant.",
-                evidence=evidence,
-            ))
+            findings.append(
+                _finding(
+                    "NGA-018",
+                    "LOW",
+                    f"Agents share datastore '{ds_name}' with no IAM isolation",
+                    evidence,
+                    affected_names,
+                    f"Add IAM policies to scope each agent's access to '{ds_name}'. "
+                    "Consider separate datastores or row-level security per tenant.",
+                    evidence=evidence,
+                )
+            )
         return findings
 
     # Fallback: direct-edge-only check
@@ -1392,19 +1475,17 @@ def _rule_nga018_shared_datastore_no_iam_isolation(
         elif tgt in agent_ids_set and src in datastore_ids:
             ds_to_agents[src].add(tgt)
     shared_no_iam = [
-        ds_id for ds_id, agents in ds_to_agents.items()
-        if len(agents) >= 2 and not iam_ids
+        ds_id for ds_id, agents in ds_to_agents.items() if len(agents) >= 2 and not iam_ids
     ]
     if not shared_no_iam:
         return []
     affected_names = [
-        n.get("name", ds_id)
-        for ds_id in shared_no_iam
-        for n in nodes if n["id"] == ds_id
+        n.get("name", ds_id) for ds_id in shared_no_iam for n in nodes if n["id"] == ds_id
     ]
     return [
         _finding(
-            "NGA-018", "LOW",
+            "NGA-018",
+            "LOW",
             "Multiple agents share a datastore with no IAM isolation",
             f"{len(shared_no_iam)} datastore(s) are accessed by 2 or more agent(s) "
             "with no IAM node detected to differentiate access rights. A compromised "
@@ -1462,9 +1543,11 @@ def _rule_nga019_unguarded_write_to_sensitive_datastore(
                 continue
             interm_name = interm.get("name", "") if interm else None
             if interm_name:
-                path = (f"'{agent_name}' → CALLS → '{interm_name}' "
-                        f"→ ACCESSES[{access_type}] → '{ds_name}' "
-                        f"(data_classification={ds_labels}). No guardrail on this path.")
+                path = (
+                    f"'{agent_name}' → CALLS → '{interm_name}' "
+                    f"→ ACCESSES[{access_type}] → '{ds_name}' "
+                    f"(data_classification={ds_labels}). No guardrail on this path."
+                )
                 affected = [agent_name, interm_name, ds_name]
                 remediation = (
                     f"Add a guardrail or validation step on '{interm_name}' before "
@@ -1472,22 +1555,27 @@ def _rule_nga019_unguarded_write_to_sensitive_datastore(
                     "access control, and audit logging for all write operations."
                 )
             else:
-                path = (f"'{agent_name}' → ACCESSES[{access_type}] → '{ds_name}' "
-                        f"(data_classification={ds_labels}). No guardrail on this path.")
+                path = (
+                    f"'{agent_name}' → ACCESSES[{access_type}] → '{ds_name}' "
+                    f"(data_classification={ds_labels}). No guardrail on this path."
+                )
                 affected = [agent_name, ds_name]
                 remediation = (
                     f"Add a guardrail or validation step before '{agent_name}' "
                     f"writes to '{ds_name}'. Apply schema validation, field-level "
                     "access control, and audit logging for all write operations."
                 )
-            findings.append(_finding(
-                "NGA-019", "HIGH",
-                f"Unguarded write path to sensitive datastore: '{ds_name}'",
-                path,
-                affected,
-                remediation,
-                evidence=path,
-            ))
+            findings.append(
+                _finding(
+                    "NGA-019",
+                    "HIGH",
+                    f"Unguarded write path to sensitive datastore: '{ds_name}'",
+                    path,
+                    affected,
+                    remediation,
+                    evidence=path,
+                )
+            )
     return findings
 
 
@@ -1521,15 +1609,18 @@ def _rule_nga020_unguarded_agent_delegation(
                 f"'{src_name}' DELEGATES_TO '{tgt_name}'. "
                 "Neither agent has a GUARDRAIL on its PROTECTS path."
             )
-            findings.append(_finding(
-                "NGA-020", "MEDIUM",
-                f"Unguarded delegation: '{src_name}' → '{tgt_name}'",
-                evidence,
-                [src_name, tgt_name],
-                f"Insert a guardrail between '{src_name}' and '{tgt_name}' to block "
-                "prompt injection from propagating across the delegation boundary.",
-                evidence=evidence,
-            ))
+            findings.append(
+                _finding(
+                    "NGA-020",
+                    "MEDIUM",
+                    f"Unguarded delegation: '{src_name}' → '{tgt_name}'",
+                    evidence,
+                    [src_name, tgt_name],
+                    f"Insert a guardrail between '{src_name}' and '{tgt_name}' to block "
+                    "prompt injection from propagating across the delegation boundary.",
+                    evidence=evidence,
+                )
+            )
     return findings
 
 
@@ -1561,16 +1652,19 @@ def _rule_nga021_idor_surface_no_protection(
             "or GUARDRAIL node protects it — a caller could substitute another "
             "user's identifier to access their data."
         )
-        findings.append(_finding(
-            "NGA-021", "HIGH",
-            f"IDOR-prone endpoint without authorization checks: '{ep_name}'",
-            evidence,
-            [ep_name],
-            f"Add object-level authorization checks on '{ep_name}' so the caller's "
-            "authenticated identity is verified against the requested path parameter "
-            "(e.g. reject requests where the session user does not own the resource).",
-            evidence=evidence,
-        ))
+        findings.append(
+            _finding(
+                "NGA-021",
+                "HIGH",
+                f"IDOR-prone endpoint without authorization checks: '{ep_name}'",
+                evidence,
+                [ep_name],
+                f"Add object-level authorization checks on '{ep_name}' so the caller's "
+                "authenticated identity is verified against the requested path parameter "
+                "(e.g. reject requests where the session user does not own the resource).",
+                evidence=evidence,
+            )
+        )
     return findings
 
 
@@ -1578,7 +1672,8 @@ def _rule_nga021_idor_surface_no_protection(
 
 # Known vector/embedding store technology names (mirrors registry.py's regex adapter)
 _VECTOR_STORE_NAMES = re.compile(
-    r"pinecone|faiss|chroma|chromadb|weaviate|qdrant|milvus", re.IGNORECASE,
+    r"pinecone|faiss|chroma|chromadb|weaviate|qdrant|milvus",
+    re.IGNORECASE,
 )
 
 
@@ -1606,7 +1701,8 @@ def _rule_nga022_untrusted_mcp_tool(
 
     return [
         _finding(
-            "NGA-022", "HIGH",
+            "NGA-022",
+            "HIGH",
             "Tool sourced from an untrusted MCP server",
             f"{len(untrusted)} tool(s) are exposed by an MCP server not on the trusted "
             "allowlist and have no GUARDRAIL/AUTH node protecting them. A malicious or "
@@ -1636,9 +1732,7 @@ def _rule_nga023_unprotected_vector_store(
         if not _VECTOR_STORE_NAMES.search(datastore_type):
             continue
         has_auth = bool(meta.get("auth_detail") or meta.get("auth_type"))
-        has_encryption = bool(
-            meta.get("encryption_detail") or meta.get("encryption_at_rest")
-        )
+        has_encryption = bool(meta.get("encryption_detail") or meta.get("encryption_at_rest"))
         if has_auth and has_encryption:
             continue
         unprotected.append(n)
@@ -1648,7 +1742,8 @@ def _rule_nga023_unprotected_vector_store(
 
     return [
         _finding(
-            "NGA-023", "HIGH",
+            "NGA-023",
+            "HIGH",
             "Vector/embedding store without auth or encryption",
             f"{len(unprotected)} vector/embedding datastore(s) have no authentication "
             "and/or encryption posture recorded. Retrieved embeddings can be inverted "
@@ -1695,16 +1790,19 @@ def _rule_nga024_unauthenticated_agent_delegation(
                 f"'{src_name}' DELEGATES_TO '{tgt_name}', which carries no auth or "
                 "encryption metadata for the receiving side of the delegation."
             )
-            findings.append(_finding(
-                "NGA-024", "MEDIUM",
-                f"Unauthenticated inter-agent delegation: '{src_name}' → '{tgt_name}'",
-                evidence,
-                [src_name, tgt_name],
-                f"Require mutual authentication (e.g. mTLS or signed tokens) and "
-                f"encryption between '{src_name}' and '{tgt_name}' so a network "
-                "position cannot spoof or tamper with delegated instructions.",
-                evidence=evidence,
-            ))
+            findings.append(
+                _finding(
+                    "NGA-024",
+                    "MEDIUM",
+                    f"Unauthenticated inter-agent delegation: '{src_name}' → '{tgt_name}'",
+                    evidence,
+                    [src_name, tgt_name],
+                    f"Require mutual authentication (e.g. mTLS or signed tokens) and "
+                    f"encryption between '{src_name}' and '{tgt_name}' so a network "
+                    "position cannot spoof or tamper with delegated instructions.",
+                    evidence=evidence,
+                )
+            )
     return findings
 
 
@@ -1712,10 +1810,10 @@ def _rule_nga024_unauthenticated_agent_delegation(
 
 # Credential/secret-like patterns to catch when embedded in prompt text
 _PROMPT_SECRET_PATTERNS = re.compile(
-    r"AKIA[0-9A-Z]{16}|"                                  # AWS access key
-    r"sk-[A-Za-z0-9]{20,}|"                                # OpenAI-style secret key
-    r"ghp_[A-Za-z0-9]{20,}|"                                # GitHub token
-    r"-----BEGIN [A-Z ]*PRIVATE KEY-----|"                 # PEM private key
+    r"AKIA[0-9A-Z]{16}|"  # AWS access key
+    r"sk-[A-Za-z0-9]{20,}|"  # OpenAI-style secret key
+    r"ghp_[A-Za-z0-9]{20,}|"  # GitHub token
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----|"  # PEM private key
     r"(?:api[_-]?key|secret|password|token)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{8,}",
     re.IGNORECASE,
 )
@@ -1742,7 +1840,8 @@ def _rule_nga025_hidden_context_secret_leak(
 
     return [
         _finding(
-            "NGA-025", "HIGH",
+            "NGA-025",
+            "HIGH",
             "Credential embedded in system prompt / hidden context",
             f"{len(leaking)} prompt/agent node(s) contain what looks like a credential, "
             "API key, or secret literal inside the prompt text. Hidden context is "
@@ -1764,7 +1863,8 @@ def _rule_nga026_endpoint_no_rate_limit(
 ) -> list[dict[str, Any]]:
     """MEDIUM — AI-facing API endpoint with no application-level rate limiting."""
     unlimited = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.get("component_type") in _API_ENDPOINT_TYPES
         and (n.get("metadata") or {}).get("rate_limited") is not True
         and not (n.get("metadata") or {}).get("rate_limit_detail")
@@ -1774,7 +1874,8 @@ def _rule_nga026_endpoint_no_rate_limit(
 
     return [
         _finding(
-            "NGA-026", "MEDIUM",
+            "NGA-026",
+            "MEDIUM",
             "AI endpoint without application-level rate limiting",
             f"{len(unlimited)} API endpoint(s) serving AI traffic have no rate-limiting "
             "or budget ceiling configured. Attackers can trigger disproportionately "
@@ -1796,7 +1897,8 @@ def _rule_nga027_missing_security_headers(
 ) -> list[dict[str, Any]]:
     """MEDIUM — AI-facing API endpoint missing HTTP security headers."""
     unprotected = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.get("component_type") in _API_ENDPOINT_TYPES
         and (
             not (n.get("metadata") or {}).get("security_headers_detail")
@@ -1808,7 +1910,8 @@ def _rule_nga027_missing_security_headers(
 
     return [
         _finding(
-            "NGA-027", "MEDIUM",
+            "NGA-027",
+            "MEDIUM",
             "AI endpoint missing security headers (CSP/X-Frame-Options/HSTS)",
             f"{len(unprotected)} API endpoint(s) serving AI traffic have no confirmed "
             "Content-Security-Policy, X-Frame-Options, or Strict-Transport-Security "
@@ -1827,12 +1930,11 @@ def _rule_nga027_missing_security_headers(
 # ── NGA-028 ──────────────────────────────────────────────────────────────────
 
 
-def _rule_nga028_permissive_cors(
-    nodes: list[dict[str, Any]], **_: Any
-) -> list[dict[str, Any]]:
+def _rule_nga028_permissive_cors(nodes: list[dict[str, Any]], **_: Any) -> list[dict[str, Any]]:
     """HIGH — API endpoint has an overly permissive CORS policy."""
     permissive = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.get("component_type") in _API_ENDPOINT_TYPES
         and ((n.get("metadata") or {}).get("cors_policy") or {}).get("origin") == "*"
     ]
@@ -1840,14 +1942,16 @@ def _rule_nga028_permissive_cors(
         return []
 
     wildcard_with_creds = [
-        n for n in permissive
+        n
+        for n in permissive
         if ((n.get("metadata") or {}).get("cors_policy") or {}).get("wildcard_with_credentials")
     ]
     severity = "HIGH" if wildcard_with_creds else "MEDIUM"
 
     return [
         _finding(
-            "NGA-028", severity,
+            "NGA-028",
+            severity,
             "API endpoint has an overly permissive CORS policy",
             f"{len(permissive)} API endpoint(s) allow requests from any origin (`*`)"
             + (
@@ -1868,12 +1972,11 @@ def _rule_nga028_permissive_cors(
 # ── NGA-029 ──────────────────────────────────────────────────────────────────
 
 
-def _rule_nga029_verbose_error_leak(
-    nodes: list[dict[str, Any]], **_: Any
-) -> list[dict[str, Any]]:
+def _rule_nga029_verbose_error_leak(nodes: list[dict[str, Any]], **_: Any) -> list[dict[str, Any]]:
     """MEDIUM — API endpoint's error handler leaks stack traces."""
     leaking = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.get("component_type") in _API_ENDPOINT_TYPES
         and (n.get("metadata") or {}).get("debug_error_leak") is True
     ]
@@ -1882,7 +1985,8 @@ def _rule_nga029_verbose_error_leak(
 
     return [
         _finding(
-            "NGA-029", "MEDIUM",
+            "NGA-029",
+            "MEDIUM",
             "API endpoint's error handler leaks stack traces",
             f"{len(leaking)} API endpoint(s) are served by an application running in "
             "debug/verbose-error mode. Unhandled exceptions in this mode return raw "
@@ -1911,12 +2015,11 @@ def _rule_nga030_jwt_no_algorithm_restriction(
     Either lets an attacker forge a token that passes verification.
     """
     unrestricted = [
-        n for n in nodes
+        n
+        for n in nodes
         if n.get("component_type") == "AUTH"
         and (n.get("metadata") or {}).get("auth_type") == "jwt"
-        and ((n.get("metadata") or {}).get("auth_detail") or {}).get(
-            "jwt_algorithm_restricted"
-        )
+        and ((n.get("metadata") or {}).get("auth_detail") or {}).get("jwt_algorithm_restricted")
         is not True
     ]
     if not unrestricted:
@@ -1924,7 +2027,8 @@ def _rule_nga030_jwt_no_algorithm_restriction(
 
     return [
         _finding(
-            "NGA-030", "HIGH",
+            "NGA-030",
+            "HIGH",
             "JWT verification with no pinned algorithm allow-list",
             f"{len(unrestricted)} JWT auth mechanism(s) have no confirmed "
             "`algorithms:` allow-list on their verification call. Without one, "
@@ -1944,216 +2048,246 @@ def _rule_nga030_jwt_no_algorithm_restriction(
 # ── Rule registry ─────────────────────────────────────────────────────────────
 
 _RULES: list[Callable[..., list[dict[str, Any]]]] = [
-    _rule_nga001_phi_to_external_llm,           # NGA-001 CRITICAL
-    _rule_nga002_insufficient_guardrails,        # NGA-002 HIGH
-    _rule_nga003_secrets_in_env,                 # NGA-003 HIGH
-    _rule_nga004_runs_as_root,                   # NGA-004 HIGH
-    _rule_nga005_unencrypted_pii_datastore,      # NGA-005 HIGH
-    _rule_nga006_missing_auth_on_api_endpoint,   # NGA-006 HIGH
-    _rule_nga007_overly_permissive_iam,          # NGA-007 HIGH
-    _rule_nga008_untrusted_model_registry,       # NGA-008 HIGH
-    _rule_nga009_no_audit_logging,               # NGA-009 HIGH
-    _rule_nga010_pr_target_injection,            # NGA-010 HIGH
-    _rule_nga011_github_env_injection,           # NGA-011 HIGH
-    _rule_nga012_missing_hitl,                   # NGA-012 HIGH
-    _rule_nga013_no_k8s_network_policy,          # NGA-013 MEDIUM
-    _rule_nga014_actions_runner_debug,           # NGA-014 MEDIUM
-    _rule_nga015_no_resource_limits,             # NGA-015 LOW
-    _rule_nga016_latest_image_tag,               # NGA-016 LOW
-    _rule_nga017_missing_health_check,           # NGA-017 LOW
+    _rule_nga001_phi_to_external_llm,  # NGA-001 CRITICAL
+    _rule_nga002_insufficient_guardrails,  # NGA-002 HIGH
+    _rule_nga003_secrets_in_env,  # NGA-003 HIGH
+    _rule_nga004_runs_as_root,  # NGA-004 HIGH
+    _rule_nga005_unencrypted_pii_datastore,  # NGA-005 HIGH
+    _rule_nga006_missing_auth_on_api_endpoint,  # NGA-006 HIGH
+    _rule_nga007_overly_permissive_iam,  # NGA-007 HIGH
+    _rule_nga008_untrusted_model_registry,  # NGA-008 HIGH
+    _rule_nga009_no_audit_logging,  # NGA-009 HIGH
+    _rule_nga010_pr_target_injection,  # NGA-010 HIGH
+    _rule_nga011_github_env_injection,  # NGA-011 HIGH
+    _rule_nga012_missing_hitl,  # NGA-012 HIGH
+    _rule_nga013_no_k8s_network_policy,  # NGA-013 MEDIUM
+    _rule_nga014_actions_runner_debug,  # NGA-014 MEDIUM
+    _rule_nga015_no_resource_limits,  # NGA-015 LOW
+    _rule_nga016_latest_image_tag,  # NGA-016 LOW
+    _rule_nga017_missing_health_check,  # NGA-017 LOW
     _rule_nga018_shared_datastore_no_iam_isolation,  # NGA-018 LOW
     _rule_nga019_unguarded_write_to_sensitive_datastore,  # NGA-019 HIGH
-    _rule_nga020_unguarded_agent_delegation,         # NGA-020 MEDIUM
-    _rule_nga021_idor_surface_no_protection,         # NGA-021 HIGH
-    _rule_nga022_untrusted_mcp_tool,                 # NGA-022 HIGH
-    _rule_nga023_unprotected_vector_store,           # NGA-023 HIGH
-    _rule_nga024_unauthenticated_agent_delegation,   # NGA-024 MEDIUM
-    _rule_nga025_hidden_context_secret_leak,         # NGA-025 HIGH
-    _rule_nga026_endpoint_no_rate_limit,             # NGA-026 MEDIUM
-    _rule_nga027_missing_security_headers,           # NGA-027 MEDIUM
-    _rule_nga028_permissive_cors,                    # NGA-028 HIGH
-    _rule_nga029_verbose_error_leak,                 # NGA-029 MEDIUM
-    _rule_nga030_jwt_no_algorithm_restriction,       # NGA-030 HIGH
+    _rule_nga020_unguarded_agent_delegation,  # NGA-020 MEDIUM
+    _rule_nga021_idor_surface_no_protection,  # NGA-021 HIGH
+    _rule_nga022_untrusted_mcp_tool,  # NGA-022 HIGH
+    _rule_nga023_unprotected_vector_store,  # NGA-023 HIGH
+    _rule_nga024_unauthenticated_agent_delegation,  # NGA-024 MEDIUM
+    _rule_nga025_hidden_context_secret_leak,  # NGA-025 HIGH
+    _rule_nga026_endpoint_no_rate_limit,  # NGA-026 MEDIUM
+    _rule_nga027_missing_security_headers,  # NGA-027 MEDIUM
+    _rule_nga028_permissive_cors,  # NGA-028 HIGH
+    _rule_nga029_verbose_error_leak,  # NGA-029 MEDIUM
+    _rule_nga030_jwt_no_algorithm_restriction,  # NGA-030 HIGH
 ]
 
 # Per-rule metadata used by verbose audit mode (parallel to _RULES).
 _RULE_META: list[dict[str, str]] = [
     {
-        "rule_id": "NGA-001", "severity": "CRITICAL",
+        "rule_id": "NGA-001",
+        "severity": "CRITICAL",
         "title": "PII/PHI data handled by external LLM providers",
         "checks": "SBOM data_classification × MODEL nodes with external provider",
         "pass_reason": "No PII/PHI data classification found, or no external MODEL provider detected",
     },
     {
-        "rule_id": "NGA-002", "severity": "HIGH",
+        "rule_id": "NGA-002",
+        "severity": "HIGH",
         "title": "Insufficient guardrail coverage",
         "checks": "MODEL nodes and AGENT→API_ENDPOINT edges vs. GUARDRAIL nodes",
         "pass_reason": "All MODEL/AGENT paths have at least one GUARDRAIL node",
     },
     {
-        "rule_id": "NGA-003", "severity": "HIGH",
+        "rule_id": "NGA-003",
+        "severity": "HIGH",
         "title": "Secrets or credentials exposed in environment variables",
         "checks": "SBOM env_vars for high-entropy or secret-named values",
         "pass_reason": "No secret-like environment variables detected in SBOM",
     },
     {
-        "rule_id": "NGA-004", "severity": "HIGH",
+        "rule_id": "NGA-004",
+        "severity": "HIGH",
         "title": "Container runs as root",
         "checks": "CONTAINER_IMAGE nodes for runs_as_root flag or missing non-root user",
         "pass_reason": "No containers detected running as root",
     },
     {
-        "rule_id": "NGA-005", "severity": "HIGH",
+        "rule_id": "NGA-005",
+        "severity": "HIGH",
         "title": "PII/PHI stored in unencrypted datastore",
         "checks": "DATASTORE nodes for encryption_at_rest flag × PII/PHI data classification",
         "pass_reason": "All datastores have encryption at rest, or no PII/PHI classification found",
     },
     {
-        "rule_id": "NGA-006", "severity": "HIGH",
+        "rule_id": "NGA-006",
+        "severity": "HIGH",
         "title": "API endpoint missing authentication",
         "checks": "API_ENDPOINT nodes for missing AUTH edge coverage",
         "pass_reason": "All API endpoints are covered by at least one AUTH node",
     },
     {
-        "rule_id": "NGA-007", "severity": "HIGH",
+        "rule_id": "NGA-007",
+        "severity": "HIGH",
         "title": "Overly permissive IAM role",
         "checks": "IAM nodes for wildcard permissions or admin-level grants",
         "pass_reason": "No IAM nodes with wildcard or admin permissions detected",
     },
     {
-        "rule_id": "NGA-008", "severity": "HIGH",
+        "rule_id": "NGA-008",
+        "severity": "HIGH",
         "title": "Model loaded from untrusted or unverified registry",
         "checks": "MODEL nodes for registry source and integrity verification",
         "pass_reason": "All MODEL nodes sourced from trusted registries with verification",
     },
     {
-        "rule_id": "NGA-009", "severity": "HIGH",
+        "rule_id": "NGA-009",
+        "severity": "HIGH",
         "title": "No audit logging configured",
         "checks": "SBOM for audit_logging flag and DATASTORE/API_ENDPOINT coverage",
         "pass_reason": "Audit logging is configured in the SBOM",
     },
     {
-        "rule_id": "NGA-010", "severity": "HIGH",
+        "rule_id": "NGA-010",
+        "severity": "HIGH",
         "title": "GitHub Actions pull_request_target injection risk",
         "checks": "GitHub Actions workflow files for pull_request_target trigger with dangerous patterns",
         "pass_reason": "No pull_request_target injection patterns found in CI workflows",
     },
     {
-        "rule_id": "NGA-011", "severity": "HIGH",
+        "rule_id": "NGA-011",
+        "severity": "HIGH",
         "title": "GitHub Actions environment variable injection",
         "checks": "GitHub Actions workflow files for unsanitised env variable injection",
         "pass_reason": "No environment variable injection patterns found in CI workflows",
     },
     {
-        "rule_id": "NGA-012", "severity": "HIGH",
+        "rule_id": "NGA-012",
+        "severity": "HIGH",
         "title": "Agent pipeline lacks HITL approval for high-risk tool actions",
         "checks": "AGENT nodes with irreversible/high-impact TOOL edges for HITL approval gates",
         "pass_reason": "All high-risk tool invocations have a human-in-the-loop approval gate",
     },
     {
-        "rule_id": "NGA-013", "severity": "MEDIUM",
+        "rule_id": "NGA-013",
+        "severity": "MEDIUM",
         "title": "Kubernetes deployment missing NetworkPolicy",
         "checks": "Kubernetes DEPLOYMENT nodes for NetworkPolicy coverage",
         "pass_reason": "All Kubernetes deployments have NetworkPolicy configured",
     },
     {
-        "rule_id": "NGA-014", "severity": "MEDIUM",
+        "rule_id": "NGA-014",
+        "severity": "MEDIUM",
         "title": "GitHub Actions runner debug mode enabled",
         "checks": "GitHub Actions workflows for ACTIONS_RUNNER_DEBUG or ACTIONS_STEP_DEBUG set to true",
         "pass_reason": "No debug mode enabled in GitHub Actions runner configuration",
     },
     {
-        "rule_id": "NGA-015", "severity": "LOW",
+        "rule_id": "NGA-015",
+        "severity": "LOW",
         "title": "Container missing resource limits",
         "checks": "CONTAINER_IMAGE / DEPLOYMENT nodes for CPU/memory resource limits",
         "pass_reason": "All containers have CPU and memory resource limits defined",
     },
     {
-        "rule_id": "NGA-016", "severity": "LOW",
+        "rule_id": "NGA-016",
+        "severity": "LOW",
         "title": "Container image uses 'latest' tag",
         "checks": "CONTAINER_IMAGE nodes for unversioned 'latest' image tag",
         "pass_reason": "All container images use pinned version tags",
     },
     {
-        "rule_id": "NGA-017", "severity": "LOW",
+        "rule_id": "NGA-017",
+        "severity": "LOW",
         "title": "Container missing health check",
         "checks": "CONTAINER_IMAGE / DEPLOYMENT nodes for health check configuration",
         "pass_reason": "All containers have health checks configured",
     },
     {
-        "rule_id": "NGA-018", "severity": "LOW",
+        "rule_id": "NGA-018",
+        "severity": "LOW",
         "title": "Shared datastore without IAM isolation",
         "checks": "DATASTORE nodes shared across AGENT/TOOL boundaries for IAM isolation",
         "pass_reason": "All shared datastores have IAM isolation or are not cross-boundary",
     },
     {
-        "rule_id": "NGA-019", "severity": "HIGH",
+        "rule_id": "NGA-019",
+        "severity": "HIGH",
         "title": "Unguarded write path to sensitive datastore",
         "checks": "AGENT→[CALLS→TOOL]→ACCESSES[write]→DATASTORE[PII/PHI] paths with no guardrail",
         "pass_reason": "No unguarded write paths to PII/PHI datastores detected",
     },
     {
-        "rule_id": "NGA-020", "severity": "MEDIUM",
+        "rule_id": "NGA-020",
+        "severity": "MEDIUM",
         "title": "Unguarded agent delegation chain",
         "checks": "AGENT→DELEGATES_TO→AGENT edges where neither side has guardrail coverage",
         "pass_reason": "All agent delegation chains have at least one guardrail boundary",
     },
     {
-        "rule_id": "NGA-021", "severity": "HIGH",
+        "rule_id": "NGA-021",
+        "severity": "HIGH",
         "title": "IDOR-prone endpoint without authorization checks",
         "checks": "API_ENDPOINT nodes with idor_surface path params and no AUTH/GUARDRAIL protection",
         "pass_reason": "No IDOR-prone endpoints found, or all are protected by an AUTH/GUARDRAIL node",
     },
     {
-        "rule_id": "NGA-022", "severity": "HIGH",
+        "rule_id": "NGA-022",
+        "severity": "HIGH",
         "title": "Tool sourced from an untrusted MCP server",
         "checks": "TOOL nodes with mcp_server_url set and trust_level=untrusted, no GUARDRAIL/AUTH protection",
         "pass_reason": "No untrusted-MCP tools found, or all are protected by a GUARDRAIL/AUTH node",
     },
     {
-        "rule_id": "NGA-023", "severity": "HIGH",
+        "rule_id": "NGA-023",
+        "severity": "HIGH",
         "title": "Vector/embedding store without auth or encryption",
         "checks": "DATASTORE nodes matching known vector-store tech names vs. auth_detail/encryption_detail",
         "pass_reason": "No vector/embedding stores found, or all have auth and encryption posture recorded",
     },
     {
-        "rule_id": "NGA-024", "severity": "MEDIUM",
+        "rule_id": "NGA-024",
+        "severity": "MEDIUM",
         "title": "Unauthenticated inter-agent delegation",
         "checks": "DELEGATES_TO edge targets vs. target AGENT's auth_detail/encryption_detail",
         "pass_reason": "No delegation targets found, or all have auth/encryption metadata recorded",
     },
     {
-        "rule_id": "NGA-025", "severity": "HIGH",
+        "rule_id": "NGA-025",
+        "severity": "HIGH",
         "title": "Credential embedded in system prompt / hidden context",
         "checks": "PROMPT extras.content and AGENT system_prompt_excerpt vs. credential-like patterns",
         "pass_reason": "No credential-like patterns found in prompt or hidden-context text",
     },
     {
-        "rule_id": "NGA-026", "severity": "MEDIUM",
+        "rule_id": "NGA-026",
+        "severity": "MEDIUM",
         "title": "AI endpoint without application-level rate limiting",
         "checks": "API_ENDPOINT nodes vs. rate_limited / rate_limit_detail",
         "pass_reason": "No AI-facing endpoints found, or all have rate limiting configured",
     },
     {
-        "rule_id": "NGA-027", "severity": "MEDIUM",
+        "rule_id": "NGA-027",
+        "severity": "MEDIUM",
         "title": "AI endpoint missing security headers (CSP/X-Frame-Options/HSTS)",
         "checks": "API_ENDPOINT nodes vs. security_headers_detail",
         "pass_reason": "No AI-facing endpoints found, or all confirm CSP/X-Frame-Options/HSTS",
     },
     {
-        "rule_id": "NGA-028", "severity": "HIGH",
+        "rule_id": "NGA-028",
+        "severity": "HIGH",
         "title": "API endpoint has an overly permissive CORS policy",
         "checks": "API_ENDPOINT nodes vs. cors_policy.origin / wildcard_with_credentials",
         "pass_reason": "No AI-facing endpoints found, or none allow a wildcard CORS origin",
     },
     {
-        "rule_id": "NGA-029", "severity": "MEDIUM",
+        "rule_id": "NGA-029",
+        "severity": "MEDIUM",
         "title": "API endpoint's error handler leaks stack traces",
         "checks": "API_ENDPOINT nodes vs. debug_error_leak",
         "pass_reason": "No AI-facing endpoints found, or none run in debug/verbose-error mode",
     },
     {
-        "rule_id": "NGA-030", "severity": "HIGH",
+        "rule_id": "NGA-030",
+        "severity": "HIGH",
         "title": "JWT verification with no pinned algorithm allow-list",
         "checks": "AUTH nodes (auth_type=jwt) vs. auth_detail.jwt_algorithm_restricted",
         "pass_reason": "No JWT auth mechanism found, or all verify calls pin an algorithms allow-list",
@@ -2189,22 +2323,32 @@ def _build_pass_evidence(
 
     if rule_id == "NGA-002":
         return {
-            "guardrail_nodes": [n.get("name", "") for n in nodes if n.get("component_type") in _GUARDRAIL_TYPES],
-            "model_nodes": [n.get("name", "") for n in nodes if n.get("component_type") in _MODEL_TYPES],
-            "agent_nodes": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
+            "guardrail_nodes": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _GUARDRAIL_TYPES
+            ],
+            "model_nodes": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _MODEL_TYPES
+            ],
+            "agent_nodes": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES
+            ],
         }
 
     if rule_id == "NGA-003":
         return {
-            "deployment_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") == "DEPLOYMENT"],
+            "deployment_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") == "DEPLOYMENT"
+            ],
             "secret_stores_configured": summary.get("secret_stores") or [],
-            "secrets_in_env_found": "secrets_in_env_vars" in (summary.get("security_findings") or []),
+            "secrets_in_env_found": "secrets_in_env_vars"
+            in (summary.get("security_findings") or []),
         }
 
     if rule_id == "NGA-004":
         return {
             "container_or_deployment_nodes_checked": [
-                n.get("name", "") for n in nodes
+                n.get("name", "")
+                for n in nodes
                 if n.get("component_type") in ("DEPLOYMENT", "CONTAINER_IMAGE")
             ],
             "runs_as_root_detected": False,
@@ -2214,14 +2358,20 @@ def _build_pass_evidence(
         dc_labels = summary.get("data_classification") or []
         return {
             "data_classification_labels": dc_labels or ["none"],
-            "datastore_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _DATASTORE_TYPES],
+            "datastore_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _DATASTORE_TYPES
+            ],
             "unencrypted_datastores_found": 0,
         }
 
     if rule_id == "NGA-006":
         return {
-            "api_endpoints_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES],
-            "auth_nodes_found": [n.get("name", "") for n in nodes if n.get("component_type") == "AUTH"],
+            "api_endpoints_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES
+            ],
+            "auth_nodes_found": [
+                n.get("name", "") for n in nodes if n.get("component_type") == "AUTH"
+            ],
         }
 
     if rule_id == "NGA-007":
@@ -2237,7 +2387,9 @@ def _build_pass_evidence(
                 if src and src.get("component_type") in _IAM_TYPES:
                     iam_attached.append(src.get("name", ""))
         return {
-            "deployment_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _DEPLOYMENT_TYPES],
+            "deployment_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _DEPLOYMENT_TYPES
+            ],
             "iam_nodes_checked": list(set(iam_attached)),
             "overpermissive_roles_found": 0,
         }
@@ -2245,14 +2397,18 @@ def _build_pass_evidence(
     if rule_id == "NGA-008":
         trusted = _DEFAULT_TRUSTED_REGISTRIES | set(summary.get("trusted_registries") or [])
         return {
-            "model_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _MODEL_TYPES],
+            "model_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _MODEL_TYPES
+            ],
             "trusted_registries": sorted(trusted),
         }
 
     if rule_id == "NGA-009":
         frameworks = [f.lower() for f in (summary.get("frameworks") or [])]
         return {
-            "agent_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
+            "agent_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES
+            ],
             "audit_libraries_found": [lib for lib in _AUDIT_LIBS if lib in frameworks],
             "log_paths_found": summary.get("log_paths") or [],
         }
@@ -2272,19 +2428,25 @@ def _build_pass_evidence(
     if rule_id == "NGA-012":
         tool_names = [n.get("name", "") for n in nodes if n.get("component_type") == "TOOL"]
         irreversible_tools = [
-            n.get("name", "") for n in nodes
+            n.get("name", "")
+            for n in nodes
             if n.get("component_type") == "TOOL"
-            and _IRREVERSIBLE_TOOL_PATTERNS.search(n.get("name", "") + " " + str(n.get("metadata", {})))
+            and _IRREVERSIBLE_TOOL_PATTERNS.search(
+                n.get("name", "") + " " + str(n.get("metadata", {}))
+            )
         ]
         return {
-            "agents_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
+            "agents_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES
+            ],
             "tools_checked": tool_names,
             "irreversible_tools_found": irreversible_tools,
         }
 
     if rule_id == "NGA-013":
         k8s = [
-            n.get("name", "") for n in nodes
+            n.get("name", "")
+            for n in nodes
             if n.get("component_type") in _DEPLOYMENT_TYPES
             and (
                 _depl_meta(n).get("deployment_target", "").lower() in ("kubernetes", "k8s")
@@ -2301,20 +2463,25 @@ def _build_pass_evidence(
 
     if rule_id == "NGA-015":
         return {
-            "deployment_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") == "DEPLOYMENT"],
+            "deployment_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") == "DEPLOYMENT"
+            ],
             "all_have_resource_limits": True,
         }
 
     if rule_id == "NGA-016":
         return {
-            "container_image_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _CONTAINER_TYPES],
+            "container_image_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _CONTAINER_TYPES
+            ],
             "all_images_version_pinned": True,
         }
 
     if rule_id == "NGA-017":
         return {
             "deployment_and_container_nodes_checked": [
-                n.get("name", "") for n in nodes
+                n.get("name", "")
+                for n in nodes
                 if n.get("component_type") in (_DEPLOYMENT_TYPES | _CONTAINER_TYPES)
             ],
             "all_have_health_check": True,
@@ -2322,43 +2489,63 @@ def _build_pass_evidence(
 
     if rule_id == "NGA-018":
         return {
-            "datastore_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _DATASTORE_TYPES],
-            "agent_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
-            "iam_nodes_found": [n.get("name", "") for n in nodes if n.get("component_type") in _IAM_TYPES],
+            "datastore_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _DATASTORE_TYPES
+            ],
+            "agent_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES
+            ],
+            "iam_nodes_found": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _IAM_TYPES
+            ],
         }
 
     if rule_id == "NGA-019":
         return {
-            "agent_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
-            "datastore_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _DATASTORE_TYPES],
+            "agent_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES
+            ],
+            "datastore_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _DATASTORE_TYPES
+            ],
             "requires_graph": True,
         }
 
     if rule_id == "NGA-020":
         return {
-            "agent_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
+            "agent_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES
+            ],
             "requires_graph": True,
         }
 
     if rule_id == "NGA-021":
         return {
-            "api_endpoint_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES],
+            "api_endpoint_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES
+            ],
             "requires_graph": True,
         }
 
     if rule_id == "NGA-022":
         return {
-            "tool_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") == "TOOL"],
+            "tool_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") == "TOOL"
+            ],
         }
 
     if rule_id == "NGA-023":
         return {
-            "datastore_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _DATASTORE_TYPES],
+            "datastore_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _DATASTORE_TYPES
+            ],
         }
 
     if rule_id == "NGA-024":
         return {
-            "agent_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
+            "agent_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES
+            ],
             "requires_graph": True,
         }
 
@@ -2371,17 +2558,23 @@ def _build_pass_evidence(
 
     if rule_id == "NGA-026":
         return {
-            "api_endpoint_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES],
+            "api_endpoint_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES
+            ],
         }
 
     if rule_id in ("NGA-027", "NGA-028", "NGA-029"):
         return {
-            "api_endpoint_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES],
+            "api_endpoint_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES
+            ],
         }
 
     if rule_id == "NGA-030":
         return {
-            "auth_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") == "AUTH"],
+            "auth_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") == "AUTH"
+            ],
         }
 
     return {}
@@ -2419,9 +2612,9 @@ def _summarize_description(text: str, max_len: int = 140) -> str:
     # descriptions are formatted as unpunctuated numbered steps.
     candidate = text
     for m in _SENTENCE_END_RE.finditer(text):
-        if _LIST_MARKER_TAIL_RE.search(text[:m.start()]):
+        if _LIST_MARKER_TAIL_RE.search(text[: m.start()]):
             continue
-        chunk = text[:m.end()].strip()
+        chunk = text[: m.end()].strip()
         if chunk:
             candidate = chunk
             break
@@ -2574,41 +2767,52 @@ class NgaRulesPlugin(AnalysisPlugin):
                         audit_status = "PASS"
                     else:
                         audit_status = "FAIL"
-                    rule_audit.append({
-                        "rule_id": rule_id_str,
-                        "severity": meta["severity"],
-                        "title": meta["title"],
-                        "checks": meta["checks"],
-                        "status": audit_status,
-                        "finding_count": len(rule_findings),
-                        "pass_reason": meta["pass_reason"] if is_pass and not not_applicable else "",
-                        "pass_evidence": _build_pass_evidence(i, nodes, edges, summary) if (is_pass and not not_applicable) else {},
-                        "affected": list({
-                            f.get("affected_component") or ""
-                            for f in rule_findings
-                            if f.get("affected_component")
-                        }),
-                    })
+                    rule_audit.append(
+                        {
+                            "rule_id": rule_id_str,
+                            "severity": meta["severity"],
+                            "title": meta["title"],
+                            "checks": meta["checks"],
+                            "status": audit_status,
+                            "finding_count": len(rule_findings),
+                            "pass_reason": meta["pass_reason"]
+                            if is_pass and not not_applicable
+                            else "",
+                            "pass_evidence": _build_pass_evidence(i, nodes, edges, summary)
+                            if (is_pass and not not_applicable)
+                            else {},
+                            "affected": list(
+                                {
+                                    f.get("affected_component") or ""
+                                    for f in rule_findings
+                                    if f.get("affected_component")
+                                }
+                            ),
+                        }
+                    )
             except Exception as exc:
                 _log.warning("NGA rule %s raised an error and was skipped: %s", rule.__name__, exc)
                 if verbose:
                     meta = _RULE_META[i]
-                    rule_audit.append({
-                        "rule_id": meta["rule_id"],
-                        "severity": meta["severity"],
-                        "title": meta["title"],
-                        "checks": meta["checks"],
-                        "status": "ERROR",
-                        "finding_count": 0,
-                        "pass_reason": f"Rule raised an error: {exc}",
-                        "affected": [],
-                    })
+                    rule_audit.append(
+                        {
+                            "rule_id": meta["rule_id"],
+                            "severity": meta["severity"],
+                            "title": meta["title"],
+                            "checks": meta["checks"],
+                            "status": "ERROR",
+                            "finding_count": 0,
+                            "pass_reason": f"Rule raised an error: {exc}",
+                            "affected": [],
+                        }
+                    )
         _log.info("NGA structural rules: %d finding(s)", len(findings))
 
         # Phase 2: OSV dep scan
         osv_findings: list[dict[str, Any]] = []
         if provider in ("osv", "all"):
             from nuguard.analysis.osv_client import query_osv
+
             _log.info("Querying OSV for %d dep(s)", len(deps))
             for osv in query_osv(deps, timeout=timeout):
                 osv_findings.append(_osv_to_finding(osv))
@@ -2618,6 +2822,7 @@ class NgaRulesPlugin(AnalysisPlugin):
         grype_findings: list[dict[str, Any]] = []
         if provider in ("grype", "all"):
             from nuguard.analysis.grype_client import query_grype_images, query_grype_sbom
+
             grype_timeout = float(config.get("grype_timeout", 60.0))
             _log.info("Running grype sbom scan")
             for g in query_grype_sbom(sbom, timeout=grype_timeout):
@@ -2652,7 +2857,8 @@ class NgaRulesPlugin(AnalysisPlugin):
             status=status,
             plugin=self.name,
             message=(f"Found {len(all_findings)} finding(s): " + ", ".join(msg_parts))
-            if all_findings else "No vulnerabilities detected",
+            if all_findings
+            else "No vulnerabilities detected",
             findings=all_findings,
             details={
                 "provider": provider,

@@ -94,4 +94,11 @@ def backfill_finding_remediation(
             if fallback is not None:
                 _set(finding, "remediation", fallback)
             continue
-        _set(finding, "remediation", _word_truncate(matched_artefact.rationale, max_len))
+        # A merged artefact's own `rationale` is a joined blob of several
+        # findings' text; using it directly for every finding_id in the
+        # merge risks a finding's remediation being truncated away entirely
+        # while a sibling finding's text remains visible. Prefer this
+        # finding's own preserved rationale when the artefact was merged.
+        own_rationale = matched_artefact.per_finding_rationale.get(finding_id)
+        rationale = own_rationale if own_rationale else matched_artefact.rationale
+        _set(finding, "remediation", _word_truncate(rationale, max_len))

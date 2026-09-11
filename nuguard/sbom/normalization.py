@@ -16,6 +16,41 @@ def canonicalize_text(value: str) -> str:
     return normalized.strip("_") or "unknown"
 
 
+_CAMEL_BOUNDARY_RE = re.compile(r"([a-z0-9])([A-Z])")
+_NON_ALNUM_RUN_RE = re.compile(r"[^a-z0-9_]+")
+_UNDERSCORE_RUN_RE = re.compile(r"_+")
+
+DEFAULT_GENERIC_CONTEXT_WORDS: frozenset[str] = frozenset(
+    {"prompt", "template", "message", "content", "text", "str"}
+)
+
+
+def humanize_context_name(
+    ctx: str, *, generic_words: frozenset[str] = DEFAULT_GENERIC_CONTEXT_WORDS
+) -> str | None:
+    """Convert a raw context identifier (variable/property name) into a
+    human-readable Title Case label, or ``None`` when the identifier is
+    empty or reduces to a too-generic single word not worth surfacing (the
+    caller should fall back to its own content-based heuristic instead).
+
+    Splits camelCase/PascalCase boundaries into words, then replaces each
+    *run* of non-alphanumeric characters with a single underscore. Using a
+    run (``+``) rather than one underscore per bad character is the fix for
+    a mangled-output bug: several adjacent non-alnum characters used to each
+    become their own underscore, which ``.replace("_", " ")`` then turned
+    into visible repeated whitespace (e.g. "Count   Lsp      Prompt").
+    """
+    ctx = ctx.strip()
+    if not ctx:
+        return None
+    split = _CAMEL_BOUNDARY_RE.sub(r"\1_\2", ctx)
+    slug = _NON_ALNUM_RUN_RE.sub("_", split.lower()).strip("_")
+    slug = _UNDERSCORE_RUN_RE.sub("_", slug)
+    if not slug or slug in generic_words:
+        return None
+    return slug.replace("_", " ").title()
+
+
 def normalize_display_name(name: str, component_type: object) -> str:
     """Convert raw adapter identifiers to human-readable display names.
 

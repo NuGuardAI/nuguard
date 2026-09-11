@@ -173,16 +173,16 @@ redteam:
 
   # LLM for attack-payload generation (must tolerate adversarial content)
   llm:
-    model: azure/DeepSeek-V4-Pro    # any LiteLLM model string (openai/gpt-4o, etc.)
+    model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
     api_key: ${AZURE_DEEPSEEK_KEY}
     api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
 
   # LLM for response evaluation and finding summarisation
   eval_llm:
-  model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
-  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
-  api_base: ${AZURE_DEEPSEEK_ENDPOINT}
-  
+    model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}
+
   # MCP server hostnames treated as trusted.
   # Servers absent from this list are classified 'untrusted' and eligible
   # as toxic-flow attack sources.

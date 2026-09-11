@@ -33,11 +33,14 @@ sbom_generation:
 # ─── Target application ────────────────────────────────────────────────────────
 target:
 #  url: http://localhost:5000
-  url: http://phlox-nuguard-039182d3.eastus2.azurecontainer.io:80
+  url: http://phlox-nuguard-d35b6449.eastus2.azurecontainer.io
 
-  # Chat/agent endpoint — pinned explicitly because auto-discovery was picking
-  # /api/chat/respond-visual (a vision-only route that 400s without page
-  # images), causing every scenario to abort after 3 consecutive send failures.
+  # Chat/agent endpoint — auto-discovered as /api/chat. Previously
+  # auto-discovery picked /api/chat/respond-visual (a vision-only route that
+  # 400s without page images), causing every scenario to abort after 3
+  # consecutive send failures; discover_chat_candidates_from_sbom() now
+  # penalises endpoints with a required structured field (e.g. document
+  # pages) beyond the chat payload key, so /api/chat wins on its own.
   #endpoint: /api/chat
 
   auth:
