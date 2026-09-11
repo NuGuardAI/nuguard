@@ -116,9 +116,9 @@ Install the NuGuard plugin and run SBOM, analysis, behavior, and red-team scans 
 ### [NuGuard.ai](http://nuguard.ai) — Managed SaaS for Security & Engineering Leaders
 
 - 🔐 **RBAC** — role-based access across teams and business units
-- 📊 **Executive dashboards** — risk posture and trends, board-ready
-- 📋 **Audit-ready reports** — compliance-mapped to OWASP & MITRE ATLAS
-- 🔗 **Enterprise integrations** — ServiceNow AI Control Tower, and more
+- 📊 **Executive dashboards** — risk posture and risk trends, board-ready
+- 📋 **Audit-ready reports** — compliance-mapped to OWASP & MITRE ATLAS plus support for EU AI Act, NIST, etc.
+- 🔗 **Enterprise integrations** — ServiceNow AI Control Tower, AWS Security Hub, and more
 - 🛟 **Managed support** — dedicated onboarding and SLAs
 
 **Free trial available — no credit card required.**
@@ -152,15 +152,16 @@ Release publication is managed by repository maintainers. See
 You can contact us at [oss@nuguard.ai](mailto:oss@nuguard.ai)
 For bug reporting, use the [issues](https://github.com/nuguard-ai/nuguard/issues) page on GitHub.
 
-**Do I need a live app to get findings?**
-No. `nuguard sbom` + `nuguard analyze` find structural and supply-chain risk statically. 
+**Do I need a live app to do a security assessment?**
+No. `nuguard sbom` + `nuguard analyze` find structural and supply-chain risks based on the SBOM (no source code or running application required). 
 `nuguard behavior` and `nuguard redteam` need a running target typically in a sandbox.
 
 **Which LLM providers are supported for LLM-assisted features?**
 Configured via the `llm` section of `nuguard.yaml`; provider credentials are read from environment variables. Lite LLM is used to abstract any llm provider.
+For redteam scenarios, an LLM with adversarial content tolerance is required to generate attack payloads effectively. The SaaS version of nuguard provides a pre-configured LLM for this purpose, ensuring consistent and reliable red-team assessments.
 
 **What if I don't want to run all redteam scenarios?**
-Filter by category or profile, or set `enabled: false` per scenario in a catalog exported with `nuguard redteam catalog-export`.
+Filter by profile (CI, Standard, Full), and configure destructive or non-destructive scenarios. Alternatively, set `enabled: false` per scenario in a catalog exported with `nuguard redteam catalog-export`.
 
 ## License
 
