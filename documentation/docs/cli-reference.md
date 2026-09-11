@@ -498,6 +498,7 @@ nuguard behavior --mode static+dynamic --fail-on critical --compare-to ./last-ru
 | `--baseline` | — | — | Path to a previous `BehaviorAnalysisResult` JSON for regression detection |
 | `--compare-to` | — | — | Path to a previous behavior report JSON, checked for run-profile comparability before diffing |
 | `--strict-report` | — | off | Fail if Markdown report validation finds structural issues |
+| `--resume` | — | — | Path to a checkpoint file from a previous aborted run; skips already-completed scenarios and merges results |
 | `--verbose` / `--no-verbose` | `-v` / `-V` | off | Print detailed per-turn traces |
 
 **Static checks (BA-001 – BA-008)** — deterministic SBOM × policy cross-checks; no running application or LLM required. Covers missing system-prompt controls, unenforced topic boundaries, over-permissioned tool edges, missing rate-limit controls, and more.
@@ -593,6 +594,7 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `--format` | `-f` | `text` | `text` \| `json` \| `markdown` \| `sarif` (repeat flag or use comma-separated values for multiple outputs) |
 | `--output` | `-o` | — | Write findings to this file. Required when multiple formats are requested; base path expands to per-format files |
 | `--fail-on` | — | `high` | Exit code `2` if any finding meets this severity |
+| `--resume` | — | — | Path to a checkpoint file from a previous aborted run; skips already-completed scenarios and merges results |
 | `--verbose` / `--no-verbose` | `-v` / `-V` | off | Print detailed per-turn traces |
 
 #### 🟣 `nuguard redteam catalog-export`
@@ -681,6 +683,12 @@ nuguard target verify --config nuguard.yaml --sbom app.sbom.json
 | `--skip-discovery` / `--no-skip-discovery` | off | Skip the pre-scan account/golden-data discovery conversation |
 
 > ✅ Run `nuguard target verify` before `nuguard redteam`, `nuguard behavior`, or `nuguard validate` to catch misconfigured endpoints, expired tokens, or firewall blocks early. Exits non-zero if any non-skipped credential fails.
+
+WebSocket chat endpoints are supported transparently — when SBOM or live discovery identifies the
+chat route as a WebSocket, `target verify` (and `behavior`/`redteam`) automatically switch to a
+persistent WebSocket connection instead of per-request HTTP POSTs. No extra flags needed; there's
+currently no `nuguard.yaml` override for hand-configuring WebSocket auth-message/completion-key
+framing — it's auto-discovery only.
 
 ### 🟣 `nuguard target discover-browser`
 

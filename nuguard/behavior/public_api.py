@@ -145,8 +145,10 @@ async def run_behavior_scenarios(
     remediation artefacts — from the run's findings, the same way
     :meth:`~nuguard.behavior.analyzer.BehaviorAnalyzer.analyze` does for the
     full static+dynamic pipeline, and backfills each finding's flat
-    ``remediation`` string from that plan. This is best-effort enrichment: it
-    never raises, and simply leaves ``remediation_plan`` empty on failure.
+    ``remediation`` string from that plan. ``remediation_plan`` is only ``[]``
+    when there's no SBOM or no findings to synthesize against — an actual
+    synthesis failure (e.g. a broken LLM client) propagates so it surfaces as
+    a visible run error instead of a silently empty plan.
     """
     _log.debug("run_behavior_scenarios: %d scenario(s)", len(request.scenarios))
     from nuguard.policy.public_api import normalize_cognitive_policy  # noqa: PLC0415

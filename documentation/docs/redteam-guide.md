@@ -133,6 +133,29 @@ The full unfiltered run (both categories) is what the [example walkthrough](exam
 
 For the full list of attack vectors — 125 scenarios across 18 categories, with per-scenario impact scores, goal types, and safe-execution modes — see the [Red-Team Scenario Catalog](redteam-scenario-catalog.md).
 
+### Resuming an aborted run
+
+If a run is interrupted (crash, circuit breaker trip, `Ctrl-C`) after at least one scenario has
+completed, NuGuard writes a checkpoint file under `prompt_cache_dir` and raises a
+`PartialRunError` naming that file. Pass it back with `--resume` to pick up where the run left
+off — already-completed scenarios are skipped and the final report combines the checkpointed and
+newly-run results:
+
+```bash
+nuguard redteam -c nuguard.yaml --resume nuguard-reports/.cache/redteam-<key>.json
+```
+
+Equivalent config:
+
+```yaml
+redteam:
+  resume: nuguard-reports/.cache/redteam-<key>.json
+```
+
+The checkpoint is fingerprinted against the SBOM and policy it was created with — resuming
+against a different SBOM/policy raises a `CheckpointMismatchError` instead of silently mixing
+results. On a fully successful run the checkpoint file is deleted automatically.
+
 ### 📖 Need every flag?
 
 [![Read the CLI Reference](https://img.shields.io/badge/→_Read_the_CLI_Reference-111111?style=for-the-badge)](cli-reference.md#nuguard-redteam)
