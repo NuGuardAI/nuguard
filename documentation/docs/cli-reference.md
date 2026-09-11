@@ -205,7 +205,7 @@ Runs up to seven scanners in sequence. External scanners are silently skipped wh
 
 | Scanner | Checks | Requires |
 |---|---|:---:|
-| **NGA** structural rules | AI-specific structural risks (NGA-001–018) | *(built in)* |
+| **NGA** structural rules | AI-specific structural risks (NGA-001–030) | *(built in)* |
 | **Supply-chain** threat pack | Lifecycle scripts, CI/CD publish paths, AI-agent config poisoning (NGA-SC-001–027; also mapped to the OWASP Top 10 CI/CD Security Risks) | *(built in)* |
 | **OSV** | Dependency CVE lookup | *(built in)* |
 | **Grype** | Package / container CVEs | `grype` on PATH |
@@ -230,7 +230,7 @@ nuguard analyze --sbom app.sbom.json --format json --format markdown --output re
 |---|---|---|
 | `--sbom` | **required** | Path to AI-SBOM JSON |
 | `--config`, `-c` | — | Path to `nuguard.yaml`; supplies `min_severity` and `nga_only` defaults (CLI flags override) |
-| `--nga` | off | NGA structural rules only (NGA-001–018); disables every other scanner |
+| `--nga` | off | NGA structural rules only (NGA-001–030); disables every other scanner |
 | `--format`, `-f` | `markdown` | `markdown` \| `sarif` \| `json` (repeat flag or use comma-separated values for multiple outputs) |
 | `--min-severity` | `medium` | Minimum severity to include: `critical` \| `high` \| `medium` \| `low` \| `info` |
 | `--source`, `-s` | — | Source directory for supply-chain, Checkov, Trivy, and Semgrep scans |
@@ -246,7 +246,7 @@ nuguard analyze --sbom app.sbom.json --format json --format markdown --output re
 | `--supply-chain-profile` | `standard` | `ci` \| `standard` \| `full` — `full` adds git-history checks |
 | `--supply-chain-verify` | `off` | Artifact registry verification: `off` \| `warn` \| `fail` |
 | `--llm` | off | LLM enrichment in the ATLAS annotation pass |
-| `--verbose`, `-v` | off | Show all 18 NGA rules (pass *and* fail) with evidence for why each passed |
+| `--verbose`, `-v` | off | Show all 30 NGA rules (pass *and* fail) with evidence for why each passed |
 | `--output`, `-o` | stdout | Write report to this file. Required when multiple formats are requested; base path expands to per-format files (for example `analyze.json`, `analyze.md`) |
 | `--policy` | — | *Reserved* — accepted but not yet wired to a policy check in this command; use [`nuguard policy check`](#nuguard-policy) instead |
 

@@ -100,7 +100,7 @@ def analyze(
     ),
     nga: bool = typer.Option(
         False, "--nga",
-        help="Run NGA structural rules only (NGA-001–018); skip OSV, Grype, Checkov, Trivy, Semgrep, and ATLAS native checks.",
+        help="Run NGA structural rules only (NGA-001–030); skip OSV, Grype, Checkov, Trivy, Semgrep, and ATLAS native checks.",
     ),
     format: list[str] | None = typer.Option(
         None,
@@ -149,7 +149,7 @@ def analyze(
         ),
     ),
     supply_chain: bool = typer.Option(True, "--supply-chain/--no-supply-chain",
-                                      help="Run supply-chain threat pack (NGA-SC-001–025)."),
+                                      help="Run supply-chain threat pack (NGA-SC-001–027)."),
     supply_chain_profile: Optional[str] = typer.Option(
         None, "--supply-chain-profile",
         help="Supply-chain scan profile: ci | standard | full. [default: standard]",
@@ -169,7 +169,7 @@ def analyze(
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v",
-        help="Show all 21 NGA rules (pass and fail) with evidence on why each passed.",
+        help="Show all 30 NGA rules (pass and fail) with evidence on why each passed.",
     ),
     output: str = typer.Option(
         None, "--output", "-o",
@@ -1103,7 +1103,7 @@ def _render_markdown(
         lines += _render_rule_audit_section(
             nga_audit,
             "NGA Rule Audit",
-            "All 26 NGA structural rules — pass/fail status with evidence.",
+            "All 30 NGA structural rules — pass/fail status with evidence.",
         )
 
     # ------------------------------------------------------------------
@@ -1113,7 +1113,7 @@ def _render_markdown(
         lines += _render_rule_audit_section(
             sc_audit,
             "Supply Chain Rule Audit",
-            "All 25 NGA-SC supply-chain rules — pass/fail/skipped status with evidence.",
+            "All 27 NGA-SC supply-chain rules — pass/fail/skipped status with evidence.",
         )
 
     return "\n".join(lines)

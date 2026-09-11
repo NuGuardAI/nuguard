@@ -1712,7 +1712,7 @@ class NuGuardConfig(BaseSettings):
     analyze_nga_only: bool = Field(
         default=False,
         description=(
-            "Run only NGA structural rules (NGA-001–018), skipping external tool "
+            "Run only NGA structural rules (NGA-001–030), skipping external tool "
             "scans (yaml: analyze.nga_only, CLI: --nga)."
         ),
     )
