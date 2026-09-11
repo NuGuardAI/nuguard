@@ -23,7 +23,7 @@
 
 ---
 
-NuGuard is an open source AI application security toolkit. It generates an AI Bill of Materials (AI-SBOM) for your agentic application, statically analyzes it for structural risk, then red-teams a running instance with a catalog of 100+ adversarial scenarios — prompt injection, tool abuse, data exfiltration, and more — so you find the finding before an attacker does.
+NuGuard is an open source AI application safety & security toolkit. It generates an AI Software Bill of Materials (AI-SBOM) for your agentic application, statically analyzes it for structural risk in the AI Stack and the software infrastructure. It then red-teams a sandboxed instance with a catalog of 100+ adversarial scenarios — prompt injection, tool abuse, data exfiltration, and more — so you find the issues before an attacker does. An automated judge evaluates the findings based on their impact and provides actionable remediation guidance.
 
 ## What It Does
 
@@ -45,6 +45,27 @@ A real scan of a live fintech agent — Pinnacle Bank Assistant — walking thro
 </p>
 
 [**→ Open the interactive demo**](../documentation/docs/pinnacle-bank-demo.html) — scroll through the full walkthrough yourself.
+
+## Framework Coverage
+
+NuGuard's AI-SBOM extractor understands framework-specific code, not just generic regex — it recognizes agent/tool/model declarations natively across:
+
+| Language | Frameworks |
+|---|---|
+| **Python** | LangChain, LangGraph, OpenAI Agents SDK, CrewAI (code + YAML), AutoGen (code + YAML), Google ADK, LlamaIndex, Agno, AWS BedrockAgentCore, Azure AI Agent Service, Azure Semantic Kernel, Guardrails AI, MCP Server (FastMCP + low-level) |
+| **TypeScript / JavaScript** | LangChain.js, LangGraph.js, OpenAI Agents (TS), Azure AI Agents (TS), Agno (TS), MCP Server (TS) |
+| **Go** | LangChainGo, Eino, Genkit, Anthropic SDK, OpenAI SDK, Google GenAI, MCP Server, net/http, Gorilla Mux, gqlgen |
+| **C#** | Azure Semantic Kernel, ASP.NET Core, ML.NET |
+
+Beyond the AI stack itself, the supply-chain/infrastructure analysis covers:
+
+| Category | Coverage |
+|---|---|
+| **Infrastructure & Configuration** | Terraform, CloudFormation, Azure Bicep, Kubernetes manifests, GCP Deployment Manager, GitHub Actions, Dockerfiles, Nginx configs |
+| **Data & Storage** | SQL schemas (PHI/PII classification), SQLAlchemy models, Django models, Pydantic models, prompt files (`.txt`/`.md`/`.jinja`) |
+| **Output formats** | SARIF, CycloneDX, SPDX, Markdown |
+
+See the [full framework matrix](../documentation/docs/index.html#frameworks) for details.
 
 ## Comparison
 
@@ -83,18 +104,26 @@ Install the NuGuard plugin and run SBOM, analysis, behavior, and red-team scans 
 
 ## Hosted Version
 
+> **Running NuGuard at organizational scale?** The managed SaaS adds what a CISO or VP Engineering needs on top of everything in this repo — no infra to stand up or maintain.
+
 <table align="center">
 <tr>
-<td align="center" width="600">
+<td align="center" width="120">
+<img src="../documentation/docs/assets/logo-sm.png" alt="NuGuard.ai" width="72">
+</td>
+<td>
 
-### <img src="../documentation/docs/assets/logo-sm.png" alt="NuGuard.ai" width="24"> [NuGuard.ai](http://nuguard.ai)
+### [NuGuard.ai](http://nuguard.ai) — Managed SaaS for Security & Engineering Leaders
 
-A managed SaaS version of NuGuard, with additional features and support on top of everything in this repo.
-Free trial available.
+- 🔐 **RBAC** — role-based access across teams and business units
+- 📊 **Executive dashboards** — risk posture and risk trends, board-ready
+- 📋 **Audit-ready reports** — compliance-mapped to OWASP & MITRE ATLAS plus support for EU AI Act, NIST, etc.
+- 🔗 **Enterprise integrations** — ServiceNow AI Control Tower, AWS Security Hub, and more
+- 🛟 **Managed support** — dedicated onboarding and SLAs
 
-Supports RBAC, executive dashboards, audit-ready reports, policy checks, and integrations (ServiceNow AI Control Tower).
+**Free trial available — no credit card required.**
 
-[![Visit NuGuard.ai](https://img.shields.io/badge/→_Visit_NuGuard.ai-111111?style=for-the-badge)](http://nuguard.ai)
+[![Start Free Trial →](https://img.shields.io/badge/Start_Free_Trial_→-111111?style=for-the-badge)](http://nuguard.ai)
 
 </td>
 </tr>
@@ -123,15 +152,16 @@ Release publication is managed by repository maintainers. See
 You can contact us at [oss@nuguard.ai](mailto:oss@nuguard.ai)
 For bug reporting, use the [issues](https://github.com/nuguard-ai/nuguard/issues) page on GitHub.
 
-**Do I need a live app to get findings?**
-No. `nuguard sbom` + `nuguard analyze` find structural and supply-chain risk statically. 
+**Do I need a live app to do a security assessment?**
+No. `nuguard sbom` + `nuguard analyze` find structural and supply-chain risks based on the SBOM (no source code or running application required). 
 `nuguard behavior` and `nuguard redteam` need a running target typically in a sandbox.
 
 **Which LLM providers are supported for LLM-assisted features?**
 Configured via the `llm` section of `nuguard.yaml`; provider credentials are read from environment variables. Lite LLM is used to abstract any llm provider.
+For redteam scenarios, an LLM with adversarial content tolerance is required to generate attack payloads effectively. The SaaS version of nuguard provides a pre-configured LLM for this purpose, ensuring consistent and reliable red-team assessments.
 
 **What if I don't want to run all redteam scenarios?**
-Filter by category or profile, or set `enabled: false` per scenario in a catalog exported with `nuguard redteam catalog-export`.
+Filter by profile (CI, Standard, Full), and configure destructive or non-destructive scenarios. Alternatively, set `enabled: false` per scenario in a catalog exported with `nuguard redteam catalog-export`.
 
 ## License
 
@@ -141,8 +171,7 @@ Filter by category or profile, or set `enabled: false` per scenario in a catalog
 
 <sub>
 <strong>Docs:</strong>
-<a href="../documentation/docs/getting-started.md">Getting started</a> ·
-<a href="../documentation/docs/quick-start.md">Quick start</a> ·
+<a href="../documentation/docs/quick-start.md">Getting started / Quick start</a> ·
 <a href="../documentation/docs/cli-reference.md">CLI reference</a> ·
 <a href="../documentation/docs/policy-engine-guide.md">Policy engine</a> ·
 <a href="../documentation/docs/static-analysis-guide.md">Static analysis</a> ·
