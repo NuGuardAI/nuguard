@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Flask App (app.py)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/src/app.py",
+            "python": "${workspaceFolder}/backend/.venv/bin/python",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "FLASK_ENV": "development"
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}/backend/src",
+            "envFile": "${workspaceFolder}/backend/.env"
+        }
+    ]
+}
