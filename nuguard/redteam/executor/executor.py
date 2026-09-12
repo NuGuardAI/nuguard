@@ -20,6 +20,7 @@ from nuguard.common.turn_helpers import handle_mid_turn_interrupts
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthSession
     from nuguard.common.discovery import DiscoveredProfile
+    from nuguard.common.target_client_builder import TargetClient
     from nuguard.redteam.llm_engine.judge_cache import JudgeCache
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
@@ -38,7 +39,7 @@ from nuguard.redteam.llm_engine.response_evaluator import LLMResponseEvaluator
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 from nuguard.redteam.target.action_logger import ActionLogger
 from nuguard.redteam.target.canary import CanaryScanner
-from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
+from nuguard.redteam.target.client import TargetUnavailableError
 from nuguard.redteam.target.session import AttackSession
 
 from .chain_assembler import ChainAssembler
@@ -360,7 +361,7 @@ class AttackExecutor:
 
     def __init__(
         self,
-        client: TargetAppClient,
+        client: "TargetClient",
         policy: CognitivePolicy | None = None,
         canary: CanaryScanner | None = None,
         logger: ActionLogger | None = None,
@@ -490,6 +491,11 @@ class AttackExecutor:
         steps = ChainAssembler.sort_steps(chain)
         results: list[StepResult] = []
         _consecutive_failures = 0
+        # Tracks whether every failure in the current streak was specifically
+        # an HTTP 401 — lets the abort be labeled "auth failure" (a config
+        # problem) instead of "target unavailable" (an outage) when that's
+        # what actually happened. Reset alongside _consecutive_failures.
+        _consecutive_failures_all_401 = True
         # Chain-level "we've proven the vulnerability" flag.  Once set, the loop
         # below short-circuits remaining variants — running additional turns
         # after a confirmed high-confidence hit only wastes requests on the
@@ -588,16 +594,27 @@ class AttackExecutor:
                 or any(pat in _resp_lower_run for pat in APP_TRANSIENT_ERROR_PATTERNS)
             ) and not is_rate_limited(result.response):
                 _consecutive_failures += 1
+                _is_401_failure = (
+                    result.response.startswith("[HTTP 401]")
+                    or result.http_status_code == 401
+                )
+                _consecutive_failures_all_401 = (
+                    _consecutive_failures_all_401 and _is_401_failure
+                )
                 if _consecutive_failures >= self.MAX_CONSECUTIVE_FAILURES:
-                    _log.warning(
-                        "Chain %s aborted after %d consecutive request failures",
-                        chain.chain_id, _consecutive_failures,
-                    )
                     chain.status = "aborted"
-                    chain.abort_reason = "consecutive_request_failures"
+                    if _consecutive_failures_all_401:
+                        chain.abort_reason = "consecutive_auth_failures"
+                    else:
+                        chain.abort_reason = "consecutive_request_failures"
+                    _log.warning(
+                        "Chain %s aborted after %d consecutive request failures (%s)",
+                        chain.chain_id, _consecutive_failures, chain.abort_reason,
+                    )
                     break
             else:
                 _consecutive_failures = 0
+                _consecutive_failures_all_401 = True
 
             if result.success_signal_found:
                 session.add_evidence(step.step_id, result.response)
@@ -897,7 +914,7 @@ class AttackExecutor:
             # after the LLM-eval block below, since it only applies when no
             # LLM judge actually adjudicated this step.
             result.data_exposure = check_response_for_data_exposure(
-                response, step.sensitive_fields
+                response, step.sensitive_fields, http_status_code=status_code
             )
             result.resolved_payload = _resolved_payload
         else:
@@ -1142,6 +1159,7 @@ class AttackExecutor:
                 golden_data=session.golden_data,
                 app_log_context=app_log_context,
                 sensitive_fields=step.sensitive_fields if step.target_path else None,
+                http_status_code=result.http_status_code,
             )
             if llm_eval.get("confidence") in ("high", "medium"):
                 result.success_signal_found = bool(llm_eval.get("succeeded", False))

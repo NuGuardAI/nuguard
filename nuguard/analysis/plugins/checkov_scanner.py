@@ -20,6 +20,7 @@ Usage
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -39,6 +40,11 @@ _SEV_MAP: dict[str, str] = {
     "LOW":      "LOW",
     "UNKNOWN":  "LOW",
 }
+
+# Checkov's secrets runner sets `resource` to a hex hash of the detected
+# secret rather than a real resource address; matched so we can fall back
+# to the file location instead of surfacing the hash as a display name.
+_HEX_HASH_RE = re.compile(r"^[0-9a-f]{20,}(:[0-9a-f]{20,})?$", re.IGNORECASE)
 
 
 def _checkov_path() -> str | None:
@@ -84,6 +90,7 @@ class CheckovScannerPlugin(AnalysisPlugin):
         all_findings: list[dict[str, Any]] = []
         for path in iac_paths:
             all_findings.extend(_run_checkov(binary, path, config))
+        all_findings = _dedupe_findings(all_findings)
 
         status = "warning" if all_findings else "ok"
         message = (
@@ -99,6 +106,39 @@ class CheckovScannerPlugin(AnalysisPlugin):
             findings=all_findings,
             details={"total": len(all_findings), "scanned_paths": list(iac_paths)},
         )
+
+
+def _dedupe_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse findings for the same rule + affected component.
+
+    Checkov has no CLI flag for this (checked: no dedup/uniqueness option
+    exists). The same (rule_id, resource-address) pair can legitimately be
+    reported more than once — e.g. two different files each defining a
+    Terraform resource with the same address — which the report then
+    displays as repeated, identical-looking finding blocks since it groups
+    by the bare resource address with no file qualifier. Rather than drop
+    the duplicate (losing the fact that a second file also has the issue),
+    merge their ``evidence`` (file:line) values so a reader still sees every
+    affected location. remediation is a deterministic function of rule_id
+    alone (checkov's guideline URL doesn't vary per-resource), so rule_id
+    equality already implies remediation equality.
+    """
+    merged: dict[tuple[str, str], dict[str, Any]] = {}
+    order: list[tuple[str, str]] = []
+    for f in findings:
+        key = (f["rule_id"], f["affected"][0] if f["affected"] else "")
+        if key not in merged:
+            merged[key] = dict(f)
+            order.append(key)
+            continue
+        existing = merged[key]
+        new_evidence = f.get("evidence")
+        if new_evidence:
+            locations = existing["evidence"].split("; ") if existing.get("evidence") else []
+            if new_evidence not in locations:
+                locations.append(new_evidence)
+                existing["evidence"] = "; ".join(locations)
+    return [merged[k] for k in order]
 
 
 def _collect_iac_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:
@@ -211,22 +251,29 @@ def _parse_checkov_output(data: Any, scan_path: str) -> list[dict[str, Any]]:
             continue
         for check_result in (entry.get("results", {}).get("failed_checks") or []):
             check_id  = check_result.get("check_id", "")
-            check_obj = check_result.get("check", {})
-            name      = check_obj.get("name", check_id)
+            name      = check_result.get("check_name", check_id)
             resource  = check_result.get("resource", "")
             file_path = check_result.get("file_path", scan_path)
-            guideline = check_obj.get("guideline", "")
+            guideline = check_result.get("guideline", "")
             severity  = _SEV_MAP.get(
-                str(check_result.get("severity") or check_obj.get("severity") or "MEDIUM").upper(),
+                str(check_result.get("severity") or "MEDIUM").upper(),
                 "MEDIUM",
             )
 
+            line_range = check_result.get("file_line_range") or []
+            location = f"{file_path}:{line_range[0]}" if line_range else file_path
+            display_resource = location if _HEX_HASH_RE.match(resource) else (resource or location)
+            # Omit evidence when it would just repeat the affected-component
+            # value (the CKV_SECRET_* hash-avoidance case already shows it).
+            evidence = None if display_resource == location else location
+
             findings.append({
                 "rule_id":     check_id,
-                "title":       name,
-                "description": f"IaC misconfiguration: {name} in `{resource}`",
+                "title":       f"[IaC misconfiguration] {name} — {display_resource}",
+                "description": f"IaC misconfiguration: {name} in `{display_resource}`",
                 "severity":    severity,
-                "affected":    [resource] if resource else [file_path],
+                "affected":    [display_resource],
+                "evidence":    evidence,
                 "remediation": guideline,
                 "url":         guideline,
                 "source":      "checkov",

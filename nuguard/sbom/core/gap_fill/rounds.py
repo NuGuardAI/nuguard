@@ -24,6 +24,7 @@ from typing import Any
 from nuguard.common.logging import get_logger
 
 from ...models import AiSbomDocument, Node
+from ...models import is_soft_rejected as _is_soft_rejected
 from ...types import ComponentType
 from .budget import GapFillBudget
 from .categories import _CATEGORY_ORDER
@@ -258,6 +259,8 @@ def apply_discovery_results(
     if doc.summary:
         counts: dict[str, int] = {}
         for node in doc.nodes:
+            if _is_soft_rejected(node):
+                continue
             key = node.component_type.value
             counts[key] = counts.get(key, 0) + 1
         doc.summary.node_counts = counts

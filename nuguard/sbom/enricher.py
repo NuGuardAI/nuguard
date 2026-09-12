@@ -195,9 +195,43 @@ def enrich(doc: AiSbomDocument) -> None:
     _enrich_api_endpoints(doc, targets, sources_of_type, post_endpoints_by_path)
     _enrich_tools(doc, tool_frameworks, framework_auth, privilege_node_ids, targets)
     _enrich_agents(doc, targets, sources_of_type, node_by_id)
+    _enrich_login_token_key(doc)
     _backfill_descriptions(doc)
     _enrich_instrumentation(doc)
     _enrich_testing(doc)
+
+
+def _enrich_login_token_key(doc: AiSbomDocument) -> None:
+    """Resolve and store the login-response auth-token key path on the SBOM.
+
+    Reuses the same login-endpoint detection and token-key matching
+    (including dotted nested paths, e.g. "tokens.accessToken") already
+    used at runtime by ``nuguard.common.target_client_builder``, so this
+    information is available statically in the SBOM itself rather than only
+    being recomputed live at behavior/redteam time. A later LLM-based
+    fallback pass may fill this in when static DTO extraction can't (see
+    extras['login_token_response_key_source']).
+    """
+    from nuguard.common.target_client_builder import (  # noqa: PLC0415
+        _discover_login_endpoint,
+    )
+
+    result = _discover_login_endpoint(doc)
+    if result is None:
+        return
+    endpoint_path, _user_field, _pass_field, token_key = result
+    if not token_key:
+        return
+    for node in doc.nodes:
+        if node.component_type != ComponentType.API_ENDPOINT:
+            continue
+        meta = node.metadata
+        if (meta.endpoint or "").strip() != endpoint_path:
+            continue
+        if meta.login_token_response_key is None:
+            meta.login_token_response_key = token_key
+            meta.extras["login_token_response_key_source"] = "static_dto"
+        break
 
 
 # ---------------------------------------------------------------------------

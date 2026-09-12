@@ -26,7 +26,12 @@ if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.redteam.target.ws_client import WebSocketTargetClient
     from nuguard.sbom.models import AiSbomDocument
+
+    # Shared type for either concrete client build_target_app_client() may return.
+    # Both expose the same send()/new_session()/invoke_endpoint()/aclose() surface.
+    TargetClient = TargetAppClient | WebSocketTargetClient
 
 _log = get_logger(__name__)
 
@@ -191,16 +196,31 @@ def _discover_login_endpoint(sbom: "AiSbomDocument") -> "tuple[str, str, str, st
             orig_pass = next(
                 (k for k in orig_schema if k.lower() == pass_field), pass_field
             )
-            # Try to detect the token key from the response body schema
-            token_key: str | None = None
+            # Prefer a token key already resolved and stored on the SBOM node
+            # (nuguard/sbom/enricher.py::_enrich_login_token_key, static DTO
+            # extraction; or an LLM-inference fallback pass) over recomputing
+            # it here — this also transparently picks up LLM-inferred values
+            # without any extra logic in this module.
+            token_key: str | None = meta.login_token_response_key
+            # Fall back to matching the response body schema directly (older
+            # SBOMs generated before this field existed, or apps where
+            # enrichment didn't run). Matches both flat keys (FastAPI/ASP.NET
+            # Core response models) and dotted nested paths (e.g.
+            # "tokens.accessToken", pre-flattened one level deep by adapters
+            # like nestjs_adapter.py) — the final path segment is compared
+            # against the candidate list, preferring the shallowest match
+            # when several dotted candidates exist.
             try:
-                resp_schema = getattr(meta, "response_body_schema", None) or {}
-                if isinstance(resp_schema, dict) and resp_schema:
-                    resp_keys_lower = {k.lower(): k for k in resp_schema}
-                    for candidate in _TOKEN_KEY_CANDIDATES:
-                        if candidate.lower() in resp_keys_lower:
-                            token_key = resp_keys_lower[candidate.lower()]
-                            break
+                resp_schema = meta.response_schema or {}
+                if not token_key and isinstance(resp_schema, dict) and resp_schema:
+                    matches = [
+                        (k.count("."), k)
+                        for k in resp_schema
+                        if k.rsplit(".", 1)[-1].lower() in _TOKEN_KEY_CANDIDATES_SET
+                    ]
+                    if matches:
+                        matches.sort(key=lambda t: t[0])
+                        token_key = matches[0][1]
             except Exception:
                 pass
             best = (score, path, orig_user, orig_pass, token_key)
@@ -346,8 +366,11 @@ def build_target_app_client(
     heal_llm: "LLMClient | None" = None,
     # Nested value template from OpenAPI schema detection (ProbeResult.value_template).
     chat_payload_value_template: "dict[str, Any] | None" = None,
-) -> "TargetAppClient":
-    """Build a :class:`TargetAppClient` with SBOM-assisted config resolution.
+    # WebSocket-only options (ignored for HTTP targets) — see ws_client.WebSocketTargetClient.
+    ws_auth_message: "dict[str, Any] | None" = None,
+    ws_response_complete_key: str | None = None,
+) -> "TargetClient":
+    """Build a :class:`TargetAppClient` (or :class:`WebSocketTargetClient`) with SBOM-assisted config resolution.
 
     Args:
         target_url: Base URL of the target application.
@@ -355,6 +378,10 @@ def build_target_app_client(
             not yet determined — SBOM discovery and framework adapters may fill
             it in.
         payload_key: JSON body key for the chat message (default ``"message"``).
+            The special value ``"__websocket__"`` (set by SBOM/live discovery
+            when the chat endpoint is a WebSocket route) builds a
+            :class:`~nuguard.redteam.target.ws_client.WebSocketTargetClient`
+            instead of the HTTP client.
         payload_list: Whether to wrap the payload value in a list.
         payload_format: ``"json"`` or ``"form"`` encoding for the POST body.
         response_key: Explicit top-level key to extract from the JSON response.
@@ -366,14 +393,20 @@ def build_target_app_client(
         explicitly_set: Set of config field names that were *explicitly* provided
             by the user (e.g. Pydantic ``model_fields_set``).  Discovery only
             overrides values that are *not* in this set.
-        heal_llm: Optional LLM client used to self-heal a 422 schema-validation
-            error by inferring the missing request field(s) from the error
-            body (see ``TargetAppClient._attempt_422_heal``). None disables
-            self-healing.
+        heal_llm: Optional LLM client used to self-heal a schema-validation
+            error (HTTP 400 or 422) by inferring the missing request field(s)
+            from the error body (see ``TargetAppClient._attempt_schema_heal``).
+            None disables self-healing.
+        ws_auth_message: WebSocket-only. First message sent after connecting,
+            for targets that authenticate over the first frame instead of headers.
+        ws_response_complete_key: WebSocket-only. Key that marks a message as the
+            final chunk of a response; messages without it are drained as
+            server-push/partial content while awaiting completion.
 
     Returns:
-        A fully configured :class:`TargetAppClient` instance.  Check
-        ``client.resolution_notes`` for any automatic config adjustments.
+        A fully configured :class:`TargetAppClient` (or, for WebSocket targets,
+        :class:`WebSocketTargetClient`) instance.  Check ``client.resolution_notes``
+        for any automatic config adjustments.
     """
     from nuguard.redteam.target.client import TargetAppClient
 
@@ -446,6 +479,24 @@ def build_target_app_client(
         response_key = discovered_response_key
 
     # ── 4. Construct the client ─────────────────────────────────────────────
+    if payload_key == "__websocket__":
+        from nuguard.redteam.target.ws_client import WebSocketTargetClient
+
+        ws_client = WebSocketTargetClient(
+            base_url=target_url,
+            chat_path=endpoint or "/ws",
+            timeout=timeout,
+            default_headers=auth_headers or None,
+            chat_payload_key="message",
+            chat_payload_list=payload_list,
+            chat_response_key=response_key,
+            chat_payload_extras=payload_extras or None,
+            ws_auth_message=ws_auth_message,
+            ws_response_complete_key=ws_response_complete_key,
+        )
+        ws_client.resolution_notes = resolution_notes
+        return ws_client
+
     client = TargetAppClient(
         base_url=target_url,
         chat_path=endpoint or "/chat",

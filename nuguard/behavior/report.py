@@ -175,7 +175,8 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     lines.append(f"- **Intent**: {result.intent.app_purpose or 'not determined'}")
     lines.append(f"- **Analysis Mode**: {mode}")
     lines.append(f"- **Scan Outcome**: `{result.scan_outcome}`")
-    lines.append(f"- **Run ID**: `{result.run_id}`")
+    if meta is not None and meta.verbose:
+        lines.append(f"- **Run ID**: `{result.run_id}`")
     _dyn_outcome = getattr(result, "dynamic_scan_outcome", None)
     if result.static_findings and _dyn_outcome in (
         "aborted_target_unavailable",
@@ -695,8 +696,9 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
 
     # Behavioral Gap Summary — findings promoted from LLM-generated gap strings
     gap_findings = [f for f in result.dynamic_findings if f.get("finding_type") in _GAP_FINDING_TYPES]
-    if gap_findings:
-        stats = result.gap_aggregation_stats or {}
+    stats = result.gap_aggregation_stats or {}
+    suppressed_gap_buckets = int(stats.get("buckets_suppressed_by_coverage", 0))
+    if gap_findings or suppressed_gap_buckets:
         threshold = int(stats.get("min_occurrences_threshold", 0))
         lines.append("## Behavioral Gap Summary")
         lines.append("")
@@ -711,6 +713,10 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         lines.append(f"| Deduplicated unique gaps | {int(stats.get('unique_gap_observations', 0))} |")
         lines.append(f"| Buckets formed | {int(stats.get('buckets_formed', 0))} |")
         lines.append(f"| Buckets emitted as findings (>= {threshold}) | {int(stats.get('buckets_emitted', len(gap_findings)))} |")
+        lines.append(
+            "| Buckets suppressed by successful final coverage | "
+            f"{int(stats.get('buckets_suppressed_by_coverage', 0))} |"
+        )
         lines.append(f"| Buckets dropped (below threshold) | {int(stats.get('buckets_dropped', 0))} |")
         lines.append("")
         for ftype in ("CAPABILITY_GAP", "INTENT_MISALIGNMENT", "TOOL_CHAIN_BROKEN", "POLICY_VIOLATION"):

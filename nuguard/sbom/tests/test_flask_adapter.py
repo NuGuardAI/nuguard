@@ -99,6 +99,68 @@ class TestEndpointMetadata:
         assert eps[0].metadata["endpoint"] == "/status"
 
 
+class TestWebSocketRoutes:
+    """flask_sock @sock.route(...) routes must be detected as API_ENDPOINT
+    nodes with method='WEBSOCKET' — regression test for the
+    voicelive-api-salescoach-demo /ws/voice route being silently dropped."""
+
+    def test_sock_route_with_literal_path_detected_as_websocket(self) -> None:
+        code = (
+            "from flask import Flask\n"
+            "from flask_sock import Sock\n"
+            "app = Flask(__name__)\n"
+            "sock = Sock(app)\n\n"
+            "@sock.route('/ws/voice')\n"
+            "def voice(ws):\n"
+            "    while True:\n"
+            "        data = ws.receive()\n"
+        )
+        eps = _endpoints(_extract(code))
+        assert len(eps) == 1
+        assert eps[0].metadata["method"] == "WEBSOCKET"
+        assert eps[0].metadata["endpoint"] == "/ws/voice"
+
+    def test_sock_route_with_module_constant_path_resolved(self) -> None:
+        """The route path is often a module-level constant rather than an
+        inline literal (e.g. WEBSOCKET_ENDPOINT = "/ws/voice" then
+        @sock.route(WEBSOCKET_ENDPOINT)) — must still resolve to the real path."""
+        code = (
+            "from flask import Flask\n"
+            "from flask_sock import Sock\n\n"
+            "WEBSOCKET_ENDPOINT = '/ws/voice'\n"
+            "app = Flask(__name__)\n"
+            "sock = Sock(app)\n\n"
+            "@sock.route(WEBSOCKET_ENDPOINT)\n"
+            "def voice(ws):\n"
+            "    while True:\n"
+            "        data = ws.receive()\n"
+        )
+        eps = _endpoints(_extract(code))
+        assert len(eps) == 1
+        assert eps[0].metadata["method"] == "WEBSOCKET"
+        assert eps[0].metadata["endpoint"] == "/ws/voice"
+
+    def test_plain_app_route_is_not_misclassified_as_websocket(self) -> None:
+        """A normal @app.route(...) on the same file as a Sock() instance must
+        not be swept up as WEBSOCKET just because a sock variable exists."""
+        code = (
+            "from flask import Flask\n"
+            "from flask_sock import Sock\n"
+            "app = Flask(__name__)\n"
+            "sock = Sock(app)\n\n"
+            "@app.route('/api/config')\n"
+            "def config():\n"
+            "    return {}\n\n"
+            "@sock.route('/ws/voice')\n"
+            "def voice(ws):\n"
+            "    while True:\n"
+            "        data = ws.receive()\n"
+        )
+        eps = _endpoints(_extract(code))
+        methods_by_path = {e.metadata["endpoint"]: e.metadata["method"] for e in eps}
+        assert methods_by_path == {"/api/config": "GET", "/ws/voice": "WEBSOCKET"}
+
+
 class TestSecurityMisconfigDetection:
     def test_wildcard_cors_flagged(self) -> None:
         code = (

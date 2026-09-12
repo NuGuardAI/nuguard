@@ -32,12 +32,21 @@ _ARTEFACT_TYPE_PRIORITY = {
 }
 
 
-def _word_truncate(text: str, max_len: int) -> str:
-    if len(text) <= max_len:
-        return text
-    truncated = text[:max_len]
-    last_space = truncated.rfind(" ")
-    return truncated[:last_space].rstrip(".,;:") if last_space > 0 else truncated
+def _is_placeholder_remediation(remediation: str, description: Any) -> bool:
+    """True when *remediation* is a low-value stand-in, not real guidance.
+
+    A finding can arrive with ``remediation`` already set to a copy (or
+    truncated copy) of its own ``description`` — e.g. an upstream trigger
+    that stamped the scenario/violation summary into both fields. That's not
+    actionable "how to fix it" text, so it should not block the synthesizer's
+    grounded ``RemediationArtefact`` from ever being applied.
+    """
+    if not remediation:
+        return True
+    desc = str(description or "")
+    if not desc:
+        return False
+    return remediation == desc or desc.startswith(remediation)
 
 
 def _get(finding: "Finding | dict[str, Any]", key: str) -> Any:
@@ -57,7 +66,6 @@ def backfill_finding_remediation(
     findings: "list[Finding] | list[dict[str, Any]]",
     artefacts: "list[RemediationArtefact]",
     *,
-    max_len: int = 320,
     fallback: str | None = FALLBACK_REMEDIATION_TEXT,
 ) -> None:
     """Mutate *findings* in place, setting each finding's flat ``remediation``.
@@ -65,10 +73,15 @@ def backfill_finding_remediation(
     For each finding, picks the best-matching artefact (matched via
     ``RemediationArtefact.finding_ids`` membership, preferring
     ``SYSTEM_PROMPT_PATCH`` artefacts when a finding matches more than one)
-    and sets ``finding.remediation`` from that artefact's ``rationale``,
-    truncated to *max_len*. Never overwrites an already non-empty
-    ``remediation`` value. When a finding matches no artefact at all, sets
-    *fallback* (pass ``None`` to leave the field untouched instead).
+    and sets ``finding.remediation`` from that artefact's ``rationale``
+    verbatim — no truncation; the LLM's own word budget (see
+    ``nuguard.remediation.prompts.REMEDIATION_PERSONA``) is the only length
+    constraint. Skips findings that already carry real, non-placeholder
+    remediation text (see :func:`_is_placeholder_remediation`) but overwrites
+    a placeholder (empty, or a copy/truncation of the finding's own
+    ``description``) whenever a matching artefact exists. When a finding
+    matches no artefact at all, sets *fallback* (pass ``None`` to leave the
+    field untouched instead).
 
     Works for both ``list[Finding]`` (redteam/analysis) and ``list[dict]``
     (behavior) inputs.
@@ -86,12 +99,21 @@ def backfill_finding_remediation(
                 best_by_finding_id[finding_id] = artefact
 
     for finding in findings:
-        if _get(finding, "remediation"):
+        existing = _get(finding, "remediation") or ""
+        description = _get(finding, "description")
+        if existing and not _is_placeholder_remediation(existing, description):
             continue
         finding_id = str(_get(finding, "finding_id") or "")
         matched_artefact = best_by_finding_id.get(finding_id)
         if matched_artefact is None:
-            if fallback is not None:
+            if not existing and fallback is not None:
                 _set(finding, "remediation", fallback)
             continue
-        _set(finding, "remediation", _word_truncate(matched_artefact.rationale, max_len))
+        # A merged artefact's own `rationale` is a joined blob of several
+        # findings' text; using it directly for every finding_id in the
+        # merge risks one finding's remediation drowning out a sibling's.
+        # Prefer this finding's own preserved rationale when the artefact
+        # was merged.
+        own_rationale = matched_artefact.per_finding_rationale.get(finding_id)
+        rationale = own_rationale if own_rationale else matched_artefact.rationale
+        _set(finding, "remediation", rationale)

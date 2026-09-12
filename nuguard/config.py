@@ -213,6 +213,16 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "cost_budget" in sbom_verification:
         flat["sbom_verification_cost_budget"] = float(sbom_verification["cost_budget"])
 
+    auth_schema_inference = sbom_gen.get("auth_schema_inference", {}) or {}
+    if "enabled" in auth_schema_inference:
+        flat["sbom_auth_schema_inference_enabled"] = bool(auth_schema_inference["enabled"])
+    if "max_calls" in auth_schema_inference:
+        flat["sbom_auth_schema_inference_max_calls"] = int(auth_schema_inference["max_calls"])
+    if "max_cost_usd" in auth_schema_inference:
+        flat["sbom_auth_schema_inference_max_cost_usd"] = float(
+            auth_schema_inference["max_cost_usd"]
+        )
+
     # ── Shared target block ────────────────────────────────────────────────────
     # target: at the top level acts as a shared default for both behavior and
     # redteam.  Section-level keys (redteam.target, behavior.target) take
@@ -234,6 +244,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_chat_response_key"] = shared_target["chat_response_key"]
         if "chat_payload_extras" in shared_target and isinstance(shared_target["chat_payload_extras"], dict):
             flat["redteam_chat_payload_extras"] = shared_target["chat_payload_extras"]
+        if "probe_llm" in shared_target:
+            flat["probe_llm_enabled"] = bool(shared_target["probe_llm"])
         if "headers" in shared_target and isinstance(shared_target["headers"], dict):
             flat["redteam_headers"] = {
                 str(k): str(v)
@@ -334,8 +346,22 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_discovery_max_turns"] = int(redteam["discovery_max_turns"])
     if "capability_discovery" in redteam:
         flat["redteam_capability_discovery"] = bool(redteam["capability_discovery"])
+    if "liveness_cache_ttl_seconds" in redteam:
+        flat["redteam_liveness_cache_ttl_seconds"] = float(redteam["liveness_cache_ttl_seconds"])
+    if "browser_discover_endpoints" in redteam:
+        flat["redteam_browser_discover_endpoints"] = bool(redteam["browser_discover_endpoints"])
+    if "llm_capability_dedup" in redteam:
+        flat["redteam_llm_capability_dedup"] = bool(redteam["llm_capability_dedup"])
+    if "browser_discovery_nav_targets" in redteam and isinstance(
+        redteam["browser_discovery_nav_targets"], list
+    ):
+        flat["redteam_browser_discovery_nav_targets"] = [
+            str(p) for p in redteam["browser_discovery_nav_targets"] if p is not None
+        ]
     if "prompt_cache_dir" in redteam:
         flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
+    if "resume" in redteam and redteam["resume"] is not None:
+        flat["redteam_resume"] = str(redteam["resume"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
         flat["redteam_app_env"] = {
             str(k): str(v)
@@ -471,6 +497,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                     )
                 if "auth" in shared_target and isinstance(shared_target["auth"], dict):
                     _shared_for_behavior.setdefault("auth", shared_target["auth"])
+                if "probe_llm" in shared_target:
+                    _shared_for_behavior.setdefault("probe_llm", bool(shared_target["probe_llm"]))
                 # behavior.* wins — merge shared as the lower-precedence base.
                 # `endpoint:` and `target_endpoint:` are aliases in the shared
                 # block; mirror that here so a user who writes `behavior.endpoint:`
@@ -659,12 +687,56 @@ class BehaviorConfig(BaseModel):
         default=False,
         validation_alias=AliasChoices("use_llm", "llm"),
     )
+    probe_llm: bool = Field(
+        default=False,
+        description="Use LLM to improve endpoint probe accuracy (yaml: target.probe_llm).",
+    )
     capability_discovery: bool = Field(
         default=True,
         description=(
             "Probe the live agent for tools, sub-agents, and its system prompt when the "
             "AI-SBOM is missing them, and merge the findings back into the in-memory SBOM "
             "before scenario generation. Only fires for AGENT nodes with an actual gap."
+        ),
+    )
+    liveness_cache_ttl_seconds: float = Field(
+        default=3600.0,
+        description=(
+            "How long a per-endpoint liveness result (yaml: behavior.liveness_cache_ttl_seconds) "
+            "cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached "
+            "result — including one written by a prior redteam run against the same "
+            "enriched SBOM — is used as-is, skipping the live ping entirely."
+        ),
+    )
+    browser_discover_endpoints: bool = Field(
+        default=False,
+        description=(
+            "After browser login, crawl caller-declared browser_discovery_nav_targets and "
+            "sniff network requests via Playwright to find REST endpoints the static SBOM "
+            "extractor missed, merging them into the SBOM as new API_ENDPOINT nodes (yaml: "
+            "behavior.browser_discover_endpoints). Off by default — requires the 'browser' "
+            "extra (Playwright/Chromium) and browser login already configured "
+            "(target.browser_login / target.auth)."
+        ),
+    )
+    browser_discovery_nav_targets: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Relative paths to visit during the endpoint-discovery crawl when "
+            "browser_discover_endpoints is enabled, e.g. ['/dashboard', '/account'] "
+            "(yaml: behavior.browser_discovery_nav_targets). Never auto-discovered by "
+            "following links — only these caller-declared paths are visited."
+        ),
+    )
+    llm_capability_dedup: bool = Field(
+        default=False,
+        description=(
+            "When capability_discovery finds tool/sub-agent names that survive the "
+            "exact-match dedup against the SBOM's known names, ask the LLM whether any "
+            "are just a naming-convention paraphrase of an existing one (e.g. "
+            "'send_email' vs 'SendEmailTool') before adding a new node (yaml: "
+            "behavior.llm_capability_dedup). Off by default; additive only — a failed "
+            "or unconfigured LLM call falls back to the pre-existing heuristic result."
         ),
     )
     turn_delay_seconds: float = Field(
@@ -714,7 +786,13 @@ class BehaviorConfig(BaseModel):
         default_factory=dict,
         description=(
             "Extra static JSON fields merged into every chat POST body "
-            "(e.g. vehicleState, language). The message key always takes precedence."
+            "(e.g. vehicleState, language). The message key always takes precedence. "
+            "If any string value contains the literal token '{{message}}', the entire "
+            "dict is instead treated as a payload template: it is sent as-is with "
+            "'{{message}}' substituted for the current turn's message text, and, if "
+            "present, '{{history}}' (prior turns as a JSON [{role, content}, ...] "
+            "string), '{{session_id}}', and '{{conversation_id}}' substituted as well. "
+            "Without '{{message}}', behavior is unchanged."
         ),
     )
     adk: GoogleADKConfig = Field(
@@ -794,6 +872,19 @@ class BehaviorConfig(BaseModel):
         description=(
             "Directory for the cross-run judge verdict cache. "
             "Empty string disables caching."
+        ),
+    )
+    scenario_timeout: float = Field(
+        default=180.0,
+        gt=0.0,
+        description="Per-scenario wall-clock timeout in seconds.",
+    )
+    resume: str | None = Field(
+        default=None,
+        description=(
+            "Path to a checkpoint file written by a previous aborted run "
+            "(see prompt_cache_dir) — already-completed scenarios are skipped "
+            "and the final report combines the checkpointed and newly-run results."
         ),
     )
     max_scenarios: int | None = Field(
@@ -1064,6 +1155,30 @@ class NuGuardConfig(BaseSettings):
             "env: AISBOM_VERIFICATION_COST_BUDGET, default 20.0)."
         ),
     )
+    sbom_auth_schema_inference_enabled: bool = Field(
+        default=True,
+        description=(
+            "Master switch for the LLM auth/chat-schema inference fallback "
+            "pass, only fires when static DTO extraction couldn't resolve a "
+            "login endpoint's token-key or a confident chat endpoint "
+            "(yaml: sbom_generation.auth_schema_inference.enabled)."
+        ),
+    )
+    sbom_auth_schema_inference_max_calls: int = Field(
+        default=2,
+        description=(
+            "Max LLM calls for auth/chat-schema inference — fires at most "
+            "twice per SBOM (once for auth, once for chat), not per-endpoint "
+            "(yaml: sbom_generation.auth_schema_inference.max_calls)."
+        ),
+    )
+    sbom_auth_schema_inference_max_cost_usd: float = Field(
+        default=0.5,
+        description=(
+            "Max estimated USD spend for auth/chat-schema inference "
+            "(yaml: sbom_generation.auth_schema_inference.max_cost_usd)."
+        ),
+    )
 
     # ------------------------------------------------------- Redteam
     target_url: str | None = Field(
@@ -1076,6 +1191,10 @@ class NuGuardConfig(BaseSettings):
             "Agent chat endpoint path on the target (yaml: redteam.target_endpoint). "
             "Empty string = auto-discover from SBOM; falls back to /chat."
         ),
+    )
+    probe_llm_enabled: bool = Field(
+        default=False,
+        description="Use LLM to improve endpoint probe accuracy (yaml: target.probe_llm).",
     )
     redteam_chat_payload_key: str = Field(
         default="message",
@@ -1165,10 +1284,8 @@ class NuGuardConfig(BaseSettings):
     redteam_scenarios: list[str] = Field(
         default_factory=list,
         description=(
-            "Goal types to run; empty = all 9. Values: prompt-driven-threat, "
-            "policy-violation, data-exfiltration, privilege-escalation, "
-            "tool-abuse, mcp-toxic-flow, api-attack, agentic-trust-abuse, "
-            "recon-inference (yaml: redteam.scenarios)."
+            "Which categories to run: 'destructive', 'non-destructive', or both — "
+            "empty = both (yaml: redteam.scenarios)."
         ),
     )
     mcp_trusted_servers: list[str] = Field(
@@ -1249,6 +1366,45 @@ class NuGuardConfig(BaseSettings):
             "'dynamic_probe' to distinguish them from static-analysis results."
         ),
     )
+    redteam_liveness_cache_ttl_seconds: float = Field(
+        default=3600.0,
+        description=(
+            "How long a per-endpoint liveness result (yaml: redteam.liveness_cache_ttl_seconds) "
+            "cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached "
+            "result — including one written by a prior behavior run against the same "
+            "enriched SBOM — is used as-is, skipping the live ping entirely."
+        ),
+    )
+    redteam_browser_discover_endpoints: bool = Field(
+        default=False,
+        description=(
+            "After browser login, crawl caller-declared redteam_browser_discovery_nav_targets "
+            "and sniff network requests via Playwright to find REST endpoints the static SBOM "
+            "extractor missed, merging them into the SBOM as new API_ENDPOINT nodes (yaml: "
+            "redteam.browser_discover_endpoints). Off by default — requires the 'browser' "
+            "extra (Playwright/Chromium) and browser login already configured."
+        ),
+    )
+    redteam_browser_discovery_nav_targets: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Relative paths to visit during the endpoint-discovery crawl when "
+            "redteam_browser_discover_endpoints is enabled (yaml: "
+            "redteam.browser_discovery_nav_targets). Never auto-discovered by following "
+            "links — only these caller-declared paths are visited."
+        ),
+    )
+    redteam_llm_capability_dedup: bool = Field(
+        default=False,
+        description=(
+            "When capability_discovery finds tool/sub-agent names that survive the "
+            "exact-match dedup against the SBOM's known names, ask the LLM whether any "
+            "are just a naming-convention paraphrase of an existing one (e.g. "
+            "'send_email' vs 'SendEmailTool') before adding a new node (yaml: "
+            "redteam.llm_capability_dedup). Off by default; additive only — a failed "
+            "or unconfigured LLM call falls back to the pre-existing heuristic result."
+        ),
+    )
     redteam_prompt_cache_dir: str = Field(
         default=".",
         validation_alias=AliasChoices(
@@ -1266,6 +1422,16 @@ class NuGuardConfig(BaseSettings):
             "Include full per-scenario traces (inputs, outputs, selection rationale, "
             "risk scores) in the redteam report (yaml: redteam.verbose). "
             "Also enabled by NUGUARD_REDTEAM_VERBOSE=1 env var."
+        ),
+    )
+    redteam_resume: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("NUGUARD_REDTEAM_RESUME", "redteam_resume"),
+        description=(
+            "Path to a checkpoint file written by a previous aborted run "
+            "(yaml: redteam.resume, env: NUGUARD_REDTEAM_RESUME). Already-completed "
+            "scenarios are skipped and the final report combines the checkpointed "
+            "and newly-run results."
         ),
     )
     redteam_app_env: dict[str, str] = Field(
@@ -1546,7 +1712,7 @@ class NuGuardConfig(BaseSettings):
     analyze_nga_only: bool = Field(
         default=False,
         description=(
-            "Run only NGA structural rules (NGA-001–018), skipping external tool "
+            "Run only NGA structural rules (NGA-001–030), skipping external tool "
             "scans (yaml: analyze.nga_only, CLI: --nga)."
         ),
     )

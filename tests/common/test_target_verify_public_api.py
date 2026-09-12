@@ -65,6 +65,79 @@ def test_public_target_requests_require_login_flow_config(request_type) -> None:
         request_type(target_url="http://target", auth_type="login_flow")
 
 
+@pytest.mark.parametrize(
+    "request_type",
+    [TargetVerifyRequest, TargetSessionResolveRequest],
+)
+def test_public_target_requests_build_cookie_file_auth_config(request_type, tmp_path) -> None:
+    cookie_file = tmp_path / "cookies.txt"
+    cookie_file.write_text(
+        "example.com\tFALSE\t/\tFALSE\t0\tmosaic_session\tabc.def.ghi\n",
+        encoding="utf-8",
+    )
+
+    auth_config = _build_auth_config(
+        request_type(
+            target_url="http://target",
+            auth_type="cookie_file",
+            auth_value=str(cookie_file),
+        )
+    )
+
+    assert auth_config.type == "cookie_file"
+    assert auth_config.cookie_file == str(cookie_file)
+    assert auth_config.to_headers() == {"Cookie": "mosaic_session=abc.def.ghi"}
+
+
+@pytest.mark.parametrize(
+    "request_type",
+    [TargetVerifyRequest, TargetSessionResolveRequest],
+)
+def test_public_target_requests_require_cookie_file_path(request_type) -> None:
+    with pytest.raises(ValidationError, match="requires auth_value"):
+        request_type(target_url="http://target", auth_type="cookie_file")
+
+
+@pytest.mark.asyncio
+async def test_resolve_target_session_public_threads_custom_headers_to_sbom_session(monkeypatch):
+    from nuguard.common.session_resolver import TargetSessionConfig
+
+    captured_extra_headers = []
+
+    async def _fake_resolve_target_session(**kwargs):
+        captured_extra_headers.append(kwargs["extra_headers"])
+        report = TargetHealthReport(target_url="http://target", endpoint="/chat", run_id="r-hdr", checks=[])
+        return (
+            TargetSessionConfig(
+                base_url="http://target",
+                chat_path="/chat",
+                chat_payload_key="message",
+                chat_payload_list=False,
+                chat_payload_extras={},
+                chat_response_key=None,
+                auth_session=_FakeAuthSession(),
+                resolution_notes=[],
+            ),
+            report,
+        )
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.discover_chat_config_from_sbom",
+        lambda *args, **kwargs: ("/chat", "message", False, None),
+    )
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
+
+    await resolve_target_session_public(
+        TargetSessionResolveRequest(
+            target_url="http://target",
+            headers={"X-Tenant-Id": "acme"},
+        ),
+        sbom=object(),
+    )
+
+    assert captured_extra_headers == [{"X-Tenant-Id": "acme"}]
+
+
 @pytest.mark.asyncio
 async def test_verify_target_passes_login_flow_to_auth_bootstrap(monkeypatch) -> None:
     login_flow = LoginFlowConfig(

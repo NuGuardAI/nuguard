@@ -1,6 +1,8 @@
 """Pydantic-only public entry point for the redteam package (v1 engine only).
 
 A thin async wrapper around :class:`RedteamOrchestrator` for callers outside
+    except asyncio.CancelledError:
+        raise
 the CLI: a plain, JSON-serializable request model in, a JSON-serializable
 result model out. ``RedteamOrchestrator`` itself and its constructor and
 ``run()`` are untouched — everything here is additive. The CLI's
@@ -23,22 +25,24 @@ import dataclasses
 import uuid
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
-from nuguard.common.auth import AuthConfig
+from nuguard.common.auth import AuthConfig, LoginFlowConfig
 from nuguard.common.logging import get_logger
+from nuguard.common.run_checkpoint import PartialRunError, RunCheckpoint
 from nuguard.common.stream_runtime import StreamRunHandle, create_stream_handle
 from nuguard.common.streaming_models import (
     StreamDeltaPayload,
     StreamProgressPayload,
     StreamTerminalPayload,
 )
-from nuguard.config import RedteamFindingTriggers
+from nuguard.config import AppAuthConfig, RedteamFindingTriggers
 from nuguard.models.finding import Finding
 from nuguard.models.health_report import TargetHealthReport
 from nuguard.models.token_usage import TokenUsage
 from nuguard.redteam.executor.orchestrator import (
     RedteamOrchestrator,
+    _dedup_findings,
     finding_matches_scenario_filter,
 )
 from nuguard.redteam.target.canary import CanaryConfig
@@ -50,11 +54,97 @@ if TYPE_CHECKING:
 
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
+    from nuguard.policy.public_api import CognitivePolicyParseResult
     from nuguard.redteam.catalog.coverage import CoverageReport
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
+
+
+def _protect_secret_strings(value: Any) -> Any:
+    if isinstance(value, str):
+        return SecretStr(value)
+    if isinstance(value, dict):
+        return {key: _protect_secret_strings(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_protect_secret_strings(item) for item in value]
+    return value
+
+
+def _reveal_secret_strings(value: Any) -> Any:
+    if isinstance(value, SecretStr):
+        return value.get_secret_value()
+    if isinstance(value, dict):
+        return {key: _reveal_secret_strings(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_reveal_secret_strings(item) for item in value]
+    return value
+
+
+class RedteamLoginFlowConfig(BaseModel):
+    """Secret-safe public login-flow configuration."""
+
+    endpoint: str = "/login"
+    method: Literal["POST", "GET"] = "POST"
+    base_url: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    token_response_key: str = "access_token"
+    token_header: str = "Authorization: Bearer"
+    refresh_on_401: bool = True
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def _protect_payload(cls, value: Any) -> Any:
+        return _protect_secret_strings(value)
+
+    def to_internal(self) -> LoginFlowConfig:
+        """Convert to the runtime model immediately before target access."""
+        return LoginFlowConfig(
+            endpoint=self.endpoint,
+            method=self.method,
+            base_url=self.base_url,
+            payload=_reveal_secret_strings(self.payload),
+            token_response_key=self.token_response_key,
+            token_header=self.token_header,
+            refresh_on_401=self.refresh_on_401,
+        )
+
+
+class RedteamAuthConfig(BaseModel):
+    """Secret-safe public authentication configuration for red-team runs."""
+
+    type: Literal["bearer", "api_key", "basic", "none", "login_flow", "cookie_file"] = "none"
+    header: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    username: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    password: SecretStr = Field(default_factory=lambda: SecretStr(""))
+    login_flow: RedteamLoginFlowConfig | None = None
+    cookie_file: str = ""
+
+    @model_validator(mode="after")
+    def _validate_fields(self) -> "RedteamAuthConfig":
+        if self.type in ("bearer", "api_key") and not self.header.get_secret_value():
+            raise ValueError(f"auth.type={self.type} requires auth.header")
+        if self.type == "basic" and not (
+            self.username.get_secret_value() and self.password.get_secret_value()
+        ):
+            raise ValueError("auth.type=basic requires auth.username and auth.password")
+        if self.type == "login_flow" and self.login_flow is None:
+            raise ValueError("auth.type=login_flow requires auth.login_flow block")
+        if self.type == "cookie_file" and not self.cookie_file:
+            raise ValueError("auth.type=cookie_file requires auth.cookie_file")
+        return self
+
+    def to_internal(self) -> AuthConfig:
+        """Convert to the existing runtime model without retaining a plaintext dump."""
+        return AuthConfig(
+            type=self.type,
+            header=self.header.get_secret_value(),
+            username=self.username.get_secret_value(),
+            password=self.password.get_secret_value(),
+            login_flow=self.login_flow.to_internal() if self.login_flow else None,
+            cookie_file=self.cookie_file,
+        )
 
 
 class RedteamRunRequest(BaseModel):
@@ -85,14 +175,14 @@ class RedteamRunRequest(BaseModel):
     guided_mutation_mode: str = "hard"
     tree_breadth: int = 0
     tree_max_depth: int = 0
-    extra_headers: dict[str, str] | None = None
+    extra_headers: dict[str, SecretStr] | None = None
     strict_outcome: bool = False
     scenario_filter: list[str] | None = None
     canary_config: CanaryConfig | None = None
-    auth_config: AuthConfig | None = None
+    auth_config: RedteamAuthConfig | None = None
     finding_triggers: RedteamFindingTriggers | None = None
     verbose: bool = False
-    credentials: dict[str, str] | None = None
+    credentials: dict[str, SecretStr] | None = None
     scenario_timeout: float = 180.0
     turn_delay_seconds: float = 5.0
     scenario_delay_seconds: float = 0.0
@@ -102,14 +192,33 @@ class RedteamRunRequest(BaseModel):
     skip_discovery: bool = False
     discovery_max_turns: int = 3
     capability_discovery: bool = True
+    liveness_cache_ttl_seconds: float = 3600.0
+    llm_capability_dedup: bool = False
     chat_payload_extras: dict[str, Any] | None = None
     pre_run_warmup: int = 0
     verify_findings: bool = True
     golden_data: dict[str, Any] | None = None
     suppress_spa_html_auth_bypass: bool = True
     codegen_escalation_enabled: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_public_auth_config(cls, data: Any) -> Any:
+        if isinstance(data, dict) and isinstance(
+            data.get("auth_config"), (AppAuthConfig, AuthConfig)
+        ):
+            normalized = dict(data)
+            normalized["auth_config"] = data["auth_config"].model_dump()
+            return normalized
+        return data
     mode: str = "concurrent"
     progressive_halt_on_severity: str = "none"
+    probe_llm: bool = False
+    resume_from: str | None = None
+    """Path to a checkpoint file written by a previous aborted run (see
+    ``prompt_cache_dir``). Already-completed scenarios are skipped and the
+    final result combines the checkpointed and newly-run scenarios/findings.
+    """
 
 
 class RedteamRunResult(BaseModel):
@@ -128,9 +237,11 @@ class RedteamRunResult(BaseModel):
         "high_findings",
         "findings",
         "aborted_target_unavailable",
+        "aborted_auth_failure",
         "aborted_endpoint_unreachable",
         "inconclusive_target_errors",
         "no_findings",
+        "partial",
     ]
     config_notes: list[str] = Field(default_factory=list)
     llm_executive_summary: str | None = None
@@ -179,32 +290,31 @@ async def _build_remediation_plan(
     ``synthesize_findings`` since this runs inside ``run_redteam``'s
     already-running event loop, so LLM patch calls need to be awaited
     directly rather than silently skipped by the sync shim.
-    Best-effort: returns ``[]`` on missing SBOM, no findings, or any failure.
+    Returns ``[]`` only when there's no SBOM or no findings to synthesize
+    against — an actual synthesis failure (e.g. a broken LLM client)
+    propagates so it surfaces as a visible run error instead of a silently
+    empty plan.
     """
     if sbom is None or not findings:
         return []
-    try:
-        from nuguard.remediation.synthesizer import RemediationSynthesizer  # noqa: PLC0415
+    from nuguard.remediation.synthesizer import RemediationSynthesizer  # noqa: PLC0415
 
-        synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
-        finding_dicts = [
-            {
-                "finding_id": f.finding_id,
-                "title": f.title,
-                "description": f.description or "",
-                "affected_component": f.affected_component or "unknown",
-                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
-                "goal_type": f.goal_type or "",
-                "scenario_type": f.scenario_type or "",
-                "evidence_quote": f.evidence_quote or "",
-                "reasoning": f.reasoning or "",
-            }
-            for f in findings
-        ]
-        return await synthesizer.synthesize_findings_async(finding_dicts)
-    except Exception as exc:  # noqa: BLE001
-        _log.warning("run_redteam: remediation synthesis failed — skipping plan: %s", exc)
-        return []
+    synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
+    finding_dicts = [
+        {
+            "finding_id": f.finding_id,
+            "title": f.title,
+            "description": f.description or "",
+            "affected_component": f.affected_component or "unknown",
+            "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
+            "goal_type": f.goal_type or "",
+            "scenario_type": f.scenario_type or "",
+            "evidence_quote": f.evidence_quote or "",
+            "reasoning": f.reasoning or "",
+        }
+        for f in findings
+    ]
+    return await synthesizer.synthesize_findings_async(finding_dicts)
 
 
 def _catalog_coverage_to_dict(report: "CoverageReport | None") -> dict[str, Any] | None:
@@ -222,12 +332,45 @@ def _catalog_coverage_to_dict(report: "CoverageReport | None") -> dict[str, Any]
     return d
 
 
+def _build_partial_result(orchestrator: RedteamOrchestrator, exc: PartialRunError) -> RedteamRunResult:
+    """Build a JSON-safe partial :class:`RedteamRunResult` from a :class:`PartialRunError`.
+
+    Used when ``orchestrator.run()`` aborted after >=1 scenario completed —
+    see :meth:`RedteamOrchestrator.run` and issue #508. Remediation synthesis
+    and the LLM coding brief are skipped (best-effort extras, not worth the
+    extra LLM calls on an already-failed run); everything else mirrors the
+    success-path result construction below.
+    """
+    payload = exc.partial_payload
+    findings = _dedup_findings([Finding(**f) for f in payload.get("findings", [])])
+    coverage_tracker = getattr(orchestrator, "_coverage_tracker", None)
+    return RedteamRunResult(
+        findings=findings,
+        scenario_records=payload.get("scenario_records", []),
+        scan_outcome="partial",
+        config_notes=list(orchestrator.config_notes),
+        llm_executive_summary=orchestrator.llm_executive_summary,
+        llm_coding_brief=None,
+        scenarios_run=orchestrator.scenarios_run,
+        input_tokens_used=orchestrator.input_tokens_used,
+        output_tokens_used=orchestrator.output_tokens_used,
+        token_usage=orchestrator.token_usage,
+        health_report=getattr(orchestrator, "health_report", None),
+        resolved_chat_path=orchestrator.resolved_chat_path,
+        resolved_chat_path_source=orchestrator.resolved_chat_path_source,
+        catalog_coverage=_catalog_coverage_to_dict(getattr(orchestrator, "catalog_coverage", None)),
+        coverage_tracker=coverage_tracker.to_dict() if coverage_tracker is not None else None,
+        remediation_plan=[],
+        security_invariants=[i.model_dump() for i in getattr(orchestrator, "security_invariants", [])],
+    )
+
+
 async def run_redteam(
     request: RedteamRunRequest,
     *,
     sbom: "AiSbomDocument",
     sbom_path: "Path | None" = None,
-    policy: "CognitivePolicy | None" = None,
+    policy: "CognitivePolicy | CognitivePolicyParseResult | None" = None,
     policy_controls: "list | None" = None,
     redteam_llm: "LLMClient | None" = None,
     eval_llm: "LLMClient | None" = None,
@@ -247,11 +390,26 @@ async def run_redteam(
     the CLI file untouched by this change).
     """
     _log.debug("run_redteam: target_url=%s profile=%s", request.target_url, request.profile)
+    from pathlib import Path as _Path  # noqa: PLC0415
+
+    from nuguard.policy.public_api import normalize_cognitive_policy  # noqa: PLC0415
+
+    normalized_policy = normalize_cognitive_policy(policy)
+
+    _resume_checkpoint: dict[str, Any] | None = None
+    _resume_checkpoint_path: "Path | None" = None
+    if request.resume_from:
+        _resume_checkpoint_path = _Path(request.resume_from)
+        _checkpoint_dir = prompt_cache_dir or _resume_checkpoint_path.parent
+        _resume_checkpoint = RunCheckpoint(_checkpoint_dir, "redteam").load(_resume_checkpoint_path)
+        if _resume_checkpoint is None:
+            raise ValueError(f"--resume checkpoint not found or unreadable: {request.resume_from}")
+
     orchestrator = RedteamOrchestrator(
         sbom=sbom,
         target_url=request.target_url,
         sbom_path=sbom_path,
-        policy=policy,
+        policy=normalized_policy,
         policy_controls=policy_controls,
         canary_config=request.canary_config,
         profile=request.profile,
@@ -273,13 +431,13 @@ async def run_redteam(
         guided_mutation_mode=request.guided_mutation_mode,
         tree_breadth=request.tree_breadth,
         tree_max_depth=request.tree_max_depth,
-        extra_headers=request.extra_headers,
+        extra_headers=_reveal_secret_strings(request.extra_headers),
         strict_outcome=request.strict_outcome,
         scenario_filter=request.scenario_filter,
-        auth_config=request.auth_config,
+        auth_config=request.auth_config.to_internal() if request.auth_config else None,
         finding_triggers=request.finding_triggers,
         verbose=request.verbose,
-        credentials=request.credentials,
+        credentials=_reveal_secret_strings(request.credentials),
         scenario_timeout=request.scenario_timeout,
         turn_delay_seconds=request.turn_delay_seconds,
         scenario_delay_seconds=request.scenario_delay_seconds,
@@ -289,6 +447,8 @@ async def run_redteam(
         skip_discovery=request.skip_discovery,
         discovery_max_turns=request.discovery_max_turns,
         capability_discovery=request.capability_discovery,
+        liveness_cache_ttl_seconds=request.liveness_cache_ttl_seconds,
+        llm_capability_dedup=request.llm_capability_dedup,
         chat_payload_extras=request.chat_payload_extras,
         catalog=catalog,
         pre_run_warmup=request.pre_run_warmup,
@@ -299,10 +459,17 @@ async def run_redteam(
         mode=request.mode,
         progressive_halt_on_severity=request.progressive_halt_on_severity,
         progress_sink=_progress_sink,
+        probe_llm=request.probe_llm,
+        resume_checkpoint=_resume_checkpoint,
+        resume_checkpoint_path=_resume_checkpoint_path,
     )
 
     try:
-        findings = await orchestrator.run()
+        try:
+            findings = await orchestrator.run()
+        except PartialRunError as exc:
+            exc.partial_result = _build_partial_result(orchestrator, exc)
+            raise
     finally:
         try:
             from litellm.llms.custom_httpx.async_client_cleanup import (
@@ -326,7 +493,10 @@ async def run_redteam(
         findings = [f for f in findings if finding_matches_scenario_filter(f, _filters)]
 
     remediation_plan = await _build_remediation_plan(
-        findings, sbom=sbom, policy=policy, llm_client=remediation_llm_client or eval_llm
+        findings,
+        sbom=sbom,
+        policy=normalized_policy,
+        llm_client=remediation_llm_client or eval_llm,
     )
     backfill_finding_remediation(findings, remediation_plan)
 
@@ -377,7 +547,7 @@ async def run_redteam_stream(
     request: RedteamRunRequest,
     *,
     sbom: "AiSbomDocument",
-    policy: "CognitivePolicy | None" = None,
+    policy: "CognitivePolicy | CognitivePolicyParseResult | None" = None,
     policy_controls: "list | None" = None,
     redteam_llm: "LLMClient | None" = None,
     eval_llm: "LLMClient | None" = None,
@@ -473,32 +643,31 @@ async def run_redteam_stream(
                 ).model_dump(mode="json"),
             )
             controller.set_final_result(RedteamExecutionResult.model_validate(result.model_dump(mode="json")))
-        except asyncio.CancelledError as exc:
-            controller.publish_terminal(
-                event_type="failed",
-                phase="finalize",
-                payload=StreamTerminalPayload(
-                    status="failed",
-                    failure_stage="cancelled",
-                    error_type=type(exc).__name__,
-                    error_message="Redteam stream cancelled",
-                ).model_dump(mode="json"),
-            )
-            controller.set_final_exception(exc)
+        except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except PartialRunError as exc:
+            partial = exc.partial_result
+            # event_type stays "failed" (not "partial") — _StreamController.events()
+            # only closes the stream on "completed"/"failed" (nuguard/common/stream_runtime.py);
+            # "partial" is carried in the payload's status field instead, and the
+            # final_result below is still the salvaged partial RedteamExecutionResult.
             controller.publish_terminal(
                 event_type="failed",
                 phase="finalize",
                 payload=StreamTerminalPayload(
-                    status="failed",
-                    summary={},
-                    is_retryable=False,
-                    failure_stage="run_redteam",
-                    error_type=type(exc).__name__,
-                    error_message=str(exc),
+                    status="partial",
+                    summary={
+                        "scan_outcome": "partial",
+                        "findings_count": len(partial.findings) if partial is not None else 0,
+                        "checkpoint_path": str(exc.checkpoint_path) if exc.checkpoint_path else None,
+                        "error": str(exc.cause),
+                    },
                 ).model_dump(mode="json"),
             )
-            controller.set_final_exception(exc)
+            if partial is not None:
+                controller.set_final_result(
+                    RedteamExecutionResult.model_validate(partial.model_dump(mode="json"))
+                )
+            raise
 
     return create_stream_handle(run_id, _worker)

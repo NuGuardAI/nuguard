@@ -253,8 +253,12 @@ async def test_run_analysis_remediation_plan_empty_without_findings():
 
 
 @pytest.mark.asyncio
-async def test_run_analysis_remediation_synthesis_failure_is_swallowed():
-    """Remediation synthesis is best-effort — a failure must not fail the run."""
+async def test_run_analysis_remediation_synthesis_failure_propagates():
+    """A real synthesis failure (e.g. a broken LLM client) surfaces as a run error
+
+    rather than silently degrading to an empty plan — see
+    ``_build_remediation_plan``'s docstring for the contract.
+    """
     from types import SimpleNamespace
 
     findings = [_finding()]
@@ -269,9 +273,8 @@ async def test_run_analysis_remediation_synthesis_failure_is_swallowed():
     ):
         mock_cls.return_value = mock_instance
         request = AnalysisRunRequest()
-        result = await run_analysis(request, sbom=SimpleNamespace(nodes=[], edges=[]))
-
-    assert result.remediation_plan == []
+        with pytest.raises(RuntimeError, match="boom"):
+            await run_analysis(request, sbom=SimpleNamespace(nodes=[], edges=[]))
 
 
 @pytest.mark.asyncio

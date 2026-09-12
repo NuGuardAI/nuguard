@@ -32,8 +32,14 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 from nuguard.common.logging import get_logger
+from nuguard.common.soft_reject import partition_node_counts
+from nuguard.common.url_sanitization import (
+    redact_repository_url_from_text,
+    sanitize_repository_url,
+)
 
 from ..adapters.base import (
     AdapterMatch,
@@ -111,6 +117,7 @@ from ..models import (
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
 from .postprocess import (
+    _collapse_bulk_catalog_files,
     _dedup_by_location,
     _dedup_by_name_prefix,
     _dedup_deployment_nodes,
@@ -667,6 +674,20 @@ def _load_gitignore_matcher(root: Path) -> "Callable[[str], bool] | None":
         return None
 
 
+def _refresh_summary_node_counts(
+    doc: AiSbomDocument,
+) -> None:
+    """Refresh effective and retained-rejection counts from final nodes."""
+    summary = doc.summary
+
+    if summary is None:
+        return
+
+    count_partition = partition_node_counts(doc.nodes)
+    summary.node_counts = count_partition.effective
+    summary.node_counts_soft_rejected = count_partition.soft_rejected
+
+
 class AiSbomExtractor:
     """Extract an AI SBOM from a local path or remote git repository.
 
@@ -736,14 +757,14 @@ class AiSbomExtractor:
                 LLMJSONConfigAdapter(),
                 PromptJSONAdapter(),
                 MCPServerJSONAdapter(),
-                N8nWorkflowAdapter(),
-                LangflowWorkflowAdapter(),
-                FlowiseWorkflowAdapter(),
                 SparkflowsProjectAdapter(),
                 SparkflowsAgentAdapter(),
                 SparkflowsWorkflowAdapter(),
                 SparkflowsDatasetAdapter(),
                 SparkflowsAnalyticsAppAdapter(),
+                N8nWorkflowAdapter(),
+                LangflowWorkflowAdapter(),
+                FlowiseWorkflowAdapter(),
             )
         )
         self.nginx_adapter = nginx_adapter if nginx_adapter is not None else NginxAdapter()
@@ -1621,6 +1642,15 @@ class AiSbomExtractor:
         # the dominant technology keyword found in the evidence.
         _improve_generic_node_names(node_map)
 
+        # Collapse bulk data-catalog/fixture files (e.g. a test fixture JSON
+        # listing hundreds of model names) into a few representative nodes,
+        # deterministically and pre-LLM — see docs/sbom-accuracy-plan.md #1.
+        _collapse_bulk_catalog_files(
+            node_map,
+            threshold=config.bulk_catalog_threshold,
+            keep=config.bulk_catalog_keep,
+        )
+
         # Build nodes + edges
         for key in sorted(node_map.keys(), key=lambda v: (v[0].value, v[1])):
             acc = node_map[key]
@@ -2160,6 +2190,8 @@ class AiSbomExtractor:
             except Exception as exc:  # noqa: BLE001
                 _log.warning("LLM enrichment failed, continuing with deterministic output: %s", exc)
 
+        # Keep summary counts consistent with the final retained node set.
+        _refresh_summary_node_counts(doc)
         return doc
 
     def extract_from_repo(
@@ -2205,8 +2237,9 @@ class AiSbomExtractor:
             for f in (cache / "repo" / app_name).rglob("*.py"):
                 print(f)
         """
-        app_name = url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git") or "repo"
-        display_url = source_ref or url
+        display_url = sanitize_repository_url(source_ref or url)
+        repository_path = urlsplit(display_url).path.rstrip("/")
+        app_name = PurePosixPath(repository_path).name.removesuffix(".git") or "repo"
 
         if cache_dir is not None:
             repo_dir = Path(cache_dir) / "repo" / app_name
@@ -2829,6 +2862,30 @@ class AiSbomExtractor:
         doc.nodes = apply_verification_results(doc.nodes, results)
         _log.info("llm verification: %s", v_stats.to_dict())
 
+        # Step 1.5: Auth token-key inference fallback — only fires when
+        # static DTO extraction (adapters + enricher.py::_enrich_login_token_key)
+        # left a login endpoint's token key unresolved.
+        try:
+            from ..core.auth_schema_inference import (  # noqa: PLC0415
+                infer_login_token_key,
+            )
+            from ..core.gap_fill.budget import GapFillBudget as _AuthBudget  # noqa: PLC0415
+
+            auth_budget = _AuthBudget(
+                max_calls=config.auth_schema_inference_max_calls,
+                max_cost_usd=config.auth_schema_inference_max_cost_usd,
+            )
+            auth_stats = await infer_login_token_key(
+                doc,
+                file_contents,
+                _llm_call,
+                budget=auth_budget,
+                enabled=config.auth_schema_inference_enabled,
+            )
+            _log.info("auth-schema-inference: %s", auth_stats.to_dict())
+        except Exception as exc:
+            _log.warning("auth-schema-inference: unexpected error — continuing without: %s", exc)
+
         # Step 2: Re-aggregate confidence with LLM scores
         doc.nodes, a_stats = aggregate_node_confidence(doc.nodes)
         _log.info("llm confidence aggregation: %s", a_stats.to_dict())
@@ -2892,14 +2949,9 @@ class AiSbomExtractor:
         # Recompute node_counts from the final node list after all verification,
         # aggregation, and discovery steps — gap-fill may have added nodes that
         # verification later rejected, leaving the counts stale.
-        if doc.summary:
-            from ..types import ComponentType as _CT
-
-            doc.summary.node_counts = {
-                ct.value: sum(1 for n in doc.nodes if n.component_type == ct)
-                for ct in _CT
-                if any(n.component_type == ct for n in doc.nodes)
-            }
+        # Verification retains deterministic false positives for audit.
+        # Refresh effective and retained-rejection count views together.
+        _refresh_summary_node_counts(doc)
 
         # Write LLM token usage into the summary
         if doc.summary:
@@ -3238,17 +3290,22 @@ class AiSbomExtractor:
         if ref is not None:
             cmd += ["--branch", ref]
         cmd += ["--", url, str(dest)]
-        _log.debug("running: %s", " ".join(cmd))
+        display_url = sanitize_repository_url(url)
+        display_cmd = [display_url if item == url else item for item in cmd]
+        _log.debug("running: %s", " ".join(display_cmd))
         try:
             result = subprocess.run(cmd, check=True, capture_output=True)
+            stderr = result.stderr.decode(errors="replace").strip()[:200] if result.stderr else ""
             _log.debug(
                 "git clone succeeded (stderr: %s)",
-                result.stderr.decode(errors="replace").strip()[:200] or "(none)",
+                redact_repository_url_from_text(stderr, url) or "(none)",
             )
         except subprocess.CalledProcessError as exc:
             stderr = exc.stderr.decode(errors="replace").strip() if exc.stderr else ""
+            stderr = redact_repository_url_from_text(stderr, url)
             raise RuntimeError(
-                f"git clone failed for {url!r} @ {ref!r}" + (f": {stderr}" if stderr else "")
+                f"git clone failed for {display_url!r} @ {ref!r}"
+                + (f": {stderr}" if stderr else "")
             ) from exc
 
     @staticmethod

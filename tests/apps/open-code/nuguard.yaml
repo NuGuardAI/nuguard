@@ -1,0 +1,69 @@
+# nuguard.yaml — NuGuard config for Open Code
+#
+# Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
+
+# ─── Project file paths ───────────────────────────────────────────────────────
+source: https://github.com/anomalyco/opencode                         # generate SBOM from the src/ directory
+sbom: ./opencode.sbom.json                 # output path for generated SBOM
+policy: ./cognitive-policy.md         # cognitive policy (copy from nuguard repo if needed)
+
+# ─── LLM settings ─────────────────────────────────────────────────────────────
+llm:
+  model: azure/DeepSeek-V4-Pro    
+  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+  api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+
+# ─── SBOM generation ──────────────────────────────────────────────────────────
+sbom_generation:
+  llm: true                          # set true to enrich SBOM nodes with LLM descriptions
+
+target:
+  url: http://localhost:4096
+#  target_endpoint: /api/chat
+
+  auth:
+    # Switch to proxy_auth headers here if you enabled PROXY_AUTH_ENABLED.
+    type: none
+
+# ─── Behavior testing ──────────────────────────────────────────────────────────
+behavior:
+  llm: true
+  canary: ./canary.json
+  request_timeout: 60
+  scenario_concurrency: 3
+  isolate_scenarios: true
+  judge_concurrency: 5
+  capability_discovery: true
+  escalate_on_refusal: true
+  prioritize_by_probe: true
+  # Verbose output: include full per-turn traces in behavior report
+  verbose: true
+
+# ─── Red-team ─────────────────────────────────────────────────────────────────
+# OpenCode's own HTTP API (`opencode serve`) is session based — POST /session,
+# then POST /session/:id/message — not a single flat chat endpoint. Front it
+# with opencode_chat_proxy.py (see host-opencode.sh), which exposes a plain
+# POST /api/chat {"message": "..."} -> {"response": "..."} and target that
+# instead of the opencode server directly.
+redteam:
+  canary: ./canary.json
+
+  # CI profile — fast scan; full profile (profile: full) has a known pydantic bug in NuGuard v0.2.0
+  profile: ci
+  min_impact_score: 0.0
+
+  # Increase timeout — multi-agent LLM pipelines can be slow
+  request_timeout: 120
+  verbose: true
+  strict_outcome: false
+
+
+# ─── Static analysis ──────────────────────────────────────────────────────────
+analyze:
+  min_severity: low                   # catch everything — this is a vuln target
+
+# ─── Output ───────────────────────────────────────────────────────────────────
+output:
+  format: markdown
+  fail_on: low
+  sarif_file: ./nuguard-results.sarif

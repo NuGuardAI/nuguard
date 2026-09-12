@@ -33,11 +33,14 @@ sbom_generation:
 # ─── Target application ────────────────────────────────────────────────────────
 target:
 #  url: http://localhost:5000
-  url: http://phlox-nuguard-039182d3.eastus2.azurecontainer.io:80
+  url: http://phlox-nuguard-d35b6449.eastus2.azurecontainer.io
 
-  # Chat/agent endpoint — pinned explicitly because auto-discovery was picking
-  # /api/chat/respond-visual (a vision-only route that 400s without page
-  # images), causing every scenario to abort after 3 consecutive send failures.
+  # Chat/agent endpoint — auto-discovered as /api/chat. Previously
+  # auto-discovery picked /api/chat/respond-visual (a vision-only route that
+  # 400s without page images), causing every scenario to abort after 3
+  # consecutive send failures; discover_chat_candidates_from_sbom() now
+  # penalises endpoints with a required structured field (e.g. document
+  # pages) beyond the chat payload key, so /api/chat wins on its own.
   #endpoint: /api/chat
 
   auth:
@@ -64,17 +67,13 @@ redteam:
   profile: full
   min_impact_score: 0.0
 
-  # Relevant to a clinical-data agent with MCP tool support.
+  # Which categories to run (omit, or leave empty, to run both).
+  # 'destructive' scenarios mutate/destroy state (cancel, delete, close, remove,
+  # purge, refund, terminate, deactivate, wipe, revoke, unsubscribe, deregister, ...)
+  # and always run last, after all non-destructive scenarios complete.
   scenarios:
-    - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
-    - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
-    - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
-    - privilege-escalation     # role/permission escalation, false-premise attacks
-    - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
-    - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
-    - api-attack               # auth bypass, IDOR, mass assignment, BFLA
-    - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
-    - recon-inference          # refusal-oracle / boundary self-probe information gathering
+    - non-destructive
+    - destructive
 
   # LLM for attack-payload generation (must tolerate adversarial content).
   # Must use a DIFFERENT deployment than the target app to avoid TPM contention.

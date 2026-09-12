@@ -135,15 +135,17 @@ redteam:
   profile: full
 
   scenarios:
-    - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
-    - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
-    - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
-    - privilege-escalation     # role/permission escalation, false-premise attacks
-    - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
-    - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
-    - api-attack               # auth bypass, IDOR, mass assignment, BFLA
-    - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
-    - recon-inference          # refusal-oracle / boundary self-probe information gathering
+    - non-destructive   # safe-by-default: prompts, exfiltration probes, policy/API/recon attacks
+    - destructive       # uncomment to also run mutating actions against the target
+  #  - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
+  #  - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
+  #  - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
+  #  - privilege-escalation     # role/permission escalation, false-premise attacks
+  #  - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
+  #  - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
+  #  - api-attack               # auth bypass, IDOR, mass assignment, BFLA
+  #  - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
+  #  - recon-inference          # refusal-oracle / boundary self-probe information gathering
 
   # Minimum pre-impact score [0–10] for a scenario to be included (default: 0.0)
   min_impact_score: 0.0

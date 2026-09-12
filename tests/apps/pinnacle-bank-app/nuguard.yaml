@@ -31,14 +31,13 @@ redteam:
   profile: ci
   min_impact_score: 0.0
 
-  # All relevant scenario types for an AI banking app
+  # Which categories to run (omit, or leave empty, to run both).
+  # 'destructive' scenarios mutate/destroy state (cancel, delete, close, remove,
+  # purge, refund, terminate, deactivate, wipe, revoke, unsubscribe, deregister, ...)
+  # and always run last, after all non-destructive scenarios complete.
   scenarios:
-    - prompt-injection
-    - tool-abuse
-    - privilege-escalation
-    - data-exfiltration
-    - policy-violation
-    - mcp-toxic-flow
+    - non-destructive
+    - destructive
 
   # Increase timeout — multi-agent LLM pipelines can be slow
   request_timeout: 120

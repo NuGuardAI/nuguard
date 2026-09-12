@@ -4,7 +4,11 @@ import asyncio
 
 import pytest
 
-from nuguard.common.stream_runtime import create_stream_handle
+from nuguard.common.stream_runtime import (
+    StreamCancelledError,
+    StreamExecutionError,
+    create_stream_handle,
+)
 from nuguard.common.streaming_models import (
     BehaviorProgressState,
     RedteamProgressState,
@@ -55,13 +59,7 @@ async def test_stream_runtime_cancellation_emits_terminal_event_and_settles_resu
         started.set()
         try:
             await asyncio.Event().wait()
-        except asyncio.CancelledError as exc:
-            controller.publish_terminal(
-                event_type="failed",
-                phase="finalize",
-                payload={"status": "failed", "failure_stage": "cancelled"},
-            )
-            controller.set_final_exception(exc)
+        except asyncio.CancelledError:
             raise
 
     handle = create_stream_handle("run-cancel", _worker)
@@ -69,12 +67,74 @@ async def test_stream_runtime_cancellation_emits_terminal_event_and_settles_resu
     handle.cancel()
 
     events = [event async for event in handle.events]
-    with pytest.raises(asyncio.CancelledError):
+    with pytest.raises(StreamCancelledError):
         await handle.final_result()
     await handle.wait_closed()
 
     assert events[-1].event_type == "failed"
     assert events[-1].payload["failure_stage"] == "cancelled"
+    assert events[-1].payload["error_type"] == "stream_cancelled"
+
+
+@pytest.mark.asyncio
+async def test_stream_runtime_immediate_cancellation_settles_result() -> None:
+    async def _worker(controller) -> None:
+        await asyncio.Event().wait()
+
+    handle = create_stream_handle("run-immediate-cancel", _worker)
+    handle.cancel()
+
+    events = [event async for event in handle.events]
+    with pytest.raises(StreamCancelledError):
+        await handle.final_result()
+    await handle.wait_closed()
+
+    assert [event.event_type for event in events] == ["failed"]
+    assert events[0].payload["error_type"] == "stream_cancelled"
+
+
+@pytest.mark.asyncio
+async def test_stream_runtime_emits_opt_in_heartbeats() -> None:
+    release_worker = asyncio.Event()
+
+    async def _worker(controller) -> None:
+        controller.publish(event_type="run_started", phase="init", payload={})
+        await release_worker.wait()
+        controller.publish_terminal(
+            event_type="completed",
+            phase="finalize",
+            payload={"status": "completed"},
+        )
+        controller.set_final_result({"ok": True})
+
+    handle = create_stream_handle("run-heartbeat", _worker, heartbeat_interval=0.001)
+    event_iterator = handle.events
+    assert (await anext(event_iterator)).event_type == "run_started"
+    assert (await anext(event_iterator)).event_type == "heartbeat"
+    release_worker.set()
+    remaining_events = [event async for event in event_iterator]
+
+    assert remaining_events[-1].event_type == "completed"
+    assert await handle.final_result() == {"ok": True}
+
+
+@pytest.mark.asyncio
+async def test_stream_runtime_sanitizes_unhandled_failure() -> None:
+    secret = "secret-target-response"
+
+    async def _worker(controller) -> None:
+        raise ValueError(secret)
+
+    handle = create_stream_handle("run-failure", _worker)
+    events = [event async for event in handle.events]
+
+    with pytest.raises(StreamExecutionError) as exc_info:
+        await handle.final_result()
+    await handle.wait_closed()
+
+    assert secret not in str(exc_info.value)
+    assert secret not in events[-1].model_dump_json()
+    assert events[-1].payload["error_type"] == "stream_execution_failed"
 
 
 @pytest.mark.asyncio

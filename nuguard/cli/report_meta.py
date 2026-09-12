@@ -1,13 +1,22 @@
-"""Shared report metadata — timestamp, LLM info, verbose flag."""
+"""Shared report metadata — timestamp, run_id, LLM info, verbose flag."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from uuid import uuid4
 
 
 @dataclass
 class ReportMeta:
     """Metadata attached to every NuGuard output report."""
+
+    # Stable identifier for a single scan run. One ReportMeta is constructed
+    # per CLI invocation and surfaced in every machine-readable artifact
+    # (JSON ``_meta``, remediation-plan ``scan_id``), enabling cross-artifact
+    # correlation without relying on filenames. Hidden from default
+    # markdown/text reports; shown under ``--verbose`` (see
+    # ``to_markdown_lines`` / ``to_text_line``).
+    run_id: str = field(default_factory=lambda: str(uuid4()))
 
     timestamp: str = field(
         default_factory=lambda: datetime.now().astimezone().isoformat(timespec="seconds")
@@ -34,6 +43,7 @@ class ReportMeta:
 
     def to_dict(self) -> dict:
         d: dict = {
+            "run_id": self.run_id,
             "generated_at": self.timestamp,
             "llm": self.llm_models if self.llm_models else None,
             "verbose": self.verbose,
@@ -64,6 +74,7 @@ class ReportMeta:
         for note in self.endpoint_discovery_notes:
             lines.append(f"**Endpoint Note:** {note}  ")
         if self.verbose:
+            lines.append(f"**Run ID:** `{self.run_id}`  ")
             lines.append("**Mode:** verbose  ")
         lines.append("")
         return lines
@@ -77,6 +88,7 @@ class ReportMeta:
             if endpoint:
                 parts.append(f"Endpoint: {endpoint} ({self.target_endpoint_source})")
         if self.verbose:
+            parts.append(f"Run ID: {self.run_id}")
             parts.append("Mode: verbose")
         if self.finding_triggers:
             trigger_parts = [f"{k}={'on' if v else 'off'}" for k, v in self.finding_triggers.items()]
