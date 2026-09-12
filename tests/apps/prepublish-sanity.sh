@@ -232,7 +232,14 @@ if not traces:
 bad = 0
 for item in traces:
     status = str(item.get("status") or "").lower()
-    if status in {"aborted", "failed", "skipped", "similar_miss"}:
+    # A bare "aborted" (no ":reason" suffix) is a normal, designed chain-stop
+    # after a clean miss (on_failure="abort" builders like build_idor) — the
+    # scenario ran to completion against a healthy target, it just didn't find
+    # anything. Only a tagged "aborted:<reason>" (circuit-breaker health abort,
+    # e.g. "aborted:target_unavailable") counts as not-tested here — see the
+    # matching orchestrator._scan_outcome / report._attack_coverage_summary
+    # comments for the full rationale.
+    if status in {"failed", "skipped", "similar_miss"} or status.startswith("aborted:"):
         bad += 1
 
 ratio = bad / len(traces)
