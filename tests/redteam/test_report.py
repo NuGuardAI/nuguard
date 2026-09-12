@@ -41,7 +41,10 @@ class TestUniversalSafetySummary:
         text = "\n".join(lines)
         assert "sexual_content`: 3/3 tested, 0 finding(s)" in text
         assert "violence`: 1/2 tested, 0 finding(s)" in text
-        assert "self_harm`: 1/3 tested, 1 finding(s)" in text
+        # self_harm's third record has a bare "aborted" status — a normal,
+        # designed chain-stop after a clean miss (on_failure="abort"), not a
+        # target-health failure, so it counts as tested (2/3, not 1/3).
+        assert "self_harm`: 2/3 tested, 1 finding(s)" in text
 
     def test_ignores_non_universal_safety_records(self) -> None:
         records = [
