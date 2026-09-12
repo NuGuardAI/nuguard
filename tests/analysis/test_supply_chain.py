@@ -246,6 +246,133 @@ def test_supply_chain_plugin_uses_sbom_lifecycle_nodes():
     assert "NGA-SC-013" in rule_ids
 
 
+def test_gha_publish_without_oidc_has_no_provenance():
+    # NGA-SC-006: publish workflow that isn't using OIDC has no verifiable
+    # link between the artifact and the repo/ref/SHA that built it.
+    findings = _scan("github_prt_injection")
+    rule_ids = _rule_ids(findings)
+    assert "NGA-SC-006" in rule_ids, f"Expected NGA-SC-006, got {rule_ids}"
+    prov_findings = [f for f in findings if f.get("rule_id") == "NGA-SC-006"]
+    assert all(f["severity"] == "critical" for f in prov_findings)
+
+
+def test_gha_publish_with_oidc_has_provenance():
+    # The OIDC-publishing fixture should NOT trip NGA-SC-006.
+    findings = _scan("github_publish_oidc_unpinned")
+    rule_ids = _rule_ids(findings)
+    assert "NGA-SC-006" not in rule_ids, f"Unexpected NGA-SC-006 with OIDC in use: {rule_ids}"
+
+
+# ---------------------------------------------------------------------------
+# Workflow governance tests (NGA-SC-026/027)
+# ---------------------------------------------------------------------------
+
+def test_publish_job_without_environment_gate_is_high():
+    findings = _scan("github_prt_injection")
+    rule_ids = _rule_ids(findings)
+    assert "NGA-SC-026" in rule_ids, f"Expected NGA-SC-026, got {rule_ids}"
+    gate_findings = [f for f in findings if f.get("rule_id") == "NGA-SC-026"]
+    assert all(f["severity"] == "high" for f in gate_findings)
+
+
+def test_scan_step_with_continue_on_error_is_flagged():
+    findings = _scan("github_swallowed_scan_failure")
+    rule_ids = _rule_ids(findings)
+    assert "NGA-SC-027" in rule_ids, f"Expected NGA-SC-027, got {rule_ids}"
+
+
+def test_clean_package_no_workflow_governance_findings():
+    findings = _scan("clean_package")
+    governance_rules = {"NGA-SC-026", "NGA-SC-027"}
+    found = {f.get("rule_id") for f in findings} & governance_rules
+    assert not found, f"Unexpected workflow-governance findings on clean package: {found}"
+
+
+# ---------------------------------------------------------------------------
+# Git history heuristics (NGA-SC-020/021/022) — subprocess.run is mocked so
+# these stay offline/no-git per this module's docstring.
+# ---------------------------------------------------------------------------
+
+class _FakeCompleted:
+    def __init__(self, stdout: str, returncode: int = 0) -> None:
+        self.stdout = stdout
+        self.returncode = returncode
+
+
+def test_skip_ci_on_workflow_change_fires_sc021(tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+
+    def fake_run(cmd, **kwargs):
+        if "log" in cmd:
+            return _FakeCompleted("abc1234 fix: urgent hotfix [skip ci]\n")
+        if "diff-tree" in cmd:
+            return _FakeCompleted(".github/workflows/publish.yml\n")
+        raise AssertionError(f"unexpected git command: {cmd}")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    scanner = SupplyChainScanner(profile="full")
+    findings = scanner.scan(tmp_path)
+    rule_ids = _rule_ids(findings)
+    assert "NGA-SC-021" in rule_ids, f"Expected NGA-SC-021, got {rule_ids}"
+
+
+def test_workflow_only_change_fires_sc022(tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+
+    def fake_run(cmd, **kwargs):
+        if "log" in cmd:
+            return _FakeCompleted("abc1234 tweak CI\n")
+        if "diff-tree" in cmd:
+            return _FakeCompleted(".github/workflows/ci.yml\n")
+        raise AssertionError(f"unexpected git command: {cmd}")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    scanner = SupplyChainScanner(profile="full")
+    findings = scanner.scan(tmp_path)
+    rule_ids = _rule_ids(findings)
+    assert "NGA-SC-022" in rule_ids, f"Expected NGA-SC-022, got {rule_ids}"
+
+
+def test_workflow_change_with_manifest_change_does_not_fire_sc022(tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+
+    def fake_run(cmd, **kwargs):
+        if "log" in cmd:
+            return _FakeCompleted("abc1234 bump ci and deps\n")
+        if "diff-tree" in cmd:
+            return _FakeCompleted(".github/workflows/ci.yml\npackage-lock.json\n")
+        raise AssertionError(f"unexpected git command: {cmd}")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    scanner = SupplyChainScanner(profile="full")
+    findings = scanner.scan(tmp_path)
+    rule_ids = _rule_ids(findings)
+    assert "NGA-SC-022" not in rule_ids, f"Unexpected NGA-SC-022: {rule_ids}"
+
+
+# ---------------------------------------------------------------------------
+# OWASP Top 10 CI/CD Security Risks mapping
+# ---------------------------------------------------------------------------
+
+def test_every_nga_sc_rule_has_a_cicd_top10_mapping():
+    from nuguard.analysis.supply_chain_scanner import _RULE_META
+    from nuguard.common.control_mappings.cicd import cicd_refs_for_rule
+
+    for meta in _RULE_META:
+        rule_id = meta["rule_id"]
+        assert cicd_refs_for_rule(rule_id), f"{rule_id} has no OWASP CI/CD Top 10 mapping"
+
+
+def test_cicd_top10_mapping_covers_all_ten_categories():
+    from nuguard.common.control_mappings.cicd import CICD_TOP10, NGA_TO_CICD_TOP10
+
+    covered = {cat for refs in NGA_TO_CICD_TOP10.values() for cat in refs}
+    assert covered == set(CICD_TOP10), (
+        f"NGA-SC rules don't cover every OWASP CI/CD Top 10 category: "
+        f"missing {set(CICD_TOP10) - covered}"
+    )
+
+
 def test_supply_chain_plugin_uses_github_workflow_nodes():
     """When SBOM has GITHUB_WORKFLOW nodes, scanner uses them for workflow checks."""
     plugin = SupplyChainPlugin()

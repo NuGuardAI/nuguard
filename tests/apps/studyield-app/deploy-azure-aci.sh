@@ -40,6 +40,15 @@ LOCATION="${AZURE_LOCATION:-eastus}"
 ACR_NAME="${ACR_NAME:-nuguardstudyieldacr$(openssl rand -hex 3)}"
 CONTAINER_GROUP="${ACI_CONTAINER_NAME:-studyield-nuguard-test}"
 DNS_LABEL="${ACI_DNS_LABEL:-studyield-nuguard-$(openssl rand -hex 4)}"
+# Postgres data persistence — an emptyDir volume (local host disk, real POSIX
+# semantics) mounted into the postgres container so account/session data
+# survives individual container restarts (previously postgres had no volume
+# at all: any crash/restart under load silently wiped every seeded account,
+# which is what caused redteam scans to fail partway through with "User not
+# found" once real concurrent traffic hit the target). NOT an Azure Files
+# share: Postgres's data directory requires real Unix ownership, which
+# Azure Files (SMB/CIFS) cannot provide — confirmed live, postgres
+# crash-looped with "FATAL: data directory has wrong ownership" every time.
 POSTGRES_DB="${POSTGRES_DB:-studyield_dev}"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
@@ -61,7 +70,6 @@ az acr create --resource-group "$RESOURCE_GROUP" --name "$ACR_NAME" \
 ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
 ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
 ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query 'passwords[0].value' -o tsv)
-
 
 # Vite inlines VITE_* vars at build time, so the frontend must be built with
 # the public FQDN baked in — passing it as a container-runtime env var later
@@ -126,19 +134,22 @@ ${DOCKERHUB_CREDS}    - server: $ACR_LOGIN_SERVER
           - {name: POSTGRES_USER, value: '$POSTGRES_USER'}
           - {name: POSTGRES_PASSWORD, secureValue: '$POSTGRES_PASSWORD'}
           - {name: POSTGRES_DB, value: '$POSTGRES_DB'}
+          - {name: PGDATA, value: '/mnt/postgres-data/pgdata'}
+        volumeMounts:
+          - {name: postgres-data-volume, mountPath: /mnt/postgres-data}
         resources:
-          requests: {cpu: 1, memoryInGb: 0.5}
+          requests: {cpu: 1.5, memoryInGb: 1.5}
     - name: redis
       properties:
         image: redis:7-alpine
         command: ["redis-server", "--appendonly", "yes"]
         resources:
-          requests: {cpu: 1, memoryInGb: 0.3}
+          requests: {cpu: 1, memoryInGb: 0.5}
     - name: qdrant
       properties:
         image: qdrant/qdrant:latest
         resources:
-          requests: {cpu: 1, memoryInGb: 0.5}
+          requests: {cpu: 1, memoryInGb: 1}
     - name: clickhouse
       properties:
         image: clickhouse/clickhouse-server:latest
@@ -146,7 +157,7 @@ ${DOCKERHUB_CREDS}    - server: $ACR_LOGIN_SERVER
           - {name: CLICKHOUSE_DB, value: '${CLICKHOUSE_DATABASE:-studyield_analytics}'}
           - {name: CLICKHOUSE_USER, value: '${CLICKHOUSE_USER:-default}'}
         resources:
-          requests: {cpu: 1, memoryInGb: 1}
+          requests: {cpu: 1, memoryInGb: 1.5}
     - name: backend
       properties:
         image: $ACR_LOGIN_SERVER/studyield-backend:latest
@@ -178,7 +189,11 @@ ${DOCKERHUB_CREDS}    - server: $ACR_LOGIN_SERVER
           - {name: AZURE_EMBEDDING_KEY, secureValue: '${AZURE_EMBEDDING_KEY:-}'}
           - {name: AZURE_EMBEDDING_DEPLOYMENT_NAME, value: '${AZURE_EMBEDDING_DEPLOYMENT_NAME:-}'}
         resources:
-          requests: {cpu: 1, memoryInGb: 1}
+          # Bumped from 1 cpu / 1GB — this container already crashed once
+          # (exitCode 1) at initial boot under the original allocation, and
+          # is the one under the most real load during a redteam scan
+          # (concurrency=5 scenario workers all hitting it concurrently).
+          requests: {cpu: 2, memoryInGb: 2.5}
     - name: frontend
       properties:
         image: $ACR_LOGIN_SERVER/studyield-frontend:latest
@@ -194,6 +209,23 @@ ${DOCKERHUB_CREDS}    - server: $ACR_LOGIN_SERVER
           - {name: SEED_BASE_URL, value: 'http://localhost:$BACKEND_PORT/api/v1'}
         resources:
           requests: {cpu: 1, memoryInGb: 0.3}
+  volumes:
+    # emptyDir, NOT azureFile: Postgres's data directory needs real POSIX
+    # ownership (initdb/the server both refuse to start otherwise -- "data
+    # directory has wrong ownership"), which Azure Files (an SMB/CIFS share)
+    # cannot provide regardless of chmod/chown, and ACI's azureFile volume
+    # type has no uid/gid/file_mode mount-option override to work around it
+    # (confirmed live: postgres crash-looped with that exact FATAL on this
+    # deployment). emptyDir is backed by the container group's local host
+    # disk instead, so it has full POSIX semantics and -- critically -- still
+    # solves the actual bug (postgres/backend restarting under load silently
+    # wiping seeded accounts): it survives individual container
+    # crash/restart for the life of the container group. It does NOT survive
+    # a full az-container-delete + recreate (a fresh CPU/memory resize
+    # always needs one, since ACI can't resize in place) -- re-run
+    # ./seed-data.sh after any such redeploy.
+    - name: postgres-data-volume
+      emptyDir: {}
 tags: {}
 type: Microsoft.ContainerInstance/containerGroups
 EOF

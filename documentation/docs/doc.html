@@ -249,6 +249,78 @@
             margin-bottom: 0;
         }
 
+        /* ── GFM-style admonitions ([!NOTE], [!TIP], etc.) ───────────────── */
+        .doc-content .admonition {
+            border-left: 3px solid var(--accent);
+            padding: .75rem 1rem;
+            margin: 1rem 0 1.25rem;
+            background: var(--accent-glow);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            color: var(--text-muted);
+        }
+
+        .doc-content .admonition p {
+            margin-bottom: 0;
+        }
+
+        .doc-content .admonition-title {
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+            font-weight: 600;
+            margin-bottom: .35rem;
+        }
+
+        .doc-content .admonition-title .admonition-icon {
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .doc-content .admonition-note {
+            border-left-color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .doc-content .admonition-note .admonition-title {
+            color: var(--accent);
+        }
+
+        .doc-content .admonition-tip {
+            border-left-color: var(--green);
+            background: var(--green-dim);
+        }
+
+        .doc-content .admonition-tip .admonition-title {
+            color: var(--green);
+        }
+
+        .doc-content .admonition-important {
+            border-left-color: var(--purple);
+            background: var(--purple-dim);
+        }
+
+        .doc-content .admonition-important .admonition-title {
+            color: var(--purple);
+        }
+
+        .doc-content .admonition-warning {
+            border-left-color: var(--orange);
+            background: var(--orange-dim);
+        }
+
+        .doc-content .admonition-warning .admonition-title {
+            color: var(--orange);
+        }
+
+        .doc-content .admonition-caution {
+            border-left-color: var(--red);
+            background: var(--red-dim);
+        }
+
+        .doc-content .admonition-caution .admonition-title {
+            color: var(--red);
+        }
+
         .doc-content table {
             width: 100%;
             border-collapse: collapse;
@@ -334,7 +406,7 @@
                 <div class="sidebar-section-title">Documentation</div>
                 <div class="sidebar-nav">
                     <ul>
-                        <li><a href="doc.html?page=quick-start" data-page="quick-start">Quick Start Guide</a></li>
+                        <li><a href="doc.html?page=quick-start" data-page="quick-start">Getting Started</a></li>
                         <li><a href="doc.html?page=sbom-schema" data-page="sbom-schema">AI SBOM Schema</a></li>
                         <li><a href="doc.html?page=cli-reference" data-page="cli-reference">CLI Reference</a></li>
                         <li><a href="doc.html?page=library-reference" data-page="library-reference">Python Library Reference</a></li>
@@ -386,7 +458,7 @@
         (function () {
             // Page name → title map
             const PAGE_TITLES = {
-                'quick-start': 'Quick Start Guide',
+                'quick-start': 'Getting Started',
                 'sbom-schema': 'AI SBOM Schema',
                 'cli-reference': 'CLI Reference',
                 'library-reference': 'Python Library Reference',
@@ -463,6 +535,40 @@
                 });
             }
 
+            // GitHub-style alert blockquotes (> [!NOTE], > [!TIP], > [!IMPORTANT],
+            // > [!WARNING], > [!CAUTION]) into styled admonitions. marked 12 has no
+            // built-in GFM-alert support, so this runs as a post-render DOM pass.
+            const ADMONITIONS = {
+                NOTE: { icon: 'ℹ️', label: 'Note' },
+                TIP: { icon: '💡', label: 'Tip' },
+                IMPORTANT: { icon: '📌', label: 'Important' },
+                WARNING: { icon: '⚠️', label: 'Warning' },
+                CAUTION: { icon: '🚨', label: 'Caution' },
+            };
+
+            function transformAdmonitions(container) {
+                container.querySelectorAll('blockquote').forEach(function (bq) {
+                    const firstP = bq.querySelector('p');
+                    if (!firstP) return;
+                    const match = firstP.innerHTML.match(/^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(?:<br>|\n)?/i);
+                    if (!match) return;
+
+                    const kind = match[1].toUpperCase();
+                    const meta = ADMONITIONS[kind];
+                    firstP.innerHTML = firstP.innerHTML.slice(match[0].length);
+
+                    bq.classList.add('admonition', 'admonition-' + kind.toLowerCase());
+                    const title = document.createElement('div');
+                    title.className = 'admonition-title';
+                    title.innerHTML = '<span class="admonition-icon">' + meta.icon + '</span>' + meta.label;
+                    bq.insertBefore(title, bq.firstChild);
+
+                    if (!firstP.textContent.trim() && !firstP.querySelector('*')) {
+                        firstP.remove();
+                    }
+                });
+            }
+
             // Fetch and render
             fetch(page + '.md?v=' + Date.now())
                 .then(function (res) {
@@ -482,8 +588,9 @@
                         hljs.highlightElement(block);
                     });
 
-                    // Assign heading ids, then wire up .md / #anchor links
+                    // Assign heading ids, style GFM alerts, then wire up .md / #anchor links
                     assignHeadingIds(content);
+                    transformAdmonitions(content);
                     interceptDocLinks(content);
 
                     // Update page title from first h1 if present

@@ -92,6 +92,48 @@ def to_json(
     return json.dumps(payload, indent=2, default=str)
 
 
+_ABORT_SCAN_OUTCOMES = {
+    "aborted_target_unavailable",
+    "aborted_auth_failure",
+    "aborted_endpoint_unreachable",
+    "inconclusive_target_errors",
+}
+
+
+def _abort_outcome_note(scan_outcome: str) -> str:
+    """Return a Markdown blockquote note explaining an abort-flavored scan_outcome.
+
+    Only called for values in ``_ABORT_SCAN_OUTCOMES``.
+    """
+    if scan_outcome == "aborted_target_unavailable":
+        return (
+            "> **Note:** This scan was aborted — the target became unreachable or "
+            "structurally broken (repeated 5xx/connection errors) partway through. "
+            "Findings below reflect only the scenarios that completed before the "
+            "circuit breaker tripped; coverage is incomplete."
+        )
+    if scan_outcome == "aborted_auth_failure":
+        return (
+            "> **Note:** This scan was aborted — authentication to the target failed "
+            "repeatedly and could not be refreshed (e.g. expired/invalid credentials, "
+            "or a broken `login_flow` config). This is a configuration issue, not a "
+            "target-availability issue. Findings below reflect only the portion of the "
+            "run that completed before authentication failures halted testing."
+        )
+    if scan_outcome == "aborted_endpoint_unreachable":
+        return (
+            "> **Note:** This scan was aborted before any scenario ran — the configured "
+            "chat endpoint returned HTTP 404/405. Fix `target_endpoint` in nuguard.yaml, "
+            "or remove it to allow automatic endpoint discovery."
+        )
+    # inconclusive_target_errors
+    return (
+        "> **Note:** The majority of requests in this run resulted in server-side "
+        "errors. Results are inconclusive — the target was not reliably reachable "
+        "throughout testing."
+    )
+
+
 def to_markdown(
     findings: list,
     meta: "ReportMeta | None" = None,
@@ -100,6 +142,7 @@ def to_markdown(
     catalog_coverage: "object | None" = None,
     coverage_tracker: "object | None" = None,
     security_invariants: list | None = None,
+    scan_outcome: str = "no_findings",
 ) -> str:
     """Render red-team findings as a Markdown report string.
 
@@ -113,11 +156,19 @@ def to_markdown(
     from the orchestrator), a ``## Scenario Coverage`` table is inserted
     immediately after the report header, before the per-finding detail.
 
+    When *scan_outcome* is one of the abort-flavored values (the circuit
+    breaker tripped before meaningful coverage was achieved), a note is
+    rendered right under the Overall Risk Score / Total Findings bullets —
+    regardless of finding count — so a near-zero-coverage aborted run never
+    reads identically to a genuinely clean pass.
+
     Args:
         findings: List of :class:`~nuguard.models.finding.Finding` objects.
         meta: Optional report metadata.
         remediation_plan: Optional list of ``RemediationArtefact`` objects.
         scenario_records: Optional list of ``ScenarioRecord`` objects.
+        scan_outcome: Scan-level outcome string from
+            ``RedteamOrchestrator.scan_outcome`` / ``RedteamRunResult.scan_outcome``.
 
     Returns:
         Markdown string.
@@ -147,6 +198,9 @@ def to_markdown(
     lines += [f"- **Overall Risk Score**: {_risk_score:.1f} / 100", ""]
     total = len(findings)
     lines += [f"- **Total Findings**: {total}", ""]
+    lines += [f"- **Scan Outcome**: `{scan_outcome}`", ""]
+    if scan_outcome in _ABORT_SCAN_OUTCOMES:
+        lines += [_abort_outcome_note(scan_outcome), ""]
     if findings:
         sev_counts: dict[str, int] = {}
         for f in findings:

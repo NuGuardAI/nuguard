@@ -69,6 +69,40 @@ def test_backfill_never_overwrites_existing_remediation():
     assert finding.remediation == "Already set."
 
 
+def test_backfill_overwrites_description_echo_placeholder():
+    # A finding can arrive with `remediation` already stamped to a copy (or
+    # truncated copy) of its own `description` by an upstream trigger — that
+    # is not real "how to fix it" guidance, so it must not block a matching
+    # artefact's grounded rationale from landing.
+    finding = Finding(
+        finding_id="f1",
+        title="t",
+        severity=Severity.HIGH,
+        description="Attack scenario 'X' succeeded: success signals detected in 1 step(s).",
+        remediation="Attack scenario 'X' succeeded: success signals detected in 1 step(s).",
+    )
+    artefact = _artefact(["f1"], rationale="Add an input guardrail blocking this pattern.")
+
+    backfill_finding_remediation([finding], [artefact])
+
+    assert finding.remediation == "Add an input guardrail blocking this pattern."
+
+
+def test_backfill_overwrites_truncated_description_echo_placeholder():
+    finding = Finding(
+        finding_id="f1",
+        title="t",
+        severity=Severity.HIGH,
+        description="Response has no overlap with any allowed_topics keyword. Allowed: [...]",
+        remediation="Response has no overlap with any allowed_topics keyword. Allowed:",
+    )
+    artefact = _artefact(["f1"], rationale="Tighten the topic-boundary guardrail.")
+
+    backfill_finding_remediation([finding], [artefact])
+
+    assert finding.remediation == "Tighten the topic-boundary guardrail."
+
+
 def test_backfill_prefers_system_prompt_patch_over_guardrail_artefact():
     finding = _finding("f1")
     guardrail = _artefact(
@@ -83,14 +117,16 @@ def test_backfill_prefers_system_prompt_patch_over_guardrail_artefact():
     assert finding.remediation == "patch rationale"
 
 
-def test_backfill_truncates_long_rationale():
+def test_backfill_does_not_truncate_long_rationale():
+    # Per project policy: length is constrained by the LLM's own prompt
+    # instruction (see REMEDIATION_PERSONA), never by post-hoc slicing here.
     finding = _finding("f1")
     long_rationale = "word " * 200
     artefact = _artefact(["f1"], rationale=long_rationale)
 
-    backfill_finding_remediation([finding], [artefact], max_len=50)
+    backfill_finding_remediation([finding], [artefact])
 
-    assert len(finding.remediation) <= 50
+    assert finding.remediation == long_rationale
 
 
 def test_backfill_works_with_dict_findings():
@@ -134,12 +170,11 @@ def test_backfill_uses_per_finding_rationale_when_artefact_was_merged():
     assert f2.remediation == "f2's own text."
 
 
-def test_backfill_truncation_does_not_cross_contaminate_merged_findings():
-    # Regression test: before per_finding_rationale, truncating the merged
-    # blob at max_len could leave only f1's text visible while f2's own
-    # remediation field silently became a copy of f1's — even though the two
-    # findings are unrelated. Confirm each finding's remediation is bounded
-    # to its own content only.
+def test_backfill_does_not_cross_contaminate_merged_findings():
+    # Regression test: before per_finding_rationale existed, a merged
+    # artefact's shared blob could leak one finding's text into a sibling's
+    # remediation field even though the two findings are unrelated. Confirm
+    # each finding's remediation is bounded to its own content only.
     f1 = _finding("f1")
     f2 = _finding("f2")
     merged = _artefact(["f1", "f2"], rationale="f1 rationale text.\nf2 rationale text.")
@@ -148,7 +183,7 @@ def test_backfill_truncation_does_not_cross_contaminate_merged_findings():
         "f2": "f2 rationale text.",
     }
 
-    backfill_finding_remediation([f1, f2], [merged], max_len=15)
+    backfill_finding_remediation([f1, f2], [merged])
 
     assert "f2" not in f1.remediation
     assert "f1" not in f2.remediation

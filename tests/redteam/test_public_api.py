@@ -7,9 +7,9 @@ request's fields plus the separately-passed collaborators and reads back the
 orchestrator's instance attributes into RedteamRunResult, proving no
 functionality is lost relative to the CLI's `_run_orchestrator`, and (3) the
 post-run scenario_filter re-check (run_redteam() is the single
-implementation — the CLI calls it directly, it isn't duplicated) matches
-findings on goal_type, scenario_type, and title, the same as the
-orchestrator's own pre-run filter.
+implementation — the CLI calls it directly, it isn't duplicated) classifies
+findings as destructive/non-destructive from their title/description, the
+same as the orchestrator's own pre-run filter.
 """
 from __future__ import annotations
 
@@ -38,10 +38,14 @@ from nuguard.redteam.public_api import (
 from nuguard.redteam.target.canary import CanaryConfig
 
 
-def _finding(goal_type: str = "prompt_driven_threat", scenario_type: str | None = None) -> Finding:
+def _finding(
+    goal_type: str = "prompt_driven_threat",
+    scenario_type: str | None = None,
+    title: str = "t",
+) -> Finding:
     return Finding(
         finding_id="f1",
-        title="t",
+        title=title,
         severity=Severity.HIGH,
         description="d",
         goal_type=goal_type,
@@ -477,38 +481,40 @@ async def test_cli_orchestrator_adapter_protects_auth_values_before_public_call(
 
 @pytest.mark.asyncio
 async def test_run_redteam_applies_scenario_filter_post_run():
-    findings = [_finding("prompt_driven_threat"), _finding("data_exfiltration")]
-    mock_instance = _make_mock_orchestrator(findings)
-
-    with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
-        mock_cls.return_value = mock_instance
-        request = RedteamRunRequest(target_url="http://target", scenario_filter=["prompt-driven"])
-        result = await run_redteam(request, sbom=MagicMock())
-
-    assert len(result.findings) == 1
-    assert result.findings[0].goal_type == "prompt_driven_threat"
-
-
-@pytest.mark.asyncio
-async def test_run_redteam_scenario_type_level_filter_does_not_drop_finding():
-    """Regression test for the bug where a scenario-type-level filter (e.g.
-    "APPROVAL_STATE_FORGERY") correctly selected which scenario ran, via the
-    orchestrator's own pre-run filter, but then had its resulting finding
-    silently dropped by this post-run re-check — because the re-check only
-    ever compared the filter token against goal_type, never scenario_type."""
     findings = [
-        _finding("prompt_driven_threat", scenario_type="APPROVAL_STATE_FORGERY"),
-        _finding("data_exfiltration", scenario_type="DIRECT_PII_EXTRACTION"),
+        _finding("tool_abuse", title="Delete User Record"),
+        _finding("prompt_driven_threat", title="Extract System Prompt"),
     ]
     mock_instance = _make_mock_orchestrator(findings)
 
     with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
         mock_cls.return_value = mock_instance
-        request = RedteamRunRequest(target_url="http://target", scenario_filter=["APPROVAL_STATE_FORGERY"])
+        request = RedteamRunRequest(target_url="http://target", scenario_filter=["destructive"])
         result = await run_redteam(request, sbom=MagicMock())
 
     assert len(result.findings) == 1
-    assert result.findings[0].scenario_type == "APPROVAL_STATE_FORGERY"
+    assert result.findings[0].title == "Delete User Record"
+
+
+@pytest.mark.asyncio
+async def test_run_redteam_non_destructive_filter_ignores_goal_type_and_scenario_type():
+    """The destructive/non-destructive post-run re-check classifies purely on
+    title/description text — unlike the old goal_type/scenario_type filter,
+    two findings sharing the same goal_type and scenario_type can still land
+    on opposite sides of the filter based on title content alone."""
+    findings = [
+        _finding("tool_abuse", scenario_type="DESTRUCTIVE_RECORD_MUTATION", title="Cancel Subscription"),
+        _finding("tool_abuse", scenario_type="DESTRUCTIVE_RECORD_MUTATION", title="Read Account Balance"),
+    ]
+    mock_instance = _make_mock_orchestrator(findings)
+
+    with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
+        mock_cls.return_value = mock_instance
+        request = RedteamRunRequest(target_url="http://target", scenario_filter=["non-destructive"])
+        result = await run_redteam(request, sbom=MagicMock())
+
+    assert len(result.findings) == 1
+    assert result.findings[0].title == "Read Account Balance"
 
 
 @pytest.mark.asyncio
@@ -620,8 +626,9 @@ async def test_run_redteam_remediation_plan_empty_without_findings():
 
 
 @pytest.mark.asyncio
-async def test_run_redteam_remediation_synthesis_failure_is_swallowed():
-    """Remediation synthesis is best-effort — a failure must not fail the run."""
+async def test_run_redteam_remediation_synthesis_failure_propagates():
+    """A broken remediation LLM client must fail the run loudly, not
+    silently produce a report with an empty remediation plan."""
     findings = [_finding("data_exfiltration")]
     mock_instance = _make_mock_orchestrator(findings)
 
@@ -636,7 +643,5 @@ async def test_run_redteam_remediation_synthesis_failure_is_swallowed():
         request = RedteamRunRequest(target_url="http://target")
         from types import SimpleNamespace
 
-        result = await run_redteam(request, sbom=SimpleNamespace(nodes=[], edges=[]))
-
-    assert result.remediation_plan == []
-    assert len(result.findings) == 1
+        with pytest.raises(RuntimeError, match="boom"):
+            await run_redteam(request, sbom=SimpleNamespace(nodes=[], edges=[]))

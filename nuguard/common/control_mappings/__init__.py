@@ -22,6 +22,11 @@ from nuguard.common.control_mappings.atlas import (
     atlas_refs_for_goal,
     atlas_technique_label,
 )
+from nuguard.common.control_mappings.cicd import (
+    CICD_TOP10,
+    NGA_TO_CICD_TOP10,
+    cicd_refs_for_rule,
+)
 from nuguard.common.control_mappings.owasp import (
     BA_RULE_TO_OWASP,
     BEHAVIOR_FINDING_TYPE_TO_OWASP,
@@ -41,11 +46,13 @@ __all__ = [
     "BA_RULE_TO_OWASP",
     "BEHAVIOR_FINDING_TYPE_TO_ATLAS",
     "BEHAVIOR_FINDING_TYPE_TO_OWASP",
+    "CICD_TOP10",
     "GOAL_TYPE_TO_ATLAS",
     "GOAL_TYPE_TO_OWASP",
     "MITIGATIONS",
     "NATIVE_CHECKS",
     "NGA_TO_ATLAS",
+    "NGA_TO_CICD_TOP10",
     "NGA_TO_OWASP",
     "RuleOwaspRefs",
     "TACTICS",
@@ -54,6 +61,7 @@ __all__ = [
     "atlas_refs_for_finding_type",
     "atlas_refs_for_goal",
     "atlas_technique_label",
+    "cicd_refs_for_rule",
     "owasp_refs_for_ba_rule",
     "owasp_refs_for_finding_type",
     "owasp_refs_for_goal",

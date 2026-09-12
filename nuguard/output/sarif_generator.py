@@ -273,9 +273,17 @@ def _build_result(
         "locations": locations,
     }
 
-    # Attach CVE IDs as related locations / properties
+    # Attach CVE IDs and remediation guidance as properties. Remediation is
+    # kept verbatim (no length cap) in its own property rather than folded
+    # into the length-capped `message` field above.
     cve_ids = f.get("cve_ids") or []
+    remediation = f.get("remediation")
+    properties: dict[str, Any] = {}
     if cve_ids:
-        result["properties"] = {"cve_ids": cve_ids}
+        properties["cve_ids"] = cve_ids
+    if remediation:
+        properties["remediation"] = str(remediation)
+    if properties:
+        result["properties"] = properties
 
     return result

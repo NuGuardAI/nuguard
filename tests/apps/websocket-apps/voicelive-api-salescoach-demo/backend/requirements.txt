@@ -1,0 +1,10 @@
+azure-ai-projects==1.0.0
+azure-ai-voicelive[aiohttp]>=1.0.0
+azure-cognitiveservices-speech==1.47.0
+azure-identity>=1.25.1
+flask==3.1.2
+flask-sock==0.7.0
+openai==2.13.0
+python-dotenv==1.2.1
+pyyaml==6.0.3
+websockets==15.0.1

@@ -205,8 +205,8 @@ Runs up to seven scanners in sequence. External scanners are silently skipped wh
 
 | Scanner | Checks | Requires |
 |---|---|:---:|
-| **NGA** structural rules | AI-specific structural risks (NGA-001–018) | *(built in)* |
-| **Supply-chain** threat pack | Lifecycle scripts, CI/CD publish paths, AI-agent config poisoning (NGA-SC-001–025) | *(built in)* |
+| **NGA** structural rules | AI-specific structural risks (NGA-001–030) | *(built in)* |
+| **Supply-chain** threat pack | Lifecycle scripts, CI/CD publish paths, AI-agent config poisoning (NGA-SC-001–027; also mapped to the OWASP Top 10 CI/CD Security Risks) | *(built in)* |
 | **OSV** | Dependency CVE lookup | *(built in)* |
 | **Grype** | Package / container CVEs | `grype` on PATH |
 | **Checkov** | Infrastructure-as-code misconfigurations | `checkov` on PATH |
@@ -230,7 +230,7 @@ nuguard analyze --sbom app.sbom.json --format json --format markdown --output re
 |---|---|---|
 | `--sbom` | **required** | Path to AI-SBOM JSON |
 | `--config`, `-c` | — | Path to `nuguard.yaml`; supplies `min_severity` and `nga_only` defaults (CLI flags override) |
-| `--nga` | off | NGA structural rules only (NGA-001–018); disables every other scanner |
+| `--nga` | off | NGA structural rules only (NGA-001–030); disables every other scanner |
 | `--format`, `-f` | `markdown` | `markdown` \| `sarif` \| `json` (repeat flag or use comma-separated values for multiple outputs) |
 | `--min-severity` | `medium` | Minimum severity to include: `critical` \| `high` \| `medium` \| `low` \| `info` |
 | `--source`, `-s` | — | Source directory for supply-chain, Checkov, Trivy, and Semgrep scans |
@@ -242,11 +242,11 @@ nuguard analyze --sbom app.sbom.json --format json --format markdown --output re
 | `--checkov` / `--no-checkov` | on | Checkov IaC scan (requires `checkov` on PATH) |
 | `--trivy` / `--no-trivy` | on | Trivy container/fs scan (requires `trivy` on PATH) |
 | `--semgrep` / `--no-semgrep` | on | Semgrep AI-security rules (requires `semgrep` on PATH) |
-| `--supply-chain` / `--no-supply-chain` | on | Supply-chain threat pack (NGA-SC-001–025) |
+| `--supply-chain` / `--no-supply-chain` | on | Supply-chain threat pack (NGA-SC-001–027) |
 | `--supply-chain-profile` | `standard` | `ci` \| `standard` \| `full` — `full` adds git-history checks |
 | `--supply-chain-verify` | `off` | Artifact registry verification: `off` \| `warn` \| `fail` |
 | `--llm` | off | LLM enrichment in the ATLAS annotation pass |
-| `--verbose`, `-v` | off | Show all 18 NGA rules (pass *and* fail) with evidence for why each passed |
+| `--verbose`, `-v` | off | Show all 30 NGA rules (pass *and* fail) with evidence for why each passed |
 | `--output`, `-o` | stdout | Write report to this file. Required when multiple formats are requested; base path expands to per-format files (for example `analyze.json`, `analyze.md`) |
 | `--policy` | — | *Reserved* — accepted but not yet wired to a policy check in this command; use [`nuguard policy check`](#nuguard-policy) instead |
 
@@ -498,6 +498,7 @@ nuguard behavior --mode static+dynamic --fail-on critical --compare-to ./last-ru
 | `--baseline` | — | — | Path to a previous `BehaviorAnalysisResult` JSON for regression detection |
 | `--compare-to` | — | — | Path to a previous behavior report JSON, checked for run-profile comparability before diffing |
 | `--strict-report` | — | off | Fail if Markdown report validation finds structural issues |
+| `--resume` | — | — | Path to a checkpoint file from a previous aborted run; skips already-completed scenarios and merges results |
 | `--verbose` / `--no-verbose` | `-v` / `-V` | off | Print detailed per-turn traces |
 
 **Static checks (BA-001 – BA-008)** — deterministic SBOM × policy cross-checks; no running application or LLM required. Covers missing system-prompt controls, unenforced topic boundaries, over-permissioned tool edges, missing rate-limit controls, and more.
@@ -557,9 +558,9 @@ NUGUARD_REDTEAM_LLM_API_KEY=sk-... \
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
   --guided --guided-max-turns 15 --guided-concurrency 2
 
-# Limit to specific attack families
+# Skip scenarios that mutate/destroy target state
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
-  --scenarios prompt-driven-threat,data-exfiltration
+  --scenarios non-destructive
 
 # Scan with a custom scenario catalog
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
@@ -585,7 +586,7 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `--canary` | — | from `nuguard.yaml` | Canary JSON file path |
 | `--catalog` | — | built-in catalog | Path to a custom scenario catalog YAML. Replaces the built-in catalog. Generate with `nuguard redteam catalog-export` |
 | `--profile` | — | `ci` | `ci` (high-signal only) or `full` (all scenarios) |
-| `--scenarios` | — | all | Comma-separated filter: `prompt-driven-threat`, `policy-violation`, `data-exfiltration`, `privilege-escalation`, `tool-abuse`, `mcp-toxic-flow`, `api-attack`, `agentic-trust-abuse`, `recon-inference`. Stable catalog IDs (e.g. `D01,C03`) also work |
+| `--scenarios` | — | both | Comma-separated filter: `destructive`, `non-destructive` |
 | `--min-impact-score` | — | `0.0` | Exclude scenarios below this pre-score [0–10] |
 | `--guided` / `--no-guided` | — | on when a redteam LLM is configured | Adaptive multi-turn guided conversations (TAP + PAIR) |
 | `--guided-max-turns` | — | `12` | Max turns per guided conversation |
@@ -593,6 +594,7 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `--format` | `-f` | `text` | `text` \| `json` \| `markdown` \| `sarif` (repeat flag or use comma-separated values for multiple outputs) |
 | `--output` | `-o` | — | Write findings to this file. Required when multiple formats are requested; base path expands to per-format files |
 | `--fail-on` | — | `high` | Exit code `2` if any finding meets this severity |
+| `--resume` | — | — | Path to a checkpoint file from a previous aborted run; skips already-completed scenarios and merges results |
 | `--verbose` / `--no-verbose` | `-v` / `-V` | off | Print detailed per-turn traces |
 
 #### 🟣 `nuguard redteam catalog-export`
@@ -681,6 +683,12 @@ nuguard target verify --config nuguard.yaml --sbom app.sbom.json
 | `--skip-discovery` / `--no-skip-discovery` | off | Skip the pre-scan account/golden-data discovery conversation |
 
 > ✅ Run `nuguard target verify` before `nuguard redteam`, `nuguard behavior`, or `nuguard validate` to catch misconfigured endpoints, expired tokens, or firewall blocks early. Exits non-zero if any non-skipped credential fails.
+
+WebSocket chat endpoints are supported transparently — when SBOM or live discovery identifies the
+chat route as a WebSocket, `target verify` (and `behavior`/`redteam`) automatically switch to a
+persistent WebSocket connection instead of per-request HTTP POSTs. No extra flags needed; there's
+currently no `nuguard.yaml` override for hand-configuring WebSocket auth-message/completion-key
+framing — it's auto-discovery only.
 
 ### 🟣 `nuguard target discover-browser`
 

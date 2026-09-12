@@ -24,6 +24,7 @@ import re
 from typing import Any
 
 from ...types import ComponentType
+from .._schema_utils import bare_type_name, flatten_one_level
 from ..base import ComponentDetection
 from ._class_scan import _CLASS_RE, _find_class_body_span
 from ._ts_regex import TSFrameworkAdapter
@@ -83,6 +84,15 @@ _METHOD_DEF_RE = re.compile(r"^\s*(?:public\s+|private\s+|protected\s+)?(?:async
 _USEGUARDS_RE = re.compile(r"@UseGuards\(")
 _PUBLIC_RE = re.compile(r"@Public\(\)")
 _BODY_PARAM_RE = re.compile(r"@Body\(\)\s*\w+\s*:\s*([\w][\w.<>\[\]]*)")
+# Captures a same-line TypeScript return-type annotation, e.g.
+# `async login(dto: LoginDto): Promise<LoginResponseDto> {`. Non-greedy and
+# excludes "(" from the captured type so a nested call in a same-line default
+# arg or decorator doesn't get swept into the match; only fires when the
+# opening "{" of the method body is on the same line (methods with a
+# multi-line signature are left with no detected return type, same as today's
+# total absence — no false positives from scanning past unrelated lines).
+_METHOD_RETURN_RE = re.compile(r"\)\s*:\s*([\w.<>\[\], ]+?)\s*\{")
+_PROMISE_WRAPPER_RE = re.compile(r"^Promise<(.+)>$")
 
 # How far past a route decorator to look for the method signature / @Body() /
 # @Public() — Swagger decorators (@ApiOperation, @ApiResponse, ...) commonly
@@ -358,6 +368,7 @@ class NestJSAdapter(TSFrameworkAdapter):
 
                 # Find the actual method name (first non-decorator line in the window).
                 func_name = f"{http_method.lower()}_{k}"
+                return_type: str | None = None
                 for wl in window[1:]:
                     stripped = wl.strip()
                     if not stripped or stripped.startswith("@"):
@@ -365,6 +376,9 @@ class NestJSAdapter(TSFrameworkAdapter):
                     mdm = _METHOD_DEF_RE.match(wl)
                     if mdm:
                         func_name = mdm.group(1)
+                        rm2 = _METHOD_RETURN_RE.search(wl)
+                        if rm2:
+                            return_type = rm2.group(1).strip()
                         break
                     break
 
@@ -399,6 +413,16 @@ class NestJSAdapter(TSFrameworkAdapter):
                         chat_key, chat_list = _infer_chat_payload_key(schema)
                         ctx_fields = _infer_context_payload_fields(schema, chat_key)
 
+                resp_schema: dict[str, str] = {}
+                if return_type:
+                    unwrapped = _PROMISE_WRAPPER_RE.match(return_type)
+                    bare_return_type = bare_type_name(
+                        unwrapped.group(1) if unwrapped else return_type
+                    )
+                    resp_schema = effective_dto_schemas.get(bare_return_type, {})
+                    if resp_schema:
+                        resp_schema = flatten_one_level(resp_schema, effective_dto_schemas)
+
                 metadata: dict[str, Any] = {
                     "framework": "nestjs",
                     "method": http_method.upper(),
@@ -410,6 +434,8 @@ class NestJSAdapter(TSFrameworkAdapter):
                 metadata["auth_required"] = auth_required
                 if schema:
                     metadata["request_body_schema"] = schema
+                if resp_schema:
+                    metadata["response_body_schema"] = resp_schema
                 if chat_key and chat_key not in _NON_CHAT_PAYLOAD_KEYS:
                     metadata["chat_payload_key"] = chat_key
                     metadata["chat_payload_list"] = chat_list

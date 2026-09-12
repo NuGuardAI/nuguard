@@ -125,11 +125,13 @@ If you're using Option B (`npx`):
 
 Restart Claude Desktop after saving. The NuGuard tools appear in the tools panel (hammer icon).
 
+> [!TIP]
 > **Using a virtual environment?** Activate it first, or point directly to the venv's binary:
 > ```json
 > { "command": "/path/to/.venv/bin/nuguard-mcp" }
 > ```
 
+> [!TIP]
 > **Have `uv` and want to skip a permanent install entirely?** Use `uvx` instead, which runs NuGuard on demand:
 > ```json
 > {
@@ -211,7 +213,8 @@ During install, Smithery prompts for three optional settings:
 
 Secrets are passed as environment variables to the `nuguard-mcp` process and never travel through the agent's context.
 
-> **Note:** Smithery provisions only the seven NuGuard tools. Slash commands, skills, and the security-auditor agent require the [Claude Code plugin](#claude-code).
+> [!NOTE]
+> Smithery provisions only the seven NuGuard tools. Slash commands, skills, and the security-auditor agent require the [Claude Code plugin](#claude-code).
 
 [⬆ Back to agent picker](#choose-your-coding-agent)
 

@@ -80,7 +80,7 @@ def redteam(
         "ci", "--profile", help="Scan profile: ci | full."
     ),
     scenarios: Optional[str] = typer.Option(
-        None, "--scenarios", help="Comma-separated scenario types to run (default: all)."
+        None, "--scenarios", help="Comma-separated: destructive, non-destructive (default: both)."
     ),
     min_impact_score: float = typer.Option(
         0.0,
@@ -212,10 +212,8 @@ def redteam(
         if unrecognized_scenarios:
             typer.echo(
                 f"Warning: redteam.scenarios contains unrecognized value(s) "
-                f"{unrecognized_scenarios} — these won't reliably match any scenario "
-                "and may silently drop coverage. Valid values: prompt-driven-threat, "
-                "policy-violation, data-exfiltration, privilege-escalation, tool-abuse, "
-                "mcp-toxic-flow, api-attack, agentic-trust-abuse, recon-inference."
+                f"{unrecognized_scenarios} — these won't match any scenario "
+                "and may silently drop coverage. Valid values: destructive, non-destructive."
             )
 
     # Load custom catalog if provided
@@ -459,6 +457,7 @@ def redteam(
                         scenario_records=scenario_records,
                         catalog_coverage=catalog_coverage,
                         coverage_tracker=coverage_tracker,
+                        scan_outcome=scan_outcome,
                     ),
                     encoding="utf-8",
                 )
@@ -1103,7 +1102,8 @@ def _print_findings(
         typer.echo(
             _findings_to_markdown(findings, meta, remediation_plan=remediation_plan,
                                   scenario_records=scenario_records,
-                                  coverage_tracker=coverage_tracker)
+                                  coverage_tracker=coverage_tracker,
+                                  scan_outcome=scan_outcome)
         )
         return
 
@@ -1125,6 +1125,7 @@ def _findings_to_markdown(
     scenario_records: list | None = None,
     catalog_coverage: object | None = None,
     coverage_tracker: object | None = None,
+    scan_outcome: str = "no_findings",
 ) -> str:
     """Delegate to :func:`nuguard.redteam.report.to_markdown`."""
     from nuguard.redteam.report import to_markdown
@@ -1135,6 +1136,7 @@ def _findings_to_markdown(
         scenario_records=scenario_records,
         catalog_coverage=catalog_coverage,
         coverage_tracker=coverage_tracker,
+        scan_outcome=scan_outcome,
     )
 
 

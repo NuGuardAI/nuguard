@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
+    from nuguard.common.auth import AuthSession
     from nuguard.common.target_client_builder import TargetClient
     from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
     from nuguard.redteam.target.action_logger import ActionLogger
@@ -105,12 +106,16 @@ class GuidedAttackExecutor:
         tree_max_depth: int = 2,
         evaluator: "object | None" = None,  # LLMResponseEvaluator — for TAP scoring
         hard_refusal_abort_turns: int | None = None,
+        auth_session: "AuthSession | None" = None,
     ) -> None:
         self._client = client
         self._director = director
         self._logger = logger
         self._canary = canary
         self._app_log_reader = app_log_reader
+        # Optional — enables a single refresh-and-retry on HTTP 401, mirroring
+        # AttackExecutor's _refresh_auth_headers() (executor.py).
+        self._auth_session = auth_session
         # Optional credential map for auto-supply when the agent asks for login.
         # Keys match credential types: "username", "password", "api_key", etc.
         self._credentials: dict[str, str] = credentials or {}
@@ -171,6 +176,10 @@ class GuidedAttackExecutor:
         milestone_idx = 0
         consecutive_hard_refusals = 0
         consecutive_request_failures = 0
+        # Tracks whether every failure in the current streak was specifically
+        # an HTTP 401 — lets the abort be labeled "auth failure" instead of
+        # "target unavailable" when that's what actually happened.
+        consecutive_failures_all_401 = True
         # PAIR feedback carried forward from last failed turn (§3.1)
         _pair_refusal_reason: str = ""
         _pair_refusal_evidence: str = ""
@@ -231,6 +240,15 @@ class GuidedAttackExecutor:
             # Send to target
             try:
                 raw_response, _tool_calls = await self._client.send(message, session)
+                if raw_response.startswith("[HTTP 401]") and self._auth_session is not None:
+                    refreshed = await self._auth_session.refresh_if_needed()
+                    if refreshed:
+                        self._client.update_default_headers(self._auth_session.headers())
+                        _log.info(
+                            "[guided] 401 on turn %d, retrying after auth refresh conv=%s",
+                            turn_number, conv.conversation_id[:8],
+                        )
+                        raw_response, _tool_calls = await self._client.send(message, session)
             except TargetUnavailableError as exc:
                 # Record the abort reason on the conversation for the report,
                 # then propagate so the orchestrator's circuit breaker can trip
@@ -248,16 +266,23 @@ class GuidedAttackExecutor:
             # rather than burning the rest of max_turns against it.
             if raw_response.startswith("[HTTP ") or raw_response.startswith("[REQUEST_ERROR:"):
                 consecutive_request_failures += 1
+                consecutive_failures_all_401 = (
+                    consecutive_failures_all_401 and raw_response.startswith("[HTTP 401]")
+                )
                 if consecutive_request_failures >= _MAX_CONSECUTIVE_REQUEST_FAILURES:
+                    if consecutive_failures_all_401:
+                        conv.abort_reason = "consecutive_auth_failures"
+                    else:
+                        conv.abort_reason = "consecutive_request_failures"
                     _log.warning(
-                        "[guided] aborting: %d consecutive request failures conv=%s",
-                        consecutive_request_failures, conv.conversation_id[:8],
+                        "[guided] aborting: %d consecutive request failures (%s) conv=%s",
+                        consecutive_request_failures, conv.abort_reason, conv.conversation_id[:8],
                     )
-                    conv.abort_reason = "consecutive_request_failures"
                     conv.final_progress = conv.last_progress
                     return conv
             else:
                 consecutive_request_failures = 0
+                consecutive_failures_all_401 = True
 
             # Strip attribution footer; then handle credential/confirmation interrupts
             response, _raw_footer = strip_meta_footer(raw_response)

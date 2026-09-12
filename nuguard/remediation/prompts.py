@@ -12,7 +12,7 @@ REMEDIATION_PERSONA = (
     "generic security advice. Ground every sentence in the specific evidence, "
     "component, and tool/prompt location given below; do not restate the "
     "finding description back verbatim, and do not reuse boilerplate phrasing "
-    "you would use for a different finding. Under 80 words. No preamble, no "
+    "you would use for a different finding. Under 300 words. No preamble, no "
     "markdown headers, no bullet points unless the instructions ask for a list."
 )
 
