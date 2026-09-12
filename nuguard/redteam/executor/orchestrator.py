@@ -455,12 +455,18 @@ def _compute_scan_outcome(
         with the default ``strict=False`` the outcome falls back to ``no_findings``
         so that existing CI pipelines are not disrupted.
     ``aborted_target_unavailable``
-        Every executed scenario has ``chain_status`` of ``"aborted"``, ``"skipped"``,
-        or a target-health-tagged abort (``"aborted:target_unavailable"`` /
+        Every executed scenario has ``chain_status`` of ``"skipped"`` or a
+        target-health-tagged abort (``"aborted:target_unavailable"`` /
         ``"aborted:consecutive_request_failures"``) — the circuit breaker tripped,
-        indicating the target was unreachable or structurally broken. A guided
-        conversation aborting for a legitimate reason (``"aborted:max_turns"``,
-        ``"aborted:hard_refusal"``) does NOT count toward this.
+        indicating the target was unreachable or structurally broken. A *bare*
+        ``"aborted"`` (no ``:reason`` suffix) is deliberately excluded — builders
+        like ``build_idor``/``build_injection_probe`` mark their last fallback
+        step ``on_failure="abort"`` by design, so a clean miss on every
+        candidate ends the chain with plain ``chain.status = "aborted"`` after
+        a real, completed execution against a healthy target (see the matching
+        comment on ``report._attack_coverage_summary``). A guided conversation
+        aborting for a legitimate reason (``"aborted:max_turns"``,
+        ``"aborted:hard_refusal"``) does NOT count toward this either.
     ``aborted_auth_failure``
         Every executed scenario aborted specifically with chain_status
         ``"aborted:consecutive_auth_failures"`` — the target was reachable
@@ -477,7 +483,6 @@ def _compute_scan_outcome(
         working alternative. The run exits before any scenario executes.
     """
     _HEALTH_ABORT_STATUSES = (
-        "aborted",
         "skipped",
         "aborted:target_unavailable",
         "aborted:consecutive_request_failures",
@@ -2437,7 +2442,11 @@ class RedteamOrchestrator:
                             _ABORT_THRESHOLD,
                             exc,
                         )
-                    return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("aborted")
+                    return (
+                        [],
+                        (scenario.title, scenario.goal_type.value, False),
+                        _skipped_record("aborted:target_unavailable"),
+                    )
                 except Exception as exc:
                     _log.warning("Scenario %s failed: %s", scenario.scenario_id, exc)
                     record = ScenarioRecord(
