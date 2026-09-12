@@ -17,6 +17,8 @@ from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse, urlunparse
 
+from nuguard.common.soft_reject import iter_effective_nodes, partition_node_counts
+
 from ..models import InstrumentationDetail, Node, TestingDetail
 from .route_patterns import ROUTE_PATTERNS
 
@@ -84,19 +86,21 @@ _STREAMING_SOURCE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\bStreamingResponse\b"),
     re.compile(r"\bEventSourceResponse\b"),
     re.compile(r"['\"]text/event-stream['\"]"),
-    re.compile(r"\bastream\s*\("),                    # LangChain .astream()
-    re.compile(r"\bstream_events\s*\("),              # LangGraph .stream_events()
-    re.compile(r"\bstream\s*=\s*True"),               # litellm / openai stream=True passed to caller
-    re.compile(r"/run_sse"),                           # ADK SSE path reference
+    re.compile(r"\bastream\s*\("),  # LangChain .astream()
+    re.compile(r"\bstream_events\s*\("),  # LangGraph .stream_events()
+    re.compile(r"\bstream\s*=\s*True"),  # litellm / openai stream=True passed to caller
+    re.compile(r"/run_sse"),  # ADK SSE path reference
     re.compile(r"\bserver.sent.events?\b", re.IGNORECASE),
-    re.compile(r"\bAsyncGenerator\b.*\bstr\b"),       # async generator route returning str chunks
+    re.compile(r"\bAsyncGenerator\b.*\bstr\b"),  # async generator route returning str chunks
 ]
 
 # Decorator + return-type patterns that identify a specific route as streaming
-_STREAMING_ROUTE_RETURN_TYPES: frozenset[str] = frozenset({
-    "StreamingResponse",
-    "EventSourceResponse",
-})
+_STREAMING_ROUTE_RETURN_TYPES: frozenset[str] = frozenset(
+    {
+        "StreamingResponse",
+        "EventSourceResponse",
+    }
+)
 
 # Route path suffixes / names strongly associated with SSE output
 _STREAMING_PATH_PATTERNS: list[re.Pattern[str]] = [
@@ -189,7 +193,7 @@ def _extract_streaming_route_paths(source: str, out: "list[str]") -> None:
             out.append(route_path)
             continue
         # Check the next 30 lines for streaming return types or patterns
-        window = "\n".join(lines[i: i + 30])
+        window = "\n".join(lines[i : i + 30])
         if any(t in window for t in _STREAMING_ROUTE_RETURN_TYPES):
             out.append(route_path)
         elif re.search(r"['\"]text/event-stream['\"]", window):
@@ -593,21 +597,25 @@ def extract_iac_security_context(nodes: Sequence[Node]) -> dict[str, Any]:
             if meta.extras.get("iac_format") == "github_actions"
             and meta.extras.get("workflow_content")
         ),
-        "workflow_security_findings": list({
-            (f["rule_signal"], f.get("line", 0)): f
-            for node in nodes
-            for meta in [node.metadata]
-            if meta.extras.get("iac_format") == "github_actions"
-            for f in meta.extras.get("workflow_security_findings", [])
-        }.values()),
-        "k8s_network_policy_namespaces": sorted({
-            meta.extras.get("k8s_namespace", "")
-            for node in nodes
-            for meta in [node.metadata]
-            if meta.extras.get("iac_format") == "kubernetes"
-            and meta.extras.get("is_network_policy_namespace") is True
-            and meta.extras.get("k8s_namespace")
-        }),
+        "workflow_security_findings": list(
+            {
+                (f["rule_signal"], f.get("line", 0)): f
+                for node in nodes
+                for meta in [node.metadata]
+                if meta.extras.get("iac_format") == "github_actions"
+                for f in meta.extras.get("workflow_security_findings", [])
+            }.values()
+        ),
+        "k8s_network_policy_namespaces": sorted(
+            {
+                meta.extras.get("k8s_namespace", "")
+                for node in nodes
+                for meta in [node.metadata]
+                if meta.extras.get("iac_format") == "kubernetes"
+                and meta.extras.get("is_network_policy_namespace") is True
+                and meta.extras.get("k8s_namespace")
+            }
+        ),
     }
 
 
@@ -621,12 +629,12 @@ def build_scan_summary(
     """Build scan-level summary for reporting."""
     from .app_env_detector import detect_app_env
 
-    node_types: dict[str, int] = {}
+    node_count_partition = partition_node_counts(nodes)
+    nodes = tuple(iter_effective_nodes(nodes))
+    node_types = node_count_partition.effective
     frameworks: list[str] = []
 
     for node in nodes:
-        nt = _node_type_str(node)
-        node_types[nt] = node_types.get(nt, 0) + 1
         framework = node.metadata.framework or node.metadata.extras.get("framework")
         if isinstance(framework, str) and _is_agentic_framework(framework):
             frameworks.append(framework)
@@ -654,9 +662,7 @@ def build_scan_summary(
     app_env = detect_app_env(files)
     # Merge any newly discovered deployment URLs into the IaC-detected list
     all_deployment_urls = _uniq(
-        deployment.get("deployment_urls", [])
-        + app_env["staging_urls"]
-        + app_env["production_urls"]
+        deployment.get("deployment_urls", []) + app_env["staging_urls"] + app_env["production_urls"]
     )
 
     # Data classification: collect from typed fields on DATASTORE nodes, then fall back
@@ -690,6 +696,7 @@ def build_scan_summary(
         "source_ref": source_ref,
         "branch": branch,
         "node_type_counts": node_types,
+        "node_type_counts_soft_rejected": node_count_partition.soft_rejected,
         "frameworks": frameworks_list,
         "api_endpoints": endpoints[:200],
         "use_case_summary": use_case_summary,
@@ -857,6 +864,7 @@ async def maybe_refine_use_case_summary_with_llm(
         )
         system = "You are a technical writer producing concise AI system inventory summaries."
         from ..llm_client import complete_structured
+
         result = await asyncio.wait_for(
             complete_structured(llm_client, system, user_prompt, schema),
             timeout=15.0,
@@ -908,6 +916,7 @@ async def maybe_refine_asset_summary_with_llm(
         )
         system = "You are a technical writer producing concise AI asset inventory summaries."
         from ..llm_client import complete_structured
+
         result = await asyncio.wait_for(
             complete_structured(llm_client, system, user_prompt, schema),
             timeout=15.0,
@@ -939,9 +948,7 @@ _APP_INSTRUMENTATION_IMPORTS: dict[str, str] = {
     "jaeger": "jaeger",
 }
 
-_LOG_LEVEL_RE = re.compile(
-    r"logging\.basicConfig\s*\(.*?level\s*=\s*logging\.(\w+)", re.DOTALL
-)
+_LOG_LEVEL_RE = re.compile(r"logging\.basicConfig\s*\(.*?level\s*=\s*logging\.(\w+)", re.DOTALL)
 
 
 def _detect_app_instrumentation(

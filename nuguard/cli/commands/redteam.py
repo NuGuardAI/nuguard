@@ -17,6 +17,7 @@ import typer
 from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.cli.report_meta import ReportMeta
 from nuguard.common.logging import get_logger
+from nuguard.common.run_checkpoint import PartialRunError
 
 _log = get_logger(__name__)
 
@@ -79,7 +80,7 @@ def redteam(
         "ci", "--profile", help="Scan profile: ci | full."
     ),
     scenarios: Optional[str] = typer.Option(
-        None, "--scenarios", help="Comma-separated scenario types to run (default: all)."
+        None, "--scenarios", help="Comma-separated: destructive, non-destructive (default: both)."
     ),
     min_impact_score: float = typer.Option(
         0.0,
@@ -122,6 +123,15 @@ def redteam(
         "--verbose/--no-verbose",
         "-v/-V",
         help="Print detailed turn traces.  Overrides verbose setting in nuguard.yaml.",
+    ),
+    resume: Optional[Path] = typer.Option(
+        None,
+        "--resume",
+        help=(
+            "Path to a checkpoint file from a previous aborted run (see "
+            "prompt_cache_dir) — already-completed scenarios are skipped and the "
+            "final report combines the checkpointed and newly-run results."
+        ),
     ),
 ) -> None:
     """Run dynamic red-team testing against a live AI application.
@@ -184,6 +194,7 @@ def redteam(
     effective_guided_concurrency = guided_concurrency if guided_concurrency is not None else cfg.redteam_guided_concurrency
     effective_guided_mutation_mode = cfg.redteam_guided_mutation_mode
     effective_verbose = verbose if verbose is not None else cfg.redteam_verbose
+    effective_resume = str(resume) if resume is not None else cfg.redteam_resume
     # minimal profile: disable guided (bounded to 1 static chain) and strip turn delay.
     effective_turn_delay = 0.0 if effective_profile == "minimal" else cfg.redteam_turn_delay_seconds
     if effective_profile == "minimal":
@@ -201,10 +212,8 @@ def redteam(
         if unrecognized_scenarios:
             typer.echo(
                 f"Warning: redteam.scenarios contains unrecognized value(s) "
-                f"{unrecognized_scenarios} — these won't reliably match any scenario "
-                "and may silently drop coverage. Valid values: prompt-driven-threat, "
-                "policy-violation, data-exfiltration, privilege-escalation, tool-abuse, "
-                "mcp-toxic-flow, api-attack, agentic-trust-abuse, recon-inference."
+                f"{unrecognized_scenarios} — these won't match any scenario "
+                "and may silently drop coverage. Valid values: destructive, non-destructive."
             )
 
     # Load custom catalog if provided
@@ -313,6 +322,8 @@ def redteam(
         skip_discovery=cfg.redteam_skip_discovery,
         discovery_max_turns=cfg.redteam_discovery_max_turns,
         capability_discovery=cfg.redteam_capability_discovery,
+        liveness_cache_ttl_seconds=cfg.redteam_liveness_cache_ttl_seconds,
+        llm_capability_dedup=cfg.redteam_llm_capability_dedup,
         catalog=custom_catalog,
         pre_run_warmup=cfg.redteam_pre_run_warmup,
         verify_findings=cfg.redteam_verify_findings,
@@ -321,8 +332,11 @@ def redteam(
         codegen_escalation_enabled=cfg.redteam_codegen_escalation_enabled,
         mode=cfg.redteam_mode,
         progressive_halt_on_severity=cfg.redteam_progressive_halt_on_severity,
+        probe_llm=cfg.probe_llm_enabled,
+        resume=effective_resume,
     )
 
+    _partial_run = False
     try:
         (
             findings,
@@ -338,6 +352,28 @@ def redteam(
             resolved_chat_path_source,
             remediation_plan,
         ) = asyncio.run(runner)  # type: ignore[misc]
+    except PartialRunError as exc:
+        partial = exc.partial_result
+        typer.echo(
+            f"\n⚠ Run aborted: {exc.cause}\n"
+            f"  Checkpoint saved: {exc.checkpoint_path}\n"
+            f"  Resume with: nuguard redteam --resume {exc.checkpoint_path} "
+            "(plus your usual --sbom/--target/--config flags)\n",
+            err=True,
+        )
+        if partial is None:
+            raise typer.Exit(code=1) from exc
+        _partial_run = True
+        (
+            findings, scenario_records, scan_outcome, config_notes, catalog_coverage,
+            input_tokens_used, output_tokens_used, coverage_tracker, token_usage,
+            resolved_chat_path, resolved_chat_path_source, remediation_plan,
+        ) = (
+            partial.findings, partial.scenario_records, partial.scan_outcome, partial.config_notes,
+            partial.catalog_coverage, partial.input_tokens_used, partial.output_tokens_used,
+            partial.coverage_tracker, partial.token_usage, partial.resolved_chat_path,
+            partial.resolved_chat_path_source, partial.remediation_plan,
+        )
     except Exception as exc:
         from nuguard.common.errors import AuthError, TargetUnavailableError  # noqa: PLC0415
         if isinstance(exc, TargetUnavailableError):
@@ -421,6 +457,7 @@ def redteam(
                         scenario_records=scenario_records,
                         catalog_coverage=catalog_coverage,
                         coverage_tracker=coverage_tracker,
+                        scan_outcome=scan_outcome,
                     ),
                     encoding="utf-8",
                 )
@@ -455,6 +492,7 @@ def redteam(
                     findings=findings,
                     output_path=rp_path,
                     target_url=target_url or "",
+                    scan_id=meta.run_id,
                 )
                 typer.echo(f"Remediation plan written to {rp_path}")
             except Exception as exc:
@@ -481,6 +519,8 @@ def redteam(
 
     # Exit code
     _fail_on_severity(findings, effective_fail_on)
+    if _partial_run:
+        raise typer.Exit(code=1)
 
 
 def _resolve_target_url(sbom_doc: object, launch: bool = False) -> str | None:
@@ -547,6 +587,8 @@ async def _run_redteam(
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
     capability_discovery: bool = True,
+    liveness_cache_ttl_seconds: float = 3600.0,
+    llm_capability_dedup: bool = False,
     chat_payload_extras: dict[str, Any] | None = None,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
@@ -556,6 +598,8 @@ async def _run_redteam(
     codegen_escalation_enabled: bool = True,
     mode: str = "concurrent",
     progressive_halt_on_severity: str = "none",
+    probe_llm: bool = False,
+    resume: str | None = None,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -690,6 +734,8 @@ async def _run_redteam(
                 skip_discovery=skip_discovery,
                 discovery_max_turns=discovery_max_turns,
                 capability_discovery=capability_discovery,
+                liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
+                llm_capability_dedup=llm_capability_dedup,
                 catalog=catalog,
                 pre_run_warmup=pre_run_warmup,
                 verify_findings=verify_findings,
@@ -698,6 +744,8 @@ async def _run_redteam(
                 codegen_escalation_enabled=codegen_escalation_enabled,
                 mode=mode,
                 progressive_halt_on_severity=progressive_halt_on_severity,
+                probe_llm=probe_llm,
+                resume=resume,
             )
 
     # App already running — just scan
@@ -747,6 +795,8 @@ async def _run_redteam(
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
         capability_discovery=capability_discovery,
+        liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
+        llm_capability_dedup=llm_capability_dedup,
         catalog=catalog,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
@@ -755,6 +805,7 @@ async def _run_redteam(
         codegen_escalation_enabled=codegen_escalation_enabled,
         mode=mode,
         progressive_halt_on_severity=progressive_halt_on_severity,
+        probe_llm=probe_llm,
     )
 
 
@@ -803,6 +854,8 @@ async def _run_orchestrator(  # noqa: C901
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
     capability_discovery: bool = True,
+    liveness_cache_ttl_seconds: float = 3600.0,
+    llm_capability_dedup: bool = False,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
     verify_findings: bool = False,
@@ -811,10 +864,14 @@ async def _run_orchestrator(  # noqa: C901
     codegen_escalation_enabled: bool = True,
     mode: str = "concurrent",
     progressive_halt_on_severity: str = "none",
+    probe_llm: bool = False,
+    resume: str | None = None,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
+    from pydantic import SecretStr
+
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
-    from nuguard.redteam.public_api import RedteamRunRequest, run_redteam
+    from nuguard.redteam.public_api import RedteamAuthConfig, RedteamRunRequest, run_redteam
 
     redteam_llm: LLMClient | None = None
     if redteam_llm_model:
@@ -848,14 +905,26 @@ async def _run_orchestrator(  # noqa: C901
         guided_mutation_mode=guided_mutation_mode,
         tree_breadth=tree_breadth,
         tree_max_depth=tree_max_depth,
-        extra_headers=extra_headers,
+        extra_headers=(
+            {name: SecretStr(value) for name, value in extra_headers.items()}
+            if extra_headers
+            else None
+        ),
         strict_outcome=strict_outcome,
         scenario_filter=scenario_filter,
         canary_config=canary_config,  # type: ignore[arg-type]
-        auth_config=auth_config,
+        auth_config=(
+            RedteamAuthConfig.model_validate(auth_config.model_dump())
+            if auth_config
+            else None
+        ),
         finding_triggers=finding_triggers,
         verbose=verbose,
-        credentials=credentials,
+        credentials=(
+            {name: SecretStr(value) for name, value in credentials.items()}
+            if credentials
+            else None
+        ),
         scenario_timeout=scenario_timeout,
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
@@ -865,6 +934,8 @@ async def _run_orchestrator(  # noqa: C901
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
         capability_discovery=capability_discovery,
+        liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
+        llm_capability_dedup=llm_capability_dedup,
         chat_payload_extras=chat_payload_extras or None,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
@@ -873,6 +944,8 @@ async def _run_orchestrator(  # noqa: C901
         codegen_escalation_enabled=codegen_escalation_enabled,
         mode=mode,
         progressive_halt_on_severity=progressive_halt_on_severity,
+        probe_llm=probe_llm,
+        resume_from=resume,
     )
 
     result = await run_redteam(
@@ -1029,7 +1102,8 @@ def _print_findings(
         typer.echo(
             _findings_to_markdown(findings, meta, remediation_plan=remediation_plan,
                                   scenario_records=scenario_records,
-                                  coverage_tracker=coverage_tracker)
+                                  coverage_tracker=coverage_tracker,
+                                  scan_outcome=scan_outcome)
         )
         return
 
@@ -1051,6 +1125,7 @@ def _findings_to_markdown(
     scenario_records: list | None = None,
     catalog_coverage: object | None = None,
     coverage_tracker: object | None = None,
+    scan_outcome: str = "no_findings",
 ) -> str:
     """Delegate to :func:`nuguard.redteam.report.to_markdown`."""
     from nuguard.redteam.report import to_markdown
@@ -1061,6 +1136,7 @@ def _findings_to_markdown(
         scenario_records=scenario_records,
         catalog_coverage=catalog_coverage,
         coverage_tracker=coverage_tracker,
+        scan_outcome=scan_outcome,
     )
 
 

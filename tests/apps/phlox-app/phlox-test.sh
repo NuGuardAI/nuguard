@@ -39,6 +39,19 @@ uv run nuguard sbom generate \
 echo "Done."
 echo "---"
 
+echo "Running nuguard pentest (Nuclei-backed, bounded conventional pentest)..."
+# pentest exits 1 when a finding meets --fail-on and 2 on scope/engine errors;
+# treat both as non-fatal here, same as the other steps in this pipeline.
+uv run nuguard pentest \
+  --config "$CONFIG_PATH" \
+  --acknowledge-authorization \
+  --format markdown \
+  --output "$SCRIPT_DIR/reports/phlox-pentest.md" \
+  --fail-on none || true
+
+echo "Done."
+echo "---"
+
 echo "Drafting Cognitive Policy (LLM, grounded in the SBOM) — created at runtime, not checked in..."
 # Only creates cognitive-policy.md / canary.example.json; nuguard.yaml already
 # exists in this directory so `init` leaves it untouched.

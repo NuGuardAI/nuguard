@@ -218,6 +218,13 @@ class AiSbomConfig(BaseModel):
         default_factory=_default_verification_max_verifications
     )
 
+    # Auth/chat-schema LLM inference fallback (nuguard.yaml:
+    # sbom_generation.auth_schema_inference.*) — fires only when static DTO
+    # extraction couldn't resolve a login endpoint's token key.
+    auth_schema_inference_enabled: bool = Field(default=True)
+    auth_schema_inference_max_calls: int = Field(default=2)
+    auth_schema_inference_max_cost_usd: float = Field(default=0.5)
+
     # Vertex AI / Google direct path (bypasses litellm when google_api_key is set)
     google_api_key: str | None = Field(
         default_factory=lambda: (
@@ -235,6 +242,23 @@ class AiSbomConfig(BaseModel):
             "and LifecycleScriptAdapter. Creates DEVELOPER_TOOL_CONFIG, GITHUB_WORKFLOW, "
             "LIFECYCLE_SCRIPT, and MCP_SERVER nodes. Does not affect normal SBOM extraction."
         ),
+    )
+
+    bulk_catalog_threshold: int = Field(
+        default=15,
+        ge=1,
+        description=(
+            "When a single (file, adapter) pair produces more than this many "
+            "detections, treat the file as a bulk data catalog/fixture rather "
+            "than code: keep the first few representative nodes and mark the "
+            "rest bulk_catalog_truncated instead of emitting one node per "
+            "entry (e.g. a test fixture listing hundreds of model names)."
+        ),
+    )
+    bulk_catalog_keep: int = Field(
+        default=3,
+        ge=0,
+        description="Representative nodes kept per bulk-catalog file once bulk_catalog_threshold is exceeded.",
     )
 
     @model_validator(mode="before")

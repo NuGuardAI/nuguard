@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "sync-marketplace": "node scripts/sync-marketplace.js"
+    "sync-marketplace": "node scripts/sync-marketplace.js",
+    "version:bump": "node scripts/sync-marketplace.js",
+    "version:check": "node scripts/validate-all-plugins.js"
   }
 }

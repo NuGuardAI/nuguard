@@ -108,6 +108,10 @@ Dev setup, running tests and lint, and the pull request process are covered in t
 
 [![Read the Contributing guide](https://img.shields.io/badge/→_Read_the_Contributing_Guide-111111?style=for-the-badge)](CONTRIBUTING.md)
 
+Release publication is managed by repository maintainers. See
+[Governance](../documentation/GOVERNANCE.md) for ownership and the
+[release runbook](../documentation/releasing.md) for the maintained procedure.
+
 ## Repo Notes
 
 - The repository currently contains example applications under `tests/apps/`
@@ -146,5 +150,6 @@ Filter by category or profile, or set `enabled: false` per scenario in a catalog
 <a href="../documentation/docs/plugin-guide.md">Claude plugin</a> ·
 <a href="../documentation/docs/troubleshooting.md">Troubleshooting</a> ·
 <a href="SECURITY.md">Security</a> ·
-<a href="CONTRIBUTING.md">Contributing</a>
+<a href="CONTRIBUTING.md">Contributing</a> ·
+<a href="../documentation/GOVERNANCE.md">Governance</a>
 </sub>

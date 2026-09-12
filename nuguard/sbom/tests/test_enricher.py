@@ -238,3 +238,50 @@ class TestApiEndpointPathParamSources:
 
         enriched = next(n for n in doc.nodes if n.id == member.id)
         assert enriched.metadata.path_param_sources == {"id": "/custom/override"}
+
+
+class TestLoginTokenKeyEnrichment:
+    def test_resolves_and_stamps_provenance_for_nested_token(self) -> None:
+        login = _endpoint(
+            name="login",
+            endpoint="/api/v1/auth/login",
+            method="POST",
+            request_body_schema={"email": "string", "password": "string"},
+            response_schema={
+                "tokens.accessToken": "string",
+                "tokens.refreshToken": "string",
+            },
+        )
+        doc = AiSbomDocument(target="t", nodes=[login], edges=[])
+
+        enrich(doc)
+
+        enriched = next(n for n in doc.nodes if n.id == login.id)
+        assert enriched.metadata.login_token_response_key == "tokens.accessToken"
+        assert enriched.metadata.extras["login_token_response_key_source"] == "static_dto"
+
+    def test_no_login_endpoint_leaves_field_unset(self) -> None:
+        endpoint = _endpoint(name="not-login", endpoint="/api/v1/widgets", method="GET")
+        doc = AiSbomDocument(target="t", nodes=[endpoint], edges=[])
+
+        enrich(doc)
+
+        enriched = next(n for n in doc.nodes if n.id == endpoint.id)
+        assert enriched.metadata.login_token_response_key is None
+        assert "login_token_response_key_source" not in enriched.metadata.extras
+
+    def test_existing_login_token_response_key_not_overwritten(self) -> None:
+        login = _endpoint(
+            name="login",
+            endpoint="/api/v1/auth/login",
+            method="POST",
+            request_body_schema={"email": "string", "password": "string"},
+            response_schema={"accessToken": "string"},
+            login_token_response_key="already.set",
+        )
+        doc = AiSbomDocument(target="t", nodes=[login], edges=[])
+
+        enrich(doc)
+
+        enriched = next(n for n in doc.nodes if n.id == login.id)
+        assert enriched.metadata.login_token_response_key == "already.set"

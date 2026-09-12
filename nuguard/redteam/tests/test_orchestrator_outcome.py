@@ -14,6 +14,7 @@ from nuguard.redteam.executor.orchestrator import (
     ScenarioRecord,
     _classify_step_transport,
     _compute_scan_outcome,
+    _maybe_mark_endpoint_not_found,
     _tally_transport,
 )
 
@@ -123,6 +124,69 @@ def test_tally_all_504():
     results = [_FakeStepResult("[HTTP 504]", 504) for _ in range(4)]
     _tally_transport(record, results)
     assert record.http_5xx == 4
+
+
+def test_tally_transport_tracks_404_as_subset_of_4xx():
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 404]", 404) for _ in range(3)]
+    _tally_transport(record, results)
+    assert record.http_404 == 3
+    assert record.http_4xx == 3
+
+
+def test_tally_transport_401_not_counted_as_404():
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 401]", 401) for _ in range(3)]
+    _tally_transport(record, results)
+    assert record.http_404 == 0
+    assert record.http_4xx == 3
+
+
+# ── _maybe_mark_endpoint_not_found ──────────────────────────────────────────────
+
+
+def test_all_404_direct_http_scenario_gets_endpoint_not_found_status():
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 404]", 404) for _ in range(3)]
+    _tally_transport(record, results)
+    status = _maybe_mark_endpoint_not_found(record, "completed", is_direct_http_only=True)
+    assert status == "completed:endpoint_not_found"
+
+
+def test_mixed_404_and_401_not_marked_endpoint_not_found():
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 404]", 404), _FakeStepResult("[HTTP 401]", 401)]
+    _tally_transport(record, results)
+    status = _maybe_mark_endpoint_not_found(record, "completed", is_direct_http_only=True)
+    assert status == "completed"
+
+
+def test_all_404_chat_routed_scenario_not_marked_endpoint_not_found():
+    """Only direct-HTTP-only scenarios get reclassified — chat-routed scenarios
+    (guided conversations, tool-abuse chains) never hit invoke_endpoint at all,
+    so a [HTTP 404]-shaped chat response isn't a dead-endpoint signal."""
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 404]", 404) for _ in range(3)]
+    _tally_transport(record, results)
+    status = _maybe_mark_endpoint_not_found(record, "completed", is_direct_http_only=False)
+    assert status == "completed"
+
+
+def test_all_404_with_finding_not_marked_endpoint_not_found():
+    record = _make_record()
+    record.had_finding = True
+    results = [_FakeStepResult("[HTTP 404]", 404) for _ in range(3)]
+    _tally_transport(record, results)
+    status = _maybe_mark_endpoint_not_found(record, "completed", is_direct_http_only=True)
+    assert status == "completed"
+
+
+def test_non_completed_chain_status_left_unchanged():
+    record = _make_record()
+    results = [_FakeStepResult("[HTTP 404]", 404) for _ in range(3)]
+    _tally_transport(record, results)
+    status = _maybe_mark_endpoint_not_found(record, "aborted:consecutive_request_failures", is_direct_http_only=True)
+    assert status == "aborted:consecutive_request_failures"
     assert record.http_2xx == 0
 
 
@@ -233,6 +297,40 @@ def test_outcome_not_aborted_for_legitimate_guided_abort_reasons():
     ]
     outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
     assert outcome != "aborted_target_unavailable"
+
+
+def test_outcome_aborted_auth_failure_when_all_records_are_auth_only():
+    """Every scenario aborted specifically on a 401-only streak → the more
+    precise aborted_auth_failure, distinguishing a broken credential from a
+    genuine outage."""
+    records = [
+        _record_with_counters(chain_status="aborted:consecutive_auth_failures"),
+        _record_with_counters(chain_status="aborted:consecutive_auth_failures"),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome == "aborted_auth_failure"
+
+
+def test_outcome_mixed_auth_and_target_unavailable_falls_back_to_target_unavailable():
+    """A mixed cause (some scenarios auth-only, others a genuine outage) must
+    not falsely claim a pure-auth cause — falls back to the generic outcome."""
+    records = [
+        _record_with_counters(chain_status="aborted:consecutive_auth_failures"),
+        _record_with_counters(chain_status="aborted:target_unavailable"),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome == "aborted_target_unavailable"
+
+
+def test_outcome_all_consecutive_request_failures_unaffected_by_auth_fix():
+    """Regression guard: an unrelated failure flavor (plain consecutive
+    request failures, no auth involved) keeps reporting the generic outcome."""
+    records = [
+        _record_with_counters(chain_status="aborted:consecutive_request_failures"),
+        _record_with_counters(chain_status="aborted:consecutive_request_failures"),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome == "aborted_target_unavailable"
 
 
 def test_outcome_inconclusive_strict_all_504():

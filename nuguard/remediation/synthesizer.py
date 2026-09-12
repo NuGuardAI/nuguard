@@ -573,12 +573,20 @@ def _merge_artefacts(artefacts: list[RemediationArtefact]) -> list[RemediationAr
         finding_ids: list[str] = []
         patch_parts: list[str] = []
         rationale_parts: list[str] = []
+        per_finding_rationale: dict[str, str] = {}
         for a in group:
             finding_ids.extend(a.finding_ids)
             if a.patch_text:
                 patch_parts.append(a.patch_text)
             if a.rationale:
                 rationale_parts.append(a.rationale)
+                # Each finding this pre-merge artefact addresses keeps its OWN
+                # rationale text, so backfill can recover it even after the
+                # combined `rationale` below is truncated for display — a
+                # finding's remediation must never be reconstructed from a
+                # sibling finding's text (see backfill.py).
+                for fid in a.finding_ids:
+                    per_finding_rationale[fid] = a.rationale
         base = group[0]
         merged.append(RemediationArtefact(
             finding_ids=finding_ids,
@@ -595,6 +603,7 @@ def _merge_artefacts(artefacts: list[RemediationArtefact]) -> list[RemediationAr
             # report even when several findings land on the same patch.
             rationale="\n".join(dict.fromkeys(rationale_parts))
             or f"Merged {len(group)} system prompt patches for {comp}",
+            per_finding_rationale=per_finding_rationale,
         ))
 
     # Sort by priority
@@ -625,10 +634,12 @@ class RemediationSynthesizer:
         sbom: "AiSbomDocument | None" = None,
         policy: "CognitivePolicy | None" = None,
         llm_client: "LLMClient | None" = None,
+        intent_purpose: str = "",
     ) -> None:
         self._sbom = sbom
         self._policy = policy
         self._llm = llm_client
+        self._intent_purpose = intent_purpose
 
         self._node_by_name: dict[str, Node] = {}
         self._prompt_by_agent: dict[str, Node] = {}
@@ -639,6 +650,17 @@ class RemediationSynthesizer:
                 _build_lookup_maps(sbom)
             )
 
+    def _agent_purpose(self, node: "Node | None") -> str:
+        """Best available "what is this agent for" text for a prompt.
+
+        Prefers the specific agent node's own SBOM description over the
+        app-wide ``intent_purpose`` passed at construction, since a
+        per-agent description grounds the remediation prompt more precisely
+        than a single application-level purpose string.
+        """
+        node_desc = str(_node_meta(node, "description") or "") if node is not None else ""
+        return node_desc or self._intent_purpose
+
     async def synthesize_findings_async(
         self,
         findings: list[dict],
@@ -647,21 +669,20 @@ class RemediationSynthesizer:
         behavior, redteam, and analysis alike.
 
         Fires all ``_synthesize_one_async()`` coroutines concurrently with
-        ``asyncio.gather``, including any LLM calls inside each. Falls back
-        gracefully on exceptions.
+        ``asyncio.gather``, including any LLM calls inside each. A failure in
+        any one finding's LLM call (bad credentials, wrong model, network
+        error) propagates rather than being silently dropped — remediation
+        quality must not degrade to generic templates without the caller
+        knowing.
         """
         import asyncio
 
         batches = await asyncio.gather(
             *(self._synthesize_one_async(f) for f in findings),
-            return_exceptions=True,
         )
         artefacts: list[RemediationArtefact] = []
         seen_keys: set[str] = set()
         for batch in batches:
-            if isinstance(batch, BaseException):
-                _log.debug("synthesize_findings_async: one finding failed: %s", batch)
-                continue
             for art in batch:
                 key = _artefact_dedup_key(art)
                 if key not in seen_keys:
@@ -739,9 +760,9 @@ class RemediationSynthesizer:
         component: str,
         finding: dict,
     ) -> None:
-        """Best-effort: replace patch_text/rationale on *artefacts* in place
-        with LLM-authored surgical text. Leaves template text on any failure
-        or when the LLM is unavailable/returns a canned response."""
+        """Replace patch_text/rationale on *artefacts* in place with
+        LLM-authored surgical text. Leaves template text only when no LLM
+        client is configured; an actual LLM failure propagates."""
         # Prefer the specific, technique-grounded evidence (the exact
         # substring of the agent's response that proves the breach, or the
         # evaluator's one-sentence reasoning) over the generic telemetry
@@ -763,7 +784,7 @@ class RemediationSynthesizer:
                     section=artefact.patch_section or "Security Rules",
                     violation=evidence,
                     prompt_excerpt=_prompt_content(prompt_node)[:400],
-                    intent_purpose="",
+                    intent_purpose=self._agent_purpose(self._node_by_name.get(component)),
                 )
                 if new_text:
                     artefact.patch_text = new_text
@@ -844,7 +865,7 @@ class RemediationSynthesizer:
             section="Data Handling Rules",
             violation=finding.get("description", "Agent asks for sensitive credentials"),
             prompt_excerpt=existing[:400],
-            intent_purpose=getattr(getattr(self, "_intent", None), "app_purpose", ""),
+            intent_purpose=self._agent_purpose(node),
         ) or (
             "## Data Handling Rules\n"
             "- NEVER ask the user for their password, PIN, or full card number.\n"
@@ -880,7 +901,7 @@ class RemediationSynthesizer:
             section="Data Handling Rules",
             violation=finding.get("description", "Agent asks for sensitive credentials"),
             prompt_excerpt=existing[:400],
-            intent_purpose=getattr(getattr(self, "_intent", None), "app_purpose", ""),
+            intent_purpose=self._agent_purpose(node),
         ) or (
             "## Data Handling Rules\n"
             "- NEVER ask the user for their password, PIN, or full card number.\n"
@@ -1094,7 +1115,14 @@ class RemediationSynthesizer:
         fields = list(_seen_fields)
 
         if not fields:
-            fields = ["account_number", "routing_number", "ssn", "card_number",
+            # Domain-neutral default: covers common PII alongside financial/
+            # credential fields, so this doesn't assume a banking app when the
+            # SBOM has no classified fields for this node (e.g. a healthcare
+            # finding about an email/name leak would otherwise get a rationale
+            # about "financial routing numbers" that has nothing to do with
+            # the actual evidence).
+            fields = ["name", "email", "phone", "address", "date_of_birth",
+                      "ssn", "account_number", "routing_number", "card_number",
                       "password", "api_key", "token"]
 
         return [RemediationArtefact(
@@ -1176,6 +1204,61 @@ class RemediationSynthesizer:
     # 7. Privilege escalation — unauthenticated agent + high-privilege tool (BA-005)
     # ------------------------------------------------------------------
 
+    def _resolve_privilege_tool_name(self, finding: dict) -> str:
+        """Resolve the specific high-privilege tool name from *finding*, or ""
+        when none can be identified.
+
+        Tries the finding title first ("...can access high-privilege tool
+        'X'"), then falls back to any SBOM TOOL node flagged
+        ``metadata.high_privilege``. Shared by the sync and async privilege
+        remediation paths so they can never re-diverge on tool-name
+        resolution the way they did before (the async path used to fall back
+        to a literal ``"high-privilege-tool"`` placeholder instead of calling
+        this).
+        """
+        tool_match = re.search(r"tool '([^']+)'", str(finding.get("title", "")), re.IGNORECASE)
+        if tool_match:
+            return tool_match.group(1)
+        high_priv_names = [
+            n.name for n in getattr(self._sbom, "nodes", [])
+            if getattr(getattr(n, "metadata", None), "high_privilege", False)
+        ]
+        return high_priv_names[0] if high_priv_names else ""
+
+    def _generic_privilege_review_artefact(
+        self,
+        component: str,
+        node: "Node | None",
+        finding_id: str,
+        desc: str,
+    ) -> list[RemediationArtefact]:
+        """Generic architectural-review artefact for a privilege-escalation
+        finding with no specific tool name resolved — emitted instead of a
+        placeholder that reads as a real component (e.g. 'high-privilege-tool')."""
+        return [RemediationArtefact(
+            finding_ids=[finding_id],
+            component=component,
+            component_type=_node_type(node) if node else "AGENT",
+            artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
+            priority="high",
+            change_description=(
+                f"Review and restrict the privilege level of tools accessible by '{component}'"
+            ),
+            change_detail=(
+                f"Agent '{component}' can reach tools with elevated privileges without "
+                f"authentication.\n\n"
+                f"Recommended changes:\n"
+                f"1. Audit all TOOL nodes reachable from '{component}' and label "
+                f"   high-privilege ones (high_privilege=true in the SBOM).\n"
+                f"2. Add an AUTH node protecting '{component}' and each high-privilege tool.\n"
+                f"3. Ensure the application verifies a valid session token before any "
+                f"   high-privilege tool invocation.\n"
+                f"4. Remove or scope-limit any tools that do not require root/admin access."
+            ),
+            requires_auth=True,
+            rationale=desc,
+        )]
+
     def _remediate_privilege_escalation(
         self,
         component: str,
@@ -1185,19 +1268,7 @@ class RemediationSynthesizer:
         priority: str,
     ) -> list[RemediationArtefact]:
         desc = finding.get("description", "")
-        # Extract tool name from finding title: "Unauthenticated agent '...' can access high-privilege tool '...'"
-        tool_match = re.search(r"tool '([^']+)'", str(finding.get("title", "")), re.IGNORECASE)
-        tool_name = tool_match.group(1) if tool_match else ""
-        if not tool_name:
-            # Try to resolve from SBOM: look for high-privilege tools attached to this component
-            high_priv_names = [
-                n.name for n in getattr(self._sbom, "nodes", [])
-                if getattr(getattr(n, "metadata", None), "high_privilege", False)
-            ]
-            if high_priv_names:
-                tool_name = high_priv_names[0]
-            else:
-                tool_name = ""  # will use generic recommendation below
+        tool_name = self._resolve_privilege_tool_name(finding)
         tool_node = self._node_by_name.get(tool_name)
         tool_desc = str(_node_meta(tool_node, "description") or "") if tool_node else ""
 
@@ -1224,29 +1295,7 @@ class RemediationSynthesizer:
         # When no specific tool name could be resolved, emit a generic architectural
         # recommendation rather than a placeholder that reads as 'the high-privilege tool'.
         if not tool_name:
-            return [RemediationArtefact(
-                finding_ids=[finding_id],
-                component=component,
-                component_type=_node_type(node) if node else "AGENT",
-                artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
-                priority="high",
-                change_description=(
-                    f"Review and restrict the privilege level of tools accessible by '{component}'"
-                ),
-                change_detail=(
-                    f"Agent '{component}' can reach tools with elevated privileges without "
-                    f"authentication.\n\n"
-                    f"Recommended changes:\n"
-                    f"1. Audit all TOOL nodes reachable from '{component}' and label "
-                    f"   high-privilege ones (high_privilege=true in the SBOM).\n"
-                    f"2. Add an AUTH node protecting '{component}' and each high-privilege tool.\n"
-                    f"3. Ensure the application verifies a valid session token before any "
-                    f"   high-privilege tool invocation.\n"
-                    f"4. Remove or scope-limit any tools that do not require root/admin access."
-                ),
-                requires_auth=True,
-                rationale=desc,
-            )]
+            return self._generic_privilege_review_artefact(component, node, finding_id, desc)
         patch_text = self._llm_privilege_patch(
             agent_name=component,
             tool_name=tool_name,
@@ -1272,10 +1321,15 @@ class RemediationSynthesizer:
         finding_id: str,
         priority: str,
     ) -> list[RemediationArtefact]:
-        # Resolve the privilege path — same logic as the sync version
-        priv_names = self._privilege_map.get(component, [])
-        tool_name = str(finding.get("tool_name", "")) or (priv_names[0].split(":")[-1] if priv_names else "high-privilege-tool")
+        # Resolve the privilege path — same logic and helpers as the sync version.
+        desc = str(finding.get("description", ""))
+        tool_name = str(finding.get("tool_name", "")) or self._resolve_privilege_tool_name(finding)
         tool_desc = str(finding.get("tool_description", "") or finding.get("description", ""))[:200]
+
+        # Determine privilege scope from the privilege_map, tool_name first
+        # (matching the sync path) so both paths select the same
+        # _PRIVILEGE_STRATEGY entry for a given tool.
+        priv_names = self._privilege_map.get(tool_name, [])
         priv_scope = ""
         if priv_names:
             priv_scope = priv_names[0].split(":")[-1].strip()
@@ -1290,6 +1344,11 @@ class RemediationSynthesizer:
         risk: str = str(strategy.get("risk", "privilege escalation"))
 
         hitl_note = " Require manager HITL approval before executing." if requires_hitl else ""
+
+        # When no specific tool name could be resolved, emit a generic architectural
+        # recommendation rather than a placeholder that reads as 'the high-privilege tool'.
+        if not tool_name:
+            return self._generic_privilege_review_artefact(component, node, finding_id, desc)
         patch_text = await self._llm_privilege_patch_async(
             agent_name=component,
             tool_name=tool_name,
@@ -1604,7 +1663,14 @@ class RemediationSynthesizer:
             patch_location=location or None,
             patch_section=policy_label,
             patch_text=patch_text,
-            rationale=desc or title,
+            # Not `desc or title` — that would just echo the finding's own
+            # description back as "the fix", which isn't actionable. Point
+            # at the concrete enforcement steps in patch_text instead.
+            rationale=(
+                f"Add an input guardrail that blocks this request pattern before it "
+                f"reaches the agent, and back it with a standard refusal — see the "
+                f"'{policy_label}' patch for the exact wording."
+            ),
         )]
 
     # ------------------------------------------------------------------
@@ -1753,22 +1819,33 @@ class RemediationSynthesizer:
     # ------------------------------------------------------------------
 
     async def _call_llm_async(self, prompt: str, *, system: str, label: str) -> str:
-        """Shared LLM invocation: streams a completion, guards against the
-        no-API-key canned response, and swallows errors. Returns "" on any
-        failure so every caller falls back to its deterministic template."""
-        if self._llm is None:
+        """Shared LLM invocation: streams a completion for one remediation call.
+
+        Returns ``""`` when no LLM is configured at all — either no client
+        was passed in, or the client has no API key (LLM enrichment is
+        optional everywhere, see CLAUDE.md; a bare, key-less default model
+        string is not an explicit opt-in). That's an intentional no-op, not
+        a failure, so callers fall back to their deterministic template.
+
+        Once an API key *is* configured, any actual failure (a canned
+        error response from the client, or an exception from the underlying
+        completion call) propagates instead of being swallowed — a
+        misconfigured or unreachable LLM the user explicitly set up must
+        surface as a loud, visible error rather than silently downgrading
+        every remediation to generic template text.
+        """
+        if self._llm is None or not getattr(self._llm, "api_key", None):
             return ""
-        try:
-            result = ""
-            async for chunk in self._llm.complete_stream(prompt, system=system, label=label):
-                result += chunk
-            result = result.strip()
-            if result.startswith(_CANNED_RESPONSE_PREFIX):
-                return ""
-            return result
-        except Exception as exc:
-            _log.debug("RemediationSynthesizer: LLM call failed (%s): %s", label, exc)
-            return ""
+        result = ""
+        async for chunk in self._llm.complete_stream(prompt, system=system, label=label):
+            result += chunk
+        result = result.strip()
+        if result.startswith(_CANNED_RESPONSE_PREFIX):
+            raise RuntimeError(
+                f"remediation LLM call ({label}) returned a canned fallback response — "
+                "check the configured LLM credentials/model"
+            )
+        return result
 
     async def _llm_patch_async(
         self,
@@ -1779,7 +1856,8 @@ class RemediationSynthesizer:
     ) -> str:
         """Generate contextual system prompt patch text using the LLM (async).
 
-        Returns empty string on failure so caller falls back to template.
+        Returns empty string only when no LLM client is configured; an
+        actual LLM failure propagates rather than falling back silently.
         """
         prompt = SYSTEM_PROMPT_PATCH_USER.format(
             agent_purpose=intent_purpose or "an AI assistant",

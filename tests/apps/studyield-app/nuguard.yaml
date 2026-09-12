@@ -10,7 +10,8 @@
 # GitHub URL — nuguard clones it internally for static scanning; nothing is
 # vendored into this repo (the ./repo checkout used by start-local.sh to actually
 # *run* Studyield is separate and gitignored).
-source: https://github.com/studyield/studyield
+#source: https://github.com/studyield/studyield
+source: https://github.com/infoinletdevFive/studyield
 sbom: ./studyield.sbom.json
 
 # ─── Cognitive policy ──────────────────────────────────────────────────────────
@@ -37,33 +38,18 @@ target:
   # Backend API — API_PREFIX=api/v1 (see backend/.env.example), e.g. /api/v1/chat.
   # url: http://localhost:3010
   #url: http://57.162.113.55
-  url: http://studyield-nuguard-7b904de1.eastus2.azurecontainer.io
-  
-
-  # Chat/RAG endpoint. Explicit so auto-discovery doesn't pick a different
-  # POST route (e.g. an /ai/generate-* one-shot endpoint, or the sibling
-  # "Create Conversation" resource endpoint) instead of the real chat route.
-  # This is a two-step (":id" path-param) endpoint — the SBOM's
-  # path_param_sources metadata makes NuGuard bootstrap a conversation via
-  # POST /api/v1/chat/conversations first, then substitute its id here (see
-  # tests/apps/studyield-app/2-step-chat.md).
-  endpoint: /api/v1/chat/conversations/:id/messages
-  chat_payload_key: content
+  # url: http://studyield-nuguard-9d5e2a22.eastus2.azurecontainer.io
+  url: http://studyield-nuguard-dde63c4c.eastus2.azurecontainer.io:3010
 
   auth:
     # Studyield requires a registered account (JWT access/refresh tokens).
-    # Register a test user first (http://localhost:5189/register), set
-    # APP_USERNAME/APP_PASSWORD in .env, then confirm the login endpoint/response
-    # shape against the SBOM/source (backend/src/modules/auth) and adjust below.
-    type: login_flow
-    login_flow:
-      endpoint: /api/v1/auth/login
-      payload:
-        email: ${APP_USERNAME}
-        password: ${APP_PASSWORD}
-      token_response_key: tokens.accessToken
-      token_header: "Authorization: Bearer"
-      refresh_on_401: true
+    # Just url + username/password — NuGuard auto-discovers the login
+    # endpoint and chat route from the SBOM, and now auto-detects a nested
+    # token key (e.g. tokens.accessToken) live from the login response when
+    # the SBOM has no response schema to guess from.
+    type: basic
+    username: ${APP_USERNAME}
+    password: ${APP_PASSWORD}
 
 # ─── Behavior testing ──────────────────────────────────────────────────────────
 behavior:
@@ -82,18 +68,13 @@ redteam:
   profile: full
   min_impact_score: 0.0
 
-  # Relevant to a multi-tenant EdTech platform with RAG chat, a Python code
-  # sandbox, and a multi-agent problem solver.
+  # Which categories to run (omit, or leave empty, to run both).
+  # 'destructive' scenarios mutate/destroy state (cancel, delete, close, remove,
+  # purge, refund, terminate, deactivate, wipe, revoke, unsubscribe, deregister, ...)
+  # and always run last, after all non-destructive scenarios complete.
   scenarios:
-    - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
-    - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
-    - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
-    - privilege-escalation     # role/permission escalation, false-premise attacks
-    - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
-    - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
-    - api-attack               # auth bypass, IDOR, mass assignment, BFLA
-    - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
-    - recon-inference          # refusal-oracle / boundary self-probe information gathering
+    - non-destructive
+    - destructive
 
   # LLM for attack-payload generation (must tolerate adversarial content).
   # Must use a DIFFERENT deployment than the target app to avoid TPM contention.

@@ -32,6 +32,7 @@ from typing import Any
 from ...core.ts_parser import TSFunctionCall, TSParseResult, parse_typescript
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from .._test_paths import looks_like_test_path
 from ..base import ComponentDetection, RelationshipHint
 from ._ts_regex import TSFrameworkAdapter
 
@@ -201,6 +202,12 @@ class VercelAISDKTSAdapter(TSFrameworkAdapter):
                 break
 
         # ── AGENT detection ──────────────────────────────────────────────
+        # streamText/generateText call sites under a test directory (unit
+        # tests exercising provider-timeout/transform behavior with a
+        # throwaway prompt) are demoted, not dropped — this adapter has no
+        # existing "is this a test file" penalty at all, unlike the legacy
+        # RegexAdapter's binary skip_path_parts gate (docs/sbom-accuracy-plan.md #3).
+        agent_confidence = 0.35 if looks_like_test_path(file_path) else 0.75
         agent_calls = [c for c in result.function_calls if c.function_name in _AGENT_CALL_NAMES]
         seen_lines: set[int] = set()
         for call in agent_calls:
@@ -237,7 +244,7 @@ class VercelAISDKTSAdapter(TSFrameworkAdapter):
                     display_name=agent_name,
                     adapter_name=self.name,
                     priority=self.priority,
-                    confidence=0.75,
+                    confidence=agent_confidence,
                     metadata={
                         "framework": "vercel_ai_sdk",
                         "language": "typescript",

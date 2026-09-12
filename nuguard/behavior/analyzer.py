@@ -2,16 +2,17 @@
 from __future__ import annotations
 
 import hashlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from nuguard.behavior.alignment import check_alignment
 from nuguard.behavior.intent import extract_intent
-from nuguard.behavior.models import BehaviorAnalysisResult, IntentProfile
+from nuguard.behavior.models import BehaviorAnalysisResult, IntentProfile, ScenarioResult
 from nuguard.behavior.prompt_cache import BehaviorPromptCache
 from nuguard.behavior.recommendations import RecommendationEngine
 from nuguard.behavior.runner import BehaviorRunner
 from nuguard.behavior.scenarios import build_scenarios
 from nuguard.common.logging import get_logger
+from nuguard.common.run_checkpoint import PartialRunError
 from nuguard.config import BehaviorConfig
 from nuguard.models.token_usage import TokenUsage
 
@@ -49,6 +50,7 @@ class BehaviorAnalyzer:
         controls: "list[PolicyControl] | None" = None,
         llm_client: "LLMClient | None" = None,
         remediation_llm_client: "LLMClient | None" = None,
+        progress_sink: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self._config = config
         self._sbom = sbom
@@ -57,7 +59,19 @@ class BehaviorAnalyzer:
         self._controls = controls
         self._llm = llm_client
         self._remediation_llm = remediation_llm_client or llm_client
+        self._progress_sink = progress_sink
+        self._scenario_plan_emitted = False
         self._rec_engine = RecommendationEngine()
+
+    def _emit_progress(self, update: dict[str, Any]) -> None:
+        if self._progress_sink is None:
+            return
+        if update.get("kind") == "plan":
+            self._scenario_plan_emitted = True
+        try:
+            self._progress_sink(update)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("BehaviorAnalyzer progress sink failed: %s", exc)
 
     async def analyze(
         self,
@@ -72,6 +86,7 @@ class BehaviorAnalyzer:
             Complete BehaviorAnalysisResult.
         """
         _log.info("BehaviorAnalyzer.analyze: mode=%s", mode)
+        self._scenario_plan_emitted = False
 
         # Step 1: Extract intent
         intent = await extract_intent(
@@ -79,6 +94,7 @@ class BehaviorAnalyzer:
             sbom=self._sbom,
             llm_client=self._llm,
         ) if self._policy is not None else IntentProfile(app_purpose="AI application")
+        self._emit_progress({"kind": "phase", "phase": "intent"})
 
         # Step 2: Static alignment checks
         static_findings_objs = []
@@ -87,6 +103,15 @@ class BehaviorAnalyzer:
             _log.info("BehaviorAnalyzer.analyze: %d static findings", len(static_findings_objs))
 
         static_findings = [f.model_dump(mode="json") for f in static_findings_objs]
+        self._emit_progress({"kind": "phase", "phase": "alignment"})
+        if static_findings:
+            self._emit_progress(
+                {
+                    "kind": "findings",
+                    "phase": "alignment",
+                    "findings_added": [_finding_progress_view(f) for f in static_findings],
+                }
+            )
 
         # Step 3: Dynamic analysis
         dynamic_findings: list[dict] = []
@@ -102,6 +127,7 @@ class BehaviorAnalyzer:
             if not target_url:
                 _log.warning("BehaviorAnalyzer.analyze: no target URL for dynamic mode")
             else:
+                self._emit_progress({"kind": "phase", "phase": "discovery"})
                 # ----------------------------------------------------------------
                 # v3: scenario prompt cache — skip LLM generation on warm runs
                 # ----------------------------------------------------------------
@@ -215,6 +241,7 @@ class BehaviorAnalyzer:
                             sbom=self._sbom,
                             auth_headers=_resolve_auth_headers() or None,
                             timeout=15.0,
+                            llm=self._llm if getattr(self._config, "probe_llm", False) else None,
                         )
                         if probe_result:
                             probed_path, probed_key, probed_list = probe_result
@@ -228,6 +255,14 @@ class BehaviorAnalyzer:
                             if probed_list != bool(getattr(self._config, "chat_payload_list", False)):
                                 probe_updates["chat_payload_list"] = probed_list
                             self._config = self._config.model_copy(update=probe_updates)
+                            if self._sbom_path is not None:
+                                try:
+                                    from nuguard.common.auto_sbom_enricher import (
+                                        persist_probe_result_to_sbom,  # noqa: PLC0415
+                                    )
+                                    persist_probe_result_to_sbom(probe_result, self._sbom, self._sbom_path)
+                                except Exception as _pe:  # noqa: BLE001
+                                    _log.debug("behavior: probe result persist failed: %s", _pe)
                         else:
                             _log.warning(
                                 "BehaviorAnalyzer: endpoint auto-discovery found nothing "
@@ -250,16 +285,19 @@ class BehaviorAnalyzer:
                 # Discovery happens BEFORE scenario generation so the
                 # discovered user profile (name + IDs) can be injected into
                 # the LLM prompts that generate scenario messages.
-                runner = BehaviorRunner(
-                    config=self._config,
-                    sbom=self._sbom,
-                    sbom_path=self._sbom_path,
-                    policy=self._policy,
-                    intent=intent,
-                    llm_client=self._llm,
-                    judge_cache=judge_cache,
-                    endpoint_explicitly_set=_user_had_explicit_endpoint,
-                )
+                runner_kwargs: dict[str, Any] = {
+                    "config": self._config,
+                    "sbom": self._sbom,
+                    "sbom_path": self._sbom_path,
+                    "policy": self._policy,
+                    "intent": intent,
+                    "llm_client": self._llm,
+                    "judge_cache": judge_cache,
+                    "endpoint_explicitly_set": _user_had_explicit_endpoint,
+                }
+                if self._progress_sink is not None:
+                    runner_kwargs["progress_sink"] = self._emit_progress
+                runner = BehaviorRunner(**runner_kwargs)
                 pre_scan_profile = await runner.discover()
 
                 # ── Optional tool-family reachability probe ──────────────
@@ -332,12 +370,43 @@ class BehaviorAnalyzer:
                 if mode == "minimal" and scenarios:
                     scenarios = scenarios[:1]
 
-                run_result = await runner.run(scenarios, pre_scan_profile=pre_scan_profile)
+                try:
+                    run_result = await runner.run(scenarios, pre_scan_profile=pre_scan_profile)
+                except PartialRunError as _partial_exc:
+                    # Issue #508: the dynamic phase aborted after >=1 scenario
+                    # completed — build a partial BehaviorAnalysisResult from
+                    # whatever the checkpoint captured so the CLI/streaming API
+                    # can still write a usable (if incomplete) report. Finding
+                    # aggregation over scenario_results is a whole-run
+                    # post-process (see BehaviorRunner._run_impl), so
+                    # dynamic_findings is left empty here — a `--resume` run
+                    # to completion recomputes the fully correct combined
+                    # findings, this is only the crash-time snapshot.
+                    _partial_exc.partial_result = BehaviorAnalysisResult(
+                        intent=intent,
+                        static_findings=static_findings,
+                        dynamic_findings=[],
+                        coverage=[],
+                        scenario_results=[
+                            ScenarioResult(**r)
+                            for r in _partial_exc.partial_payload.get("scenario_results", [])
+                        ],
+                        scan_outcome="partial",
+                    )
+                    raise
                 _dynamic_run_result = run_result
                 _dynamic_scan_outcome = run_result.scan_outcome
                 dynamic_findings = run_result.findings
                 coverage = run_result.coverage
                 scenario_results = run_result.scenario_results
+                if dynamic_findings:
+                    self._emit_progress(
+                        {
+                            "kind": "findings",
+                            "phase": "execution",
+                            "findings_added": [_finding_progress_view(f) for f in dynamic_findings],
+                        }
+                    )
 
                 # FP-2: Downgrade BA-008 HITL static findings to LOW when the
                 # corresponding dynamic guardrail probe passed.  A passing probe
@@ -360,6 +429,11 @@ class BehaviorAnalyzer:
                                 sf.get("description", "")
                                 + " [Downgraded: dynamic HITL probe passed, confirming runtime handling.]"
                             )
+
+        if not self._scenario_plan_emitted:
+            self._emit_progress(
+                {"kind": "plan", "scenarios_total": 0, "scenarios_completed": 0}
+            )
 
         # Step 4: Build analysis result
         result = BehaviorAnalysisResult(
@@ -430,11 +504,13 @@ class BehaviorAnalyzer:
         from nuguard.remediation.deviation import enrich_deviation_remediations_async
         from nuguard.remediation.synthesizer import RemediationSynthesizer
 
+        self._emit_progress({"kind": "phase", "phase": "remediation"})
         all_findings = static_findings + dynamic_findings
         result.remediation_plan = await RemediationSynthesizer(
             sbom=self._sbom,
             policy=self._policy,
             llm_client=self._remediation_llm,
+            intent_purpose=intent.app_purpose,
         ).synthesize_findings_async(all_findings)
         backfill_finding_remediation(result.static_findings, result.remediation_plan)
         backfill_finding_remediation(result.dynamic_findings, result.remediation_plan)
@@ -522,4 +598,15 @@ class BehaviorAnalyzer:
             result.overall_risk_score,
             result.coverage_percentage * 100,
         )
+        self._emit_progress({"kind": "phase", "phase": "result"})
         return result
+
+
+def _finding_progress_view(finding: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "finding_id": finding.get("finding_id"),
+        "title": finding.get("title"),
+        "severity": finding.get("severity"),
+        "goal_type": finding.get("goal_type"),
+        "scenario_type": finding.get("scenario_type"),
+    }
