@@ -15,6 +15,11 @@ C# / .NET:
 - ``packages.config`` — legacy NuGet package declarations
 - ``Directory.Packages.props`` — central package management
 
+Java:
+- ``pom.xml`` — Maven dependencies, properties, and dependency management
+- ``build.gradle`` / ``build.gradle.kts`` — common Gradle dependency declarations
+- ``gradle/libs.versions.toml`` — Gradle version catalogs
+
 The scanner is intentionally shallow: it reads *declared* dependencies, not the
 full transitive closure.  For a complete lock-file SBOM combine this with
 ``pip-audit`` / ``cyclonedx-python`` (Python) or ``cyclonedx-npm`` (JS).
@@ -341,12 +346,13 @@ class DependencyScanner:
                 manifest_candidates["directory_packages_props"],
                 directory_package_versions,
             ),
+            *self._scan_java(root),
             *self._scan_go_mod(root, manifest_candidates["go_mod"]),
         ]:
             # Strip version from PURL for dedup key so pkg:pypi/foo and
             # pkg:npm/foo are treated as distinct entries.
             key = dep.purl.split("@")[0] if "@" in dep.purl else dep.purl
-            if key.startswith("pkg:nuget/"):
+            if key.startswith(("pkg:nuget/", "pkg:maven/")):
                 key = key.casefold()
             seen.setdefault(key, dep)
         return list(seen.values())
@@ -842,6 +848,12 @@ class DependencyScanner:
                     )
                 )
         return deps
+
+    def _scan_java(self, root: Path) -> list[PackageDep]:
+        """Parse Maven and Gradle declarations without executing build tools."""
+        from .java_dependencies import scan_java_dependencies
+
+        return [PackageDep(**record) for record in scan_java_dependencies(root)]
 
     def _scan_go_mod(
         self, root: Path, candidate_paths: list[Path] | None = None

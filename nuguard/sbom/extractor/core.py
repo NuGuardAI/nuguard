@@ -64,6 +64,7 @@ from ..adapters.iac import (
     K8sAdapter,
     TerraformAdapter,
 )
+from ..adapters.java._java_base import JavaFrameworkAdapter
 from ..adapters.json_adapters import (
     AgentJSONConfigAdapter,
     GoogleADKJSONAdapter,
@@ -136,6 +137,7 @@ _NOTEBOOK_EXTENSIONS = {".ipynb"}
 _TYPESCRIPT_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
 _GO_EXTENSIONS = {".go"}
 _CSHARP_EXTENSIONS = {".cs"}
+_JAVA_EXTENSIONS = {".java"}
 # Dockerfile: extensionless file named "Dockerfile" or suffixed ".dockerfile"
 _DOCKERFILE_EXTENSIONS = {".dockerfile"}
 _DOCKERFILE_NAMES = {"dockerfile"}  # lower-cased stem match
@@ -1101,6 +1103,7 @@ class AiSbomExtractor:
             is_typescript = suffix in _TYPESCRIPT_EXTENSIONS
             is_go = suffix in _GO_EXTENSIONS
             is_csharp = suffix in _CSHARP_EXTENSIONS
+            is_java = suffix in _JAVA_EXTENSIONS
             is_sql = suffix in _SQL_EXTENSIONS
             is_dockerfile = (
                 suffix in _DOCKERFILE_EXTENSIONS or file_path.name.lower() in _DOCKERFILE_NAMES
@@ -1145,7 +1148,12 @@ class AiSbomExtractor:
                             # Skip TypeScript/Go/C# adapters for Python/notebook files
                             if isinstance(
                                 adapter,
-                                (TSFrameworkAdapter, GoFrameworkAdapter, CSharpFrameworkAdapter),
+                                (
+                                    TSFrameworkAdapter,
+                                    GoFrameworkAdapter,
+                                    CSharpFrameworkAdapter,
+                                    JavaFrameworkAdapter,
+                                ),
                             ):
                                 continue
                             if not adapter.can_handle(imported_modules):
@@ -1307,6 +1315,36 @@ class AiSbomExtractor:
                         for det in detections:
                             self._merge_detection(node_map, det)
 
+            # Phase 1c-java: Java structural framework adapters
+            elif is_java:
+                java_result = self._parse_java(content, rel_path)
+                if java_result is not None:
+                    imported_packages_java = {directive.module for directive in java_result.imports}
+                    # Preserve package segments for best-effort dependency correlation.
+                    _file_imports[rel_path] = {
+                        segment.lower().replace("-", "_")
+                        for directive in java_result.imports
+                        for segment in directive.module.split(".")
+                        if segment
+                    }
+                    for adapter in self.framework_adapters:
+                        if not isinstance(adapter, JavaFrameworkAdapter):
+                            continue
+                        if not adapter.can_handle(imported_packages_java):
+                            continue
+                        _log.debug("running Java adapter %r on %s", adapter.name, rel_path)
+                        try:
+                            detections = adapter.extract(content, rel_path, java_result)
+                        except Exception as exc:
+                            _log.warning(
+                                "Java adapter %r failed on %s: %s",
+                                adapter.name,
+                                rel_path,
+                                exc,
+                            )
+                            continue
+                        for det in detections:
+                            self._merge_detection(node_map, det)
             # SC-019: detect minified JS (single line > 5000 chars) for supply-chain summary
             if suffix == ".js" and content:
                 _js_lines = content.splitlines()
@@ -2280,6 +2318,16 @@ class AiSbomExtractor:
             from ..core.csharp_parser import parse_csharp
 
             return parse_csharp(content, file_path)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _parse_java(content: str, file_path: str = "") -> Any | None:
+        """Parse Java source; return ``None`` only on an unexpected parser failure."""
+        try:
+            from ..core.java_parser import parse_java
+
+            return parse_java(content, file_path)
         except Exception:
             return None
 

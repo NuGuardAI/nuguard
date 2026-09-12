@@ -152,6 +152,7 @@ class AiSbomConfig(BaseModel):
         default_factory=lambda: {
             ".py",
             ".go",
+            ".java",
             ".pyw",
             ".ts",
             ".tsx",
@@ -180,7 +181,7 @@ class AiSbomConfig(BaseModel):
     exclude_patterns: list[str] = Field(
         default_factory=list,
         description="Glob patterns for files/directories to exclude from scanning, "
-                    "matched against the path relative to the scan root.",
+        "matched against the path relative to the scan root.",
     )
     honor_gitignore: bool = Field(
         default=True,
