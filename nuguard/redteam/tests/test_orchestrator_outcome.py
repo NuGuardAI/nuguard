@@ -257,14 +257,18 @@ def test_outcome_no_findings_when_all_4xx_strict():
     assert outcome == "no_findings"
 
 
-def test_outcome_aborted_target_unavailable():
-    """All scenarios aborted → aborted_target_unavailable."""
+def test_outcome_bare_aborted_is_not_target_unavailable():
+    """A bare "aborted" (no ":reason" suffix) is a normal, designed chain-stop
+    after a clean on_failure="abort" miss — a completed run against a healthy
+    target, not a health-abort. It must NOT be conflated with a real outage
+    (the genuine TargetUnavailableError path always tags its status
+    "aborted:target_unavailable" — see test below)."""
     records = [
         _record_with_counters(chain_status="aborted"),
         _record_with_counters(chain_status="aborted"),
     ]
     outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
-    assert outcome == "aborted_target_unavailable"
+    assert outcome != "aborted_target_unavailable"
 
 
 def test_outcome_aborted_target_unavailable_all_skipped():
