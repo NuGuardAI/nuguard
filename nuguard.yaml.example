@@ -112,6 +112,12 @@ target:
     # username: ${APP_USERNAME}
     # password: ${APP_PASSWORD}
 
+    # Pentest also reuses this shared auth block. Secrets stay in environment variables.
+    # Pentest login_flow requires --allow-dynamic-auth and a same-origin POST endpoint.
+    # Pentest cookie_file requires chmod 600, host-only cookies, and path /.
+    # type: cookie_file
+    # cookie_file: ./private-cookies.txt
+
     # Option E: No authentication (open endpoints, local dev)
     # type: none
 
