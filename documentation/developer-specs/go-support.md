@@ -269,18 +269,22 @@ of Python-only frameworks.
     against upstream source/docs via GitHub/pkg.go.dev before writing the
     adapters, rather than guessed:
     - `EinoAdapter` (`cloudwego/eino`, ByteDance's Go LLM application
-      framework — graph-based orchestration, roughly LangGraph's Go
-      analogue). `compose.NewChain[I, O](...)`/`compose.NewGraph[I, O](...)`
-      → AGENT node — the `[I, O]` generic type args are already stripped
-      by `go_parser._split_callee` before receiver/function-name
-      splitting, so no special handling was needed there.
-      `utils.NewTool[...](toolInfo, invokeFunc)` → TOOL node, reading
-      `Name`/`Desc` off the `toolInfo` argument — which resolves through
-      `go_parser`'s existing single-file symbol table whether the
-      `&schema.ToolInfo{...}` literal is inline or assigned to a variable
-      first (verified with a dedicated test); a `toolInfo` declared in a
-      *different* file doesn't resolve and is silently skipped, same as
-      every other unresolved-value case in the Go adapters.
+      framework) now resolves package aliases from parsed imports and emits:
+      `compose.NewChain[I, O](...)` / `compose.NewGraph[I, O](...)` -> AGENT;
+      standalone `tool.NewTool` / `utils.NewTool` variants -> TOOL; and graph
+      `Add*` plus chain `Append*` registrations for chat models, prompt
+      templates, and tools nodes -> MODEL, PROMPT, and TOOL components.
+      Registration calls are accepted only when their receiver was positively
+      identified as an Eino graph or chain in the same function scope.
+      Registered components retain node keys, referenced variables, methods,
+      lines, snippets, constructor/provider metadata where resolvable, and
+      AGENT relationships (`USES` for MODEL/PROMPT, `CALLS` for TOOL).
+      Prompt content and template variables are preserved for resolvable
+      `prompt.FromMessages` / `prompt.FromAgenticMessages` calls; unresolved
+      dynamic values are not fabricated. A parser-backed `go_eino_graph`
+      fixture validates aliased imports, provider model config, prompt
+      templates, standalone tools, tools-node membership, and graph
+      relationships, with a look-alike-module negative fixture.
     - `GenkitGoAdapter` (`firebase/genkit/go`, Google's Genkit Go SDK).
       `genkit.DefineFlow(g, "name", ...)` → AGENT node;
       `genkit.DefineTool(g, "name", "desc", ...)` → TOOL node with the
