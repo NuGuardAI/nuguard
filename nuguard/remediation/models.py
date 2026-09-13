@@ -5,11 +5,13 @@
 finding, regardless of which module (behavior, redteam, analysis) generated
 that finding.
 """
+
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 
 class RemediationArtefactType(str, Enum):
@@ -19,6 +21,26 @@ class RemediationArtefactType(str, Enum):
     INPUT_GUARDRAIL = "input_guardrail"
     OUTPUT_GUARDRAIL = "output_guardrail"
     ARCHITECTURAL_CHANGE = "architectural_change"
+
+
+class RuntimeRemediationContext(BaseModel):
+    """Advisory runtime provenance attached to a shared remediation artefact."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    action_id: str = Field(pattern=r"^pentest-remediation:[0-9a-f]{24}$")
+    source: Literal["pentest"] = "pentest"
+    advisory_only: Literal[True] = True
+    targets: tuple[str, ...] = ()
+    matched_locations: tuple[str, ...] = ()
+    rule_ids: tuple[str, ...] = ()
+    cwe_ids: tuple[str, ...] = ()
+    cve_ids: tuple[str, ...] = ()
+    references: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+    matcher_names: tuple[str, ...] = ()
+    guidance_sources: tuple[Literal["template", "cwe", "tag", "generic"], ...] = ()
+    implementation: str = ""
+    verification: tuple[str, ...] = ()
 
 
 class RemediationArtefact(BaseModel):
@@ -88,3 +110,13 @@ class RemediationArtefact(BaseModel):
     reconstructed from a sibling finding's content after truncation. Empty
     for artefacts that were never merged (their own ``rationale`` applies to
     every finding_id equally)."""
+
+    runtime: RuntimeRemediationContext | None = None
+    """Optional runtime context; legacy artefacts retain their serialization."""
+
+    @model_serializer(mode="wrap")
+    def serialize_artefact(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = handler(self)
+        if self.runtime is None:
+            data.pop("runtime", None)
+        return data

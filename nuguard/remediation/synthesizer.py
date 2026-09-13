@@ -14,10 +14,12 @@ structured/enum-like fields (guardrail_type, guardrail_trigger,
 guardrail_action, edge_to_remove) always stay deterministic so nothing
 downstream can be corrupted by a hallucinated value.
 """
+
 from __future__ import annotations
 
 import re
 import uuid
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from nuguard.common.logging import get_logger
@@ -36,6 +38,7 @@ from nuguard.remediation.prompts import (
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
+    from nuguard.remediation.pentest import PentestRemediationFinding
     from nuguard.sbom.models import AiSbomDocument, Node
 
 _log = get_logger(__name__)
@@ -50,6 +53,7 @@ def _word_truncate(text: str, max_len: int) -> str:
     truncated = text[:max_len]
     last_space = truncated.rfind(" ")
     return truncated[:last_space].rstrip(".,;:") if last_space > 0 else truncated
+
 
 # ---------------------------------------------------------------------------
 # Privilege strategy lookup table
@@ -131,9 +135,9 @@ def _node_meta(node: "Node", key: str) -> Any:
 def _build_lookup_maps(
     sbom: "AiSbomDocument",
 ) -> tuple[
-    dict[str, "Node"],           # node_by_name
-    dict[str, "Node"],           # prompt_by_agent: agent_name → closest PROMPT node
-    dict[str, list[str]],        # privilege_map: tool_name → list of privilege node names
+    dict[str, "Node"],  # node_by_name
+    dict[str, "Node"],  # prompt_by_agent: agent_name → closest PROMPT node
+    dict[str, list[str]],  # privilege_map: tool_name → list of privilege node names
 ]:
     """Build fast-lookup structures from the SBOM for the synthesizer."""
     node_by_name: dict[str, Node] = {}
@@ -588,23 +592,25 @@ def _merge_artefacts(artefacts: list[RemediationArtefact]) -> list[RemediationAr
                 for fid in a.finding_ids:
                     per_finding_rationale[fid] = a.rationale
         base = group[0]
-        merged.append(RemediationArtefact(
-            finding_ids=finding_ids,
-            component=base.component,
-            component_type=base.component_type,
-            artefact_type=base.artefact_type,
-            priority=base.priority,
-            patch_location=base.patch_location,
-            patch_section="Security Rules",
-            patch_text="\n\n".join(patch_parts),
-            # Preserve each artefact's own rationale (deduped, order kept)
-            # instead of discarding them behind a content-free "Merged N..."
-            # placeholder — the specific reasons still need to reach the
-            # report even when several findings land on the same patch.
-            rationale="\n".join(dict.fromkeys(rationale_parts))
-            or f"Merged {len(group)} system prompt patches for {comp}",
-            per_finding_rationale=per_finding_rationale,
-        ))
+        merged.append(
+            RemediationArtefact(
+                finding_ids=finding_ids,
+                component=base.component,
+                component_type=base.component_type,
+                artefact_type=base.artefact_type,
+                priority=base.priority,
+                patch_location=base.patch_location,
+                patch_section="Security Rules",
+                patch_text="\n\n".join(patch_parts),
+                # Preserve each artefact's own rationale (deduped, order kept)
+                # instead of discarding them behind a content-free "Merged N..."
+                # placeholder — the specific reasons still need to reach the
+                # report even when several findings land on the same patch.
+                rationale="\n".join(dict.fromkeys(rationale_parts))
+                or f"Merged {len(group)} system prompt patches for {comp}",
+                per_finding_rationale=per_finding_rationale,
+            )
+        )
 
     # Sort by priority
     _prio = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -646,9 +652,17 @@ class RemediationSynthesizer:
         self._privilege_map: dict[str, list[str]] = {}
 
         if sbom is not None:
-            self._node_by_name, self._prompt_by_agent, self._privilege_map = (
-                _build_lookup_maps(sbom)
+            self._node_by_name, self._prompt_by_agent, self._privilege_map = _build_lookup_maps(
+                sbom
             )
+
+    def synthesize_pentest_findings(
+        self, findings: Sequence["PentestRemediationFinding"]
+    ) -> list[RemediationArtefact]:
+        """Plan runtime guidance without SBOM guesses, LLM calls, or side effects."""
+        from nuguard.remediation.pentest import build_pentest_remediation
+
+        return build_pentest_remediation(findings)
 
     def _agent_purpose(self, node: "Node | None") -> str:
         """Best available "what is this agent for" text for a prompt.
@@ -700,14 +714,22 @@ class RemediationSynthesizer:
         node = self._node_by_name.get(component)
         dtype = _classify_finding(finding)
 
-        _log.debug("RemediationSynthesizer: finding=%s dtype=%s component=%s", finding_id, dtype, component)
+        _log.debug(
+            "RemediationSynthesizer: finding=%s dtype=%s component=%s", finding_id, dtype, component
+        )
 
         if dtype == "sensitive_data_request":
-            return await self._patch_data_handling_async(component, node, finding, finding_id, priority)
+            return await self._patch_data_handling_async(
+                component, node, finding, finding_id, priority
+            )
         if dtype == "privilege_escalation":
-            return await self._remediate_privilege_escalation_async(component, node, finding, finding_id, priority)
+            return await self._remediate_privilege_escalation_async(
+                component, node, finding, finding_id, priority
+            )
 
-        artefacts = self._dispatch_deterministic(dtype, component, node, finding, finding_id, priority)
+        artefacts = self._dispatch_deterministic(
+            dtype, component, node, finding, finding_id, priority
+        )
         if self._llm is not None:
             await self._enrich_artefacts_async(artefacts, dtype, component, finding)
         return artefacts
@@ -723,7 +745,9 @@ class RemediationSynthesizer:
     ) -> list[RemediationArtefact]:
         """Build the deterministic (template-based) artefact list for *dtype*."""
         if dtype == "privilege_escalation":
-            return self._remediate_privilege_escalation(component, node, finding, finding_id, priority)
+            return self._remediate_privilege_escalation(
+                component, node, finding, finding_id, priority
+            )
         if dtype == "restricted_action_reachable":
             return self._remediate_restricted_action(component, node, finding, finding_id, priority)
         if dtype == "hitl_gate_missing":
@@ -743,13 +767,21 @@ class RemediationSynthesizer:
         if dtype == "policy_violation_generic":
             return self._patch_generic_violation(component, node, finding, finding_id, priority)
         if dtype == "agentic_trust_boundary":
-            return self._remediate_agentic_trust_boundary(component, node, finding, finding_id, priority)
+            return self._remediate_agentic_trust_boundary(
+                component, node, finding, finding_id, priority
+            )
         if dtype == "memory_session_integrity":
-            return self._remediate_memory_session_integrity(component, node, finding, finding_id, priority)
+            return self._remediate_memory_session_integrity(
+                component, node, finding, finding_id, priority
+            )
         if dtype == "output_handling":
-            return self._add_output_handling_guardrail(component, node, finding, finding_id, priority)
+            return self._add_output_handling_guardrail(
+                component, node, finding, finding_id, priority
+            )
         if dtype == "supply_chain_secrets":
-            return self._add_input_guardrail_supply_chain(component, node, finding, finding_id, priority)
+            return self._add_input_guardrail_supply_chain(
+                component, node, finding, finding_id, priority
+            )
         # generic — produce a minimal system_prompt_patch
         return self._patch_generic_violation(component, node, finding, finding_id, priority)
 
@@ -842,7 +874,9 @@ class RemediationSynthesizer:
         node = self._node_by_name.get(component)
         dtype = _classify_finding(finding)
 
-        _log.debug("RemediationSynthesizer: finding=%s dtype=%s component=%s", finding_id, dtype, component)
+        _log.debug(
+            "RemediationSynthesizer: finding=%s dtype=%s component=%s", finding_id, dtype, component
+        )
         return self._dispatch_deterministic(dtype, component, node, finding, finding_id, priority)
 
     # ------------------------------------------------------------------
@@ -874,17 +908,19 @@ class RemediationSynthesizer:
             "- Do not store, log, or repeat any credential the user provides."
         )
 
-        return [RemediationArtefact(
-            finding_ids=[finding_id],
-            component=component,
-            component_type=_node_type(node) if node else "AGENT",
-            artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
-            priority=priority,
-            patch_location=location or None,
-            patch_section="Data Handling Rules",
-            patch_text=patch_text,
-            rationale=finding.get("description", "Agent violates data handling rules."),
-        )]
+        return [
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "AGENT",
+                artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
+                priority=priority,
+                patch_location=location or None,
+                patch_section="Data Handling Rules",
+                patch_text=patch_text,
+                rationale=finding.get("description", "Agent violates data handling rules."),
+            )
+        ]
 
     async def _patch_data_handling_async(
         self,
@@ -909,17 +945,19 @@ class RemediationSynthesizer:
             "- You may confirm the last 4 digits of an account number but never the full number.\n"
             "- Do not store, log, or repeat any credential the user provides."
         )
-        return [RemediationArtefact(
-            finding_ids=[finding_id],
-            component=component,
-            component_type=_node_type(node) if node else "AGENT",
-            artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
-            priority=priority,
-            patch_location=location or None,
-            patch_section="Data Handling Rules",
-            patch_text=patch_text,
-            rationale=finding.get("description", "Agent violates data handling rules."),
-        )]
+        return [
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "AGENT",
+                artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
+                priority=priority,
+                patch_location=location or None,
+                patch_section="Data Handling Rules",
+                patch_text=patch_text,
+                rationale=finding.get("description", "Agent violates data handling rules."),
+            )
+        ]
 
     # ------------------------------------------------------------------
     # 2. HITL trigger not honoured at runtime
@@ -996,8 +1034,11 @@ class RemediationSynthesizer:
         trigger_match = re.search(r"trigger:\s*'(.+?)'", title)
         trigger_text = trigger_match.group(1) if trigger_match else desc[:100]
         # Derive a compact regex from the trigger text (use key words)
-        words = [w for w in re.findall(r"\b\w{4,}\b", trigger_text.lower()) if w not in
-                 ("that", "this", "with", "when", "from", "have", "will", "should")]
+        words = [
+            w
+            for w in re.findall(r"\b\w{4,}\b", trigger_text.lower())
+            if w not in ("that", "this", "with", "when", "from", "have", "will", "should")
+        ]
         pattern = r"\b(" + "|".join(words[:5]) + r")\b" if words else r"\b(escalate|human)\b"
 
         return [
@@ -1016,7 +1057,7 @@ class RemediationSynthesizer:
                     f"  Type: input_classifier\n"
                     f"  Pattern: {pattern}\n"
                     f"  Action: ROUTE → escalate_to_human_agent()\n"
-                    f"  Fallback message: \"Let me connect you with a team member who can help.\""
+                    f'  Fallback message: "Let me connect you with a team member who can help."'
                 ),
                 rationale=desc,
             ),
@@ -1046,7 +1087,11 @@ class RemediationSynthesizer:
             topics = []
 
         topic_lines = "\n".join(f'- "{t}"' for t in topics[:8])
-        section_label = f"Out of Scope — {component}" if component and component != "unknown" else "Out of Scope"
+        section_label = (
+            f"Out of Scope — {component}"
+            if component and component != "unknown"
+            else "Out of Scope"
+        )
         patch_text = (
             f"## {section_label}\n"
             "Do NOT discuss or assist with any of the following topics:\n"
@@ -1068,21 +1113,23 @@ class RemediationSynthesizer:
         ]
         # Optional input guardrail for topic blocking
         if topics:
-            artefacts.append(RemediationArtefact(
-                finding_ids=[finding_id],
-                component=component,
-                component_type=_node_type(node) if node else "AGENT",
-                artefact_type=RemediationArtefactType.INPUT_GUARDRAIL,
-                priority="medium",
-                guardrail_name=f"topic_block_{component.lower().replace(' ', '_')[:20]}",
-                guardrail_type="topic_classifier",
-                # Keep full canonical topic strings so downstream tooling can use them
-                # as-is; the display label in markdown is truncated separately.
-                guardrail_trigger=", ".join(topics[:4]),
-                guardrail_action="BLOCK",
-                guardrail_message="I'm sorry, that's outside my area of expertise.",
-                rationale=f"Block restricted topics at the input layer for {component}.",
-            ))
+            artefacts.append(
+                RemediationArtefact(
+                    finding_ids=[finding_id],
+                    component=component,
+                    component_type=_node_type(node) if node else "AGENT",
+                    artefact_type=RemediationArtefactType.INPUT_GUARDRAIL,
+                    priority="medium",
+                    guardrail_name=f"topic_block_{component.lower().replace(' ', '_')[:20]}",
+                    guardrail_type="topic_classifier",
+                    # Keep full canonical topic strings so downstream tooling can use them
+                    # as-is; the display label in markdown is truncated separately.
+                    guardrail_trigger=", ".join(topics[:4]),
+                    guardrail_action="BLOCK",
+                    guardrail_message="I'm sorry, that's outside my area of expertise.",
+                    rationale=f"Block restricted topics at the input layer for {component}.",
+                )
+            )
         return artefacts
 
     # ------------------------------------------------------------------
@@ -1121,23 +1168,36 @@ class RemediationSynthesizer:
             # finding about an email/name leak would otherwise get a rationale
             # about "financial routing numbers" that has nothing to do with
             # the actual evidence).
-            fields = ["name", "email", "phone", "address", "date_of_birth",
-                      "ssn", "account_number", "routing_number", "card_number",
-                      "password", "api_key", "token"]
+            fields = [
+                "name",
+                "email",
+                "phone",
+                "address",
+                "date_of_birth",
+                "ssn",
+                "account_number",
+                "routing_number",
+                "card_number",
+                "password",
+                "api_key",
+                "token",
+            ]
 
-        return [RemediationArtefact(
-            finding_ids=[finding_id],
-            component=component,
-            component_type=_node_type(node) if node else "TOOL",
-            artefact_type=RemediationArtefactType.OUTPUT_GUARDRAIL,
-            priority=priority,
-            guardrail_name=f"output_redactor_{component.lower().replace(' ', '_')[:20]}",
-            guardrail_type="field_redactor",
-            guardrail_trigger=", ".join(fields),
-            guardrail_action="REDACT",
-            guardrail_message="[REDACTED]",
-            rationale=desc or "Sensitive fields must not appear in agent responses.",
-        )]
+        return [
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "TOOL",
+                artefact_type=RemediationArtefactType.OUTPUT_GUARDRAIL,
+                priority=priority,
+                guardrail_name=f"output_redactor_{component.lower().replace(' ', '_')[:20]}",
+                guardrail_type="field_redactor",
+                guardrail_trigger=", ".join(fields),
+                guardrail_action="REDACT",
+                guardrail_message="[REDACTED]",
+                rationale=desc or "Sensitive fields must not appear in agent responses.",
+            )
+        ]
 
     # ------------------------------------------------------------------
     # 6. Intent misalignment — tool not invoked / wrong tool
@@ -1165,12 +1225,15 @@ class RemediationSynthesizer:
                 for edge in self._sbom.edges:
                     rt = getattr(edge, "relationship_type", None)
                     rel = (getattr(rt, "value", None) or str(rt) or "").upper()
-                    if (rel == "CALLS"
-                            and str(edge.source) == str(getattr(n, "id", ""))
-                            and component in (
-                                str(getattr(node, "name", "") if node else ""),
-                                str(getattr(node, "id", "") if node else ""),
-                            )):
+                    if (
+                        rel == "CALLS"
+                        and str(edge.source) == str(getattr(n, "id", ""))
+                        and component
+                        in (
+                            str(getattr(node, "name", "") if node else ""),
+                            str(getattr(node, "id", "") if node else ""),
+                        )
+                    ):
                         agent_name = str(getattr(n, "name", "") or "the agent")
                         break
 
@@ -1189,16 +1252,18 @@ class RemediationSynthesizer:
             f"Do not attempt to fulfil this request without invoking the tool."
         )
 
-        return [RemediationArtefact(
-            finding_ids=[finding_id],
-            component=agent_name,
-            component_type="AGENT",
-            artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
-            priority=priority,
-            patch_section=invocation_section,
-            patch_text=patch_text,
-            rationale=desc or f"Agent does not invoke {tool_label} when expected.",
-        )]
+        return [
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=agent_name,
+                component_type="AGENT",
+                artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
+                priority=priority,
+                patch_section=invocation_section,
+                patch_text=patch_text,
+                rationale=desc or f"Agent does not invoke {tool_label} when expected.",
+            )
+        ]
 
     # ------------------------------------------------------------------
     # 7. Privilege escalation — unauthenticated agent + high-privilege tool (BA-005)
@@ -1220,7 +1285,8 @@ class RemediationSynthesizer:
         if tool_match:
             return tool_match.group(1)
         high_priv_names = [
-            n.name for n in getattr(self._sbom, "nodes", [])
+            n.name
+            for n in getattr(self._sbom, "nodes", [])
             if getattr(getattr(n, "metadata", None), "high_privilege", False)
         ]
         return high_priv_names[0] if high_priv_names else ""
@@ -1235,29 +1301,31 @@ class RemediationSynthesizer:
         """Generic architectural-review artefact for a privilege-escalation
         finding with no specific tool name resolved — emitted instead of a
         placeholder that reads as a real component (e.g. 'high-privilege-tool')."""
-        return [RemediationArtefact(
-            finding_ids=[finding_id],
-            component=component,
-            component_type=_node_type(node) if node else "AGENT",
-            artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
-            priority="high",
-            change_description=(
-                f"Review and restrict the privilege level of tools accessible by '{component}'"
-            ),
-            change_detail=(
-                f"Agent '{component}' can reach tools with elevated privileges without "
-                f"authentication.\n\n"
-                f"Recommended changes:\n"
-                f"1. Audit all TOOL nodes reachable from '{component}' and label "
-                f"   high-privilege ones (high_privilege=true in the SBOM).\n"
-                f"2. Add an AUTH node protecting '{component}' and each high-privilege tool.\n"
-                f"3. Ensure the application verifies a valid session token before any "
-                f"   high-privilege tool invocation.\n"
-                f"4. Remove or scope-limit any tools that do not require root/admin access."
-            ),
-            requires_auth=True,
-            rationale=desc,
-        )]
+        return [
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "AGENT",
+                artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
+                priority="high",
+                change_description=(
+                    f"Review and restrict the privilege level of tools accessible by '{component}'"
+                ),
+                change_detail=(
+                    f"Agent '{component}' can reach tools with elevated privileges without "
+                    f"authentication.\n\n"
+                    f"Recommended changes:\n"
+                    f"1. Audit all TOOL nodes reachable from '{component}' and label "
+                    f"   high-privilege ones (high_privilege=true in the SBOM).\n"
+                    f"2. Add an AUTH node protecting '{component}' and each high-privilege tool.\n"
+                    f"3. Ensure the application verifies a valid session token before any "
+                    f"   high-privilege tool invocation.\n"
+                    f"4. Remove or scope-limit any tools that do not require root/admin access."
+                ),
+                requires_auth=True,
+                rationale=desc,
+            )
+        ]
 
     def _remediate_privilege_escalation(
         self,
@@ -1281,12 +1349,15 @@ class RemediationSynthesizer:
             # Normalise: "privilege:db_write" → "db_write"
             priv_scope = priv_node_name.split(":")[-1].strip()
 
-        strategy = _PRIVILEGE_STRATEGY.get(priv_scope, {
-            "guardrail": "auth_check",
-            "requires_auth": True,
-            "requires_hitl": False,
-            "risk": "unauthorised access to a high-privilege operation",
-        })
+        strategy = _PRIVILEGE_STRATEGY.get(
+            priv_scope,
+            {
+                "guardrail": "auth_check",
+                "requires_auth": True,
+                "requires_hitl": False,
+                "risk": "unauthorised access to a high-privilege operation",
+            },
+        )
         requires_hitl: bool = bool(strategy.get("requires_hitl", False))
         risk: str = str(strategy.get("risk", "privilege escalation"))
 
@@ -1310,7 +1381,15 @@ class RemediationSynthesizer:
         )
 
         return self._build_privilege_artefacts(
-            component, node, finding, finding_id, priority, tool_name, patch_text, strategy, priv_scope
+            component,
+            node,
+            finding,
+            finding_id,
+            priority,
+            tool_name,
+            patch_text,
+            strategy,
+            priv_scope,
         )
 
     async def _remediate_privilege_escalation_async(
@@ -1334,12 +1413,15 @@ class RemediationSynthesizer:
         if priv_names:
             priv_scope = priv_names[0].split(":")[-1].strip()
 
-        strategy = _PRIVILEGE_STRATEGY.get(priv_scope, {
-            "guardrail": "auth_check",
-            "requires_auth": True,
-            "requires_hitl": False,
-            "risk": "unauthorised access to a high-privilege operation",
-        })
+        strategy = _PRIVILEGE_STRATEGY.get(
+            priv_scope,
+            {
+                "guardrail": "auth_check",
+                "requires_auth": True,
+                "requires_hitl": False,
+                "risk": "unauthorised access to a high-privilege operation",
+            },
+        )
         requires_hitl: bool = bool(strategy.get("requires_hitl", False))
         risk: str = str(strategy.get("risk", "privilege escalation"))
 
@@ -1362,7 +1444,15 @@ class RemediationSynthesizer:
             f"Never invoke {tool_name}() for an unauthenticated caller.{hitl_note}"
         )
         return self._build_privilege_artefacts(
-            component, node, finding, finding_id, priority, tool_name, patch_text, strategy, priv_scope
+            component,
+            node,
+            finding,
+            finding_id,
+            priority,
+            tool_name,
+            patch_text,
+            strategy,
+            priv_scope,
         )
 
     def _build_privilege_artefacts(
@@ -1379,7 +1469,9 @@ class RemediationSynthesizer:
     ) -> list[RemediationArtefact]:
         """Construct privilege-escalation artefacts (shared by sync + async paths)."""
         desc = finding.get("description", "")
-        priv_names = self._privilege_map.get(tool_name, []) or self._privilege_map.get(component, [])
+        priv_names = self._privilege_map.get(tool_name, []) or self._privilege_map.get(
+            component, []
+        )
         priv_node_name = priv_names[0] if priv_names else ""
         requires_auth: bool = bool(strategy.get("requires_auth", True))
         requires_hitl: bool = bool(strategy.get("requires_hitl", False))
@@ -1407,7 +1499,11 @@ class RemediationSynthesizer:
                     f"3. Add a PROTECTS edge: AUTH → '{tool_name}'.\n"
                     f"4. The application must verify a valid session token before any "
                     f"'{tool_name}' invocation."
-                    + ("\n5. Add HITL approval step before executing privileged action." if requires_hitl else "")
+                    + (
+                        "\n5. Add HITL approval step before executing privileged action."
+                        if requires_hitl
+                        else ""
+                    )
                 ),
                 privilege_scope=priv_scope or None,
                 privilege_node=priv_node_name or None,
@@ -1417,38 +1513,43 @@ class RemediationSynthesizer:
             ),
         ]
         if requires_auth:
-            artefacts.append(RemediationArtefact(
-                finding_ids=[finding_id],
-                component=tool_name,
-                component_type="TOOL",
-                artefact_type=RemediationArtefactType.INPUT_GUARDRAIL,
-                priority="critical",
-                guardrail_name=f"auth_gate_{tool_name.lower().replace(' ', '_')[:24]}",
-                guardrail_type=guardrail_type,
-                guardrail_trigger=f"any call to {tool_name}()",
-                guardrail_action="BLOCK",
-                guardrail_message="Please log in to complete this action.",
-                privilege_scope=priv_scope or None,
-                privilege_node=priv_node_name or None,
-                requires_auth=requires_auth,
-                requires_hitl=requires_hitl,
-                rationale=f"Block unauthenticated calls to high-privilege tool '{tool_name}'.{hitl_note}",
-            ))
+            artefacts.append(
+                RemediationArtefact(
+                    finding_ids=[finding_id],
+                    component=tool_name,
+                    component_type="TOOL",
+                    artefact_type=RemediationArtefactType.INPUT_GUARDRAIL,
+                    priority="critical",
+                    guardrail_name=f"auth_gate_{tool_name.lower().replace(' ', '_')[:24]}",
+                    guardrail_type=guardrail_type,
+                    guardrail_trigger=f"any call to {tool_name}()",
+                    guardrail_action="BLOCK",
+                    guardrail_message="Please log in to complete this action.",
+                    privilege_scope=priv_scope or None,
+                    privilege_node=priv_node_name or None,
+                    requires_auth=requires_auth,
+                    requires_hitl=requires_hitl,
+                    rationale=f"Block unauthenticated calls to high-privilege tool '{tool_name}'.{hitl_note}",
+                )
+            )
         if patch_text:
-            artefacts.append(RemediationArtefact(
-                finding_ids=[finding_id],
-                component=component,
-                component_type=_node_type(node) if node else "AGENT",
-                artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
-                priority="critical",
-                patch_section=f"Access Controls — {tool_name}",
-                patch_text=patch_text,
-                privilege_scope=priv_scope or None,
-                privilege_node=priv_node_name or None,
-                requires_auth=requires_auth,
-                requires_hitl=requires_hitl,
-                rationale=desc or f"System prompt must enforce authentication before {tool_name}.",
-            ))
+            artefacts.append(
+                RemediationArtefact(
+                    finding_ids=[finding_id],
+                    component=component,
+                    component_type=_node_type(node) if node else "AGENT",
+                    artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
+                    priority="critical",
+                    patch_section=f"Access Controls — {tool_name}",
+                    patch_text=patch_text,
+                    privilege_scope=priv_scope or None,
+                    privilege_node=priv_node_name or None,
+                    requires_auth=requires_auth,
+                    requires_hitl=requires_hitl,
+                    rationale=desc
+                    or f"System prompt must enforce authentication before {tool_name}.",
+                )
+            )
         return artefacts
 
     # ------------------------------------------------------------------
@@ -1480,7 +1581,8 @@ class RemediationSynthesizer:
                 # Fall back to SBOM: look for a high-privilege tool reachable
                 # from this component.
                 sbom_restricted = [
-                    n.name for n in getattr(self._sbom, "nodes", [])
+                    n.name
+                    for n in getattr(self._sbom, "nodes", [])
                     if getattr(getattr(n, "metadata", None), "high_privilege", False)
                 ]
                 tool_name = sbom_restricted[0] if sbom_restricted else "this tool"
@@ -1495,57 +1597,73 @@ class RemediationSynthesizer:
             re.IGNORECASE,
         )
         _desc_clean = _machine_prefix_re.sub("", desc).strip()
-        restricted_action = action_match.group(1) if action_match else (_desc_clean[:120] or "this restricted action")
+        restricted_action = (
+            action_match.group(1)
+            if action_match
+            else (_desc_clean[:120] or "this restricted action")
+        )
 
         # Determine if this is a write-capable / high-impact tool
-        write_re = re.compile(r"\b(write|update|delete|insert|modify|create|transfer|send|post|pay|charge)\b", re.I)
-        is_write = write_re.search(tool_name + " " + tool_desc + " " + restricted_action) is not None
+        write_re = re.compile(
+            r"\b(write|update|delete|insert|modify|create|transfer|send|post|pay|charge)\b", re.I
+        )
+        is_write = (
+            write_re.search(tool_name + " " + tool_desc + " " + restricted_action) is not None
+        )
 
         # Check if this is an MCP / untrusted server scenario
-        is_mcp = "untrusted.mcp" in desc.lower() or "mcp server" in desc.lower() or "ba-006" in str(finding.get("finding_id", "")).lower()
+        is_mcp = (
+            "untrusted.mcp" in desc.lower()
+            or "mcp server" in desc.lower()
+            or "ba-006" in str(finding.get("finding_id", "")).lower()
+        )
 
         artefacts: list[RemediationArtefact] = []
 
         if is_mcp:
-            artefacts.append(RemediationArtefact(
-                finding_ids=[finding_id],
-                component=component,
-                component_type=_node_type(node) if node else "FRAMEWORK",
-                artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
-                priority=priority,
-                change_description=f"Restrict untrusted MCP server '{component}' write tool access",
-                change_detail=(
-                    f"Untrusted MCP server '{component}' has write-capable tool '{tool_name}'.\n"
-                    f"Options:\n"
-                    f"1. Set trust_level='trusted' only after verifying server identity (TLS + signed manifest).\n"
-                    f"2. If server must remain untrusted, remove the CALLS edge to '{tool_name}'.\n"
-                    f"3. If write access is required, add a GUARDRAIL PROTECTS edge with path allowlist."
-                ),
-                edge_to_remove=(component, tool_name),
-                rationale=desc,
-            ))
+            artefacts.append(
+                RemediationArtefact(
+                    finding_ids=[finding_id],
+                    component=component,
+                    component_type=_node_type(node) if node else "FRAMEWORK",
+                    artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
+                    priority=priority,
+                    change_description=f"Restrict untrusted MCP server '{component}' write tool access",
+                    change_detail=(
+                        f"Untrusted MCP server '{component}' has write-capable tool '{tool_name}'.\n"
+                        f"Options:\n"
+                        f"1. Set trust_level='trusted' only after verifying server identity (TLS + signed manifest).\n"
+                        f"2. If server must remain untrusted, remove the CALLS edge to '{tool_name}'.\n"
+                        f"3. If write access is required, add a GUARDRAIL PROTECTS edge with path allowlist."
+                    ),
+                    edge_to_remove=(component, tool_name),
+                    rationale=desc,
+                )
+            )
 
         # Confirmation guardrail
         confirmation_msg = (
             f"Are you sure you want me to proceed with '{tool_name}'? (yes/no)"
-            if is_write else
-            f"Confirm before using '{tool_name}'? (yes/no)"
+            if is_write
+            else f"Confirm before using '{tool_name}'? (yes/no)"
         )
-        artefacts.append(RemediationArtefact(
-            finding_ids=[finding_id],
-            component=component,
-            component_type=_node_type(node) if node else "AGENT",
-            artefact_type=RemediationArtefactType.INPUT_GUARDRAIL,
-            priority=priority,
-            guardrail_name=f"confirm_gate_{tool_name.lower().replace(' ', '_')[:24]}",
-            guardrail_type="confirmation_required",
-            guardrail_trigger=(
-                f"call to {tool_name}() without explicit user confirmation in same turn"
-            ),
-            guardrail_action="HOLD",
-            guardrail_message=confirmation_msg,
-            rationale=f"Policy restricts: {restricted_action[:120]}",
-        ))
+        artefacts.append(
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "AGENT",
+                artefact_type=RemediationArtefactType.INPUT_GUARDRAIL,
+                priority=priority,
+                guardrail_name=f"confirm_gate_{tool_name.lower().replace(' ', '_')[:24]}",
+                guardrail_type="confirmation_required",
+                guardrail_trigger=(
+                    f"call to {tool_name}() without explicit user confirmation in same turn"
+                ),
+                guardrail_action="HOLD",
+                guardrail_message=confirmation_msg,
+                rationale=f"Policy restricts: {restricted_action[:120]}",
+            )
+        )
 
         # System prompt patch
         patch_text = (
@@ -1555,16 +1673,18 @@ class RemediationSynthesizer:
             f"in the same conversation turn (e.g. 'yes', 'confirm', 'go ahead').\n"
             f"Do not invoke {tool_name}() based on implied consent."
         )
-        artefacts.append(RemediationArtefact(
-            finding_ids=[finding_id],
-            component=component,
-            component_type=_node_type(node) if node else "AGENT",
-            artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
-            priority=priority,
-            patch_section=f"Restricted Action — {tool_name}",
-            patch_text=patch_text,
-            rationale=desc,
-        ))
+        artefacts.append(
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "AGENT",
+                artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
+                priority=priority,
+                patch_section=f"Restricted Action — {tool_name}",
+                patch_text=patch_text,
+                rationale=desc,
+            )
+        )
 
         return artefacts
 
@@ -1600,19 +1720,21 @@ class RemediationSynthesizer:
             action = "BLOCK"
             msg = "Input validation failed."
 
-        return [RemediationArtefact(
-            finding_ids=[finding_id],
-            component=component,
-            component_type=_node_type(node) if node else "TOOL",
-            artefact_type=RemediationArtefactType.INPUT_GUARDRAIL,
-            priority=priority,
-            guardrail_name=f"input_guard_{component.lower().replace(' ', '_')[:22]}",
-            guardrail_type=gt,
-            guardrail_trigger=trigger,
-            guardrail_action=action,
-            guardrail_message=msg,
-            rationale=desc,
-        )]
+        return [
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "TOOL",
+                artefact_type=RemediationArtefactType.INPUT_GUARDRAIL,
+                priority=priority,
+                guardrail_name=f"input_guard_{component.lower().replace(' ', '_')[:22]}",
+                guardrail_type=gt,
+                guardrail_trigger=trigger,
+                guardrail_action=action,
+                guardrail_message=msg,
+                rationale=desc,
+            )
+        ]
 
     # ------------------------------------------------------------------
     # Generic policy violation
@@ -1638,11 +1760,15 @@ class RemediationSynthesizer:
             r"(?:Behavior finding \S+|Attack scenario '[^']+' succeeded:[^.]+\.)\s*",
             re.IGNORECASE,
         )
-        _raw = (desc or title)
+        _raw = desc or title
         _clean = _machine_pfx.sub("", _raw).strip()
         _rule_excerpt = _word_truncate(_clean, 200) if _clean else "the stated policy"
 
-        policy_label = f"Policy Compliance — {component}" if component and component != "unknown" else "Policy Compliance"
+        policy_label = (
+            f"Policy Compliance — {component}"
+            if component and component != "unknown"
+            else "Policy Compliance"
+        )
         patch_text = (
             f"## {policy_label}\n"
             f"The following behaviour is prohibited: {_rule_excerpt}\n\n"
@@ -1650,28 +1776,30 @@ class RemediationSynthesizer:
             f"1. Add an input guardrail that blocks requests matching this pattern "
             f"before they reach the agent or any tool.\n"
             f"2. When the agent must acknowledge the request, use a standard refusal: "
-            f"\"I'm sorry, I can only assist with [allowed scope].\".\n"
+            f'"I\'m sorry, I can only assist with [allowed scope].".\n'
             f"3. Validate this constraint at the guardrail layer — system-prompt "
             f"instructions alone can be overridden by adversarial framing."
         )
-        return [RemediationArtefact(
-            finding_ids=[finding_id],
-            component=component,
-            component_type=_node_type(node) if node else "unknown",
-            artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
-            priority=priority,
-            patch_location=location or None,
-            patch_section=policy_label,
-            patch_text=patch_text,
-            # Not `desc or title` — that would just echo the finding's own
-            # description back as "the fix", which isn't actionable. Point
-            # at the concrete enforcement steps in patch_text instead.
-            rationale=(
-                f"Add an input guardrail that blocks this request pattern before it "
-                f"reaches the agent, and back it with a standard refusal — see the "
-                f"'{policy_label}' patch for the exact wording."
-            ),
-        )]
+        return [
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "unknown",
+                artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
+                priority=priority,
+                patch_location=location or None,
+                patch_section=policy_label,
+                patch_text=patch_text,
+                # Not `desc or title` — that would just echo the finding's own
+                # description back as "the fix", which isn't actionable. Point
+                # at the concrete enforcement steps in patch_text instead.
+                rationale=(
+                    f"Add an input guardrail that blocks this request pattern before it "
+                    f"reaches the agent, and back it with a standard refusal — see the "
+                    f"'{policy_label}' patch for the exact wording."
+                ),
+            )
+        ]
 
     # ------------------------------------------------------------------
     # 8. Agentic trust boundary — confused deputy, sub-agent/handoff trust,
@@ -1744,7 +1872,9 @@ class RemediationSynthesizer:
                     "claims (e.g. approval status, identity) that were not in the original "
                     "transcript."
                 ),
-                rationale=desc or title or "Persisted memory/session state was trusted without re-validation.",
+                rationale=desc
+                or title
+                or "Persisted memory/session state was trusted without re-validation.",
             ),
         ]
 
@@ -1777,7 +1907,8 @@ class RemediationSynthesizer:
                 ),
                 guardrail_action="BLOCK",
                 guardrail_message="Response withheld: output failed structural validation before downstream use.",
-                rationale=desc or "Model output was consumed downstream (code/SQL/URL/config) without validation.",
+                rationale=desc
+                or "Model output was consumed downstream (code/SQL/URL/config) without validation.",
             ),
         ]
 
@@ -1810,7 +1941,8 @@ class RemediationSynthesizer:
                 ),
                 guardrail_action="BLOCK",
                 guardrail_message="I can't retrieve environment variables, credentials, or CI/deployment secrets.",
-                rationale=desc or "Request probed for environment/CI secrets or a cloud metadata endpoint.",
+                rationale=desc
+                or "Request probed for environment/CI secrets or a cloud metadata endpoint.",
             ),
         ]
 
@@ -1935,7 +2067,9 @@ class RemediationSynthesizer:
             if loop.is_running():
                 return ""
             return loop.run_until_complete(
-                self._llm_privilege_patch_async(agent_name, tool_name, tool_desc, privilege_scope, risk)
+                self._llm_privilege_patch_async(
+                    agent_name, tool_name, tool_desc, privilege_scope, risk
+                )
             )
         except Exception as exc:
             _log.debug("RemediationSynthesizer._llm_privilege_patch: failed: %s", exc)
@@ -1978,5 +2112,7 @@ class RemediationSynthesizer:
             change_description=change_description,
         )
         return await self._call_llm_async(
-            prompt, system=ARCHITECTURAL_RATIONALE_SYSTEM, label="remediation:architectural_rationale"
+            prompt,
+            system=ARCHITECTURAL_RATIONALE_SYSTEM,
+            label="remediation:architectural_rationale",
         )
