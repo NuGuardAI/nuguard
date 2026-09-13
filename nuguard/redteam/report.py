@@ -593,7 +593,9 @@ def _universal_safety_summary(scenario_records: list) -> list[str]:
     the full Scenario Coverage table.  Returns ``[]`` when no universal-safety
     scenarios are present (e.g. the app's own policy already covers all of them).
     """
-    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted", "target_unreachable"}
+    # Bare "aborted" excluded — see _attack_coverage_summary's docstring for
+    # why a clean on_failure="abort" miss is a completed run, not a skip.
+    _NOT_TESTED = {"skipped", "similar_miss", "failed", "target_unreachable"}
     by_category: dict[str, dict[str, int]] = {}
     for r in scenario_records:
         m = _UNIVERSAL_SAFETY_TITLE_RE.match(_r(r, "title", "") or "")
@@ -603,7 +605,7 @@ def _universal_safety_summary(scenario_records: list) -> list[str]:
         d = by_category.setdefault(cat, {"total": 0, "not_tested": 0, "findings": 0})
         d["total"] += 1
         status = _r(r, "chain_status", "completed") or "completed"
-        if status in _NOT_TESTED:
+        if status in _NOT_TESTED or status.startswith("aborted:"):
             d["not_tested"] += 1
         if _r(r, "had_finding", False):
             d["findings"] += 1

@@ -234,8 +234,9 @@ async def test_orchestrator_aborts_run_after_three_unavailable_scenarios() -> No
     statuses = [r.chain_status for r in records]
     # c1-c2: client counter below threshold → normal (non-TUE) error responses.
     assert statuses.count("completed") == 2
-    # c3-c5: three consecutive TargetUnavailableErrors → aborted records.
-    assert statuses.count("aborted") == 3
+    # c3-c5: three consecutive TargetUnavailableErrors → health-tagged aborted records
+    # (distinct from a bare "aborted" clean-miss — see orchestrator._compute_scan_outcome).
+    assert statuses.count("aborted:target_unavailable") == 3
     # c6-c7: abort event set → skipped without executing.
     assert statuses.count("skipped") == 2
     # Skipped scenarios still contribute (title, goal, False) tuples to
@@ -345,9 +346,10 @@ async def test_codegen_escalation_propagates_target_unavailable() -> None:
         _findings, _executed, records = await orch._run_scenarios([scenario], executor, None)
 
     # The TUE escaped the escalation loop and the orchestrator handled it:
-    # the scenario is "aborted" (not "completed"), and the client counter was
-    # never reset — the orchestrator's abort signal is intact.
-    assert records[0].chain_status == "aborted"
+    # the scenario is tagged "aborted:target_unavailable" (a genuine health
+    # abort, distinct from a bare "aborted" clean-miss), and the client
+    # counter was never reset — the orchestrator's abort signal is intact.
+    assert records[0].chain_status == "aborted:target_unavailable"
     assert not _findings
     assert client.reset_count == 0
     # Exactly 2 sends: 1 primary + 1 first-escalation (the remaining 4

@@ -138,7 +138,10 @@ ${DOCKERHUB_CREDS}    - server: $ACR_LOGIN_SERVER
         volumeMounts:
           - {name: postgres-data-volume, mountPath: /mnt/postgres-data}
         resources:
-          requests: {cpu: 1.5, memoryInGb: 1.5}
+          # Bumped from 1.5/1.5 — multiple concurrent NuGuard sessions (behavior +
+          # redteam, each holding several open connections) need headroom for
+          # postgres's connection pool, not just a single interactive user.
+          requests: {cpu: 2, memoryInGb: 2}
     - name: redis
       properties:
         image: redis:7-alpine
@@ -193,7 +196,11 @@ ${DOCKERHUB_CREDS}    - server: $ACR_LOGIN_SERVER
           # (exitCode 1) at initial boot under the original allocation, and
           # is the one under the most real load during a redteam scan
           # (concurrency=5 scenario workers all hitting it concurrently).
-          requests: {cpu: 2, memoryInGb: 2.5}
+          # Bumped again 2/2.5 -> 3/4: multiple *simultaneous* nuguard runs
+          # (behavior + redteam, or overlapping sessions from different
+          # branches/CI jobs) stack their concurrent workers on top of each
+          # other against this one backend, not just one run's concurrency.
+          requests: {cpu: 3, memoryInGb: 4}
     - name: frontend
       properties:
         image: $ACR_LOGIN_SERVER/studyield-frontend:latest
