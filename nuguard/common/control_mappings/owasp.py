@@ -98,6 +98,8 @@ _NGA_SUPPLY_CHAIN: dict[str, RuleOwaspRefs] = {
     "NGA-SC-023": RuleOwaspRefs(owasp_llm=("LLM04:2026",), owasp_agentic=("ASI04",)),  # mutable dependency ref
     "NGA-SC-024": RuleOwaspRefs(owasp_llm=("LLM04:2026",), owasp_agentic=("ASI04",)),  # declared dep missing from lockfile
     "NGA-SC-025": RuleOwaspRefs(owasp_llm=("LLM04:2026",), owasp_agentic=("ASI04",)),  # known-malicious IOC match
+    "NGA-SC-026": RuleOwaspRefs(owasp_agentic=("ASI04",)),  # deploy job lacks environment protection
+    "NGA-SC-027": RuleOwaspRefs(owasp_agentic=("ASI08",)),  # security step silently swallows failures
 }
 
 NGA_TO_OWASP: dict[str, RuleOwaspRefs] = {**_NGA_STRUCTURAL, **_NGA_SUPPLY_CHAIN}

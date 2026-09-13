@@ -42,6 +42,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from nuguard.common.control_mappings.cicd import cicd_refs_for_rule
 from nuguard.common.control_mappings.owasp import owasp_refs_for_rule
 from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
@@ -105,6 +106,10 @@ def _raw_to_finding(raw: dict[str, Any], source: str) -> Finding:
         ", ".join(owasp_refs.owasp_agentic) if owasp_refs.owasp_agentic else None
     )
 
+    # OWASP Top 10 CI/CD Security Risks citation, for NGA-SC-* supply-chain rules only.
+    cicd_refs = cicd_refs_for_rule(rule_id)
+    owasp_cicd_ref = raw.get("owasp_cicd_ref") or (", ".join(cicd_refs) if cicd_refs else None)
+
     return Finding(
         finding_id=f"{source}-{rule_id}-{uuid.uuid4().hex[:8]}",
         title=title,
@@ -115,6 +120,7 @@ def _raw_to_finding(raw: dict[str, Any], source: str) -> Finding:
         references=references,
         owasp_llm_ref=owasp_llm_ref,
         owasp_asi_ref=owasp_asi_ref,
+        owasp_cicd_ref=owasp_cicd_ref,
         mitre_atlas_technique=mitre_atlas,
         evidence=raw.get("evidence"),
         container_image=raw.get("container_image"),

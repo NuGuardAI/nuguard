@@ -186,12 +186,10 @@ redteam:
   # Disable catalog in prepublish to keep redteam bounded and fast.
   use_catalog: false
 
-  # Prepublish sanity scope: run a small set of high-signal families.
+  # Prepublish sanity scope: run both destructive and non-destructive scenarios.
   scenarios:
-    - prompt-injection
-    - tool-abuse
-    - data-exfiltration
-    - policy-violation
+    - non-destructive
+    - destructive
 
   # Higher gate threshold keeps only top-impact sanity checks.
   min_impact_score: 8.0

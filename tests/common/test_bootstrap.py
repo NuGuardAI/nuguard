@@ -222,10 +222,12 @@ async def test_login_failure_reasons_do_not_leak_response_body() -> None:
 
 @pytest.mark.anyio
 @respx.mock
-async def test_login_missing_token_key_reports_keys_not_values() -> None:
+async def test_login_missing_token_key_falls_back_to_live_discovery() -> None:
     # Login succeeds (2xx, valid JSON) but the configured token_response_key
-    # isn't present. The response may contain the token under another key, or
-    # other sensitive fields — login_error must list keys only, never values.
+    # isn't present. The response carries the token under a different
+    # known-token-shaped key ("access_token") — AuthSession should recover it
+    # via live recursive discovery rather than failing outright, since many
+    # apps' SBOMs have no response_body_schema to detect this statically.
     respx.post(f"{TARGET}/login").mock(
         return_value=httpx.Response(
             200, json={"access_token": "shhh-this-is-secret", "user": "alice"}
@@ -234,9 +236,26 @@ async def test_login_missing_token_key_reports_keys_not_values() -> None:
     respx.post(FULL_URL).mock(return_value=httpx.Response(200))
     bootstrapper = _bootstrapper(auth=_login_flow_auth())
     await bootstrapper.run()
+    assert bootstrapper.session.login_error is None
+    assert bootstrapper.session.headers().get("Authorization") == "Bearer shhh-this-is-secret"
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_login_missing_token_key_reports_keys_not_values_when_undiscoverable() -> None:
+    # Login succeeds (2xx, valid JSON) but no field looks token-shaped at all —
+    # login_error must list keys only, never values.
+    respx.post(f"{TARGET}/login").mock(
+        return_value=httpx.Response(
+            200, json={"secret_value": "shhh-this-is-secret", "user": "alice"}
+        )
+    )
+    respx.post(FULL_URL).mock(return_value=httpx.Response(200))
+    bootstrapper = _bootstrapper(auth=_login_flow_auth())
+    await bootstrapper.run()
     error = bootstrapper.session.login_error or ""
     assert "shhh-this-is-secret" not in error
-    assert "access_token" in error
+    assert "secret_value" in error
     assert "user" in error
 
 

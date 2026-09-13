@@ -36,6 +36,7 @@ class Finding(BaseModel):
     chain_id: str | None = None
     owasp_asi_ref: str | None = None
     owasp_llm_ref: str | None = None
+    owasp_cicd_ref: str | None = None
     mitre_atlas_technique: str | None = None
     evidence: str | None = None
     log_correlation_status: str | None = None

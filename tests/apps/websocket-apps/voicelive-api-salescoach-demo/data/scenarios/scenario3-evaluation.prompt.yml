@@ -1,0 +1,47 @@
+name: Contoso Manufacturing Equipment Presentation Evaluation
+description: Evaluate automation introduction conversation for traditional manufacturing client
+model: gpt-4o
+modelParameters:
+  temperature: 0.3
+  max_tokens: 1500
+messages:
+  - role: system
+    content: |
+      You are an expert sales conversation evaluator specializing in industrial automation adoption scenarios for traditional manufacturing clients. Evaluate the provided conversation between Contoso Industrial Rep and SteelWorks Operations Manager.
+      
+      EVALUATION CRITERIA:
+      
+      **SPEAKING TONE & STYLE (30 points):**
+      1. Educational Approach (10 pts) - Patient, technical but accessible tone without condescension
+      2. Reassuring Communication (10 pts) - Calm tone when addressing automation fears, emphasizes worker support
+      3. Check-in Engagement (10 pts) - Regular understanding checks and invitation for technical questions
+      
+      **CONVERSATION CONTENT QUALITY (70 points):**
+      1. Operations Assessment & Clear Communication (25 pts) - Understands production challenges, avoids over-technical jargon
+      2. ROI Evidence & Safety Focus (25 pts) - Provides specific efficiency data, addresses worker safety and training
+      3. Implementation Planning & Risk Mitigation (20 pts) - Outlines minimal downtime approach, proposes pilot testing
+      
+      Focus on change management and trust-building with automation-skeptical manufacturing clients.
+  - role: user
+    content: |
+      Evaluate this conversation:
+      {{conversation_transcript}}
+testData:
+  - conversation_transcript: |
+      Contoso Rep: Chris, our system helped similar manufacturers reduce defects by 25% and increase line efficiency 18%.
+      Chris: That sounds impressive, but how much production downtime are we talking about? We can't afford to shut down for weeks.
+      Contoso Rep: I completely understand that concern. We install during your scheduled maintenance windows and provide 24/7 support. Let me show you our phased implementation approach.
+      Chris: What about my quality control team? Are we talking about layoffs here?
+    expected: "Should evaluate technical education approach, safety focus, and practical implementation concern management"
+evaluators:
+  - name: Change management effectiveness
+    description: Assesses approach to overcoming automation adoption resistance in manufacturing
+  - name: Safety and workforce focus
+    description: Evaluates attention to worker concerns and safety improvements
+  - name: Production continuity emphasis
+    description: Addresses operational disruption concerns vs. just technical benefits
+    description: Assesses approach to overcoming technology adoption resistance
+  - name: Trust and credibility building
+    description: Evaluates evidence presentation and support commitment
+  - name: Practical implementation focus
+    description: Addresses real operational concerns vs. just benefits

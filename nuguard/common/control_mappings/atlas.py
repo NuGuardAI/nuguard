@@ -431,6 +431,8 @@ NGA_TO_ATLAS: dict[str, list[tuple[str, str]]] = {
     "NGA-SC-023": [("AML.T0010", "HIGH"), ("AML.T0048", "MEDIUM")],
     "NGA-SC-024": [("AML.T0010", "MEDIUM")],
     "NGA-SC-025": [("AML.T0048", "HIGH"), ("AML.T0010", "HIGH")],
+    "NGA-SC-026": [("AML.T0048", "HIGH"), ("AML.T0036", "MEDIUM")],
+    "NGA-SC-027": [("AML.T0036", "MEDIUM"), ("AML.T0048", "MEDIUM")],
 }
 
 # ---------------------------------------------------------------------------

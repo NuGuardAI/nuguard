@@ -217,6 +217,13 @@ class AiSbomConfig(BaseModel):
         default_factory=_default_verification_max_verifications
     )
 
+    # Auth/chat-schema LLM inference fallback (nuguard.yaml:
+    # sbom_generation.auth_schema_inference.*) — fires only when static DTO
+    # extraction couldn't resolve a login endpoint's token key.
+    auth_schema_inference_enabled: bool = Field(default=True)
+    auth_schema_inference_max_calls: int = Field(default=2)
+    auth_schema_inference_max_cost_usd: float = Field(default=0.5)
+
     # Vertex AI / Google direct path (bypasses litellm when google_api_key is set)
     google_api_key: str | None = Field(
         default_factory=lambda: (

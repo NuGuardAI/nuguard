@@ -237,6 +237,7 @@ class RedteamRunResult(BaseModel):
         "high_findings",
         "findings",
         "aborted_target_unavailable",
+        "aborted_auth_failure",
         "aborted_endpoint_unreachable",
         "inconclusive_target_errors",
         "no_findings",
@@ -289,32 +290,31 @@ async def _build_remediation_plan(
     ``synthesize_findings`` since this runs inside ``run_redteam``'s
     already-running event loop, so LLM patch calls need to be awaited
     directly rather than silently skipped by the sync shim.
-    Best-effort: returns ``[]`` on missing SBOM, no findings, or any failure.
+    Returns ``[]`` only when there's no SBOM or no findings to synthesize
+    against — an actual synthesis failure (e.g. a broken LLM client)
+    propagates so it surfaces as a visible run error instead of a silently
+    empty plan.
     """
     if sbom is None or not findings:
         return []
-    try:
-        from nuguard.remediation.synthesizer import RemediationSynthesizer  # noqa: PLC0415
+    from nuguard.remediation.synthesizer import RemediationSynthesizer  # noqa: PLC0415
 
-        synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
-        finding_dicts = [
-            {
-                "finding_id": f.finding_id,
-                "title": f.title,
-                "description": f.description or "",
-                "affected_component": f.affected_component or "unknown",
-                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
-                "goal_type": f.goal_type or "",
-                "scenario_type": f.scenario_type or "",
-                "evidence_quote": f.evidence_quote or "",
-                "reasoning": f.reasoning or "",
-            }
-            for f in findings
-        ]
-        return await synthesizer.synthesize_findings_async(finding_dicts)
-    except Exception as exc:  # noqa: BLE001
-        _log.warning("run_redteam: remediation synthesis failed — skipping plan: %s", exc)
-        return []
+    synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
+    finding_dicts = [
+        {
+            "finding_id": f.finding_id,
+            "title": f.title,
+            "description": f.description or "",
+            "affected_component": f.affected_component or "unknown",
+            "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
+            "goal_type": f.goal_type or "",
+            "scenario_type": f.scenario_type or "",
+            "evidence_quote": f.evidence_quote or "",
+            "reasoning": f.reasoning or "",
+        }
+        for f in findings
+    ]
+    return await synthesizer.synthesize_findings_async(finding_dicts)
 
 
 def _catalog_coverage_to_dict(report: "CoverageReport | None") -> dict[str, Any] | None:

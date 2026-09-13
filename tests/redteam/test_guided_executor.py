@@ -224,6 +224,70 @@ async def test_consecutive_http_error_responses_abort() -> None:
     assert len(result.turns) < 20
 
 
+@pytest.mark.asyncio
+async def test_401_with_successful_refresh_retries_and_does_not_abort() -> None:
+    """A 401 followed by a successful auth refresh must retry the send once
+    and not count that turn toward consecutive_request_failures."""
+    conv = _make_conv(max_turns=5)
+    client = MagicMock()
+    _send_calls = {"n": 0}
+
+    async def _send(*_args, **_kwargs):
+        _send_calls["n"] += 1
+        if _send_calls["n"] == 1:
+            return "[HTTP 401]", []
+        return "Hello!", []
+
+    client.send = AsyncMock(side_effect=_send)
+    client.update_default_headers = MagicMock()
+    director = _make_director()
+    auth_session = MagicMock()
+    auth_session.refresh_if_needed = AsyncMock(return_value=True)
+    auth_session.headers = MagicMock(return_value={"Authorization": "Bearer fresh"})
+    executor = GuidedAttackExecutor(
+        client=client, director=director, auth_session=auth_session
+    )
+
+    result = await executor.run(conv, _make_session())
+
+    assert auth_session.refresh_if_needed.await_count == 1
+    client.update_default_headers.assert_called_once_with({"Authorization": "Bearer fresh"})
+    assert _send_calls["n"] >= 2  # the 401 turn triggered an immediate retry
+    assert result.abort_reason != "consecutive_request_failures"
+    assert result.abort_reason != "consecutive_auth_failures"
+
+
+@pytest.mark.asyncio
+async def test_persistent_401_with_failed_refresh_aborts_as_auth_failure() -> None:
+    """Persistent 401s where refresh never succeeds must abort as
+    consecutive_auth_failures, not the generic consecutive_request_failures."""
+    conv = _make_conv(max_turns=20)
+    client = _make_client(response="[HTTP 401]")
+    director = _make_director()
+    auth_session = MagicMock()
+    auth_session.refresh_if_needed = AsyncMock(return_value=False)
+    executor = GuidedAttackExecutor(
+        client=client, director=director, auth_session=auth_session
+    )
+
+    result = await executor.run(conv, _make_session())
+    assert result.abort_reason == "consecutive_auth_failures"
+    assert result.succeeded is False
+
+
+@pytest.mark.asyncio
+async def test_persistent_500_without_auth_session_stays_request_failure() -> None:
+    """Regression guard: persistent 500s (no auth_session involved) keep
+    reporting the generic consecutive_request_failures outcome."""
+    conv = _make_conv(max_turns=20)
+    client = _make_client(response="[HTTP 500]")
+    director = _make_director()
+    executor = _make_executor(client=client, director=director)
+
+    result = await executor.run(conv, _make_session())
+    assert result.abort_reason == "consecutive_request_failures"
+
+
 # ── Executor: canary hit overrides progress ───────────────────────────────────
 
 

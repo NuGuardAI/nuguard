@@ -190,7 +190,12 @@ class GuidedConversation(BaseModel):
     final_progress: int = 1
     succeeded: bool = False
     abort_reason: Literal[
-        "max_turns", "hard_refusal", "target_unavailable", "consecutive_request_failures", ""
+        "max_turns",
+        "hard_refusal",
+        "target_unavailable",
+        "consecutive_request_failures",
+        "consecutive_auth_failures",
+        "",
     ] = ""
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

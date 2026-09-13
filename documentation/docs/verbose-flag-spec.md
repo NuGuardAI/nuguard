@@ -4,7 +4,8 @@ Status: Partially Implemented
 
 Scope: `nuguard behavior`, `nuguard redteam`, `nuguard validate`, `nuguard policy check`
 
-> **Status note (issue #163):** The contract in this spec is partially adopted.
+> [!NOTE]
+> **Issue #163:** The contract in this spec is partially adopted.
 > Today every scoped command accepts `--verbose/--no-verbose` with CLI flag
 > > command config > default precedence (rendered as `CLI flag > command config > default`),
 > persists `verbose` in report metadata via `ReportMeta`, and keeps terminal

@@ -56,5 +56,5 @@ Use this format when cutting a release:
 
 1. Update this file for any user-visible docs change.
 2. Ensure [CLI Reference](./cli-reference.md) matches current argparse flags/defaults.
-3. Ensure [Getting Started](./getting-started.md) commands still run as documented.
+3. Ensure [Quick Start](./quick-start.md) commands still run as documented.
 4. Ensure troubleshooting entries still match real error messages.

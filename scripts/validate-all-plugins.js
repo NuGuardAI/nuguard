@@ -28,19 +28,64 @@ function readJson(relPath) {
   }
 }
 
+function readText(relPath) {
+  const abs = join(ROOT, relPath);
+  if (!existsSync(abs)) { fail(`${relPath} not found`); return null; }
+  try {
+    return readFileSync(abs, 'utf8');
+  } catch (e) {
+    fail(`${relPath} could not be read: ${e.message}`);
+    return null;
+  }
+}
+
 function checkExists(relPath, label) {
   if (!existsSync(join(ROOT, relPath))) { fail(`${label}: path not found — ${relPath}`); return false; }
   ok(`${label} exists`);
   return true;
 }
 
+function checkDeclaredPaths(value, basePath, label) {
+  const paths = typeof value === 'string' ? [value] : value;
+  if (!Array.isArray(paths) || paths.some(path => typeof path !== 'string')) {
+    fail(`${label}: expected a string or array of strings`);
+    return;
+  }
+  for (const path of paths) {
+    checkExists(join(basePath, path.replace(/^\.\//, '')), label);
+  }
+}
+
 // ── 1. Canonical version ──────────────────────────────────────────────────────
 console.log('\n[1] Canonical version');
-const pyproject = readFileSync(join(ROOT, 'pyproject.toml'), 'utf8');
+const pyproject = readText('pyproject.toml');
+if (pyproject === null) process.exit(1);
 const vMatch = pyproject.match(/^version\s*=\s*"([^"]+)"/m);
 if (!vMatch) { fail('version not found in pyproject.toml'); process.exit(1); }
 const VERSION = vMatch[1];
 ok(`pyproject.toml version = ${VERSION}`);
+
+const runtime = readText('nuguard/__init__.py');
+if (runtime !== null) {
+  const runtimeMatch = runtime.match(/^__version__\s*=\s*["']([^"']+)["']/m);
+  if (!runtimeMatch) fail('nuguard/__init__.py __version__ not found');
+  else if (runtimeMatch[1] !== VERSION) fail(`nuguard/__init__.py version ${runtimeMatch[1]} ≠ ${VERSION}`);
+  else ok(`nuguard/__init__.py version = ${runtimeMatch[1]}`);
+}
+
+const lockfile = readText('uv.lock');
+if (lockfile !== null) {
+  const projectPackages = lockfile
+    .split(/^\[\[package\]\]\s*$/m)
+    .filter(block => /^name\s*=\s*"nuguard"\s*$/m.test(block));
+  if (projectPackages.length !== 1) fail(`uv.lock expected one nuguard package, found ${projectPackages.length}`);
+  else {
+    const lockMatch = projectPackages[0].match(/^version\s*=\s*"([^"]+)"/m);
+    if (!lockMatch) fail('uv.lock nuguard package missing version');
+    else if (lockMatch[1] !== VERSION) fail(`uv.lock nuguard version ${lockMatch[1]} ≠ ${VERSION}`);
+    else ok(`uv.lock nuguard version = ${lockMatch[1]}`);
+  }
+}
 
 // ── 2. Root .claude-plugin/plugin.json ───────────────────────────────────────
 console.log('\n[2] Root .claude-plugin/plugin.json');
@@ -55,7 +100,7 @@ if (rootPlugin) {
     if (rootPlugin[field]) fail(`.claude-plugin/plugin.json must not declare "${field}" as a string path — use root symlinks for auto-discovery`);
   }
 
-  if (rootPlugin.mcpServers) checkExists(rootPlugin.mcpServers.replace(/^\.\//, ''), 'mcpServers path');
+  if (rootPlugin.mcpServers) checkDeclaredPaths(rootPlugin.mcpServers, '', 'mcpServers path');
 }
 
 // Root symlinks enable convention-based auto-discovery
@@ -74,7 +119,7 @@ if (subPlugin) {
 
   // agents is declared in plugin.json; commands/skills are in marketplace.json
   if (!subPlugin.agents) warn('plugin/.claude-plugin/plugin.json missing "agents" field');
-  else checkExists(join('plugin', subPlugin.agents).replace(/\/\.\//g, '/'), 'plugin agents path');
+  else checkDeclaredPaths(subPlugin.agents, 'plugin', 'plugin agents path');
 }
 
 // ── 4. Marketplace manifests ──────────────────────────────────────────────────
@@ -87,10 +132,20 @@ for (const relPath of ['.claude-plugin/marketplace.json', 'plugin/.claude-plugin
   else if (mv !== VERSION) fail(`${relPath} metadata.version ${mv} ≠ ${VERSION}`);
   else ok(`${relPath} metadata.version = ${mv}`);
 
-  for (const p of (m.plugins || [])) {
-    if (p.version && p.version !== VERSION)
-      fail(`${relPath} plugins[].version ${p.version} ≠ ${VERSION}`);
-    else if (p.version) ok(`${relPath} plugins[${p.name}].version = ${p.version}`);
+  if (!Array.isArray(m.plugins)) {
+    fail(`${relPath} plugins must be an array`);
+  } else {
+    for (const p of m.plugins) {
+      if (!p || typeof p !== 'object' || Array.isArray(p)) {
+        fail(`${relPath} plugins[] must contain objects`);
+      } else if (!p.version) {
+        fail(`${relPath} plugins[] missing version`);
+      } else if (p.version !== VERSION) {
+        fail(`${relPath} plugins[].version ${p.version} ≠ ${VERSION}`);
+      } else {
+        ok(`${relPath} plugins[${p.name}].version = ${p.version}`);
+      }
+    }
   }
 }
 
@@ -111,11 +166,13 @@ for (const [relPath, vPath] of [
 }
 
 // smithery.yaml
-const smithery = readFileSync(join(ROOT, 'smithery.yaml'), 'utf8');
-const sy = smithery.match(/^version:\s*"([^"]+)"/m);
-if (!sy) fail('smithery.yaml version not found');
-else if (sy[1] !== VERSION) fail(`smithery.yaml version ${sy[1]} ≠ ${VERSION}`);
-else ok(`smithery.yaml version = ${sy[1]}`);
+const smithery = readText('smithery.yaml');
+if (smithery !== null) {
+  const sy = smithery.match(/^version:\s*"([^"]+)"/m);
+  if (!sy) fail('smithery.yaml version not found');
+  else if (sy[1] !== VERSION) fail(`smithery.yaml version ${sy[1]} ≠ ${VERSION}`);
+  else ok(`smithery.yaml version = ${sy[1]}`);
+}
 
 // ── 6. Agent files ────────────────────────────────────────────────────────────
 console.log('\n[6] Agent files');
@@ -124,7 +181,7 @@ if (existsSync(agentsDir)) {
   const { readdirSync } = await import('fs');
   for (const f of readdirSync(agentsDir).filter(f => f.endsWith('.md'))) {
     const src = readFileSync(join(agentsDir, f), 'utf8');
-    const fm = src.match(/^---\n([\s\S]*?)\n---/);
+    const fm = src.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (!fm) { fail(`plugin/agents/${f}: no YAML frontmatter`); continue; }
     for (const field of ['name', 'description', 'model', 'color']) {
       if (!fm[1].includes(`${field}:`)) fail(`plugin/agents/${f}: frontmatter missing "${field}"`);

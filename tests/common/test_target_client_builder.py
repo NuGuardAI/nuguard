@@ -277,3 +277,38 @@ class TestSbomDiscovery:
             build_target_app_client("http://app.test", sbom=minimal_sbom_doc)
         _, kwargs = MockClient.call_args
         assert kwargs["chat_payload_list"] is True
+
+
+class TestWebSocketDiscovery:
+    def test_websocket_marker_builds_ws_client_instead_of_http(self, minimal_sbom_doc) -> None:
+        with (
+            _patch_client() as MockClient,
+            patch("nuguard.redteam.target.ws_client.WebSocketTargetClient") as MockWsClient,
+            _patch_framework_adapter(None),
+            _patch_discover(("/ws/chat", "__websocket__", False, None)),
+        ):
+            result = build_target_app_client("http://app.test", sbom=minimal_sbom_doc)
+        MockClient.assert_not_called()
+        MockWsClient.assert_called_once()
+        _, kwargs = MockWsClient.call_args
+        assert kwargs["chat_path"] == "/ws/chat"
+        assert result is MockWsClient.return_value
+
+    def test_websocket_client_receives_auth_and_response_complete_options(
+        self, minimal_sbom_doc
+    ) -> None:
+        with (
+            _patch_client(),
+            patch("nuguard.redteam.target.ws_client.WebSocketTargetClient") as MockWsClient,
+            _patch_framework_adapter(None),
+            _patch_discover(("/ws/chat", "__websocket__", False, None)),
+        ):
+            build_target_app_client(
+                "http://app.test",
+                sbom=minimal_sbom_doc,
+                ws_auth_message={"type": "auth", "token": "t"},
+                ws_response_complete_key="done",
+            )
+        _, kwargs = MockWsClient.call_args
+        assert kwargs["ws_auth_message"] == {"type": "auth", "token": "t"}
+        assert kwargs["ws_response_complete_key"] == "done"

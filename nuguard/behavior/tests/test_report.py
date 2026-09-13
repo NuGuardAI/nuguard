@@ -77,6 +77,27 @@ def test_to_json_top_level_keys():
         assert key in data, f"Missing key: {key}"
 
 
+def test_to_markdown_meta_run_id_hidden_by_default_shown_in_verbose():
+    """The run id lives in the machine-readable _meta; the default markdown
+    report must not surface it, while verbose mode may show it."""
+    result = _make_result()
+    meta = ReportMeta()
+    default_md = to_markdown(result, meta=meta)
+    verbose_md = to_markdown(result, meta=ReportMeta(verbose=True, run_id=result.run_id))
+    assert result.run_id not in default_md
+    assert result.run_id in verbose_md
+
+
+def test_to_json_meta_run_id_present_and_consistent():
+    """The result and metadata use one canonical run identifier."""
+    result = _make_result()
+    meta = ReportMeta(run_id=result.run_id)
+    payload = json.loads(to_json(result, meta=meta))
+    assert payload["run_id"] == result.run_id
+    assert payload["meta"]["run_id"] == result.run_id
+    assert isinstance(payload["run_id"], str) and payload["run_id"]
+
+
 def test_to_json_with_findings():
     result = _make_result(
         static_findings=[{"severity": "high", "title": "Bad thing"}],
@@ -453,16 +474,39 @@ def test_to_markdown_gap_summary_renders_remediation_and_fallback():
         gap_aggregation_stats={
             "raw_gap_observations": 5,
             "unique_gap_observations": 4,
+            "buckets_suppressed_by_coverage": 2,
             "min_occurrences_threshold": 1,
         },
     )
     md = to_markdown(result)
     assert "## Behavioral Gap Summary" in md
     assert "| Component | Occurrences | Sample Gaps | Remediation |" in md
+    assert "| Buckets suppressed by successful final coverage | 2 |" in md
     # Explicit remediation is rendered verbatim.
     assert "Add a wheelchair-assistance entry to the FAQ knowledge base." in md
     # Missing remediation falls back to the per-type guidance template.
     assert "Align doc_agent system prompt with application's stated purpose" in md
+
+
+def test_to_markdown_gap_summary_renders_when_all_buckets_reconciled() -> None:
+    result = _make_result(
+        dynamic_findings=[],
+        gap_aggregation_stats={
+            "raw_gap_observations": 2,
+            "unique_gap_observations": 1,
+            "buckets_formed": 1,
+            "buckets_emitted": 0,
+            "buckets_dropped": 0,
+            "buckets_suppressed_by_coverage": 1,
+            "min_occurrences_threshold": 2,
+        },
+    )
+
+    md = to_markdown(result)
+
+    assert "## Behavioral Gap Summary" in md
+    assert "| Buckets emitted as findings (>= 2) | 0 |" in md
+    assert "| Buckets suppressed by successful final coverage | 1 |" in md
 
 
 def test_to_markdown_gap_summary_empty_remediation_falls_back():
@@ -575,6 +619,12 @@ def test_to_markdown_covered_components_tagged_matched_unmatched():
     md = to_markdown(result)
     assert "Loan Application Agent (matched)" in md
     assert "UnknownTool (unmatched)" in md
+
+
+def test_to_markdown_run_id_shown_only_in_verbose():
+    result = _make_result()
+    assert result.run_id not in to_markdown(result, meta=ReportMeta(verbose=False))
+    assert result.run_id in to_markdown(result, meta=ReportMeta(verbose=True, run_id=result.run_id))
 
 
 def test_to_markdown_renders_effective_endpoint_per_scenario():

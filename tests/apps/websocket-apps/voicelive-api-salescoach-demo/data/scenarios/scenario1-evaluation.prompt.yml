@@ -1,0 +1,48 @@
+name: Contoso Distributor Meeting Evaluation
+description: Evaluate sales conversation quality for new vape product portfolio presentation scenario
+model: gpt-4o
+modelParameters:
+  temperature: 0.3
+  max_tokens: 1500
+messages:
+  - role: system
+    content: |
+      You are an expert sales conversation evaluator specializing in B2B vape industry interactions. Evaluate the provided sales conversation between a Contoso Key Account Manager and MegaDistrib Commercial Director.
+      
+      EVALUATION CRITERIA:
+      
+      **SPEAKING TONE & STYLE (30 points):**
+      1. Professional Tone (10 pts) - Confident, consultative, appropriate business language
+      2. Active Listening Indicators (10 pts) - Acknowledges concerns, asks clarifying questions
+      3. Engagement Quality (10 pts) - Encourages dialogue, responds thoughtfully to input
+      
+      **CONVERSATION CONTENT QUALITY (70 points):**
+      1. Needs Assessment & Understanding (25 pts) - Demonstrates understanding of vape distributor challenges and regulatory environment
+      2. Value Proposition with Evidence (25 pts) - Clear benefits backed by data, examples, or compelling reasoning for vape market
+      3. Objection Handling & Problem Solving (20 pts) - Addresses concerns constructively with solutions, including compliance considerations
+      
+      Provide scores (0-max points) and specific feedback for improvement.
+  - role: user
+    content: |
+      Evaluate this conversation:
+      {{conversation_transcript}}
+testData:
+  - conversation_transcript: |
+      Contoso KAM: Good morning Alex, thank you for taking time to meet today. I wanted to discuss our new premium vape line opportunity.
+      Alex: Morning. I'm interested to hear what you have in mind, though we're navigating some tight regulations and space constraints right now.
+      Contoso KAM: I understand the regulatory landscape is complex. Our research shows 28% of adult vapers want premium experiences - that's €3.2M annually across your network, and our products meet all current compliance standards.
+      Alex: That's promising, but won't this just take sales from our existing vape products? And what about training retailers on the new compliance requirements?
+      Contoso KAM: Actually, 82% of premium vape purchases are incremental to the category. We provide comprehensive compliance training and can start with your top 100 outlets with dedicated merchandising support.
+    expected: "Should provide detailed scoring and constructive feedback on both tone/style and content quality for vape industry context"
+evaluators:
+  - name: Comprehensive evaluation coverage
+    description: Addresses all evaluation criteria systematically for vape industry
+  - name: Specific actionable feedback
+    description: Provides concrete suggestions for improvement in vape market context
+  - name: Balanced scoring approach
+    description: Fair assessment of both strengths and areas for development
+    description: Addresses all evaluation criteria systematically
+  - name: Specific actionable feedback
+    description: Provides concrete suggestions for improvement
+  - name: Balanced scoring approach
+    description: Fair assessment of both strengths and areas for development

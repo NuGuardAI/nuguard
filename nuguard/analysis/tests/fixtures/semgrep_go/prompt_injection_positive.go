@@ -27,3 +27,23 @@ func PromptInjectionInlineCall(userInput string) {
 		},
 	})
 }
+
+type message struct {
+	Role    string
+	Content string
+}
+
+type anthropicReq struct {
+	Messages []message
+}
+
+func callAnthropic(apiKey string, body anthropicReq) {}
+
+// Case 6: apps that talk to an LLM over raw net/http instead of an official
+// SDK client have no $CLIENT.$METHOD(...) shape for the rule to match — the
+// wrapper call itself (matched by name) is the only usable sink.
+func PromptInjectionRawHTTPWrapper(apiKey, userInput string) {
+	prompt := fmt.Sprintf("A user asked: %q", userInput)
+	body := anthropicReq{Messages: []message{{Role: "user", Content: prompt}}}
+	callAnthropic(apiKey, body)
+}

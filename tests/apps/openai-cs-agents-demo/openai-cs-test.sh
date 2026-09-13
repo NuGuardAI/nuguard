@@ -36,6 +36,23 @@ uv run nuguard sbom generate \
 
 echo "SBOM generated successfully."
 
+echo "---"
+echo "Running nuguard pentest (Nuclei-backed, bounded conventional pentest)..."
+
+# nuguard pentest intentionally does not accept auth headers/tokens on the
+# command line (see documentation/docs/cloud-pentesting.md#authentication) —
+# this scan is unauthenticated and only reaches public, unauthenticated routes.
+# pentest exits 1 when a finding meets --fail-on and 2 on scope/engine errors;
+# treat both as non-fatal here, same as the other steps in this pipeline.
+uv run nuguard pentest \
+  --config "$SCRIPT_DIR/nuguard.yaml" \
+  --acknowledge-authorization \
+  --format markdown \
+  --output "$SCRIPT_DIR/reports/openai-cs-pentest.md" \
+  --fail-on none || true
+
+echo "Done."
+
 echo "Compiling Cognitive Policy controls..."
 
 uv run nuguard policy compile --config "$SCRIPT_DIR/nuguard.yaml"

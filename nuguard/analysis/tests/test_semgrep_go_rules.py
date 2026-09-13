@@ -117,7 +117,7 @@ class TestGoPromptInjectionSprintf:
             "prompt_injection_positive.go",
             "nuguard-go-llm-prompt-injection-sprintf",
         )
-        assert lines == [13, 23]
+        assert lines == [13, 23, 48]
 
     def test_case2_trusted_literal_sprintf_to_llm(
         self, semgrep_findings: dict[str, list[dict[str, object]]]
@@ -158,6 +158,18 @@ class TestGoPromptInjectionSprintf:
             "prompt_injection_negative.go",
             "nuguard-go-llm-prompt-injection-sprintf",
         )
+
+    def test_case6_untrusted_through_sprintf_to_raw_http_wrapper(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        """user input -> fmt.Sprintf -> hand-rolled callAnthropic()-style
+        wrapper (raw net/http, no official SDK client shape) = MATCH."""
+        lines = _rule_lines(
+            semgrep_findings,
+            "prompt_injection_positive.go",
+            "nuguard-go-llm-prompt-injection-sprintf",
+        )
+        assert 48 in lines
 
 
 class TestGoHardcodedApiKey:

@@ -1,0 +1,44 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See LICENSE in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import { Card, makeStyles, tokens } from '@fluentui/react-components'
+import React from 'react'
+
+const useStyles = makeStyles({
+  card: {
+    width: '400px',
+    height: '100%',
+    padding: tokens.spacingVerticalM,
+  },
+  videoContainer: {
+    width: '100%',
+    aspectRatio: '3 / 4',
+    backgroundColor: tokens.colorNeutralBackground1,
+    borderRadius: tokens.borderRadiusMedium,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  video: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+})
+
+interface Props {
+  videoRef: React.RefObject<HTMLVideoElement | null>
+}
+
+export function VideoPanel({ videoRef }: Props) {
+  const styles = useStyles()
+
+  return (
+    <Card className={styles.card}>
+      <div className={styles.videoContainer}>
+        <video ref={videoRef} className={styles.video} autoPlay playsInline />
+      </div>
+    </Card>
+  )
+}

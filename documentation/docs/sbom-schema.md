@@ -2,6 +2,8 @@
 
 This document describes the canonical AI-SBOM document shape used by NuGuard. The schema is defined by `AiSbomDocument` in the Pydantic models and enforced by the bundled JSON Schema at `nuguard/sbom/schemas/aibom.schema.json`.
 
+Use this as a reference when writing code that reads or generates AI-SBOMs directly (custom tooling, CI checks, framework adapters) — for running `nuguard sbom generate` itself, see the [Quick Start Guide](quick-start.md) instead.
+
 Current schema version: **1.5.0**
 
 Schema URI: `https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json`
@@ -21,6 +23,7 @@ Schema URI: `https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json`
 | `deps` | PackageDep[] | - | Package dependencies from manifests |
 | `summary` | ScanSummary \| null | - | Scan-level metadata: use-case summary, frameworks, modalities, API endpoints, deployment context, security posture, and SBOM 1.5.0 enrichment metrics |
 | `relationship_graph_md` | string \| null | - | Mermaid flowchart plus LLM-written narrative of key component relationships. Only populated when LLM enrichment is enabled during SBOM generation. |
+| `discovered_profile` | object \| null | - | Cached pre-scan identity discovery result (a serialized `DiscoveredProfile`), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the SBOM to force a fresh discovery. |
 
 ```json
 {
@@ -32,7 +35,8 @@ Schema URI: `https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json`
   "edges": [],
   "deps": [],
   "summary": null,
-  "relationship_graph_md": null
+  "relationship_graph_md": null,
+  "discovered_profile": null
 }
 ```
 
@@ -165,6 +169,12 @@ A `PROMPT` node is connected to the `AGENT` or `GUARDRAIL` node whose instructio
 | `returns_sensitive_data` | boolean | True when this endpoint returns PII, PHI, PFI, or other sensitive data |
 | `rate_limited` | boolean | True when rate limiting is configured |
 | `rate_limit_detail` | RateLimitDetail | SBOM 1.5.0 structured rate-limit configuration extracted from code or IaC |
+| `operational` | boolean \| null | SBOM 1.5.0 liveness probe result: true when a live authenticated ping returned a reachable response (including a correctly-enforced 401/403); false when it hit a rotation-trigger 4xx (404/405/400/422) or a network failure; null when never probed |
+| `liveness_checked_at` | string (ISO 8601) | SBOM 1.5.0 timestamp of the last liveness probe |
+| `liveness_notes` | string[] | SBOM 1.5.0 notes from the last liveness probe (status codes, timeouts, rotation) |
+| `security_headers_detail` | SecurityHeaderDetail | SBOM 1.5.0 HTTP security-header posture extracted from code or IaC |
+| `cors_policy` | CorsPolicyDetail | SBOM 1.5.0 CORS configuration extracted from code or IaC |
+| `debug_error_leak` | boolean | SBOM 1.5.0 true when the app runs in a debug/verbose-error mode that leaks stack traces |
 | `idor_surface` | boolean | True when the endpoint has user- or tenant-scoped path params, e.g. `{user_id}` |
 | `path_params` | string[] | Path parameter names extracted from the URL template |
 | `request_body_schema` | object | Pydantic/dataclass field map: `{field_name: type_string}` |
@@ -304,6 +314,23 @@ Populated by the supply-chain second pass for AI coding-agent and editor configs
 | `window_seconds` | integer | Duration of the rate-limit window in seconds |
 | `enforcement_type` | string | How the rate limit is enforced, e.g. `"decorator"`, `"middleware"`, `"api_gateway"` |
 
+### SecurityHeaderDetail
+
+| Field | Type | Description |
+|---|---|---|
+| `csp` | boolean | True when a Content-Security-Policy header is set |
+| `x_frame_options` | boolean | True when an X-Frame-Options header is set |
+| `hsts` | boolean | True when a Strict-Transport-Security header is set |
+| `missing` | string[] | Security headers confirmed absent, e.g. `["csp", "x_frame_options", "hsts"]` |
+
+### CorsPolicyDetail
+
+| Field | Type | Description |
+|---|---|---|
+| `origin` | string | Configured allowed origin(s), e.g. `"*"` or `"https://example.com"` |
+| `allow_credentials` | boolean | True when the CORS policy allows credentialed cross-origin requests |
+| `wildcard_with_credentials` | boolean | True when origin is wildcarded AND credentials are allowed — the dangerous combination |
+
 ### AuthDetail
 
 | Field | Type | Description |
@@ -314,6 +341,7 @@ Populated by the supply-chain second pass for AI coding-agent and editor configs
 | `credential_rotation_policy` | string | Rotation policy description, e.g. `"90-day"` or `"on-demand"` |
 | `enforcement_strict` | boolean | True when auth is enforced on every request with no opt-out |
 | `auth_roles` | string[] | Roles or scopes required for access, e.g. `["admin", "read:users"]` |
+| `jwt_algorithm_restricted` | boolean \| null | True when a JWT verification call site pins an explicit expected algorithm (e.g. `algorithms: ["HS256"]`); false when a verify call was found with no such restriction, which admits alg-confusion attacks (a forged token can switch the algorithm, e.g. to `none`, and be accepted); null when no verification call site was found |
 
 ### EncryptionDetail
 
@@ -599,8 +627,9 @@ When the SBOM includes supply-chain node types (populated by the second pass dur
 | Lifecycle scripts (NGA-SC-011–016) | `LIFECYCLE_SCRIPT` nodes: `script_phase`, `script_body`, `invokes_network`, `invokes_shell`, `downloads_binary`, `references_credentials` |
 | Oversized/high-entropy/minified payloads (NGA-SC-017–019) | `DEVELOPER_TOOL_CONFIG` nodes: `file_size_bytes`, `content_entropy`; `summary.minified_js_files` |
 | Dependency integrity (NGA-SC-023–025) | `deps` array: `name`, `version_spec`, `purl`; `summary.has_package_json`, `summary.has_lockfile`; threat-intel feeds matched against `name` |
+| Workflow governance (NGA-SC-026–027) | Read directly from `.github/workflows/*.yml` at `--source` — no SBOM node fields yet; requires a local `source_path` |
 
-MITRE ATLAS annotations and supply-chain findings are produced by `nuguard analyze`. They appear on analysis findings, not on the SBOM document itself. See [docs/static-analysis-guide.md](static-analysis-guide.md) for the full rule reference.
+MITRE ATLAS annotations and supply-chain findings are produced by `nuguard analyze`. They appear on analysis findings, not on the SBOM document itself. Every `NGA-SC-*` finding also carries an `owasp_cicd_ref` (OWASP Top 10 CI/CD Security Risks category, e.g. `CICD-SEC-4`) via `nuguard.common.control_mappings.cicd`. See [docs/static-analysis-guide.md](static-analysis-guide.md) for the full rule reference.
 
 ---
 

@@ -137,16 +137,13 @@ redteam:
   #   full — all scenarios regardless of score
   profile: full
 
+  # Which categories to run (omit, or leave empty, to run both).
+  # 'destructive' scenarios mutate/destroy state (cancel, delete, close, remove,
+  # purge, refund, terminate, deactivate, wipe, revoke, unsubscribe, deregister, ...)
+  # and always run last, after all non-destructive scenarios complete.
   scenarios:
-    - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
-    - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
-    - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
-    - privilege-escalation     # role/permission escalation, false-premise attacks
-    - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
-    - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
-    - api-attack               # auth bypass, IDOR, mass assignment, BFLA
-    - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
-    - recon-inference          # refusal-oracle / boundary self-probe information gathering
+    - non-destructive
+    - destructive
 
   # Minimum pre-impact score [0–10] for a scenario to be included (default: 0.0)
   min_impact_score: 0.0

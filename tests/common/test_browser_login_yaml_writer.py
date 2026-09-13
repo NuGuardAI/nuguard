@@ -95,6 +95,24 @@ class TestApplyTargetUpdates:
         assert "tenant_id: acme" in after
         assert "consumerID: abc123" in after
 
+    def test_writes_sniffed_endpoint(self, yaml_path: Path) -> None:
+        editable = load_editable_yaml(yaml_path)
+        summary = apply_target_updates(
+            editable, cookie_file="./cookies.txt", chat_payload_extras={}, endpoint="/chat"
+        )
+        after = dump_to_string(editable)
+        assert "endpoint: /chat" in after
+        assert any("target.endpoint" in line for line in summary)
+
+    def test_no_endpoint_write_when_not_provided(self, yaml_path: Path) -> None:
+        """The commented-out `# endpoint: /api/chat` line must survive untouched
+        when discover-browser didn't sniff a live chat request."""
+        editable = load_editable_yaml(yaml_path)
+        apply_target_updates(editable, cookie_file="./cookies.txt", chat_payload_extras={})
+        after = dump_to_string(editable)
+        assert "# endpoint: /api/chat" in after
+        assert "\nendpoint:" not in after.split("auth:")[0]
+
     def test_ambiguous_extras_are_not_auto_written_but_noted(self, yaml_path: Path) -> None:
         editable = load_editable_yaml(yaml_path)
         summary = apply_target_updates(

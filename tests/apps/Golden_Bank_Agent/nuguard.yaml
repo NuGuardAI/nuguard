@@ -90,15 +90,13 @@ redteam:
   #   full — all scenarios regardless of score
   profile: full
 
-  # Scenario types to run (omit section to run all):
+  # Which categories to run (omit, or leave empty, to run both).
+  # 'destructive' scenarios mutate/destroy state (cancel, delete, close, remove,
+  # purge, refund, terminate, deactivate, wipe, revoke, unsubscribe, deregister, ...)
+  # and always run last, after all non-destructive scenarios complete.
   scenarios:
-    - prompt-injection
-    - tool-abuse
-    - privilege-escalation
-    - data-exfiltration
-    - policy-violation
-    - api-attacks
-    - mcp-toxic-flow
+    - non-destructive
+    - destructive
 
   # Minimum pre-impact score [0–10] for a scenario to be included (default: 0.0)
   min_impact_score: 0.0

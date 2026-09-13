@@ -110,24 +110,20 @@ async def _synthesize_behavior_remediation_plan(
     policy: "CognitivePolicy | None",
     llm_client: "LLMClient | None",
 ) -> list[RemediationArtefact]:
-    """Best-effort structured remediation for a plain list of finding dicts.
+    """Structured remediation for a plain list of finding dicts.
 
     Mirrors ``nuguard.redteam.public_api._build_remediation_plan`` (which
-    reuses this same synthesizer for redteam findings): remediation synthesis
-    enriches the result but must never fail the run, so exceptions are logged
-    and swallowed. Returns ``[]`` when there is no SBOM or no findings to
-    synthesize against.
+    reuses this same synthesizer for redteam findings). Returns ``[]`` only
+    when there is no SBOM or no findings to synthesize against — an actual
+    synthesis failure (e.g. a broken LLM client) propagates so it surfaces
+    as a visible run error instead of a silently empty plan.
     """
     if sbom is None or not findings:
         return []
-    try:
-        from nuguard.remediation.synthesizer import RemediationSynthesizer  # noqa: PLC0415
+    from nuguard.remediation.synthesizer import RemediationSynthesizer  # noqa: PLC0415
 
-        synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
-        return await synthesizer.synthesize_findings_async(findings)
-    except Exception as exc:  # noqa: BLE001
-        _log.warning("run_behavior_scenarios: remediation synthesis failed: %s", exc)
-        return []
+    synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
+    return await synthesizer.synthesize_findings_async(findings)
 
 
 async def run_behavior_scenarios(
@@ -149,8 +145,10 @@ async def run_behavior_scenarios(
     remediation artefacts — from the run's findings, the same way
     :meth:`~nuguard.behavior.analyzer.BehaviorAnalyzer.analyze` does for the
     full static+dynamic pipeline, and backfills each finding's flat
-    ``remediation`` string from that plan. This is best-effort enrichment: it
-    never raises, and simply leaves ``remediation_plan`` empty on failure.
+    ``remediation`` string from that plan. ``remediation_plan`` is only ``[]``
+    when there's no SBOM or no findings to synthesize against — an actual
+    synthesis failure (e.g. a broken LLM client) propagates so it surfaces as
+    a visible run error instead of a silently empty plan.
     """
     _log.debug("run_behavior_scenarios: %d scenario(s)", len(request.scenarios))
     from nuguard.policy.public_api import normalize_cognitive_policy  # noqa: PLC0415

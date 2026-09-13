@@ -180,6 +180,7 @@ def _do_validate(
 
     # ── Output ────────────────────────────────────────────────────────────────
     meta = ReportMeta(
+        run_id=result.run_id,
         llm_models=[cfg.litellm_model] if resolved_policy_path else [],
         verbose=effective_verbose,
         target_url=vc.target,
@@ -306,11 +307,9 @@ def _print_validate_result(result: "ValidateRunResult", meta: ReportMeta | None 
     _console.rule("[bold]Validate Results[/bold]")
     _console.print(f"[dim]{meta.to_text_line()}[/dim]")
     _console.print(
-        f"Run ID: [dim]{result.run_id}[/dim]  "
         f"Scenarios: [bold]{result.scenarios_executed}[/bold]  "
         f"Outcome: [bold]{result.scan_outcome}[/bold]"
     )
-
     # Capability map table
     cm = result.capability_map
     if cm.entries:
@@ -417,7 +416,6 @@ def _validate_result_to_markdown(result: "ValidateRunResult", meta: ReportMeta |
     lines: list[str] = ["# NuGuard Validate Report", ""]
     lines += meta.to_markdown_lines()
     lines += [
-        f"**Run ID:** {result.run_id}  ",
         f"**Scenarios executed:** {result.scenarios_executed}  ",
         f"**Outcome:** {result.scan_outcome}",
         "",
@@ -516,7 +514,6 @@ def _validate_result_to_text(result: "ValidateRunResult", meta: ReportMeta | Non
     lines = [
         "Validate Results",
         meta.to_text_line(),
-        f"Run ID: {result.run_id}",
         f"Scenarios: {result.scenarios_executed}",
         f"Outcome: {result.scan_outcome}",
         "",

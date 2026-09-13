@@ -95,3 +95,12 @@ Include in the PR description:
 ## Release Notes
 
 If your change affects users, include a short note maintainers can reuse in release notes.
+
+## Releases
+
+Contributors do not need to publish packages or create release tags. Repository maintainers
+own version selection, release approval, tagging, and publication as described in
+[Governance](../documentation/GOVERNANCE.md).
+
+Maintainers should follow the canonical [NuGuard release runbook](../documentation/releasing.md)
+for version synchronization, validation, prerelease testing, and production publishing.

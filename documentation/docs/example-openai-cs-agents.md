@@ -421,15 +421,14 @@ Total: 9237.7s | Avg per scenario: 83.2s | Avg per turn: 13.7s
 > [!IMPORTANT]
 > A clean red-team result does not mean the app is secure. The behavioral scan found 38 real findings — unguarded datastores, over-permissioned tool graphs, and missing HITL gates — that the runtime guardrails happened to contain. Fix the structural issues before relying on the red-team result in production; a new tool integration or auth change can flip the outcome quickly.
 
-### Run specific attack families only
+### Run non-destructive scenarios only
 
-Set `redteam.scenarios` in `nuguard.yaml` to limit which families run:
+Set `redteam.scenarios` in `nuguard.yaml` to skip scenarios that mutate or destroy state (cancel, delete, refund, deactivate, ...) — useful for a first pass against a shared demo instance:
 
 ```yaml
 redteam:
   scenarios:
-    - prompt-injection
-    - data-exfiltration
+    - non-destructive
 ```
 
 Then run as usual:
@@ -438,7 +437,7 @@ Then run as usual:
 nuguard redteam -c nuguard.yaml --output openai-cs-redteam.md
 ```
 
-Valid scenario values: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow`
+Valid scenario values: `destructive`, `non-destructive` (omit, or list both, to run everything).
 
 ### CI gate
 

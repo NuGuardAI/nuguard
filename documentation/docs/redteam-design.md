@@ -5,6 +5,7 @@ capability: the dynamic adversarial testing module that runs authorised
 attacks against a live AI application endpoint and produces findings with
 evidence, remediation, and compliance mapping.
 
+> [!NOTE]
 > **Scope.** `nuguard redteam` takes an SBOM (AI Bill of Materials) plus a
 > cognitive policy, generates a prioritised attack plan, executes it against a
 > target URL, and emits findings (JSON / Markdown / SARIF).

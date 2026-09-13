@@ -23,14 +23,14 @@ from typing import TYPE_CHECKING, Any
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
-    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.common.target_client_builder import TargetClient
     from nuguard.redteam.target.session import AttackSession
 
 _log = get_logger(__name__)
 
 
 async def handle_credential_request(
-    client: "TargetAppClient",
+    client: "TargetClient",
     session: "AttackSession",
     response: str,
     credentials: dict[str, str],
@@ -81,7 +81,7 @@ async def handle_credential_request(
 
 
 async def handle_confirmation_request(
-    client: "TargetAppClient",
+    client: "TargetClient",
     session: "AttackSession",
     response: str,
     original_message: str,
@@ -137,7 +137,7 @@ async def handle_confirmation_request(
 
 
 async def handle_mid_turn_interrupts(
-    client: "TargetAppClient",
+    client: "TargetClient",
     session: "AttackSession",
     response: str,
     original_message: str,

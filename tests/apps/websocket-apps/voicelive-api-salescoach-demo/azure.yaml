@@ -1,0 +1,20 @@
+name: voicelab-sales-training
+metadata:
+  template: azd-init@1.18.1
+infra:
+  provider: bicep
+  path: infra
+  module: main
+services:
+  voicelab:
+    project: backend
+    host: containerapp
+    language: python
+    docker:
+      path: Dockerfile
+      context: ../
+resources:
+  voicelab:
+    type: host.containerapp
+    port: 8000
+

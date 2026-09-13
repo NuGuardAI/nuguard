@@ -28,7 +28,9 @@ Large domain objects such as SBOM and policy, and stateful collaborators like LL
 Error handling behavior is intentional:
 
 - Full runs (analysis, behavior, redteam, verify) propagate meaningful runtime exceptions.
-- Remediation-plan synthesis is best-effort and does not fail the whole run.
+- Remediation-plan synthesis propagates failures too: it returns `[]` only when there's no SBOM
+  or no findings to synthesize against — an actual synthesis failure (e.g. a broken LLM client)
+  surfaces as a visible run error rather than a silently empty plan.
 
 ## Prerequisites
 

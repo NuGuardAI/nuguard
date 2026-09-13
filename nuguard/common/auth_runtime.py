@@ -77,6 +77,8 @@ async def bootstrap_auth_runtime(
     timeout: float | None = None,
     probe_payload_extras: dict[str, object] | None = None,
     startup_retries: int | None = None,
+    is_websocket: bool = False,
+    ws_auth_message: dict[str, object] | None = None,
 ) -> tuple[AuthBootstrapper, TargetHealthReport]:
     """Run shared auth bootstrap and return both bootstrapper and report."""
     bootstrapper = AuthBootstrapper(
@@ -88,6 +90,8 @@ async def bootstrap_auth_runtime(
         timeout=timeout,
         probe_payload_extras=probe_payload_extras or None,
         startup_retries=startup_retries,
+        is_websocket=is_websocket,
+        ws_auth_message=ws_auth_message,
     )
     report = await bootstrapper.run()
     return bootstrapper, report

@@ -84,6 +84,20 @@ behavior:
 
 which is what produced the 28-scenario, 38-finding run described in [Run Behavioral Testing](example-openai-cs-agents.md#5-run-behavioral-testing).
 
+### Resuming an aborted run
+
+Same checkpoint/resume support as `nuguard redteam`: if a run is interrupted after at least one
+scenario has completed, NuGuard writes a checkpoint under `prompt_cache_dir` and raises a
+`PartialRunError` naming it. Pass the path back with `--resume` (or `behavior.resume` in
+`nuguard.yaml`) to skip already-completed scenarios and merge results into the final report:
+
+```bash
+nuguard behavior -c nuguard.yaml --resume nuguard-reports/.cache/behavior-<key>.json
+```
+
+The checkpoint is fingerprinted against the SBOM/policy it was created with; resuming against
+different inputs raises a `CheckpointMismatchError` rather than mixing results.
+
 ### 📖 Need every flag?
 
 [![Read the CLI Reference](https://img.shields.io/badge/→_Read_the_CLI_Reference-111111?style=for-the-badge)](cli-reference.md#nuguard-behavior)

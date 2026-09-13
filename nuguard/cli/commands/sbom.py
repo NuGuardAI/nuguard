@@ -335,6 +335,9 @@ def _do_generate(
         "gap_fill_enable_privilege": cfg.sbom_gap_fill_enable_privilege,
         "gap_fill_enable_guardrail": cfg.sbom_gap_fill_enable_guardrail,
         "gap_fill_self_critique_categories": cfg.sbom_gap_fill_self_critique_categories,
+        "auth_schema_inference_enabled": cfg.sbom_auth_schema_inference_enabled,
+        "auth_schema_inference_max_calls": cfg.sbom_auth_schema_inference_max_calls,
+        "auth_schema_inference_max_cost_usd": cfg.sbom_auth_schema_inference_max_cost_usd,
     }
     if cfg.sbom_gap_fill_max_calls is not None:
         config_kwargs["gap_fill_max_calls"] = cfg.sbom_gap_fill_max_calls
