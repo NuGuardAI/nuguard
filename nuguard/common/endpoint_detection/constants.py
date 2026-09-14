@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any, TypedDict
 
 
 class _UnsetType:
@@ -175,7 +176,27 @@ def normalize_payload_key(key: str) -> str:
     and lowercases, so both spellings match a single blocklist entry.
     """
     return CAMEL_CASE_RE.sub("_", key).lower()
+
+
 DEFAULT_OPENAPI_TIMEOUT_SECONDS = 5.0
 DEFAULT_LIVENESS_TIMEOUT_SECONDS = 10.0
 DEFAULT_ENRICHMENT_TIMEOUT_SECONDS = 4.0
 DEFAULT_MAX_PROBE_REQUESTS = 10
+
+# ``NodeMetadata.extras`` (nuguard.sbom.models) is a generic ``dict[str, Any]``
+# shared by many unrelated adapters. These are the subset of keys written by
+# SBOM auto-enrichment / live probing (nuguard.common.auto_sbom_enricher) and
+# read back during SBOM-based endpoint scoring (this package's ``sbom``
+# module). Both sides should go through ``ProbeExtras``/the constants below
+# instead of raw string literals so a typo can't silently break scoring.
+PROBE_SOURCE_AUTO_ENRICHMENT = "auto_enrichment"
+PROBE_SOURCE_RUNTIME_PROBE = "runtime_probe"
+
+
+class ProbeExtras(TypedDict, total=False):
+    """Known probe-related keys stored in ``NodeMetadata.extras``."""
+
+    source: str
+    probe_value_template: dict[str, Any] | None
+    probe_get_404: bool
+    probe_post_405: bool

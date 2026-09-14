@@ -16,11 +16,16 @@ import re
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable, cast
 
 import httpx
 
-from nuguard.common.endpoint_detection.constants import HAS_PATH_PARAM_RE
+from nuguard.common.endpoint_detection.constants import (
+    HAS_PATH_PARAM_RE,
+    PROBE_SOURCE_AUTO_ENRICHMENT,
+    PROBE_SOURCE_RUNTIME_PROBE,
+    ProbeExtras,
+)
 from nuguard.common.logging import get_logger
 from nuguard.sbom.models import AiSbomDocument, Edge, Node, NodeMetadata
 from nuguard.sbom.models import is_soft_rejected as _is_soft_rejected
@@ -343,7 +348,7 @@ async def _populate_node_descriptions(
     llm_nodes: list[Node] = []
     for node in sbom.nodes:
         extras = _ensure_extras(node)
-        is_auto_enriched = extras.get("source") == "auto_enrichment"
+        is_auto_enriched = extras.get("source") == PROBE_SOURCE_AUTO_ENRICHMENT
         existing = _normalize_description(node.metadata.description)
         if existing and not (llm_client is not None and is_auto_enriched):
             if node.metadata.description != existing:
@@ -463,7 +468,7 @@ def _enrich_static(sbom: AiSbomDocument) -> AiSbomDocument:
                 confidence=0.55,
                 metadata=NodeMetadata(
                     description=desc or "",
-                    extras={"source": "auto_enrichment"},
+                    extras={"source": PROBE_SOURCE_AUTO_ENRICHMENT},
                 ),
                 evidence=[],
             )
@@ -485,7 +490,7 @@ def _enrich_static(sbom: AiSbomDocument) -> AiSbomDocument:
                     endpoint=path,
                     method=method,
                     accepts_user_input=(method == "POST"),
-                    extras={"source": "auto_enrichment"},
+                    extras={"source": PROBE_SOURCE_AUTO_ENRICHMENT},
                 ),
                 evidence=[],
             )
@@ -682,7 +687,7 @@ async def _probe_and_enrich(
                     name=f"{path} API",
                     component_type=ComponentType.API_ENDPOINT,
                     confidence=0.60,
-                    metadata=NodeMetadata(endpoint=path, extras={"source": "runtime_probe"}),
+                    metadata=NodeMetadata(endpoint=path, extras={"source": PROBE_SOURCE_RUNTIME_PROBE}),
                     evidence=[],
                 )
                 enriched.nodes.append(probe_node)
@@ -698,9 +703,9 @@ async def _probe_and_enrich(
                 # 404 on GET means the static route doesn't exist — mark so
                 # _discover_chat_config can deprioritise this node.
                 if get_resp.status_code == 404:
-                    extras = probe_node.metadata.extras or {}
+                    extras: ProbeExtras = cast(ProbeExtras, probe_node.metadata.extras or {})
                     extras["probe_get_404"] = True
-                    probe_node.metadata.extras = extras
+                    probe_node.metadata.extras = cast(dict, extras)
 
             # POST probe for chat-like paths only.
             if "chat" not in path and "message" not in path:
@@ -725,7 +730,7 @@ async def _probe_and_enrich(
                     name=f"{path} API",
                     component_type=ComponentType.API_ENDPOINT,
                     confidence=0.62,
-                    metadata=NodeMetadata(endpoint=path, extras={"source": "runtime_probe"}),
+                    metadata=NodeMetadata(endpoint=path, extras={"source": PROBE_SOURCE_RUNTIME_PROBE}),
                     evidence=[],
                 )
                 enriched.nodes.append(probe_node)
@@ -739,9 +744,9 @@ async def _probe_and_enrich(
             # 405 on POST confirms route exists but requires a different method;
             # mark so discovery can skip this as a chat endpoint fallback.
             if post_resp.status_code == 405:
-                extras = probe_node.metadata.extras or {}
+                extras = cast(ProbeExtras, probe_node.metadata.extras or {})
                 extras["probe_post_405"] = True
-                probe_node.metadata.extras = extras
+                probe_node.metadata.extras = cast(dict, extras)
             inferred_key = _infer_required_field_from_error(post_resp.text or "")
             if inferred_key:
                 probe_node.metadata.chat_payload_key = inferred_key
@@ -884,13 +889,13 @@ def persist_probe_result_to_sbom(
 
     target_node.metadata.chat_payload_key = result.key
     target_node.metadata.chat_payload_list = result.is_list
-    extras: dict = dict(target_node.metadata.extras or {})
-    extras["source"] = "runtime_probe"
+    extras: ProbeExtras = cast(ProbeExtras, dict(target_node.metadata.extras or {}))
+    extras["source"] = PROBE_SOURCE_RUNTIME_PROBE
     if result.value_template is not None:
         extras["probe_value_template"] = result.value_template
     else:
         extras.pop("probe_value_template", None)
-    target_node.metadata.extras = extras
+    target_node.metadata.extras = cast(dict, extras)
 
     out_path = _enriched_output_path(sbom_path)
     try:
@@ -901,51 +906,42 @@ def persist_probe_result_to_sbom(
     return out_path
 
 
-def persist_capability_discovery_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
+def _persist_enriched_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
     """Write *sbom* to the same ``<name>.sbom.enriched.json`` artifact used by
-    :func:`maybe_auto_enrich_sbom`, so gap-driven capability discovery (live
-    tool/sub-agent/system-prompt probing — see
-    :mod:`nuguard.common.discovery`) combines with the existing enrichment
-    artifact instead of writing a second file.
-
-    The existing ``_enrichment_cache_key`` (if any) is carried forward
-    unchanged — see :func:`_existing_enrichment_cache_key` for why omitting
-    it would break, not protect, cross-run reuse.
+    :func:`maybe_auto_enrich_sbom`, carrying forward any existing
+    ``_enrichment_cache_key`` unchanged — see :func:`_existing_enrichment_cache_key`
+    for why omitting it would break, not protect, cross-run reuse.
     """
     out_path = _enriched_output_path(sbom_path)
     _write_enriched(sbom, out_path, cache_key=_existing_enrichment_cache_key(out_path))
     return out_path
+
+
+def persist_capability_discovery_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
+    """Persist *sbom* so gap-driven capability discovery (live tool/sub-agent/
+    system-prompt probing — see :mod:`nuguard.common.discovery`) combines with
+    the existing enrichment artifact instead of writing a second file.
+    """
+    return _persist_enriched_sbom(sbom, sbom_path)
 
 
 def persist_discovery_profile_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
-    """Write *sbom* (with ``sbom.discovered_profile`` already set) to the same
-    ``<name>.sbom.enriched.json`` artifact used by :func:`maybe_auto_enrich_sbom`,
-    so a successfully-discovered pre-scan identity profile (see
-    :mod:`nuguard.common.discovery`) survives across runs and later runs can skip
-    the live discovery HTTP round-trip entirely.
-
-    The existing ``_enrichment_cache_key`` (if any) is carried forward
-    unchanged — see :func:`_existing_enrichment_cache_key`.
+    """Persist *sbom* (with ``sbom.discovered_profile`` already set) so a
+    successfully-discovered pre-scan identity profile (see
+    :mod:`nuguard.common.discovery`) survives across runs and later runs can
+    skip the live discovery HTTP round-trip entirely.
     """
-    out_path = _enriched_output_path(sbom_path)
-    _write_enriched(sbom, out_path, cache_key=_existing_enrichment_cache_key(out_path))
-    return out_path
+    return _persist_enriched_sbom(sbom, sbom_path)
 
 
 def persist_liveness_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
-    """Write *sbom* (with per-node ``operational``/``liveness_checked_at``/
-    ``liveness_notes`` already set) to the same ``<name>.sbom.enriched.json``
-    artifact, so a completed live endpoint-liveness pass (see
-    :mod:`nuguard.common.endpoint_liveness`) survives across runs and a later
-    run — behavior after redteam, or vice versa — can skip re-pinging
+    """Persist *sbom* (with per-node ``operational``/``liveness_checked_at``/
+    ``liveness_notes`` already set) so a completed live endpoint-liveness pass
+    (see :mod:`nuguard.common.endpoint_liveness`) survives across runs and a
+    later run — behavior after redteam, or vice versa — can skip re-pinging
     endpoints whose cached result is still fresh.
-
-    The existing ``_enrichment_cache_key`` (if any) is carried forward
-    unchanged — see :func:`_existing_enrichment_cache_key`.
     """
-    out_path = _enriched_output_path(sbom_path)
-    _write_enriched(sbom, out_path, cache_key=_existing_enrichment_cache_key(out_path))
-    return out_path
+    return _persist_enriched_sbom(sbom, sbom_path)
 
 
 def _enrichment_cache_key(

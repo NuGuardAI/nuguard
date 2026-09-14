@@ -10,12 +10,15 @@ to work unchanged.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from nuguard.common.endpoint_detection.constants import (
     EXCLUDE_PATTERNS,
     HAS_PATH_PARAM_RE,
+    PROBE_SOURCE_AUTO_ENRICHMENT,
+    PROBE_SOURCE_RUNTIME_PROBE,
     RUNTIME_NON_CHAT_KEYS,
+    ProbeExtras,
     has_required_structured_field,
     normalize_payload_key,
 )
@@ -182,7 +185,8 @@ def discover_chat_candidates_from_sbom(
 
         discovered_path = meta.endpoint or chat_path
         endpoint_l = discovered_path.lower()
-        source = (meta.extras or {}).get("source")
+        node_extras: ProbeExtras = cast(ProbeExtras, meta.extras or {})
+        source = node_extras.get("source")
 
         # ── Resolve payload key ────────────────────────────────────────────
         inferred_response_key: str | None = meta.response_text_key or None
@@ -218,9 +222,9 @@ def discover_chat_candidates_from_sbom(
             continue
 
         score = 0
-        if source == "auto_enrichment":
+        if source == PROBE_SOURCE_AUTO_ENRICHMENT:
             score -= 2
-        elif source == "runtime_probe":
+        elif source == PROBE_SOURCE_RUNTIME_PROBE:
             score -= 1
         else:
             score += 3
@@ -293,10 +297,9 @@ def discover_chat_candidates_from_sbom(
         # route doesn't exist at all on the deployed target; POST 405 strongly
         # suggests the path is handled by a different mechanism (e.g. static file
         # serving on Azure SWA, not the API backend).
-        extras = meta.extras or {}
-        if extras.get("probe_get_404"):
+        if node_extras.get("probe_get_404"):
             score -= 8
-        if extras.get("probe_post_405"):
+        if node_extras.get("probe_post_405"):
             score -= 6
 
         candidates.append(

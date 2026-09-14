@@ -3463,6 +3463,10 @@ class RedteamOrchestrator:
         """True if the SBOM already carries a runtime-probe-confirmed payload
         shape for this exact endpoint (from this run's enrichment load or a
         prior behavior/redteam run persisted into the enriched SBOM)."""
+        from nuguard.common.endpoint_detection.constants import (  # noqa: PLC0415
+            PROBE_SOURCE_RUNTIME_PROBE,
+        )
+
         for node in self._sbom.nodes:
             meta = node.metadata
             if (
@@ -3470,7 +3474,7 @@ class RedteamOrchestrator:
                 and meta is not None
                 and meta.endpoint == path
                 and meta.chat_payload_key is not None
-                and (meta.extras or {}).get("source") == "runtime_probe"
+                and (meta.extras or {}).get("source") == PROBE_SOURCE_RUNTIME_PROBE
             ):
                 return True
         return False
