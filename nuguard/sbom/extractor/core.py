@@ -84,6 +84,12 @@ from ..adapters.sparkflows import (
     SparkflowsWorkflowAdapter,
 )
 from ..adapters.typescript._ts_regex import TSFrameworkAdapter
+from ..adapters.workflow_exports import (
+    CopilotStudioYAMLAdapter,
+    FlowiseWorkflowAdapter,
+    LangflowWorkflowAdapter,
+    N8nWorkflowAdapter,
+)
 from ..adapters.yaml_adapters import (
     AutoGenYAMLAdapter,
     CrewAIYAMLAdapter,
@@ -736,7 +742,12 @@ class AiSbomExtractor:
         self.yaml_adapters = (
             yaml_adapters
             if yaml_adapters is not None
-            else (CrewAIYAMLAdapter(), AutoGenYAMLAdapter(), LLMYAMLConfigAdapter())
+            else (
+                CrewAIYAMLAdapter(),
+                AutoGenYAMLAdapter(),
+                LLMYAMLConfigAdapter(),
+                CopilotStudioYAMLAdapter(),
+            )
         )
         self.json_adapters = (
             json_adapters
@@ -753,6 +764,9 @@ class AiSbomExtractor:
                 SparkflowsWorkflowAdapter(),
                 SparkflowsDatasetAdapter(),
                 SparkflowsAnalyticsAppAdapter(),
+                N8nWorkflowAdapter(),
+                LangflowWorkflowAdapter(),
+                FlowiseWorkflowAdapter(),
             )
         )
         self.nginx_adapter = nginx_adapter if nginx_adapter is not None else NginxAdapter()
