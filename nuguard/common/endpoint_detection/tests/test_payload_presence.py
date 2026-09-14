@@ -5,7 +5,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from nuguard.common.endpoint_detection import UNSET, EndpointSource
-from nuguard.common.endpoint_detection.payload import detect_payload_shape
+from nuguard.common.endpoint_detection.payload import (
+    detect_payload_shape,
+    payload_shape_from_probe_result,
+)
 from nuguard.common.endpoint_probe import ProbeResult
 
 
@@ -54,3 +57,17 @@ async def test_missing_payload_key_is_inferred_for_configured_endpoint() -> None
     assert result.key == "prompt"
     assert result.is_list is True
     assert result.source is EndpointSource.PROBE
+
+
+def test_probe_result_normalization_is_shared_and_preserves_explicit_fields() -> None:
+    result = payload_shape_from_probe_result(
+        ProbeResult("/api/chat", "prompt", True),
+        payload_key="message",
+        payload_list=False,
+    )
+
+    assert result.key == "message"
+    assert result.is_list is False
+    assert result.source is EndpointSource.PROBE
+    assert result.explicit_key is True
+    assert result.explicit_list is True

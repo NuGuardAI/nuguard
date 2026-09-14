@@ -11,6 +11,52 @@ from nuguard.common.endpoint_detection.constants import (
 )
 from nuguard.common.endpoint_detection.live_probe import probe_endpoint
 from nuguard.common.endpoint_detection.models import EndpointSource, PayloadShape
+from nuguard.common.endpoint_probe import ProbeResult
+
+
+def payload_shape_from_probe_result(
+    result: ProbeResult | None,
+    *,
+    payload_key: object = UNSET,
+    payload_list: object = UNSET,
+    value_template: object = UNSET,
+    response_key: object = UNSET,
+    source: EndpointSource = EndpointSource.PROBE,
+    note: str | None = None,
+) -> PayloadShape:
+    """Normalize one probe result while preserving explicitly supplied fields."""
+    key_is_explicit = payload_key is not UNSET
+    list_is_explicit = payload_list is not UNSET
+    template_is_explicit = value_template is not UNSET
+    response_is_explicit = response_key is not UNSET
+
+    detected_key = result.key if result is not None else None
+    detected_list = result.is_list if result is not None else False
+    detected_template = result.value_template if result is not None else None
+
+    resolved_key = str(payload_key) if key_is_explicit else detected_key or DEFAULT_PAYLOAD_KEY
+    resolved_list = bool(payload_list) if list_is_explicit else detected_list
+    resolved_template = value_template if template_is_explicit else detected_template
+    resolved_response = str(response_key) if response_is_explicit else None
+
+    if result is None:
+        resolved_source = EndpointSource.FALLBACK
+        notes = (note or "Payload shape probe returned no result; defaults were retained.",)
+    else:
+        resolved_source = source
+        notes = (note or "Payload shape normalized from probe result.",)
+
+    return PayloadShape(
+        key=resolved_key,
+        is_list=resolved_list,
+        value_template=cast(dict[str, Any] | None, resolved_template),
+        response_key=cast(str | None, resolved_response),
+        source=resolved_source,
+        explicit_key=key_is_explicit,
+        explicit_list=list_is_explicit,
+        explicit_template=template_is_explicit,
+        notes=notes,
+    )
 
 
 async def detect_payload_shape(
@@ -65,32 +111,16 @@ async def detect_payload_shape(
         llm=llm,
     )
 
-    detected_key = result.key if result is not None else None
-    detected_list = result.is_list if result is not None else False
-    detected_template = result.value_template if result is not None else None
-
-    resolved_key = str(payload_key) if key_is_explicit else detected_key or DEFAULT_PAYLOAD_KEY
-    resolved_list = bool(payload_list) if list_is_explicit else detected_list
-    resolved_template = value_template if template_is_explicit else detected_template
-    resolved_response = str(response_key) if response_is_explicit else None
-
-    if result is None:
-        source = EndpointSource.FALLBACK
-        notes = (
-            f"Payload shape probe did not resolve {endpoint!r}; defaults were retained.",
-        )
-    else:
-        source = EndpointSource.CONFIG if key_is_explicit and list_is_explicit else EndpointSource.PROBE
-        notes = (f"Payload shape inferred for {endpoint!r}.",)
-
-    return PayloadShape(
-        key=resolved_key,
-        is_list=resolved_list,
-        value_template=cast(dict[str, Any] | None, resolved_template),
-        response_key=cast(str | None, resolved_response),
-        source=source,
-        explicit_key=key_is_explicit,
-        explicit_list=list_is_explicit,
-        explicit_template=template_is_explicit,
-        notes=notes,
+    return payload_shape_from_probe_result(
+        result,
+        payload_key=payload_key,
+        payload_list=payload_list,
+        value_template=value_template,
+        response_key=response_key,
+        source=(
+            EndpointSource.CONFIG
+            if key_is_explicit and list_is_explicit
+            else EndpointSource.PROBE
+        ),
+        note=f"Payload shape inferred for {endpoint!r}." if result is not None else None,
     )

@@ -17,7 +17,10 @@ from nuguard.common.endpoint_detection.models import (
     PayloadShape,
     ResolvedEndpoint,
 )
-from nuguard.common.endpoint_detection.payload import detect_payload_shape
+from nuguard.common.endpoint_detection.payload import (
+    detect_payload_shape,
+    payload_shape_from_probe_result,
+)
 from nuguard.common.endpoint_detection.sbom import discover_chat_config, indicates_websocket
 
 
@@ -108,13 +111,22 @@ async def resolve_chat_endpoint(
         if probe_result is not None:
             resolved_path = probe_result.path
             path_source = EndpointSource.PROBE
+            probed_payload = payload_shape_from_probe_result(
+                probe_result,
+                payload_key=payload_key,
+                payload_list=payload_list,
+                value_template=value_template,
+                response_key=response_key,
+            )
             if not key_is_explicit:
-                resolved_key = probe_result.key
+                resolved_key = probed_payload.key
             if not list_is_explicit:
-                resolved_list = probe_result.is_list
+                resolved_list = probed_payload.is_list
             if not template_is_explicit:
-                resolved_template = probe_result.value_template
-            payload_source = EndpointSource.PROBE
+                resolved_template = probed_payload.value_template
+            if not response_is_explicit:
+                resolved_response = probed_payload.response_key
+            payload_source = probed_payload.source
 
     # A configured or SBOM-selected endpoint may still need payload inference.
     if resolved_path is not None and (not key_is_explicit or not list_is_explicit or not template_is_explicit):
