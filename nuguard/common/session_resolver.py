@@ -321,12 +321,14 @@ async def resolve_target_session(
         bootstrap_auth_runtime,
         resolve_auth_runtime,
     )
-    from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-        discover_chat_config_from_sbom,
-        is_empty_session_response,
-        probe_chat_endpoints,
-        sbom_indicates_websocket,
+    from nuguard.common.endpoint_detection.live_probe import probe_endpoint  # noqa: PLC0415
+    from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
+        discover_chat_config as discover_chat_config_from_sbom,
     )
+    from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
+        indicates_websocket as sbom_indicates_websocket,
+    )
+    from nuguard.common.endpoint_probe import is_empty_session_response  # noqa: PLC0415
     from nuguard.common.target_client_builder import (  # noqa: PLC0415
         resolve_auth_config_with_sbom_fallback,
         resolve_target_url,
@@ -421,7 +423,7 @@ async def resolve_target_session(
     chat_payload_value_template: "dict[str, object] | None" = None
     if not chat_path:
         # Option A: discover both path and key
-        probe_result = await probe_chat_endpoints(
+        probe_result = await probe_endpoint(
             target_url=target_url,
             sbom=sbom,
             auth_headers=effective_headers or None,
@@ -435,7 +437,7 @@ async def resolve_target_session(
             _log.info("resolve_target_session: live probe selected endpoint %s", chat_path)
     elif chat_payload_key == "message":
         # Option B: path is known but key is still the default — detect key only
-        probe_result = await probe_chat_endpoints(
+        probe_result = await probe_endpoint(
             target_url=target_url,
             sbom=sbom,
             auth_headers=effective_headers or None,
