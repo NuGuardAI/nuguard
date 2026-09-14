@@ -216,7 +216,7 @@ jobs:
 
       - name: Publish to npm
         if: needs.build.outputs.npm-exists != 'true'
-        run: npm publish npm-dist/*.tgz --access public
+        run: npm publish ./npm-dist/*.tgz --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
