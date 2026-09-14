@@ -11,7 +11,7 @@ from nuguard.common.endpoint_detection.constants import (
     DEFAULT_PROBE_TIMEOUT_SECONDS,
     UNSET,
 )
-from nuguard.common.endpoint_detection.live_probe import probe_endpoint
+from nuguard.common.endpoint_detection.live_probe import ProbeResult, probe_endpoint
 from nuguard.common.endpoint_detection.models import (
     EndpointSource,
     PayloadShape,
@@ -22,7 +22,6 @@ from nuguard.common.endpoint_detection.payload import (
     payload_shape_from_probe_result,
 )
 from nuguard.common.endpoint_detection.sbom import discover_chat_config, indicates_websocket
-from nuguard.common.endpoint_probe import ProbeResult
 
 
 async def resolve_chat_endpoint(

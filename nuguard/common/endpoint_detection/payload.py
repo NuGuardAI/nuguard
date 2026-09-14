@@ -9,9 +9,8 @@ from nuguard.common.endpoint_detection.constants import (
     DEFAULT_PROBE_TIMEOUT_SECONDS,
     UNSET,
 )
-from nuguard.common.endpoint_detection.live_probe import probe_endpoint
+from nuguard.common.endpoint_detection.live_probe import ProbeResult, probe_endpoint
 from nuguard.common.endpoint_detection.models import EndpointSource, PayloadShape
-from nuguard.common.endpoint_probe import ProbeResult
 
 
 def payload_shape_from_probe_result(
