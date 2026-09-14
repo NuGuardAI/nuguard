@@ -148,6 +148,10 @@ async def resolve_chat_endpoint(
             chat_path=resolved_path,
             chat_payload_key=resolved_key or DEFAULT_PAYLOAD_KEY,
         )
+        if is_websocket:
+            resolved_key = "__websocket__"
+            resolved_list = False
+            payload_source = EndpointSource.SBOM
         if not is_websocket and resolved_key != "__websocket__":
             inferred = await detect_payload_shape(
                 target_url,

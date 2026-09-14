@@ -940,8 +940,8 @@ class BehaviorRunner:
 
         endpoint = getattr(self._config, "target_endpoint", "") or ""
         payload_key = getattr(self._config, "chat_payload_key", "message") or "message"
-        from nuguard.common.endpoint_probe import sbom_indicates_websocket  # noqa: PLC0415
-        _is_websocket = sbom_indicates_websocket(
+        from nuguard.common.endpoint_detection import indicates_websocket
+        _is_websocket = indicates_websocket(
             self._sbom, chat_path=endpoint, chat_payload_key=payload_key
         )
         try:
