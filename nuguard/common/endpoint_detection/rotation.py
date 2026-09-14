@@ -13,9 +13,11 @@ from nuguard.common.endpoint_preflight import (
 
 def response_indicates_wrong_endpoint(response: str, status_code: int | None = None) -> bool:
     """Return whether a response should trigger endpoint rotation."""
+    if not response.strip():
+        return True
     if status_code is not None:
         return status_code in ROTATION_STATUS_CODES
-    return response.startswith(tuple(f"[HTTP {code}]" for code in ROTATION_STATUS_CODES)) or not response.strip()
+    return response.startswith(tuple(f"[HTTP {code}]" for code in ROTATION_STATUS_CODES))
 
 
 async def validate_and_rotate(

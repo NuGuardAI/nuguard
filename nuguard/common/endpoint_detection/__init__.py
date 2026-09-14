@@ -39,6 +39,14 @@ def __getattr__(name: str):
 		from nuguard.common.endpoint_detection.payload import detect_payload_shape
 
 		return detect_payload_shape
+	if name == "payload_shape_from_probe_result":
+		from nuguard.common.endpoint_detection.payload import payload_shape_from_probe_result
+
+		return payload_shape_from_probe_result
+	if name == "normalize_probe_result":
+		from nuguard.common.endpoint_detection.live_probe import normalize_probe_result
+
+		return normalize_probe_result
 	if name == "validate_and_rotate":
 		from nuguard.common.endpoint_detection.rotation import validate_and_rotate
 
@@ -65,6 +73,8 @@ __all__ = [
 	"probe_endpoint",
 	"probe_payload_shape",
 	"detect_payload_shape",
+	"payload_shape_from_probe_result",
+	"normalize_probe_result",
 	"validate_and_rotate",
 	"detect_with_browser",
 	"resolve_chat_endpoint",

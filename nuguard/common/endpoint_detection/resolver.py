@@ -64,7 +64,11 @@ async def resolve_chat_endpoint(
     resolved_key = str(payload_key) if key_is_explicit else None
     resolved_list = bool(payload_list) if list_is_explicit else None
     resolved_template = value_template if template_is_explicit else None
-    resolved_response = str(response_key) if response_is_explicit else None
+    resolved_response = (
+        str(response_key)
+        if response_is_explicit and response_key is not None
+        else None
+    )
     payload_source = EndpointSource.CONFIG if key_is_explicit or list_is_explicit else EndpointSource.UNKNOWN
 
     # Static SBOM metadata is the cheapest discovery strategy after config.

@@ -19,7 +19,6 @@ def normalize_probe_result(result: ProbeResult | None) -> ProbeResult | None:
 async def probe_endpoint(
     target_url: str,
     sbom: Any,
-    *,
     auth_headers: dict[str, str] | None = None,
     timeout: float = 15.0,
     known_payload_key: str | None = None,
@@ -54,7 +53,6 @@ async def probe_payload_shape(
     target_url: str,
     sbom: Any,
     endpoint: str,
-    *,
     auth_headers: dict[str, str] | None = None,
     timeout: float = 15.0,
     known_payload_list: bool = False,

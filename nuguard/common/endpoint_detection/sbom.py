@@ -22,7 +22,6 @@ def discover_chat_candidates(sbom: Any, **kwargs: Any) -> list[Any]:
 
 def discover_chat_config(
     sbom: Any,
-    *,
     chat_path: str | None = None,
     chat_payload_key: str = "message",
     chat_payload_list: bool = False,
@@ -38,7 +37,6 @@ def discover_chat_config(
 
 def indicates_websocket(
     sbom: Any,
-    *,
     chat_path: str | None = None,
     chat_payload_key: str = "message",
 ) -> bool:

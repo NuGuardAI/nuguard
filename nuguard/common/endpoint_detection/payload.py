@@ -37,7 +37,11 @@ def payload_shape_from_probe_result(
     resolved_key = str(payload_key) if key_is_explicit else detected_key or DEFAULT_PAYLOAD_KEY
     resolved_list = bool(payload_list) if list_is_explicit else detected_list
     resolved_template = value_template if template_is_explicit else detected_template
-    resolved_response = str(response_key) if response_is_explicit else None
+    resolved_response = (
+        str(response_key)
+        if response_is_explicit and response_key is not None
+        else None
+    )
 
     if result is None:
         resolved_source = EndpointSource.FALLBACK
@@ -50,7 +54,7 @@ def payload_shape_from_probe_result(
         key=resolved_key,
         is_list=resolved_list,
         value_template=cast(dict[str, Any] | None, resolved_template),
-        response_key=cast(str | None, resolved_response),
+        response_key=resolved_response,
         source=resolved_source,
         explicit_key=key_is_explicit,
         explicit_list=list_is_explicit,
@@ -90,7 +94,9 @@ async def detect_payload_shape(
             key=str(payload_key),
             is_list=bool(payload_list),
             value_template=cast(dict[str, Any] | None, value_template),
-            response_key=cast(str | None, response_key),
+            response_key=(
+                str(response_key) if response_key is not None else None
+            ),
             source=EndpointSource.CONFIG,
             explicit_key=True,
             explicit_list=True,
