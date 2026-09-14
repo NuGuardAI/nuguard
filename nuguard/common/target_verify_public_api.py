@@ -15,7 +15,7 @@ from nuguard.common.discovery import (
     run_discovery,
 )
 from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
-from nuguard.common.endpoint_probe import (
+from nuguard.common.endpoint_detection.sbom import (
     discover_chat_candidates_from_sbom,
 )
 from nuguard.common.session_resolver import resolve_target_session

@@ -971,9 +971,11 @@ class TargetAppClient:
             if self._chat_payload_value_template is not None:
                 # Fill the sentinel field with the actual chat text; all other
                 # fields keep their schema-derived defaults.
-                from nuguard.common.endpoint_probe import _CHAT_TEXT_SENTINEL  # noqa: PLC0415
+                from nuguard.common.endpoint_detection.constants import (  # noqa: PLC0415
+                    CHAT_TEXT_SENTINEL,
+                )
                 return {
-                    k: (payload if v == _CHAT_TEXT_SENTINEL else v)
+                    k: (payload if v == CHAT_TEXT_SENTINEL else v)
                     for k, v in self._chat_payload_value_template.items()
                 }
             return payload

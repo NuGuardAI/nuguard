@@ -928,7 +928,9 @@ class BehaviorRunner:
         # discovery can't find that origin because every path under target_url
         # is served by the frontend's catch-all route. Best-effort: scan the
         # served bundle for a baked-in API base URL before auth bootstrap runs.
-        from nuguard.common.endpoint_probe import discover_api_origin_from_frontend_bundle
+        from nuguard.common.endpoint_detection.frontend_origin import (
+            discover_api_origin_from_frontend_bundle,
+        )
 
         _bundle_origin, _bundle_notes = await discover_api_origin_from_frontend_bundle(target_url)
         if _bundle_origin:
@@ -2151,7 +2153,7 @@ class BehaviorRunner:
                 chain_id="behavior-pre-scan",
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
-            from nuguard.common.endpoint_probe import (  # noqa: PLC0415
+            from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
                 discover_chat_candidates_from_sbom as _disc_candidates,
             )
             _explicit_endpoint = self._endpoint_is_explicit()
@@ -2556,7 +2558,7 @@ class BehaviorRunner:
                     DiscoveryRequest,
                     run_discovery,
                 )
-                from nuguard.common.endpoint_probe import (  # noqa: PLC0415
+                from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
                     discover_chat_candidates_from_sbom as _discover_candidates,
                 )
                 _sbom_fallbacks = (

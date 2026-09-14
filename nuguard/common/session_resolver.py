@@ -321,14 +321,16 @@ async def resolve_target_session(
         bootstrap_auth_runtime,
         resolve_auth_runtime,
     )
-    from nuguard.common.endpoint_detection.live_probe import probe_endpoint  # noqa: PLC0415
+    from nuguard.common.endpoint_detection.live_probe import (  # noqa: PLC0415
+        is_empty_session_response,
+        probe_endpoint,
+    )
     from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
         discover_chat_config as discover_chat_config_from_sbom,
     )
     from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
         indicates_websocket as sbom_indicates_websocket,
     )
-    from nuguard.common.endpoint_probe import is_empty_session_response  # noqa: PLC0415
     from nuguard.common.target_client_builder import (  # noqa: PLC0415
         resolve_auth_config_with_sbom_fallback,
         resolve_target_url,

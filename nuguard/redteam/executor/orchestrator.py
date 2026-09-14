@@ -703,10 +703,10 @@ def _print_redteam_turn(
 
 # ---------------------------------------------------------------------------
 # Chat config discovery — delegates to the shared implementation in
-# nuguard.common.endpoint_probe so that BehaviorAnalyzer can reuse it.
+# nuguard.common.endpoint_detection.sbom so that BehaviorAnalyzer can reuse it.
 # ---------------------------------------------------------------------------
-from nuguard.common.endpoint_probe import (  # noqa: E402
-    discover_chat_config_from_sbom as _discover_chat_config,
+from nuguard.common.endpoint_detection.sbom import (  # noqa: E402
+    discover_chat_config_from_sbom,
 )
 
 
@@ -889,7 +889,7 @@ class RedteamOrchestrator:
         self._endpoint_circuit_open = False
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
-            _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
+            discover_chat_config_from_sbom(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
         # Payload value template from OpenAPI schema detection (ProbeResult.value_template).
         # Populated by _maybe_probe_endpoints when the schema reveals a nested shape.
@@ -1213,7 +1213,9 @@ class RedteamOrchestrator:
         # discovery can't find that origin because every path under target_url
         # is served by the frontend's catch-all route. Best-effort: scan the
         # served bundle for a baked-in API base URL before auth bootstrap runs.
-        from nuguard.common.endpoint_probe import discover_api_origin_from_frontend_bundle
+        from nuguard.common.endpoint_detection.frontend_origin import (
+            discover_api_origin_from_frontend_bundle,
+        )
 
         _bundle_origin, _bundle_notes = await discover_api_origin_from_frontend_bundle(
             self._target_url
@@ -1445,7 +1447,7 @@ class RedteamOrchestrator:
         # check whether the response looks like an anonymous/empty session and
         # emit a config note pointing the user toward chat_payload_extras.
         if _pre_scan_profile is not None and _pre_scan_profile.is_empty:
-            from nuguard.common.endpoint_probe import (
+            from nuguard.common.endpoint_detection.live_probe import (
                 is_empty_session_response as _ies,  # noqa: PLC0415
             )
             if _ies(_pre_scan_profile.raw_response or ""):
@@ -1711,7 +1713,7 @@ class RedteamOrchestrator:
             auth_headers=effective_headers or None,
             sbom=self._sbom,
             adk_cfg=None,
-            # chat_path was already resolved by _discover_chat_config in __init__,
+            # chat_path was already resolved by discover_chat_config_from_sbom in __init__,
             # so treat endpoint/payload as explicitly set to skip re-discovery.
             explicitly_set=frozenset({"target_endpoint", "chat_payload_key", "chat_response_key"}),
             payload_extras=self._chat_payload_extras or None,
@@ -1731,7 +1733,7 @@ class RedteamOrchestrator:
         ):
             # Pre-flight endpoint validation: verify the resolved chat endpoint is
             # actually reachable before running any scenario.  SBOM-based scoring in
-            # _discover_chat_config can pick the wrong candidate (e.g. /api/chat when
+            # discover_chat_config_from_sbom can pick the wrong candidate (e.g. /api/chat when
             # only /api/chat/respond-visual is live); on 404/405 the target's normal
             # 4xx-doesn't-count-toward-the-circuit-breaker behaviour would otherwise
             # let an entire scan burn through every scenario with no findings.  Rotate

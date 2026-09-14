@@ -20,14 +20,14 @@ from typing import TYPE_CHECKING, Any, Iterable
 
 import httpx
 
-from nuguard.common.endpoint_probe import _HAS_PATH_PARAM_RE
+from nuguard.common.endpoint_detection.constants import HAS_PATH_PARAM_RE
 from nuguard.common.logging import get_logger
 from nuguard.sbom.models import AiSbomDocument, Edge, Node, NodeMetadata
 from nuguard.sbom.models import is_soft_rejected as _is_soft_rejected
 from nuguard.sbom.types import AccessType, ComponentType, RelationshipType
 
 if TYPE_CHECKING:
-    from nuguard.common.endpoint_probe import ProbeResult
+    from nuguard.common.endpoint_detection.live_probe import ProbeResult
 
 _log = get_logger(__name__)
 
@@ -601,13 +601,13 @@ def _collect_probe_candidates(sbom: AiSbomDocument) -> list[str]:
         if (
             node.component_type == ComponentType.API_ENDPOINT
             and node.metadata.endpoint
-            and not _HAS_PATH_PARAM_RE.search(node.metadata.endpoint)
+            and not HAS_PATH_PARAM_RE.search(node.metadata.endpoint)
         ):
             if node.metadata.endpoint not in candidates:
                 candidates.append(node.metadata.endpoint)
     if sbom.summary:
         for path in sbom.summary.api_endpoints:
-            if path and not _HAS_PATH_PARAM_RE.search(path) and path not in candidates:
+            if path and not HAS_PATH_PARAM_RE.search(path) and path not in candidates:
                 candidates.append(path)
     for fallback in ("/health", "/chat", "/chat/message"):
         if fallback not in candidates:
