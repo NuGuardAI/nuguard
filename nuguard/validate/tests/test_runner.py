@@ -1,10 +1,11 @@
 """Tests for ValidateRunner — mocked HTTP, no live target."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
 import pytest
 import respx
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from nuguard.common.auth import AuthConfig
 from nuguard.config import ValidateBoundaryAssertion, ValidateConfig
@@ -73,7 +74,18 @@ async def test_discovered_endpoint_metadata_is_consistent():
         sbom=MagicMock(),
     )
 
-    with patch.object(ValidateRunner, "_discover_endpoint", new=AsyncMock(return_value="/api/chat")):
+    from nuguard.common.endpoint_detection import EndpointSource, PayloadShape, ResolvedEndpoint
+
+    with patch(
+        "nuguard.validate.runner.resolve_chat_endpoint",
+        new=AsyncMock(
+            return_value=ResolvedEndpoint(
+                path="/api/chat",
+                payload=PayloadShape(key="message", source=EndpointSource.PROBE),
+                path_source=EndpointSource.PROBE,
+            )
+        ),
+    ):
         result = await runner.run()
 
     assert result.scenarios_executed >= 1

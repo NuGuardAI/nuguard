@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from nuguard.common.bootstrap import AuthBootstrapper
+from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
 from nuguard.common.errors import AuthError
 from nuguard.common.logging import get_logger
 from nuguard.config import ValidateConfig
@@ -189,12 +190,43 @@ class ValidateRunner:
         # Store bootstrapper so we can access the live AuthSession
         self._bootstrapper = bootstrapper
 
-        # ── Step 0b: Endpoint auto-discovery from SBOM ───────────────────────
-        # Runs after bootstrap so that live session headers are available.
-        if not endpoint and self._sbom is not None:
-            endpoint = await self._discover_endpoint()
-            if endpoint:
-                endpoint_source = "probe"
+        # ── Step 0b: Resolve endpoint and payload using the common resolver ──
+        # Runs after bootstrap so live session headers are available to probes.
+        configured_fields = self._config.model_fields_set
+        resolved_endpoint = await resolve_chat_endpoint(
+            target_url=target_url,
+            sbom=self._sbom,
+            endpoint=(
+                endpoint
+                if endpoint and "target_endpoint" in configured_fields
+                else UNSET
+            ),
+            payload_key=(
+                self._config.chat_payload_key
+                if "chat_payload_key" in configured_fields
+                else UNSET
+            ),
+            payload_list=(
+                self._config.chat_payload_list
+                if "chat_payload_list" in configured_fields
+                else UNSET
+            ),
+            response_key=(
+                self._config.chat_response_key
+                if "chat_response_key" in configured_fields
+                and self._config.chat_response_key
+                else UNSET
+            ),
+            auth_headers=bootstrapper.session.headers() or None,
+            timeout=min(self._config.request_timeout, 15.0),
+        )
+        endpoint = resolved_endpoint.path or "/chat"
+        endpoint_source = resolved_endpoint.path_source.value
+        resolved_payload_key = resolved_endpoint.payload_key or "message"
+        resolved_payload_list = resolved_endpoint.payload_list
+        resolved_response_key = resolved_endpoint.response_key
+        if endpoint_source == "unknown":
+            endpoint_source = "default"
         if not endpoint:
             endpoint = "/chat"
             endpoint_source = "default"
@@ -227,9 +259,9 @@ class ValidateRunner:
             chat_path=endpoint,
             timeout=self._config.request_timeout,
             default_headers=auth_headers if auth_headers else None,
-            chat_payload_key=self._config.chat_payload_key,
-            chat_payload_list=self._config.chat_payload_list,
-            chat_response_key=self._config.chat_response_key or None,
+            chat_payload_key=resolved_payload_key,
+            chat_payload_list=resolved_payload_list,
+            chat_response_key=resolved_response_key,
         )
 
         # ── Step 4–6: Execute scenarios ───────────────────────────────────────
@@ -293,9 +325,9 @@ class ValidateRunner:
                                 chat_path=endpoint,
                                 timeout=self._config.request_timeout,
                                 default_headers=new_headers if new_headers else None,
-                                chat_payload_key=self._config.chat_payload_key,
-                                chat_payload_list=self._config.chat_payload_list,
-                                chat_response_key=self._config.chat_response_key or None,
+                                chat_payload_key=resolved_payload_key,
+                                chat_payload_list=resolved_payload_list,
+                                chat_response_key=resolved_response_key,
                             )
                             response_text, tool_calls = await client.send(message, session)
                 except Exception as exc:
@@ -546,52 +578,3 @@ class ValidateRunner:
 
         return findings
 
-    async def _discover_endpoint(self) -> str:
-        """Probe SBOM API_ENDPOINT nodes to find a chat-capable path.
-
-        Returns the discovered path (e.g. ``/run_langgraph``) or empty string
-        if nothing responds usefully.
-        """
-        from nuguard.common.endpoint_probe import probe_chat_endpoints  # noqa: PLC0415
-
-        # Use live session headers so login_flow tokens are included.
-        # _bootstrapper is always set before _discover_endpoint is called.
-        assert self._bootstrapper is not None
-        auth_headers: dict[str, str] = self._bootstrapper.session.headers()
-
-        _log.info(
-            "validate: target_endpoint not set — probing SBOM endpoints at %s",
-            self._config.target,
-        )
-        _console.print(
-            "[dim]target_endpoint not configured — probing SBOM endpoints…[/dim]"
-        )
-
-        result = await probe_chat_endpoints(
-            target_url=self._config.target,
-            sbom=self._sbom,  # type: ignore[arg-type]
-            auth_headers=auth_headers or None,
-            timeout=min(self._config.request_timeout, 15.0),
-            known_payload_key=(
-                self._config.chat_payload_key
-                if self._config.chat_payload_key != "message"
-                else None
-            ),
-            known_payload_list=self._config.chat_payload_list,
-            known_response_key=self._config.chat_response_key or None,
-        )
-        if result:
-            path, pay_key, pay_list = result
-            _console.print(
-                f"[green]✓[/green] Discovered endpoint: [bold]{path}[/bold]"
-                f"  (payload_key={pay_key!r})"
-            )
-            # Update config fields so the client uses the discovered values
-            self._config = self._config.model_copy(update={
-                "target_endpoint": path,
-                "chat_payload_key": pay_key,
-                "chat_payload_list": pay_list,
-            })
-            return path
-        _log.warning("validate: endpoint probe found nothing — falling back to /chat")
-        return ""
