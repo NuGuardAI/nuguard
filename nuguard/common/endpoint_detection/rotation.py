@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from nuguard.common.endpoint_detection.constants import ROTATION_STATUS_CODES
+from nuguard.common.endpoint_preflight import PreflightOutcome
 from nuguard.common.endpoint_preflight import (
-    PreflightOutcome,
     validate_and_rotate_chat_endpoint as _validate_and_rotate,
 )
 
