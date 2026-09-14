@@ -1,11 +1,9 @@
 """Live HTTP/WebSocket probing to discover which endpoint accepts chat requests.
 
-This module owns the real implementation (moved from
-``nuguard.common.endpoint_probe``, which now re-exports these names for
-backward compatibility). When ``target_endpoint`` is not explicitly
-configured, :func:`probe_chat_endpoints` cycles through candidate paths,
-sends a lightweight test payload to each, and returns the first path that
-yields a chat-like response.
+This module owns the real implementation. When ``target_endpoint`` is not
+explicitly configured, :func:`probe_chat_endpoints` cycles through candidate
+paths, sends a lightweight test payload to each, and returns the first path
+that yields a chat-like response.
 """
 
 from __future__ import annotations

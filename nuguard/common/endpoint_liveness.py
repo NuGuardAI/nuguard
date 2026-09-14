@@ -195,7 +195,7 @@ async def check_endpoint_liveness(
     parameter preserves the original always-probe, never-persist behavior.
 
     *auth_headers* is accepted for interface symmetry with other probe
-    helpers in this package (e.g. :func:`~nuguard.common.endpoint_probe.probe_chat_endpoints`)
+    helpers in this package (e.g. :func:`~nuguard.common.endpoint_detection.live_probe.probe_chat_endpoints`)
     but is not applied directly here — *client* is expected to already carry
     its configured auth headers (mirrors how :func:`~nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint`
     receives a pre-authenticated client).

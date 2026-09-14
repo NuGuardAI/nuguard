@@ -1,4 +1,4 @@
-"""Tests for WebSocket endpoint detection in nuguard.common.endpoint_probe.
+"""Tests for WebSocket endpoint detection in nuguard.common.endpoint_detection.live_probe.
 
 Covers the live upgrade-probe path (Layer 1, item 2 of the WebSocket support
 plan): an SBOM-declared or fallback WS candidate path answering an HTTP
@@ -13,7 +13,10 @@ import httpx
 import pytest
 import respx
 
-from nuguard.common.endpoint_probe import compute_websocket_accept, probe_chat_endpoints
+from nuguard.common.endpoint_detection.live_probe import (
+    compute_websocket_accept,
+    probe_chat_endpoints,
+)
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
 

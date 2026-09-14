@@ -3,9 +3,8 @@
 This module owns the real implementation of SBOM-based chat-candidate
 scoring. Legacy names (``discover_chat_candidates_from_sbom``,
 ``discover_chat_config_from_sbom``, ``sbom_indicates_websocket``,
-``_sbom_post_paths``) are kept so existing callers/tests importing them from
-``nuguard.common.endpoint_probe`` (which now re-exports from here) continue
-to work unchanged.
+``_sbom_post_paths``) are kept for backward compatibility with existing
+callers/tests.
 """
 
 from __future__ import annotations

@@ -9,10 +9,10 @@ from nuguard.common.endpoint_detection import (
     EndpointSource,
     payload_shape_from_probe_result,
 )
+from nuguard.common.endpoint_detection.live_probe import ProbeResult
 from nuguard.common.endpoint_detection.payload import (
     detect_payload_shape,
 )
-from nuguard.common.endpoint_probe import ProbeResult
 
 
 @pytest.mark.asyncio

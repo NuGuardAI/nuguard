@@ -1,8 +1,8 @@
 """Regression tests for parity with legacy endpoint helpers."""
 
 from nuguard.common.endpoint_detection import normalize_probe_result
+from nuguard.common.endpoint_detection.live_probe import ProbeResult
 from nuguard.common.endpoint_detection.rotation import response_indicates_wrong_endpoint
-from nuguard.common.endpoint_probe import ProbeResult
 
 
 def test_probe_normalizer_preserves_legacy_result_identity() -> None:
