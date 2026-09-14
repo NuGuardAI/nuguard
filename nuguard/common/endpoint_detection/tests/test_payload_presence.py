@@ -47,8 +47,10 @@ async def test_missing_payload_key_is_inferred_for_configured_endpoint() -> None
             payload_list=UNSET,
         )
 
-    probe.assert_awaited_once()
-    assert probe.await_args.kwargs["hint_path"] == "/api/chat"
+        probe.assert_awaited_once()
+        call = probe.await_args
+        assert call is not None
+        assert call.kwargs["hint_path"] == "/api/chat"
     assert result.key == "prompt"
     assert result.is_list is True
     assert result.source is EndpointSource.PROBE

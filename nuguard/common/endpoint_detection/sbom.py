@@ -6,7 +6,11 @@ from typing import Any
 
 from nuguard.common.endpoint_probe import (
     discover_chat_candidates_from_sbom as _discover_chat_candidates,
+)
+from nuguard.common.endpoint_probe import (
     discover_chat_config_from_sbom as _discover_chat_config,
+)
+from nuguard.common.endpoint_probe import (
     sbom_indicates_websocket as _sbom_indicates_websocket,
 )
 
@@ -26,7 +30,7 @@ def discover_chat_config(
     """Return the existing SBOM-selected path and payload metadata."""
     return _discover_chat_config(
         sbom,
-        chat_path=chat_path,
+        chat_path=chat_path or "",
         chat_payload_key=chat_payload_key,
         chat_payload_list=chat_payload_list,
     )
@@ -42,7 +46,7 @@ def indicates_websocket(
     return bool(
         _sbom_indicates_websocket(
             sbom,
-            chat_path=chat_path,
+            chat_path=chat_path or "",
             chat_payload_key=chat_payload_key,
         )
     )

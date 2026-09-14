@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from nuguard.common.endpoint_detection.constants import (
     DEFAULT_PAYLOAD_KEY,
-    DEFAULT_PAYLOAD_LIST,
     DEFAULT_PROBE_TIMEOUT_SECONDS,
     UNSET,
 )
@@ -44,8 +43,8 @@ async def detect_payload_shape(
         return PayloadShape(
             key=str(payload_key),
             is_list=bool(payload_list),
-            value_template=value_template,
-            response_key=response_key,
+            value_template=cast(dict[str, Any] | None, value_template),
+            response_key=cast(str | None, response_key),
             source=EndpointSource.CONFIG,
             explicit_key=True,
             explicit_list=True,
@@ -87,8 +86,8 @@ async def detect_payload_shape(
     return PayloadShape(
         key=resolved_key,
         is_list=resolved_list,
-        value_template=resolved_template,
-        response_key=resolved_response,
+        value_template=cast(dict[str, Any] | None, resolved_template),
+        response_key=cast(str | None, resolved_response),
         source=source,
         explicit_key=key_is_explicit,
         explicit_list=list_is_explicit,

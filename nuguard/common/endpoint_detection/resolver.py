@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from nuguard.common.endpoint_detection.browser import detect_with_browser
 from nuguard.common.endpoint_detection.constants import (
@@ -175,7 +175,7 @@ async def resolve_chat_endpoint(
     payload = PayloadShape(
         key=resolved_key,
         is_list=bool(resolved_list),
-        value_template=resolved_template,
+        value_template=cast(dict[str, Any] | None, resolved_template),
         response_key=resolved_response,
         source=payload_source,
         explicit_key=key_is_explicit,
