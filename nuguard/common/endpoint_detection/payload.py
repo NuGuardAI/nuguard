@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 from nuguard.common.endpoint_detection.constants import (
     DEFAULT_PAYLOAD_KEY,
@@ -76,6 +76,7 @@ async def detect_payload_shape(
     timeout: float = DEFAULT_PROBE_TIMEOUT_SECONDS,
     probe_payload_extras: dict[str, object] | None = None,
     llm: Any = None,
+    probe_result_callback: Callable[[ProbeResult], None] | None = None,
 ) -> PayloadShape:
     """Resolve missing payload fields for a known endpoint.
 
@@ -116,6 +117,8 @@ async def detect_payload_shape(
         hint_path=endpoint,
         llm=llm,
     )
+    if result is not None and probe_result_callback is not None:
+        probe_result_callback(result)
 
     return payload_shape_from_probe_result(
         result,

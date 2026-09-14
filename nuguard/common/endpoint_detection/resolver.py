@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 from nuguard.common.endpoint_detection.browser import detect_with_browser
 from nuguard.common.endpoint_detection.constants import (
@@ -22,6 +22,7 @@ from nuguard.common.endpoint_detection.payload import (
     payload_shape_from_probe_result,
 )
 from nuguard.common.endpoint_detection.sbom import discover_chat_config, indicates_websocket
+from nuguard.common.endpoint_probe import ProbeResult
 
 
 async def resolve_chat_endpoint(
@@ -38,6 +39,7 @@ async def resolve_chat_endpoint(
     probe_payload_extras: dict[str, object] | None = None,
     llm: Any = None,
     enable_browser_fallback: bool = False,
+    probe_result_callback: Callable[[ProbeResult], None] | None = None,
 ) -> ResolvedEndpoint:
     """Resolve an endpoint and only the payload fields that are missing.
 
@@ -113,6 +115,8 @@ async def resolve_chat_endpoint(
         except Exception as exc:  # noqa: BLE001 - detector must remain best effort
             notes.append(f"Live endpoint discovery failed: {exc}")
         if probe_result is not None:
+            if probe_result_callback is not None:
+                probe_result_callback(probe_result)
             resolved_path = probe_result.path
             path_source = EndpointSource.PROBE
             probed_payload = payload_shape_from_probe_result(
@@ -157,6 +161,7 @@ async def resolve_chat_endpoint(
                 timeout=timeout,
                 probe_payload_extras=probe_payload_extras,
                 llm=llm,
+                probe_result_callback=probe_result_callback,
             )
             if not key_is_explicit:
                 resolved_key = inferred.key
