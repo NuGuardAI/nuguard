@@ -14,10 +14,9 @@ from nuguard.common.discovery import (
     TargetDiscoveryResult,
     run_discovery,
 )
+from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
 from nuguard.common.endpoint_probe import (
     discover_chat_candidates_from_sbom,
-    discover_chat_config_from_sbom,
-    probe_chat_endpoints,
 )
 from nuguard.common.session_resolver import resolve_target_session
 from nuguard.common.target_client_builder import build_target_app_client, resolve_target_url
@@ -197,37 +196,36 @@ async def _resolve_endpoint_plan(
     chat_payload_list: bool,
     chat_response_key: str | None,
     chat_payload_extras: dict[str, Any] | None,
+    chat_path_explicit: bool = False,
+    chat_payload_key_explicit: bool = False,
+    chat_payload_list_explicit: bool = False,
+    chat_response_key_explicit: bool = False,
 ) -> tuple[str, str, bool, str | None, EndpointSource]:
-    if chat_path:
-        return chat_path, chat_payload_key, chat_payload_list, chat_response_key, "config"
+    if sbom is None:
+        if chat_path:
+            return chat_path, chat_payload_key, chat_payload_list, chat_response_key, "config"
+        return "/chat", chat_payload_key, chat_payload_list, chat_response_key, "default"
 
-    if sbom is not None:
-        path, key, payload_list, response_key = discover_chat_config_from_sbom(
-            sbom,
-            chat_path="",
-            chat_payload_key=chat_payload_key,
-            chat_payload_list=chat_payload_list,
-        )
-        if path:
-            source: EndpointSource = "sbom"
-            if response_key and not chat_response_key:
-                chat_response_key = response_key
-            return path, key, payload_list, chat_response_key, source
-
-        probed = await probe_chat_endpoints(
-            target_url=target_url,
-            sbom=sbom,
-            auth_headers=auth_headers,
-            known_payload_key=chat_payload_key if chat_payload_key != "message" else None,
-            known_payload_list=chat_payload_list,
-            known_response_key=chat_response_key,
-            probe_payload_extras=chat_payload_extras,
-        )
-        if probed is not None:
-            p_path, p_key, p_list = probed
-            return p_path, p_key, p_list, chat_response_key, "probe"
-
-    return "/chat", chat_payload_key, chat_payload_list, chat_response_key, "default"
+    resolved = await resolve_chat_endpoint(
+        target_url=target_url,
+        sbom=sbom,
+        endpoint=chat_path if chat_path_explicit and chat_path else UNSET,
+        payload_key=chat_payload_key if chat_payload_key_explicit else UNSET,
+        payload_list=chat_payload_list if chat_payload_list_explicit else UNSET,
+        response_key=chat_response_key if chat_response_key_explicit else UNSET,
+        auth_headers=auth_headers,
+        probe_payload_extras=chat_payload_extras,
+    )
+    source = resolved.path_source.value
+    if source not in {"config", "sbom", "probe", "default"}:
+        source = "default"
+    return (
+        resolved.path or "/chat",
+        resolved.payload_key or chat_payload_key,
+        resolved.payload_list,
+        resolved.response_key,
+        source,  # type: ignore[return-value]
+    )
 
 
 async def verify_target(
@@ -247,6 +245,10 @@ async def verify_target(
         chat_payload_list=request.chat_payload_list,
         chat_response_key=request.chat_response_key,
         chat_payload_extras=request.chat_payload_extras,
+        chat_path_explicit="chat_path" in request.model_fields_set,
+        chat_payload_key_explicit="chat_payload_key" in request.model_fields_set,
+        chat_payload_list_explicit="chat_payload_list" in request.model_fields_set,
+        chat_response_key_explicit="chat_response_key" in request.model_fields_set,
     )
 
     bootstrapper, health = await bootstrap_auth_runtime(
@@ -329,6 +331,10 @@ async def resolve_target_session_public(
             chat_payload_list=request.chat_payload_list,
             chat_response_key=request.chat_response_key,
             chat_payload_extras=request.chat_payload_extras,
+            chat_path_explicit="chat_path" in request.model_fields_set,
+            chat_payload_key_explicit="chat_payload_key" in request.model_fields_set,
+            chat_payload_list_explicit="chat_payload_list" in request.model_fields_set,
+            chat_response_key_explicit="chat_response_key" in request.model_fields_set,
         )
         session_cfg, health = await resolve_target_session(
             target_url=resolved_url,

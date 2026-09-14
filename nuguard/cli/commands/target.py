@@ -214,10 +214,7 @@ async def _verify_async(
 
     session_cfg: "TargetSessionConfig | None" = None
     if sbom_doc is not None:
-        from nuguard.common.endpoint_probe import (
-            discover_chat_config_from_sbom,
-            probe_chat_endpoints,
-        )
+        from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
         from nuguard.common.session_resolver import resolve_target_session
         from nuguard.common.target_client_builder import resolve_target_url
 
@@ -236,28 +233,34 @@ async def _verify_async(
         chat_response_key = getattr(cfg, "redteam_chat_response_key", "") or None
         chat_payload_extras = getattr(cfg, "redteam_chat_payload_extras", None) or {}
 
-        discovered_path, discovered_key, discovered_list, discovered_resp_key = (
-            discover_chat_config_from_sbom(
-                sbom_doc,
-                chat_path=ep_configured,
-                chat_payload_key=chat_payload_key,
-                chat_payload_list=chat_payload_list,
-            )
+        configured_fields: set[str] = getattr(cfg, "model_fields_set", set())
+        resolved_endpoint = await resolve_chat_endpoint(
+            target_url=target_url,
+            sbom=sbom_doc,
+            endpoint=ep_configured if ep_configured else UNSET,
+            payload_key=(
+                chat_payload_key
+                if "redteam_chat_payload_key" in configured_fields
+                else UNSET
+            ),
+            payload_list=(
+                chat_payload_list
+                if "redteam_chat_payload_list" in configured_fields
+                else UNSET
+            ),
+            response_key=(
+                chat_response_key
+                if "redteam_chat_response_key" in configured_fields
+                else UNSET
+            ),
+            auth_headers=auth_runtime.initial_headers or None,
+            probe_payload_extras=chat_payload_extras or None,
         )
-        if discovered_resp_key and not chat_response_key:
-            chat_response_key = discovered_resp_key
-
-        if not discovered_path:
-            probe_result = await probe_chat_endpoints(
-                target_url=target_url,
-                sbom=sbom_doc,
-                auth_headers=auth_runtime.initial_headers or None,
-                known_payload_key=(discovered_key if discovered_key != "message" else None),
-                known_payload_list=discovered_list,
-                probe_payload_extras=chat_payload_extras or None,
-            )
-            if probe_result:
-                discovered_path, discovered_key, discovered_list = probe_result
+        discovered_path = resolved_endpoint.path or "/chat"
+        discovered_key = resolved_endpoint.payload_key or "message"
+        discovered_list = resolved_endpoint.payload_list
+        chat_response_key = resolved_endpoint.response_key
+        pre_resolution_notes.extend(resolved_endpoint.notes)
 
         try:
             session_cfg, report = await resolve_target_session(

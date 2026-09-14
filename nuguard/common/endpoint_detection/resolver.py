@@ -133,7 +133,12 @@ async def resolve_chat_endpoint(
             payload_source = probed_payload.source
 
     # A configured or SBOM-selected endpoint may still need payload inference.
-    if resolved_path is not None and (not key_is_explicit or not list_is_explicit or not template_is_explicit):
+    if resolved_path is not None and (
+        not key_is_explicit
+        or not list_is_explicit
+        or not template_is_explicit
+        or not response_is_explicit
+    ):
         is_websocket = sbom is not None and indicates_websocket(
             sbom,
             chat_path=resolved_path,
