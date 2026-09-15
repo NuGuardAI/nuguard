@@ -8,6 +8,7 @@ from nuguard.sbom.adapters.go import (
     GoogleGenAIAdapter,
     GoOpenAIAdapter,
     LangChainGoAdapter,
+    OllamaSDKGoAdapter,
 )
 from nuguard.sbom.core.go_parser import parse_go
 from nuguard.sbom.types import ComponentType
@@ -143,6 +144,7 @@ func main() {
         GoOpenAIAdapter(),
         AnthropicSDKGoAdapter(),
         LangChainGoAdapter(),
+        OllamaSDKGoAdapter(),
     ):
         assert _extract(adapter, src) == []
 
@@ -225,3 +227,250 @@ func run() {
     assert len(tools) == 1
     assert tools[0].display_name == "no_description_tool"
     assert "description" not in tools[0].metadata
+
+
+# ---------------------------------------------------------------------------
+# ollama/ollama/api
+# ---------------------------------------------------------------------------
+
+_ADAPTER = OllamaSDKGoAdapter()
+
+
+def test_ollama_sdk_chat_request_emits_framework_and_model() -> None:
+    src = """
+package main
+
+import "github.com/ollama/ollama/api"
+
+func run(client *api.Client) {
+	req := api.ChatRequest{
+		Model: "llama3.2",
+	}
+	_ = req
+}
+"""
+    detections = _extract(_ADAPTER, src)
+    frameworks = _by_type(detections, ComponentType.FRAMEWORK)
+    models = _by_type(detections, ComponentType.MODEL)
+
+    assert len(frameworks) == 1
+    assert frameworks[0].canonical_name == "framework:ollama_sdk_go"
+    assert frameworks[0].metadata["framework"] == "ollama_sdk_go"
+    assert frameworks[0].metadata["provider"] == "ollama"
+    assert len(models) == 1
+    assert models[0].display_name == "llama3.2"
+    assert models[0].metadata["framework"] == "ollama_sdk_go"
+    assert models[0].metadata["provider"] == "ollama"
+    assert models[0].metadata["language"] == "golang"
+    assert models[0].confidence == 0.85
+    assert models[0].relationships
+    assert models[0].relationships[0].relationship_type == "USES"
+
+
+def test_ollama_sdk_generate_request_reads_model_field() -> None:
+    src = """
+package main
+
+import "github.com/ollama/ollama/api"
+
+func run() {
+	_ = api.GenerateRequest{Model: "mistral"}
+}
+"""
+    detections = _extract(_ADAPTER, src)
+    models = _by_type(detections, ComponentType.MODEL)
+
+    assert len(models) == 1
+    assert models[0].display_name == "mistral"
+    assert models[0].metadata["provider"] == "ollama"
+
+
+def test_ollama_sdk_embed_request_reads_model_field() -> None:
+    src = """
+package main
+
+import "github.com/ollama/ollama/api"
+
+func run() {
+	_ = api.EmbedRequest{Model: "nomic-embed-text"}
+}
+"""
+    detections = _extract(_ADAPTER, src)
+    models = _by_type(detections, ComponentType.MODEL)
+
+    assert len(models) == 1
+    assert models[0].display_name == "nomic-embed-text"
+    assert models[0].metadata["provider"] == "ollama"
+
+
+def test_ollama_sdk_embedding_request_reads_model_field() -> None:
+    src = """
+package main
+
+import "github.com/ollama/ollama/api"
+
+func run() {
+	_ = api.EmbeddingRequest{Model: "all-minilm"}
+}
+"""
+    detections = _extract(_ADAPTER, src)
+    models = _by_type(detections, ComponentType.MODEL)
+
+    assert len(models) == 1
+    assert models[0].display_name == "all-minilm"
+    assert models[0].metadata["provider"] == "ollama"
+
+
+def test_ollama_sdk_explicit_alias_is_detected() -> None:
+    src = """
+package main
+
+import ollamaapi "github.com/ollama/ollama/api"
+
+func run() {
+	_ = ollamaapi.ChatRequest{Model: "llama3.2"}
+}
+"""
+    detections = _extract(_ADAPTER, src)
+    models = _by_type(detections, ComponentType.MODEL)
+
+    assert len(models) == 1
+    assert models[0].display_name == "llama3.2"
+    assert models[0].metadata["provider"] == "ollama"
+
+
+def test_ollama_sdk_dot_import_unqualified_request_is_detected() -> None:
+    src = """
+package main
+
+import . "github.com/ollama/ollama/api"
+
+func run() {
+	_ = ChatRequest{Model: "llama3.2"}
+}
+"""
+    detections = _extract(_ADAPTER, src)
+    models = _by_type(detections, ComponentType.MODEL)
+
+    assert len(models) == 1
+    assert models[0].display_name == "llama3.2"
+
+
+def test_ollama_sdk_client_from_environment_is_framework_only() -> None:
+    src = """
+package main
+
+import "github.com/ollama/ollama/api"
+
+func run() {
+	client, _ := api.ClientFromEnvironment()
+	_ = client
+}
+"""
+    detections = _extract(_ADAPTER, src)
+
+    assert len(_by_type(detections, ComponentType.FRAMEWORK)) == 1
+    assert _by_type(detections, ComponentType.MODEL) == []
+
+
+def test_ollama_sdk_unresolved_model_yields_no_model_node() -> None:
+    src = """
+package main
+
+import "github.com/ollama/ollama/api"
+
+func run() {
+	_ = api.ChatRequest{Model: runtimeModel}
+}
+"""
+    detections = _extract(_ADAPTER, src)
+
+    assert len(_by_type(detections, ComponentType.FRAMEWORK)) == 1
+    assert _by_type(detections, ComponentType.MODEL) == []
+
+
+def test_ollama_sdk_ignores_root_module_without_api() -> None:
+    src = """
+package main
+
+import "github.com/ollama/ollama"
+
+func run() {
+	_ = api.ChatRequest{Model: "llama3.2"}
+}
+"""
+    result = parse_go(src, "main.go")
+
+    assert _ADAPTER.can_handle(result) is False
+    assert _extract(_ADAPTER, src) == []
+    assert _by_type(_extract(_ADAPTER, src), ComponentType.MODEL) == []
+
+
+def test_ollama_sdk_ignores_langchaingo_ollama_import() -> None:
+    src = """
+package main
+
+import "github.com/tmc/langchaingo/llms/ollama"
+
+func run() {
+	llm, _ := ollama.New()
+	_ = llm
+}
+"""
+    result = parse_go(src, "main.go")
+
+    assert _ADAPTER.can_handle(result) is False
+    assert _extract(_ADAPTER, src) == []
+    assert _by_type(_extract(_ADAPTER, src), ComponentType.MODEL) == []
+
+
+def test_ollama_sdk_local_unqualified_chat_request_is_not_a_model() -> None:
+    src = """
+package main
+
+import "github.com/ollama/ollama/api"
+
+type ChatRequest struct {
+	Model string
+}
+
+func run() {
+	_ = ChatRequest{Model: "local-model"}
+}
+"""
+    detections = _extract(_ADAPTER, src)
+
+    assert len(_by_type(detections, ComponentType.FRAMEWORK)) == 1
+    assert _by_type(detections, ComponentType.MODEL) == []
+
+
+def test_ollama_sdk_wrong_qualifier_is_not_a_model() -> None:
+    src = """
+package main
+
+import "github.com/ollama/ollama/api"
+
+func run() {
+	_ = local.ChatRequest{Model: "local-model"}
+}
+"""
+    detections = _extract(_ADAPTER, src)
+
+    assert len(_by_type(detections, ComponentType.FRAMEWORK)) == 1
+    assert _by_type(detections, ComponentType.MODEL) == []
+
+
+def test_ollama_sdk_blank_import_does_not_match_unqualified_request() -> None:
+    src = """
+package main
+
+import _ "github.com/ollama/ollama/api"
+
+func run() {
+	_ = ChatRequest{Model: "local-model"}
+}
+"""
+    detections = _extract(_ADAPTER, src)
+
+    assert len(_by_type(detections, ComponentType.FRAMEWORK)) == 1
+    assert _by_type(detections, ComponentType.MODEL) == []
