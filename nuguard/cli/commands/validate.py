@@ -172,6 +172,9 @@ def _do_validate(
                 canary_path=resolved_canary_path,
                 baseline_path=baseline_path,
                 sbom_path=sbom_path,
+                llm_model=cfg.litellm_model,
+                llm_api_key=cfg.litellm_api_key,
+                llm_api_base=cfg.litellm_api_base if cfg.litellm_model.startswith("azure") else None,
             )
         )
     except Exception as exc:
@@ -243,6 +246,9 @@ async def _run_validate(
     canary_path: Optional[Path],
     baseline_path: Optional[Path],
     sbom_path: Optional[Path] = None,
+    llm_model: Optional[str] = None,
+    llm_api_key: Optional[str] = None,
+    llm_api_base: Optional[str] = None,
 ) -> ValidateRunResult:
     from nuguard.models.validate import CapabilityMap  # noqa: PLC0415
     from nuguard.validate.runner import ValidateRunner  # noqa: PLC0415
@@ -256,6 +262,28 @@ async def _run_validate(
             _log.debug("Loaded SBOM from %s for endpoint discovery", sbom_path)
         except Exception as exc:
             _log.debug("Could not load SBOM for endpoint discovery: %s", exc)
+
+    # Auto-enrich low-confidence SBOMs before scenario generation (mirrors
+    # behavior/redteam) — also lets a runtime-probe-confirmed chat endpoint
+    # from a prior run be reused via the enriched artifact's content-hash cache.
+    if sbom is not None:
+        from nuguard.cli.common import enrich_sbom_for_run  # noqa: PLC0415
+
+        sbom = await enrich_sbom_for_run(
+            sbom=sbom,
+            sbom_path=sbom_path,
+            target_url=getattr(validate_config, "target", None) or None,
+            llm_enabled=bool(policy_path),
+            llm_model=llm_model,
+            llm_api_key=llm_api_key,
+            llm_api_base=llm_api_base,
+            probe_auth_header=(
+                getattr(auth_config, "header", None)
+                if getattr(auth_config, "type", "none") != "none"
+                else None
+            ),
+            log_prefix="validate",
+        )
 
     policy = None
     controls = None
@@ -297,6 +325,7 @@ async def _run_validate(
         canary_config=canary_config,
         baseline_capability_map=baseline_map,
         sbom=sbom,
+        sbom_path=sbom_path,
     )
     return await runner.run()
 

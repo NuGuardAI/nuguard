@@ -1,10 +1,12 @@
 """Tests for ValidateRunner — mocked HTTP, no live target."""
 from __future__ import annotations
 
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
 import pytest
 import respx
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from nuguard.common.auth import AuthConfig
 from nuguard.config import ValidateBoundaryAssertion, ValidateConfig
@@ -73,12 +75,100 @@ async def test_discovered_endpoint_metadata_is_consistent():
         sbom=MagicMock(),
     )
 
-    with patch.object(ValidateRunner, "_discover_endpoint", new=AsyncMock(return_value="/api/chat")):
+    from nuguard.common.endpoint_detection import EndpointSource, PayloadShape, ResolvedEndpoint
+
+    with patch(
+        "nuguard.validate.runner.resolve_chat_endpoint",
+        new=AsyncMock(
+            return_value=ResolvedEndpoint(
+                path="/api/chat",
+                payload=PayloadShape(key="message", source=EndpointSource.PROBE),
+                path_source=EndpointSource.PROBE,
+            )
+        ),
+    ):
         result = await runner.run()
 
     assert result.scenarios_executed >= 1
     assert result.effective_endpoint == "/api/chat"
     assert result.target_endpoint_source == "probe"
+
+
+def _endpoint_node(path: str, **meta_kwargs: Any):
+    from nuguard.sbom.models import Node, NodeMetadata
+    from nuguard.sbom.types import ComponentType
+
+    return Node(
+        name=path,
+        component_type=ComponentType.API_ENDPOINT,
+        confidence=0.9,
+        metadata=NodeMetadata(endpoint=path, method="POST", **meta_kwargs),
+    )
+
+
+def test_confirmed_endpoint_from_sbom_requires_runtime_probe_source() -> None:
+    from nuguard.sbom.models import AiSbomDocument
+    from nuguard.validate.runner import ValidateRunner
+
+    node = _endpoint_node(
+        "/api/chat",
+        chat_payload_key="prompt",
+        chat_payload_list=False,
+        response_text_key="answer",
+        extras={"source": "runtime_probe"},
+    )
+    cfg = _make_config(target_endpoint="")
+    runner = ValidateRunner(
+        validate_config=cfg,
+        auth_config=AuthConfig(type="none"),
+        sbom=AiSbomDocument(target="./app", nodes=[node]),
+    )
+
+    assert runner._confirmed_endpoint_from_sbom("/api/chat") == ("/api/chat", "prompt", False, "answer")
+
+    node_unconfirmed = _endpoint_node("/api/chat", chat_payload_key="prompt", extras={"source": "auto_enrichment"})
+    runner2 = ValidateRunner(
+        validate_config=cfg,
+        auth_config=AuthConfig(type="none"),
+        sbom=AiSbomDocument(target="./app", nodes=[node_unconfirmed]),
+    )
+    assert runner2._confirmed_endpoint_from_sbom("/api/chat") is None
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_confirmed_sbom_endpoint_skips_live_resolver():
+    """When the SBOM already has a runtime-probe-confirmed endpoint, resolve_chat_endpoint
+    must not be called at all."""
+    _bootstrap_route(respx.mock)
+    respx.mock.post("http://localhost:9999/api/chat").mock(
+        return_value=httpx.Response(200, json={"response": "Hello, how can I help?"})
+    )
+
+    from nuguard.sbom.models import AiSbomDocument
+    from nuguard.validate.runner import ValidateRunner
+
+    node = _endpoint_node(
+        "/api/chat",
+        chat_payload_key="message",
+        chat_payload_list=False,
+        extras={"source": "runtime_probe"},
+    )
+    cfg = _make_config(workflows=["happy_path"], target_endpoint="")
+    runner = ValidateRunner(
+        validate_config=cfg,
+        auth_config=AuthConfig(type="none"),
+        sbom=AiSbomDocument(target="./app", nodes=[node]),
+    )
+
+    with patch(
+        "nuguard.validate.runner.resolve_chat_endpoint",
+        new=AsyncMock(side_effect=AssertionError("resolve_chat_endpoint should not be called")),
+    ):
+        result = await runner.run()
+
+    assert result.effective_endpoint == "/api/chat"
+    assert result.target_endpoint_source == "sbom"
 
 
 # ── Boundary assertion ────────────────────────────────────────────────────────
