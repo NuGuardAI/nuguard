@@ -3518,7 +3518,12 @@ class RedteamOrchestrator:
         self._chat_payload_list = resolved.payload_list
         self._chat_payload_value_template = resolved.payload.value_template
         self._chat_response_key = resolved.response_key or self._chat_response_key
-        if resolved.path_source.value in {"probe", "browser"}:
+        # "config" means resolve_chat_endpoint just echoed back self._chat_path
+        # (Option B, path already known) — leave __init__'s own "config"/"sbom"
+        # classification alone. Any other source reflects genuine discovery
+        # work done by the resolver itself (Option A) and should replace the
+        # stale "default" placeholder set in __init__.
+        if resolved.path_source.value != "config":
             self._chat_path_source = resolved.path_source.value
         _log.info(
             "redteam: common resolver selected endpoint %s (payload_key=%r list=%s source=%s)",
