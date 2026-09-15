@@ -928,7 +928,9 @@ class BehaviorRunner:
         # discovery can't find that origin because every path under target_url
         # is served by the frontend's catch-all route. Best-effort: scan the
         # served bundle for a baked-in API base URL before auth bootstrap runs.
-        from nuguard.common.endpoint_probe import discover_api_origin_from_frontend_bundle
+        from nuguard.common.endpoint_detection.frontend_origin import (
+            discover_api_origin_from_frontend_bundle,
+        )
 
         _bundle_origin, _bundle_notes = await discover_api_origin_from_frontend_bundle(target_url)
         if _bundle_origin:
@@ -940,8 +942,8 @@ class BehaviorRunner:
 
         endpoint = getattr(self._config, "target_endpoint", "") or ""
         payload_key = getattr(self._config, "chat_payload_key", "message") or "message"
-        from nuguard.common.endpoint_probe import sbom_indicates_websocket  # noqa: PLC0415
-        _is_websocket = sbom_indicates_websocket(
+        from nuguard.common.endpoint_detection import indicates_websocket
+        _is_websocket = indicates_websocket(
             self._sbom, chat_path=endpoint, chat_payload_key=payload_key
         )
         try:
@@ -1045,6 +1047,19 @@ class BehaviorRunner:
         if self._endpoint_explicitly_set is not None:
             return self._endpoint_explicitly_set
         return bool(getattr(self._config, "target_endpoint", ""))
+
+    def _discovery_fallback_endpoints(self) -> list[tuple[str, str, bool, str | None]]:
+        """Ranked SBOM candidates for ``DiscoveryRequest.fallback_endpoints``.
+
+        Empty when the endpoint was explicitly configured (no rotation away
+        from a user's choice) or when no SBOM is available.
+        """
+        if self._endpoint_is_explicit() or not self._sbom:
+            return []
+        from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
+            discover_chat_candidates_from_sbom,
+        )
+        return list(discover_chat_candidates_from_sbom(self._sbom)[1:])[:4]
 
     def _coverage_director(self) -> "CoverageDirector":
         """Lazily build (and cache) the CoverageDirector for guided coverage scenarios."""
@@ -2151,15 +2166,7 @@ class BehaviorRunner:
                 chain_id="behavior-pre-scan",
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
-            from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-                discover_chat_candidates_from_sbom as _disc_candidates,
-            )
-            _explicit_endpoint = self._endpoint_is_explicit()
-            _disc_fallbacks = (
-                []
-                if _explicit_endpoint
-                else (list(_disc_candidates(self._sbom)[1:]) if self._sbom else [])
-            )
+            _disc_fallbacks = self._discovery_fallback_endpoints()
             _cached_profile = self._cached_discovery_profile()
             if _cached_profile is not None:
                 profile = _cached_profile
@@ -2171,7 +2178,7 @@ class BehaviorRunner:
                 _outcome = await run_discovery(
                     client,
                     _disc_session,
-                    DiscoveryRequest(use_case=_use_case, max_turns=2, fallback_endpoints=_disc_fallbacks[:4]),
+                    DiscoveryRequest(use_case=_use_case, max_turns=2, fallback_endpoints=_disc_fallbacks),
                 )
                 profile = _outcome.profile
                 for _disc_note in _outcome.notes:
@@ -2541,7 +2548,6 @@ class BehaviorRunner:
                 chain_id="behavior-pre-scan",
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
-            _explicit_endpoint = self._endpoint_is_explicit()
 
             _cached_profile = self._cached_discovery_profile()
             if _cached_profile is not None:
@@ -2556,18 +2562,11 @@ class BehaviorRunner:
                     DiscoveryRequest,
                     run_discovery,
                 )
-                from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-                    discover_chat_candidates_from_sbom as _discover_candidates,
-                )
-                _sbom_fallbacks = (
-                    []
-                    if _explicit_endpoint
-                    else (list(_discover_candidates(self._sbom)[1:]) if self._sbom else [])
-                )
+                _sbom_fallbacks = self._discovery_fallback_endpoints()
                 _outcome = await run_discovery(
                     client,
                     _disc_session,
-                    DiscoveryRequest(use_case=_use_case or "", max_turns=2, fallback_endpoints=_sbom_fallbacks[:4]),
+                    DiscoveryRequest(use_case=_use_case or "", max_turns=2, fallback_endpoints=_sbom_fallbacks),
                 )
                 self._pre_scan_profile = _outcome.profile
                 self._judge.set_profile(_outcome.profile)

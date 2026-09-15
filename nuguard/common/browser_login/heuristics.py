@@ -7,7 +7,7 @@ Each candidate list is tried in order by the caller (``session.py``); a
 config-supplied override (``BrowserDiscoveryConfig``) is always prepended so
 explicit per-app configuration wins over these generic defaults, mirroring
 the config-override-then-generic-fallback layering already used by
-``nuguard/common/endpoint_probe.py``.
+``nuguard/common/endpoint_detection``.
 """
 from __future__ import annotations
 

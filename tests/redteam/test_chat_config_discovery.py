@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nuguard.redteam.executor.orchestrator import _discover_chat_config
+from nuguard.common.endpoint_detection.sbom import discover_chat_config_from_sbom
 from nuguard.sbom.models import AiSbomDocument, Node, ScanSummary
 from nuguard.sbom.types import ComponentType
 
@@ -44,7 +44,7 @@ def test_discovery_prefers_source_backed_queue_endpoint_over_synthetic_chat_mess
         edges=[],
     )
 
-    path, payload_key, payload_list, response_key = _discover_chat_config(
+    path, payload_key, payload_list, response_key = discover_chat_config_from_sbom(
         sbom=sbom,
         chat_path="",
         chat_payload_key="message",
@@ -91,7 +91,7 @@ def test_langgraph_endpoint_discovered_without_payload_key_in_sbom() -> None:
         edges=[],
     )
 
-    path, payload_key, payload_list, response_key = _discover_chat_config(
+    path, payload_key, payload_list, response_key = discover_chat_config_from_sbom(
         sbom=sbom,
         chat_path="",
         chat_payload_key="message",
@@ -123,7 +123,7 @@ def test_langgraph_inference_skipped_without_langgraph_framework() -> None:
         edges=[],
     )
 
-    path, payload_key, payload_list, response_key = _discover_chat_config(
+    path, payload_key, payload_list, response_key = discover_chat_config_from_sbom(
         sbom=sbom,
         chat_path="/chat",
         chat_payload_key="message",
@@ -159,7 +159,7 @@ def test_explicit_payload_key_beats_langgraph_inference() -> None:
         edges=[],
     )
 
-    path, payload_key, payload_list, response_key = _discover_chat_config(
+    path, payload_key, payload_list, response_key = discover_chat_config_from_sbom(
         sbom=sbom,
         chat_path="",
         chat_payload_key="message",
@@ -190,7 +190,7 @@ def test_explicit_chat_path_is_authoritative_over_sbom_candidates() -> None:
         edges=[],
     )
 
-    path, payload_key, payload_list, response_key = _discover_chat_config(
+    path, payload_key, payload_list, response_key = discover_chat_config_from_sbom(
         sbom=sbom,
         chat_path="/chat",
         chat_payload_key="message",
