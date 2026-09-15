@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -30,6 +30,8 @@ from nuguard.sbom.types import ComponentType
 from nuguard.validate.scenarios import build_scenarios
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from nuguard.common.auth import AuthConfig
     from nuguard.models.validate import CapabilityMap
     from nuguard.sbom.models import AiSbomDocument
@@ -141,6 +143,7 @@ class ValidateRunner:
         baseline_capability_map: "CapabilityMap | None" = None,
         run_id: str | None = None,
         sbom: "AiSbomDocument | None" = None,
+        sbom_path: "Path | None" = None,
     ) -> None:
         self._config = validate_config
         self._auth_config = auth_config
@@ -150,8 +153,36 @@ class ValidateRunner:
         self._baseline_map = baseline_capability_map
         self._run_id = run_id or str(uuid.uuid4())
         self._sbom = sbom
+        self._sbom_path = sbom_path
         # Set during run() — holds the live AuthSession after bootstrap
         self._bootstrapper: AuthBootstrapper | None = None
+
+    def _confirmed_endpoint_from_sbom(
+        self, path: str
+    ) -> "tuple[str, str, bool, str | None] | None":
+        """Return ``(path, payload_key, payload_list, response_key)`` when the SBOM
+        already carries a runtime-probe-confirmed payload shape for *path* (from
+        a prior behavior/redteam/validate run persisted into the enriched SBOM).
+
+        Mirrors ``RedteamOrchestrator._chat_endpoint_confirmed`` /
+        ``BehaviorAnalyzer._confirmed_endpoint_from_sbom`` so a
+        previously-confirmed endpoint isn't re-probed on every run.
+        """
+        if self._sbom is None:
+            return None
+        from nuguard.common.endpoint_detection.constants import PROBE_SOURCE_RUNTIME_PROBE
+
+        for node in self._sbom.nodes:
+            meta = node.metadata
+            if (
+                node.component_type == ComponentType.API_ENDPOINT
+                and meta is not None
+                and meta.endpoint == path
+                and meta.chat_payload_key is not None
+                and (meta.extras or {}).get("source") == PROBE_SOURCE_RUNTIME_PROBE
+            ):
+                return path, meta.chat_payload_key, bool(meta.chat_payload_list), meta.response_text_key
+        return None
 
     async def run(self) -> ValidateRunResult:
         """Execute all validate scenarios and return a ValidateRunResult."""
@@ -193,38 +224,76 @@ class ValidateRunner:
         # ── Step 0b: Resolve endpoint and payload using the common resolver ──
         # Runs after bootstrap so live session headers are available to probes.
         configured_fields = self._config.model_fields_set
-        resolved_endpoint = await resolve_chat_endpoint(
-            target_url=target_url,
-            sbom=self._sbom,
-            endpoint=(
-                endpoint
-                if endpoint and "target_endpoint" in configured_fields
-                else UNSET
-            ),
-            payload_key=(
-                self._config.chat_payload_key
-                if "chat_payload_key" in configured_fields
-                else UNSET
-            ),
-            payload_list=(
-                self._config.chat_payload_list
-                if "chat_payload_list" in configured_fields
-                else UNSET
-            ),
-            response_key=(
-                self._config.chat_response_key
-                if "chat_response_key" in configured_fields
-                and self._config.chat_response_key
-                else UNSET
-            ),
-            auth_headers=bootstrapper.session.headers() or None,
-            timeout=min(self._config.request_timeout, 15.0),
-        )
-        endpoint = resolved_endpoint.path or "/chat"
-        endpoint_source = resolved_endpoint.path_source.value
-        resolved_payload_key = resolved_endpoint.payload_key or "message"
-        resolved_payload_list = resolved_endpoint.payload_list
-        resolved_response_key = resolved_endpoint.response_key
+        _key_explicit = "chat_payload_key" in configured_fields
+        _list_explicit = "chat_payload_list" in configured_fields
+        _response_explicit = "chat_response_key" in configured_fields and bool(self._config.chat_response_key)
+
+        def _persist_probe_result(result: Any) -> None:
+            if self._sbom_path is None or self._sbom is None:
+                return
+            try:
+                from nuguard.common.auto_sbom_enricher import (
+                    persist_probe_result_to_sbom,  # noqa: PLC0415
+                )
+
+                persist_probe_result_to_sbom(result, self._sbom, self._sbom_path)
+            except Exception as exc:  # noqa: BLE001 - persistence is best effort
+                _log.debug("validate: probe result persist failed: %s", exc)
+
+        # Skip resolve_chat_endpoint (and any live probing) entirely when the
+        # SBOM already has a runtime-probe-confirmed payload shape for the
+        # candidate endpoint and none of the payload fields were explicitly
+        # pinned by the user (an explicit value must still win over a stale
+        # SBOM record, same as resolve_chat_endpoint itself).
+        _confirmed = None
+        if not (_key_explicit or _list_explicit or _response_explicit):
+            _candidate_path = endpoint if endpoint and "target_endpoint" in configured_fields else ""
+            if not _candidate_path and self._sbom is not None:
+                from nuguard.common.endpoint_detection.sbom import (
+                    discover_chat_config,  # noqa: PLC0415
+                )
+
+                _candidate_path = discover_chat_config(self._sbom, chat_path=None)[0] or ""
+            if _candidate_path:
+                _confirmed = self._confirmed_endpoint_from_sbom(_candidate_path)
+
+        if _confirmed is not None:
+            endpoint, resolved_payload_key, resolved_payload_list, resolved_response_key = _confirmed
+            endpoint_source = "sbom"
+        else:
+            resolved_endpoint = await resolve_chat_endpoint(
+                target_url=target_url,
+                sbom=self._sbom,
+                endpoint=(
+                    endpoint
+                    if endpoint and "target_endpoint" in configured_fields
+                    else UNSET
+                ),
+                payload_key=(
+                    self._config.chat_payload_key
+                    if "chat_payload_key" in configured_fields
+                    else UNSET
+                ),
+                payload_list=(
+                    self._config.chat_payload_list
+                    if "chat_payload_list" in configured_fields
+                    else UNSET
+                ),
+                response_key=(
+                    self._config.chat_response_key
+                    if "chat_response_key" in configured_fields
+                    and self._config.chat_response_key
+                    else UNSET
+                ),
+                auth_headers=bootstrapper.session.headers() or None,
+                timeout=min(self._config.request_timeout, 15.0),
+                probe_result_callback=_persist_probe_result,
+            )
+            endpoint = resolved_endpoint.path or "/chat"
+            endpoint_source = resolved_endpoint.path_source.value
+            resolved_payload_key = resolved_endpoint.payload_key or "message"
+            resolved_payload_list = resolved_endpoint.payload_list
+            resolved_response_key = resolved_endpoint.response_key
         if endpoint_source == "unknown":
             endpoint_source = "default"
         if not endpoint:
