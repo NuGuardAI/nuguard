@@ -52,6 +52,8 @@ from nuguard.redteam.public_api import (
     RedteamRunRequest,
     RedteamRunResult,
 )
+from nuguard.remediation.models import RemediationArtefact, RuntimeRemediationContext
+from nuguard.remediation.pentest import PentestRemediationFinding
 from nuguard.sbom.public_api import (
     SbomEnrichmentLlmConfig,
     SbomEnrichmentRequest,
@@ -78,6 +80,9 @@ from nuguard.sbom.toolbox.public_api import (
 _SCHEMA_FILE = Path(__file__).parent / "public_api.schema.json"
 
 _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
+    "remediation.RemediationArtefact": RemediationArtefact,
+    "remediation.RuntimeRemediationContext": RuntimeRemediationContext,
+    "remediation.PentestRemediationFinding": PentestRemediationFinding,
     "analysis.AnalysisRunRequest": AnalysisRunRequest,
     "analysis.AnalysisRunResult": AnalysisRunResult,
     "behavior.BehaviorAnalysisRequest": BehaviorAnalysisRequest,
@@ -148,7 +153,7 @@ def test_committed_public_api_schema_matches_models() -> None:
 
     assert committed == live, (
         "public_api.schema.json is out of sync with public Pydantic API models. "
-        "Regenerate with: uv run python -c \"import json; "
+        'Regenerate with: uv run python -c "import json; '
         "from tests.contracts.test_public_api_schema_contract import _live_schema_snapshot; "
         "open('tests/contracts/public_api.schema.json','w',encoding='utf-8').write("
         "json.dumps(_live_schema_snapshot(), indent=2) + '\\n')\""
