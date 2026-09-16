@@ -157,6 +157,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         MCPGoClientAdapter,
         MCPGoServerAdapter,
         NetHTTPAdapter,
+        OllamaSDKGoAdapter,
     )
     from .java import JavaAIAdapter, JavaWebAdapter
     from .python import (
@@ -272,6 +273,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         GoOpenAIAdapter(),
         AnthropicSDKGoAdapter(),
         GoogleGenAIAdapter(),
+        OllamaSDKGoAdapter(),
         GoDatastoreAdapter(),
         GoJWTAdapter(),
         GoOAuth2Adapter(),
