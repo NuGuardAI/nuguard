@@ -7,6 +7,7 @@ module reconciles that structured output back onto each finding's flat
 reports) so both representations stay in sync without the old per-GoalType
 template strings.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -114,6 +115,19 @@ def backfill_finding_remediation(
         # merge risks one finding's remediation drowning out a sibling's.
         # Prefer this finding's own preserved rationale when the artefact
         # was merged.
+        if matched_artefact.runtime is not None:
+            context = matched_artefact.runtime
+            text = " ".join(
+                [
+                    matched_artefact.change_detail or matched_artefact.rationale,
+                    "Verification: see advisory action "
+                    + context.action_id
+                    + " for implementation guidance and target-specific retest steps.",
+                    "Advisory only; no change has been applied.",
+                ]
+            )
+            _set(finding, "remediation", text)
+            continue
         own_rationale = matched_artefact.per_finding_rationale.get(finding_id)
         rationale = own_rationale if own_rationale else matched_artefact.rationale
         _set(finding, "remediation", rationale)

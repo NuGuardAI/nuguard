@@ -123,7 +123,7 @@ async def test_falls_back_to_live_probe_when_no_sbom_candidate_works() -> None:
     sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
 
     with patch(
-        "nuguard.common.endpoint_probe.probe_chat_endpoints",
+        "nuguard.common.endpoint_detection.live_probe.probe_chat_endpoints",
         new=AsyncMock(return_value=("/v2/chat", "message", False)),
     ):
         outcome = await _validate(
@@ -143,7 +143,7 @@ async def test_reports_failure_when_nothing_works() -> None:
 
     with (
         patch(
-            "nuguard.common.endpoint_probe.probe_chat_endpoints",
+            "nuguard.common.endpoint_detection.live_probe.probe_chat_endpoints",
             new=AsyncMock(return_value=None),
         ),
         patch(
@@ -170,7 +170,7 @@ async def test_falls_back_to_browser_sniff_when_probe_also_fails() -> None:
 
     with (
         patch(
-            "nuguard.common.endpoint_probe.probe_chat_endpoints",
+            "nuguard.common.endpoint_detection.live_probe.probe_chat_endpoints",
             new=AsyncMock(return_value=None),
         ),
         patch(
@@ -457,7 +457,7 @@ async def test_bootstrap_runs_after_probe_rotation_settles() -> None:
     )
 
     with patch(
-        "nuguard.common.endpoint_probe.probe_chat_endpoints",
+        "nuguard.common.endpoint_detection.live_probe.probe_chat_endpoints",
         new=AsyncMock(return_value=(chat_path, "content", False)),
     ):
         outcome = await _validate(

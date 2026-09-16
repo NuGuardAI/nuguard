@@ -703,10 +703,10 @@ def _print_redteam_turn(
 
 # ---------------------------------------------------------------------------
 # Chat config discovery — delegates to the shared implementation in
-# nuguard.common.endpoint_probe so that BehaviorAnalyzer can reuse it.
+# nuguard.common.endpoint_detection.sbom so that BehaviorAnalyzer can reuse it.
 # ---------------------------------------------------------------------------
-from nuguard.common.endpoint_probe import (  # noqa: E402
-    discover_chat_config_from_sbom as _discover_chat_config,
+from nuguard.common.endpoint_detection.sbom import (  # noqa: E402
+    discover_chat_config_from_sbom,
 )
 
 
@@ -889,7 +889,7 @@ class RedteamOrchestrator:
         self._endpoint_circuit_open = False
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
-            _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
+            discover_chat_config_from_sbom(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
         # Payload value template from OpenAPI schema detection (ProbeResult.value_template).
         # Populated by _maybe_probe_endpoints when the schema reveals a nested shape.
@@ -1213,7 +1213,9 @@ class RedteamOrchestrator:
         # discovery can't find that origin because every path under target_url
         # is served by the frontend's catch-all route. Best-effort: scan the
         # served bundle for a baked-in API base URL before auth bootstrap runs.
-        from nuguard.common.endpoint_probe import discover_api_origin_from_frontend_bundle
+        from nuguard.common.endpoint_detection.frontend_origin import (
+            discover_api_origin_from_frontend_bundle,
+        )
 
         _bundle_origin, _bundle_notes = await discover_api_origin_from_frontend_bundle(
             self._target_url
@@ -1445,7 +1447,7 @@ class RedteamOrchestrator:
         # check whether the response looks like an anonymous/empty session and
         # emit a config note pointing the user toward chat_payload_extras.
         if _pre_scan_profile is not None and _pre_scan_profile.is_empty:
-            from nuguard.common.endpoint_probe import (
+            from nuguard.common.endpoint_detection.live_probe import (
                 is_empty_session_response as _ies,  # noqa: PLC0415
             )
             if _ies(_pre_scan_profile.raw_response or ""):
@@ -1711,7 +1713,7 @@ class RedteamOrchestrator:
             auth_headers=effective_headers or None,
             sbom=self._sbom,
             adk_cfg=None,
-            # chat_path was already resolved by _discover_chat_config in __init__,
+            # chat_path was already resolved by discover_chat_config_from_sbom in __init__,
             # so treat endpoint/payload as explicitly set to skip re-discovery.
             explicitly_set=frozenset({"target_endpoint", "chat_payload_key", "chat_response_key"}),
             payload_extras=self._chat_payload_extras or None,
@@ -1731,7 +1733,7 @@ class RedteamOrchestrator:
         ):
             # Pre-flight endpoint validation: verify the resolved chat endpoint is
             # actually reachable before running any scenario.  SBOM-based scoring in
-            # _discover_chat_config can pick the wrong candidate (e.g. /api/chat when
+            # discover_chat_config_from_sbom can pick the wrong candidate (e.g. /api/chat when
             # only /api/chat/respond-visual is live); on 404/405 the target's normal
             # 4xx-doesn't-count-toward-the-circuit-breaker behaviour would otherwise
             # let an entire scan burn through every scenario with no findings.  Rotate
@@ -3461,6 +3463,10 @@ class RedteamOrchestrator:
         """True if the SBOM already carries a runtime-probe-confirmed payload
         shape for this exact endpoint (from this run's enrichment load or a
         prior behavior/redteam run persisted into the enriched SBOM)."""
+        from nuguard.common.endpoint_detection.constants import (  # noqa: PLC0415
+            PROBE_SOURCE_RUNTIME_PROBE,
+        )
+
         for node in self._sbom.nodes:
             meta = node.metadata
             if (
@@ -3468,116 +3474,61 @@ class RedteamOrchestrator:
                 and meta is not None
                 and meta.endpoint == path
                 and meta.chat_payload_key is not None
-                and (meta.extras or {}).get("source") == "runtime_probe"
+                and (meta.extras or {}).get("source") == PROBE_SOURCE_RUNTIME_PROBE
             ):
                 return True
         return False
 
     async def _maybe_probe_endpoints(self) -> None:
-        """Live-probe SBOM endpoints when no explicit chat path is configured.
+        """Use the common resolver for full or targeted endpoint detection."""
+        from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
 
-        Option A: path unknown — full endpoint + key discovery.
-        Option B: path known but key is default — hint_path probe to detect
-                  nested payload structure (e.g. from OpenAPI schema) without
-                  changing the endpoint.
-        """
-        from nuguard.common.endpoint_probe import probe_chat_endpoints  # noqa: PLC0415
-
-        auth_headers: dict[str, str] = {}
-        if self._extra_headers:
-            auth_headers.update(self._extra_headers)
-
-        if self._chat_path:
-            # Option B: path already resolved — detect nested payload shape only.
-            # "message" is both the unresolved default *and* a common real
-            # payload key, so it can't tell "never probed" from "confirmed and
-            # happens to be message" on its own — check the SBOM for a prior
-            # runtime-probe confirmation on this exact endpoint too (issue:
-            # redteam re-probing live on every run despite a behavior run
-            # already having confirmed and persisted this endpoint's shape).
-            if self._chat_payload_key != "message" or self._chat_endpoint_confirmed(
-                self._chat_path
-            ):
-                return  # key explicitly set, or already confirmed via a prior probe
-            _log.info(
-                "redteam: endpoint known (%s) — probing payload structure via OpenAPI",
-                self._chat_path,
-            )
-            result = await probe_chat_endpoints(
-                target_url=self._target_url,
-                sbom=self._sbom,
-                auth_headers=auth_headers or None,
-                timeout=15.0,
-                known_payload_key=None,
-                known_payload_list=self._chat_payload_list,
-                known_response_key=self._chat_response_key,
-                probe_payload_extras=self._chat_payload_extras or None,
-                hint_path=self._chat_path,
-                llm=self._redteam_llm if self._probe_llm else None,
-            )
-            if result:
-                _, pay_key, pay_list = result
-                self._chat_payload_key = pay_key
-                self._chat_payload_list = pay_list
-                self._chat_payload_value_template = result.value_template
-                _log.info(
-                    "redteam: payload structure detected for %s (key=%r list=%s template=%s)",
-                    self._chat_path, pay_key, pay_list, bool(result.value_template),
-                )
-                if self._sbom_path is not None:
-                    try:
-                        from nuguard.common.auto_sbom_enricher import (
-                            persist_probe_result_to_sbom,  # noqa: PLC0415
-                        )
-                        persist_probe_result_to_sbom(result, self._sbom, self._sbom_path)
-                    except Exception as _pe:  # noqa: BLE001
-                        _log.debug("redteam: probe result persist failed: %s", _pe)
+        if self._chat_path and self._chat_endpoint_confirmed(self._chat_path):
             return
 
-        # Option A: no path — full endpoint + key discovery.
-        _log.info(
-            "redteam: target_endpoint not configured — probing SBOM endpoints at %s",
-            self._target_url,
-        )
-        result = await probe_chat_endpoints(
+        def _persist_probe_result(result: Any) -> None:
+            if self._sbom_path is None:
+                return
+            try:
+                from nuguard.common.auto_sbom_enricher import persist_probe_result_to_sbom
+
+                persist_probe_result_to_sbom(result, self._sbom, self._sbom_path)
+            except Exception as exc:  # noqa: BLE001 - persistence is best effort
+                _log.debug("redteam: probe result persist failed: %s", exc)
+
+        resolved = await resolve_chat_endpoint(
             target_url=self._target_url,
             sbom=self._sbom,
-            auth_headers=auth_headers or None,
-            timeout=15.0,
-            known_payload_key=(
+            endpoint=self._chat_path or UNSET,
+            payload_key=(
                 self._chat_payload_key
                 if self._chat_payload_key != "message"
-                else None
+                else UNSET
             ),
-            known_payload_list=self._chat_payload_list,
-            known_response_key=self._chat_response_key,
+            payload_list=UNSET,
+            response_key=self._chat_response_key or UNSET,
+            auth_headers=self._extra_headers or None,
+            timeout=min(self._request_timeout, 15.0),
             probe_payload_extras=self._chat_payload_extras or None,
             llm=self._redteam_llm if self._probe_llm else None,
+            probe_result_callback=_persist_probe_result,
         )
-        if result:
-            path, pay_key, pay_list = result
-            _log.info(
-                "redteam: discovered endpoint %s (payload_key=%r list=%s)",
-                path, pay_key, pay_list,
-            )
-            self._chat_path = path
-            self._chat_payload_key = pay_key
-            self._chat_payload_list = pay_list
-            self._chat_payload_value_template = result.value_template
-            self._chat_path_source = "probe"
-            if self._sbom_path is not None:
-                try:
-                    from nuguard.common.auto_sbom_enricher import (
-                        persist_probe_result_to_sbom,  # noqa: PLC0415
-                    )
-                    persist_probe_result_to_sbom(result, self._sbom, self._sbom_path)
-                except Exception as _pe:  # noqa: BLE001
-                    _log.debug("redteam: probe result persist failed: %s", _pe)
-        else:
-            _log.warning(
-                "redteam: endpoint probe found nothing — keeping default %r",
-                self._chat_path or "/chat",
-            )
-            if not self._chat_path:
-                self._chat_path = "/chat"
-                self._chat_path_source = "auto"
+        self._chat_path = resolved.path or "/chat"
+        self._chat_payload_key = resolved.payload_key or "message"
+        self._chat_payload_list = resolved.payload_list
+        self._chat_payload_value_template = resolved.payload.value_template
+        self._chat_response_key = resolved.response_key or self._chat_response_key
+        # "config" means resolve_chat_endpoint just echoed back self._chat_path
+        # (Option B, path already known) — leave __init__'s own "config"/"sbom"
+        # classification alone. Any other source reflects genuine discovery
+        # work done by the resolver itself (Option A) and should replace the
+        # stale "default" placeholder set in __init__.
+        if resolved.path_source.value != "config":
+            self._chat_path_source = resolved.path_source.value
+        _log.info(
+            "redteam: common resolver selected endpoint %s (payload_key=%r list=%s source=%s)",
+            self._chat_path,
+            self._chat_payload_key,
+            self._chat_payload_list,
+            self._chat_path_source,
+        )

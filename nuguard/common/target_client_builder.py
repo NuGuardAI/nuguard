@@ -443,9 +443,9 @@ def build_target_app_client(
     discovered_response_key: str | None = None
     if sbom is not None and (not config_has_explicit_endpoint or not config_has_explicit_payload):
         try:
-            from nuguard.redteam.executor.orchestrator import _discover_chat_config
+            from nuguard.common.endpoint_detection.sbom import discover_chat_config_from_sbom
             discovered_path, discovered_key, discovered_list, discovered_response_key = (
-                _discover_chat_config(
+                discover_chat_config_from_sbom(
                     sbom,
                     chat_path=endpoint or "/chat",
                     chat_payload_key=payload_key,

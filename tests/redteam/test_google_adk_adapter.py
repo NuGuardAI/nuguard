@@ -3,7 +3,7 @@
 Covers:
 - :class:`~nuguard.redteam.target.framework_adapters.google_adk.GoogleADKAdapter`
 - :func:`~nuguard.redteam.target.framework_adapters.factory.make_framework_adapter`
-- ADK fast-path in :func:`~nuguard.common.endpoint_probe.probe_chat_endpoints`
+- ADK fast-path in :func:`~nuguard.common.endpoint_detection.live_probe.probe_chat_endpoints`
 """
 from __future__ import annotations
 
@@ -596,13 +596,13 @@ def test_make_framework_adapter_handles_missing_frameworks_attr() -> None:
     assert make_framework_adapter(sbom) is None
 
 
-# ─── endpoint_probe ADK fast-path ────────────────────────────────────────────
+# ─── live_probe ADK fast-path ────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_probe_returns_run_path_for_adk_sbom() -> None:
     """When SBOM has ADK framework, probe_chat_endpoints skips the generic loop."""
-    from nuguard.common.endpoint_probe import probe_chat_endpoints
+    from nuguard.common.endpoint_detection.live_probe import probe_chat_endpoints
 
     sbom = _make_sbom(frameworks=["google-adk"])
 
@@ -623,7 +623,7 @@ async def test_probe_returns_run_path_for_adk_sbom() -> None:
 @pytest.mark.asyncio
 async def test_probe_uses_generic_path_for_non_adk_sbom() -> None:
     """Non-ADK SBOMs still go through the generic probe loop."""
-    from nuguard.common.endpoint_probe import probe_chat_endpoints
+    from nuguard.common.endpoint_detection.live_probe import probe_chat_endpoints
 
     sbom = _make_sbom(frameworks=["langchain"])
 

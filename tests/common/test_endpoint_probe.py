@@ -1,9 +1,9 @@
-"""Tests for endpoint discovery precedence in nuguard.common.endpoint_probe."""
+"""Tests for endpoint discovery precedence in nuguard.common.endpoint_detection.sbom."""
 from __future__ import annotations
 
 import uuid
 
-from nuguard.common.endpoint_probe import (
+from nuguard.common.endpoint_detection.sbom import (
     discover_chat_candidates_from_sbom,
     discover_chat_config_from_sbom,
 )

@@ -503,7 +503,7 @@ class DiscoveryRequest(BaseModel):
     fallback_endpoints: list[tuple[str, str, bool, str | None]] = Field(default_factory=list)
     """Ranked ``(path, payload_key, payload_list, response_key)`` candidates to
     rotate through on HTTP 404/405, e.g. from
-    :func:`~nuguard.common.endpoint_probe.discover_chat_candidates_from_sbom`."""
+    :func:`~nuguard.common.endpoint_detection.sbom.discover_chat_candidates_from_sbom`."""
 
 
 class DiscoveryOutcome(BaseModel):

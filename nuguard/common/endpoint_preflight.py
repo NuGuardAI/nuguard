@@ -12,7 +12,7 @@ failures — a 4xx means "target reachable, rejected our payload").
 against the currently configured endpoint and, on 400/404/405, rotates
 through the SBOM's ranked chat-endpoint candidates (mutating *client* in
 place via :meth:`~nuguard.redteam.target.client.TargetAppClient.set_chat_endpoint`),
-falling back to a live :func:`~nuguard.common.endpoint_probe.probe_chat_endpoints`
+falling back to a live :func:`~nuguard.common.endpoint_detection.live_probe.probe_endpoint`
 scan if none of the SBOM candidates work either.
 """
 from __future__ import annotations
@@ -168,7 +168,7 @@ async def validate_and_rotate_chat_endpoint(
         client: Ready-to-use client (auth headers already set) whose chat
             endpoint is mutated in place on rotation.
         sbom: Parsed SBOM used to rank fallback candidates via
-            :func:`~nuguard.common.endpoint_probe.discover_chat_candidates_from_sbom`.
+            :func:`~nuguard.common.endpoint_detection.sbom.discover_chat_candidates`.
         has_explicit_endpoint: When ``True``, a 400/404/405 is reported without
             attempting rotation — an explicitly configured endpoint takes
             precedence and silently substituting another one would be
@@ -225,8 +225,8 @@ async def validate_and_rotate_chat_endpoint(
         return PreflightOutcome(ok=False, notes=notes)
 
     if sbom is not None:
-        from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-            discover_chat_candidates_from_sbom as _dcandidates,
+        from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
+            discover_chat_candidates as _dcandidates,
         )
 
         for candidate in _dcandidates(sbom)[1:]:
@@ -239,7 +239,9 @@ async def validate_and_rotate_chat_endpoint(
                 return PreflightOutcome(ok=True, rotated_endpoint=candidate, endpoint_source="sbom", notes=notes)
 
         # Live probe as last resort.
-        from nuguard.common.endpoint_probe import probe_chat_endpoints as _probe  # noqa: PLC0415
+        from nuguard.common.endpoint_detection.live_probe import (  # noqa: PLC0415
+            probe_endpoint as _probe,
+        )
 
         try:
             probed = await _probe(target_url, sbom, auth_headers=auth_headers)
