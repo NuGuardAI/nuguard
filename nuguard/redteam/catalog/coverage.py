@@ -1,4 +1,5 @@
 """Coverage report: what the catalog generated and what it skipped."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -18,6 +19,10 @@ def render_catalog_coverage_markdown(data: dict[str, Any]) -> str:
     profile = data.get("profile", "")
     total_generated = data.get("total_generated", 0)
     categories_covered = data.get("categories_covered") or []
+    known = {category.value for category in ScenarioCategory}
+    covered = {str(getattr(category, "value", category)) for category in categories_covered}
+    recognized = covered & known
+    unrecognized = covered - known
     per_category_count = data.get("per_category_count") or {}
     capabilities_detected = data.get("capabilities_detected") or []
     skipped = data.get("skipped") or []
@@ -27,9 +32,15 @@ def render_catalog_coverage_markdown(data: dict[str, Any]) -> str:
         "",
         f"- **Profile**: `{profile}`",
         f"- **Generated**: {total_generated} scenario instances",
-        f"- **Categories covered**: {len(categories_covered)} / 12",
+        f"- **Categories covered**: {len(recognized)} / {len(ScenarioCategory)}",
         "",
     ]
+
+    if unrecognized:
+        lines += [
+            f"- **Unrecognized categories**: {len(unrecognized)} (excluded from coverage numerator)",
+            "",
+        ]
 
     if per_category_count:
         lines += [
@@ -67,7 +78,7 @@ def render_catalog_coverage_markdown(data: dict[str, Any]) -> str:
 class CoverageReport:
     """Result of a catalog selection pass."""
 
-    profile: str                              # "ci" | "standard" | "full"
+    profile: str  # "ci" | "standard" | "full"
     total_generated: int = 0
     categories_covered: list[ScenarioCategory] = field(default_factory=list)
     per_category_count: dict[str, int] = field(default_factory=dict)
@@ -77,14 +88,20 @@ class CoverageReport:
 
     @property
     def categories_covered_count(self) -> int:
-        return len(self.categories_covered)
+        known = {category.value for category in ScenarioCategory}
+        covered = {
+            str(getattr(category, "value", category)) for category in self.categories_covered
+        }
+        return len(covered & known)
 
     def to_markdown(self) -> str:
-        return render_catalog_coverage_markdown({
-            "profile": self.profile,
-            "total_generated": self.total_generated,
-            "categories_covered": [c.value for c in self.categories_covered],
-            "per_category_count": self.per_category_count,
-            "capabilities_detected": [c.value for c in self.capabilities_detected],
-            "skipped": self.skipped,
-        })
+        return render_catalog_coverage_markdown(
+            {
+                "profile": self.profile,
+                "total_generated": self.total_generated,
+                "categories_covered": [c.value for c in self.categories_covered],
+                "per_category_count": self.per_category_count,
+                "capabilities_detected": [c.value for c in self.capabilities_detected],
+                "skipped": self.skipped,
+            }
+        )
