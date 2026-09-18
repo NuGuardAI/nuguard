@@ -274,6 +274,7 @@ async def _verify_async(
                 chat_payload_extras=chat_payload_extras,
                 chat_response_key=chat_response_key,
                 canary_config=canary_config,
+                config_path=config_path,
             )
         except TargetUnavailableError as exc:
             console.print(f"[red]✗ Target unavailable:[/red] {exc}")
@@ -307,6 +308,7 @@ async def _verify_async(
                 endpoint=ep,
                 auth_config=auth,
                 canary_config=canary_config,
+                config_path=config_path,
             )
         except TargetUnavailableError as exc:
             console.print(f"[red]✗ Target unavailable:[/red] {exc}")
@@ -354,6 +356,8 @@ async def _verify_async(
         style = status_styles.get(check.status, "white")
         identity_cell = check.identity
         detail_cell = check.error_detail[:60] if check.error_detail else ""
+        if not detail_cell and check.body_warning:
+            detail_cell = f"[yellow]⚠ {check.body_warning[:60]}[/yellow]"
 
         if check.identity == "default":
             identity_extra = ""

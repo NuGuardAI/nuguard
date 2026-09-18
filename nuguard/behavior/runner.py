@@ -770,6 +770,7 @@ class BehaviorRunner:
         config: BehaviorConfig,
         sbom: "AiSbomDocument | None" = None,
         sbom_path: "Path | None" = None,
+        config_path: "Path | None" = None,
         policy: "CognitivePolicy | None" = None,
         intent: "IntentProfile | None" = None,
         llm_client: "LLMClient | None" = None,
@@ -780,6 +781,7 @@ class BehaviorRunner:
         self._config = config
         self._sbom = sbom
         self._sbom_path = sbom_path
+        self._config_path = config_path
         self._policy = policy
         self._intent = intent
         self._llm = llm_client
@@ -946,6 +948,7 @@ class BehaviorRunner:
         _is_websocket = indicates_websocket(
             self._sbom, chat_path=endpoint, chat_payload_key=payload_key
         )
+        bootstrapper = None
         try:
             bootstrapper, health_report = await bootstrap_auth_runtime(
                 target_url=target_url,
@@ -954,6 +957,7 @@ class BehaviorRunner:
                 run_id=str(_uuid.uuid4()),
                 probe_payload_extras=getattr(self._config, "chat_payload_extras", None) or None,
                 is_websocket=_is_websocket,
+                config_path=self._config_path,
             )
             for line in health_report.summary_lines():
                 _log.info("behavior bootstrap %s", line)
@@ -1007,6 +1011,22 @@ class BehaviorRunner:
         ) if self._sbom is not None else (_merged_extras, [])
         for _note in _login_notes + _hint_notes:
             _log.info("behavior _build_client: %s", _note)
+
+        # Browser-recovery-sniffed extras (lowest precedence) — see
+        # session_resolver.resolve_target_session's matching step 4b for why.
+        _browser_extras = (
+            getattr(bootstrapper, "discovered_chat_payload_extras", None) or {}
+            if bootstrapper is not None else {}
+        )
+        if _browser_extras:
+            _new_from_browser = {k: v for k, v in _browser_extras.items() if k not in _merged_extras}
+            _merged_extras = {**_browser_extras, **_merged_extras}
+            if _new_from_browser:
+                _log.info(
+                    "behavior _build_client: auto-injected %s into chat_payload_extras from a "
+                    "browser-login recovery's chat-sniff step",
+                    list(_new_from_browser),
+                )
 
         client = build_target_app_client(
             target_url=target_url,
