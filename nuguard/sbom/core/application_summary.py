@@ -17,7 +17,11 @@ from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse, urlunparse
 
-from nuguard.common.soft_reject import iter_effective_nodes, partition_node_counts
+from nuguard.common.soft_reject import (
+    is_llm_soft_rejected,
+    iter_effective_nodes,
+    partition_node_counts,
+)
 
 from ..models import InstrumentationDetail, Node, TestingDetail
 from .route_patterns import ROUTE_PATTERNS
@@ -629,6 +633,7 @@ def build_scan_summary(
     """Build scan-level summary for reporting."""
     from .app_env_detector import detect_app_env
 
+    all_nodes = tuple(nodes)  # kept for node_endpoint_paths below — see its comment
     node_count_partition = partition_node_counts(nodes)
     nodes = tuple(iter_effective_nodes(nodes))
     node_types = node_count_partition.effective
@@ -645,10 +650,19 @@ def build_scan_summary(
     # kept as a supplementary source so a route that — despite sharing regex
     # patterns with the node-building adapters — still isn't backed by a node
     # doesn't silently disappear from the summary.
+    # Unlike the rest of this summary (frameworks, data classification, etc.),
+    # endpoint discovery is validated live by a probe before anything is
+    # trusted — a bulk-catalog-collapsed-but-real node (see
+    # is_llm_soft_rejected's docstring) is a safe candidate to surface here
+    # even though it's excluded from counts/findings elsewhere. An
+    # LLM-verified-fabricated node must still be excluded, so this draws from
+    # all_nodes (pre-iter_effective_nodes) rather than the filtered `nodes`.
     node_endpoint_paths = [
         node.metadata.endpoint
-        for node in nodes
-        if _node_type_str(node) == "API_ENDPOINT" and node.metadata.endpoint
+        for node in all_nodes
+        if _node_type_str(node) == "API_ENDPOINT"
+        and node.metadata.endpoint
+        and not is_llm_soft_rejected(node)
     ]
     endpoints = _uniq(node_endpoint_paths + extract_api_endpoints(files))
     modality_support = infer_modalities_support(nodes, files)

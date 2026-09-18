@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nuguard.common.soft_reject import SOFT_REJECT_FLAG
+from nuguard.common.soft_reject import BULK_CATALOG_TRUNCATED_FLAG, SOFT_REJECT_FLAG
 from nuguard.sbom.core.application_summary import build_scan_summary
 from nuguard.sbom.extractor.core import _refresh_summary_node_counts
 from nuguard.sbom.extractor.postprocess import _make_scan_summary
@@ -18,11 +18,17 @@ def _node(
     component_type: ComponentType,
     *,
     rejected: bool = False,
+    bulk_collapsed: bool = False,
     framework: str | None = None,
     endpoint: str | None = None,
     data_classification: list[str] | None = None,
     classified_tables: list[str] | None = None,
 ) -> Node:
+    extras: dict[str, object] = {}
+    if rejected:
+        extras[SOFT_REJECT_FLAG] = True
+    if bulk_collapsed:
+        extras[BULK_CATALOG_TRUNCATED_FLAG] = True
     return Node(
         name=name,
         component_type=component_type,
@@ -32,13 +38,7 @@ def _node(
             endpoint=endpoint,
             data_classification=(data_classification or []),
             classified_tables=(classified_tables or []),
-            extras=(
-                {
-                    SOFT_REJECT_FLAG: True,
-                }
-                if rejected
-                else {}
-            ),
+            extras=extras,
         ),
     )
 
@@ -198,3 +198,31 @@ def test_older_summaries_default_rejected_counts_to_empty() -> None:
     )
 
     assert summary.node_counts_soft_rejected == {}
+
+
+def test_bulk_catalog_collapsed_endpoint_still_appears_in_api_endpoints() -> None:
+    """bulk_catalog_truncated nodes have real, single-file deterministic
+    evidence — they're deprioritized for counts/findings purely because their
+    source file registered many similar routes, not because they're fake.
+    Endpoint discovery validates a guess live, so it should still see them —
+    unlike llm_soft_rejected nodes, which are confirmed fabrications and must
+    stay excluded (see the "/fabricated" assertion above)."""
+    nodes = [
+        _node(
+            "POST /collapsed-chat",
+            ComponentType.API_ENDPOINT,
+            bulk_collapsed=True,
+            endpoint="/collapsed-chat",
+        ),
+        _node(
+            "POST /fabricated",
+            ComponentType.API_ENDPOINT,
+            rejected=True,
+            endpoint="/fabricated",
+        ),
+    ]
+
+    summary = build_scan_summary(nodes, [])
+
+    assert "/collapsed-chat" in summary["api_endpoints"]
+    assert "/fabricated" not in summary["api_endpoints"]
