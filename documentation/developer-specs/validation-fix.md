@@ -54,9 +54,9 @@ same 4-part shape.
 
 ## Relevant existing primitives (do not reinvent)
 
-- `nuguard/common/endpoint_probe.py` — `probe_chat_endpoints()`,
-  `discover_chat_candidates_from_sbom()`: chat-like classification (2xx-JSON
-  or non-404/405 4xx), health/login/metrics path exclusion.
+- `nuguard/common/endpoint_detection/live_probe.py` — `probe_chat_endpoints()`,
+  `discover_chat_candidates_from_sbom()` (in `endpoint_detection/sbom.py`): chat-like
+  classification (2xx-JSON or non-404/405 4xx), health/login/metrics path exclusion.
 - `nuguard/common/endpoint_preflight.py` — `validate_and_rotate_chat_endpoint()`,
   `PreflightOutcome`, `_TEST_MESSAGE="Hello"`, `_ROTATION_TRIGGER_PREFIXES =
   ("[HTTP 405]", "[HTTP 404]", "[HTTP 400]", "[HTTP 422]")` — the closest

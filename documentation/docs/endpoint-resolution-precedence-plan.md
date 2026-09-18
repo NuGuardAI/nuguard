@@ -4,6 +4,16 @@ Status: Completed
 
 Scope: `validate`, `behavior`, and `redteam` endpoint resolution for target chat paths.
 
+> **Update (2026-09-14):** The logic described below (`discover_chat_config_from_sbom`,
+> live-probe fallback, endpoint precedence) has since been consolidated out of
+> `nuguard/common/endpoint_probe.py` (now deleted) into the shared
+> `nuguard/common/endpoint_detection/` package, with `resolve_chat_endpoint()`
+> (`endpoint_detection/resolver.py`) as the single entry point used by all four
+> commands. `discover_chat_config_from_sbom` still exists, now in
+> `endpoint_detection/sbom.py`. The config-wins precedence rules described here
+> are unchanged and still enforced by the new package. See
+> `imp_docs/endpoint_refactoring.md` for the full migration.
+
 ## Objective
 
 Ensure an explicit endpoint set by config or CLI always wins over SBOM-derived candidates.
@@ -20,8 +30,9 @@ Latest verification confirms the override bug is active in redteam today.
 3. Report output confirms source is SBOM, not config:
   `tests/apps/Gemini-Auto-app/reports/gemini-auto-redteam.md` shows
   `Effective Endpoint: /api/chat/message (source: sbom)`.
-4. This runtime behavior matches the shared resolver implementation in
-  `nuguard/common/endpoint_probe.py` where `discover_chat_config_from_sbom(...)`
+4. This runtime behavior matches the shared resolver implementation (at the time,
+  in `nuguard/common/endpoint_probe.py`, since consolidated into
+  `nuguard/common/endpoint_detection/sbom.py`) where `discover_chat_config_from_sbom(...)`
   returns the highest-ranked SBOM candidate whenever candidates exist.
 
 Current confidence: high (confirmed by code path + repeated runtime execution).
@@ -29,7 +40,8 @@ Current confidence: high (confirmed by code path + repeated runtime execution).
 ## Findings from Code Review
 
 1. Shared resolver currently allows SBOM override even when explicit endpoint is passed:
-  `nuguard/common/endpoint_probe.py` in `discover_chat_config_from_sbom(...)`.
+  `nuguard/common/endpoint_probe.py` in `discover_chat_config_from_sbom(...)`
+  (now `nuguard/common/endpoint_detection/sbom.py`).
 2. `redteam` always passes through shared resolver in orchestrator init, so explicit endpoint can be replaced:
   `nuguard/redteam/executor/orchestrator.py`.
 3. `behavior` analyzer respects explicit endpoint during initial discovery, but runner preflight can rotate to SBOM endpoints even when explicit endpoint was configured:
@@ -46,7 +58,7 @@ Priority update:
 
 ### Phase A - Shared Discovery Contract
 
-File: `nuguard/common/endpoint_probe.py`
+File: `nuguard/common/endpoint_probe.py` (now `nuguard/common/endpoint_detection/sbom.py`)
 
 1. Update `discover_chat_config_from_sbom(...)` so explicit `chat_path` is authoritative.
 2. When explicit `chat_path` is present, return it unchanged.
