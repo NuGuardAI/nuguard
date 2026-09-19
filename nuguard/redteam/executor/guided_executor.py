@@ -239,7 +239,9 @@ class GuidedAttackExecutor:
 
             # Send to target
             try:
-                raw_response, _tool_calls = await self._client.send(message, session)
+                raw_response, _tool_calls = await self._client.send(
+                    message, session, retry_transient=True
+                )
                 if raw_response.startswith("[HTTP 401]") and self._auth_session is not None:
                     refreshed = await self._auth_session.refresh_if_needed()
                     if refreshed:
@@ -248,7 +250,9 @@ class GuidedAttackExecutor:
                             "[guided] 401 on turn %d, retrying after auth refresh conv=%s",
                             turn_number, conv.conversation_id[:8],
                         )
-                        raw_response, _tool_calls = await self._client.send(message, session)
+                        raw_response, _tool_calls = await self._client.send(
+                            message, session, retry_transient=True
+                        )
             except TargetUnavailableError as exc:
                 # Record the abort reason on the conversation for the report,
                 # then propagate so the orchestrator's circuit breaker can trip
@@ -394,6 +398,7 @@ class GuidedAttackExecutor:
                 turn=turn_number,
                 attacker_message=message,
                 agent_response=response,
+                raw_request_body=session.last_request_body,
                 progress_score=progress_score,
                 reasoning=reasoning,
                 progress_reasoning=reasoning,   # keep legacy field in sync

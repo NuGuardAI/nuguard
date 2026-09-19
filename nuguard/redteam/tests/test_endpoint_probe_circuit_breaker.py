@@ -81,6 +81,7 @@ class _MixedClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         self.chat_sends += 1
         self._consecutive_errors = 0

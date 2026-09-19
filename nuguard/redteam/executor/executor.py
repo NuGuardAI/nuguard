@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re as _re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nuguard.common.credentials import detect_confirmation_request, generate_contextual_reply
 from nuguard.common.llm_client import LLMClient
@@ -213,6 +213,11 @@ class StepResult:
         # Payload actually sent to the target (tokens resolved, e.g. {golden_id} → real ID).
         # Set by _execute_step_with_payload after token substitution.
         self.resolved_payload: str = step.payload
+        # Full wire-level JSON body actually POSTed (payload_key wrapping,
+        # chat_payload_extras, session context) — set from
+        # AttackSession.last_request_body after a chat-path send so the
+        # original request survives even when the step errors (e.g. HTTP 502).
+        self.raw_request_body: Any = None
         # HTTP_2XX_SENTINEL: success when the server returns any 2xx status code
         # (used for auth-bypass and IDOR steps to detect missing access controls).
         if step.success_signal == HTTP_2XX_SENTINEL:
@@ -781,7 +786,7 @@ class AttackExecutor:
             on_failure="skip",
         )
         try:
-            response, tool_calls = await self._client.send(message, session)
+            response, tool_calls = await self._client.send(message, session, retry_transient=True)
         except TargetUnavailableError:
             # The warmup itself cannot abort the chain, but the client's
             # consecutive-error counter must survive so the orchestrator can
@@ -921,14 +926,18 @@ class AttackExecutor:
             if self._app_log_reader:
                 self._app_log_reader.mark()
             _extra_headers = step.extra_headers or None
-            response, tool_calls = await self._client.send(payload, session, _extra_headers)
+            response, tool_calls = await self._client.send(
+                payload, session, _extra_headers, retry_transient=True
+            )
             if response.startswith("[HTTP 401]") and await _refresh_auth_headers():
                 _log.info(
                     "Chain %s step %s: 401 received on chat endpoint, retrying after auth refresh",
                     chain.chain_id,
                     step.step_id,
                 )
-                response, tool_calls = await self._client.send(payload, session, _extra_headers)
+                response, tool_calls = await self._client.send(
+                    payload, session, _extra_headers, retry_transient=True
+                )
             # 429 scenario-level retry — on top of TargetAppClient's per-request
             # retries.  Back off and retry the same step payload; the target is
             # alive and functioning, so this must NOT count as a chain failure.
@@ -939,7 +948,9 @@ class AttackExecutor:
                     _rl_attempt,
                     context=f"chain={chain.chain_id} step={step.step_id}",
                 )
-                response, tool_calls = await self._client.send(payload, session, _extra_headers)
+                response, tool_calls = await self._client.send(
+                    payload, session, _extra_headers, retry_transient=True
+                )
             # Mid-turn interrupts: the target may ask for a credential or ask
             # a confirmation/clarification question (e.g. "I can send an OTP —
             # let me know if you'd like me to send it now") instead of
@@ -960,6 +971,7 @@ class AttackExecutor:
             session.add_turn(payload, response, tool_calls)
             result = StepResult(step=step, response=response, tool_calls=tool_calls)
             result.resolved_payload = _resolved_payload
+            result.raw_request_body = session.last_request_body
             if step.success_requires_new_tool_disclosure:
                 from nuguard.redteam.executor.tool_trace_judge import (
                     new_tool_call_disclosure,

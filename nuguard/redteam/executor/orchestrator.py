@@ -3018,7 +3018,9 @@ class RedteamOrchestrator:
             if finding.success_indicator == "canary_hit" or "Canary" in finding.title:
                 continue
             try:
-                _resp_text, _ = await executor._client.send(trigger_payload, _verify_session)
+                _resp_text, _ = await executor._client.send(
+                    trigger_payload, _verify_session, retry_transient=True
+                )
                 if executor._response_evaluator is not None:
                     _verdict = await executor._response_evaluator.evaluate(
                         goal_type=finding.goal_type or "",
@@ -3078,6 +3080,8 @@ class RedteamOrchestrator:
                     detail["status_code"] = sr.http_status_code
             else:
                 detail["payload"] = sr.resolved_payload
+                if sr.raw_request_body is not None:
+                    detail["raw_request_body"] = sr.raw_request_body
             if sr.response:
                 from nuguard.output.validation_report import _clean_response_for_display
                 cleaned = _clean_response_for_display(sr.response)

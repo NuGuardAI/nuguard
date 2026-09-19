@@ -3789,6 +3789,16 @@
             "title": "Response",
             "type": "string"
           },
+          "raw_request_body": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Raw Request Body"
+          },
           "tool_calls": {
             "items": {
               "additionalProperties": true,

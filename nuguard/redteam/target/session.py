@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 
 @dataclass
@@ -28,6 +29,15 @@ class AttackSession:
     golden_ids: list[str] = field(default_factory=list)  # IDs extracted from golden_data
     golden_name: str = ""                              # customer name extracted from DISCOVER step
     warmup_context: str = ""                           # agent self-disclosures from warmup turn
+    # The full wire-level JSON body of the most recent request sent on this
+    # session (post payload_key wrapping, chat_payload_extras merge, session
+    # context) — set by TargetAppClient._send_impl() right before the POST,
+    # regardless of success or failure, so callers can capture "the original
+    # request that resulted in this error" even when send() only returns a
+    # short error label like "[HTTP 502]". Concurrency-safe because each
+    # scenario/chain execution gets its own AttackSession, even though the
+    # underlying TargetAppClient is shared across concurrent scenarios.
+    last_request_body: Any = None
 
     def add_turn(
         self, prompt: str, response: str, tool_calls: list[dict] | None = None

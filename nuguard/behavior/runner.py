@@ -1155,7 +1155,7 @@ class BehaviorRunner:
     @staticmethod
     def _turn_record_to_attack_step(tr: TurnRecord) -> dict:
         """Serialize a TurnRecord into the standard attack_steps dict schema."""
-        return {
+        step: dict = {
             "step_type": "BEHAVIOR_TURN",
             "turn": tr.turn,
             "succeeded": tr.passed,
@@ -1173,6 +1173,9 @@ class BehaviorRunner:
             "latency_ms": tr.latency_ms,
             "is_coverage_turn": tr.is_coverage_turn,
         }
+        if tr.raw_request_body is not None:
+            step["raw_request_body"] = tr.raw_request_body
+        return step
 
     async def _run_scenario(
         self,
@@ -1542,13 +1545,16 @@ class BehaviorRunner:
                 response, canary_hits = await client.send(
                     message,
                     session=session,
+                    retry_transient=True,
                 )
                 # 401 token refresh and retry (mirrors redteam executor pattern)
                 if response.startswith("[HTTP 401]") and self._auth_session is not None:
                     refreshed = await self._auth_session.refresh_if_needed()
                     if refreshed:
                         client.update_default_headers(self._auth_session.headers())
-                        response, canary_hits = await client.send(message, session=session)
+                        response, canary_hits = await client.send(
+                            message, session=session, retry_transient=True
+                        )
                 # 429 scenario-level retry — on top of TargetAppClient's per-request
                 # retries.  Back off and replay the same turn; do NOT record a FAIL
                 # verdict or increment consecutive_failures (target is alive).
@@ -1660,6 +1666,7 @@ class BehaviorRunner:
                     turn=turn_idx + 1,
                     prompt=message,
                     response="",
+                    raw_request_body=session.last_request_body,
                     violations=[],
                     canary_hits=[],
                     passed=False,
@@ -1976,6 +1983,7 @@ class BehaviorRunner:
                 turn=turn_idx + 1,
                 prompt=message,
                 response=response,
+                raw_request_body=session.last_request_body,
                 violations=violations,
                 canary_hits=list(canary_hits or []),
                 passed=len(violations) == 0 and len(canary_hits or []) == 0,
@@ -2312,7 +2320,7 @@ class BehaviorRunner:
             probe_message = f"Can you use {tool_name} to {action}?"
             session = _AS(session_id=f"probe-{family}", target_url=target_url, chain_id="behavior-family-probe")
             try:
-                response, _ = await client.send(probe_message, session=session)
+                response, _ = await client.send(probe_message, session=session, retry_transient=True)
             except Exception as exc:
                 _log.debug("probe_tool_families: send failed for family=%s (%s)", family, exc)
                 results.setdefault(family, "unknown")

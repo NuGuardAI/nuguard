@@ -669,3 +669,65 @@ async def test_send_semaphore_mode_unaffected_by_retry_transient_flag(monkeypatc
         text, _ = await client.send("hi", _session(), retry_transient=False)
     assert text == "ok"
     assert calls == ["retry"]
+
+
+# ── last_request_body — the original request must survive an error ───────────
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_session_captures_raw_request_body_on_success():
+    """The exact wire-level JSON body sent is stashed on the session, not just
+    the inner message text — so a caller can reconstruct what was actually sent."""
+    respx.post(f"{BASE}{CHAT}").mock(return_value=httpx.Response(200, json={"response": "ok"}))
+    client = TargetAppClient(
+        base_url=BASE, chat_path=CHAT, timeout=5.0, chat_payload_extras={"consumerID": "abc-123"}
+    )
+    session = _session()
+    async with client:
+        await client.send("hello there", session)
+    assert session.last_request_body == {"consumerID": "abc-123", "message": "hello there"}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_session_captures_raw_request_body_on_502_error():
+    """A 502 (or any error) must not discard the original request — this is
+    the exact gap that made a 502 unreconstructable from a report."""
+    respx.post(f"{BASE}{CHAT}").mock(return_value=httpx.Response(502, text="Bad Gateway"))
+    client = TargetAppClient(base_url=BASE, chat_path=CHAT, timeout=5.0)
+    session = _session()
+    async with client:
+        text, _ = await client.send("trigger the 502", session)
+    assert text == "[HTTP 502]"
+    assert session.last_request_body == {"message": "trigger the 502"}
+
+
+# ── retry_transient on a real 502 — must retry before tripping the breaker ────
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_502_with_retry_transient_retries_before_circuit_breaker(monkeypatch):
+    """With retry_transient=True (how executor.py/runner.py now call send()), a
+    502 gets GATEWAY_ERROR_RETRY_DELAYS worth of short-backoff retries within a
+    single send() call before counting toward the circuit breaker at all."""
+    from nuguard.common.rate_limit import GATEWAY_ERROR_RETRY_DELAYS
+
+    route = respx.post(f"{BASE}{CHAT}").mock(return_value=httpx.Response(502, text="Bad Gateway"))
+    sleeps: list[float] = []
+
+    async def _no_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr("asyncio.sleep", _no_sleep)
+    client = await _client()
+    async with client:
+        text, _ = await client.send("probe", _session(), retry_transient=True)
+    assert text == "[HTTP 502]"
+    # One initial attempt plus one retry per configured delay.
+    assert route.call_count == 1 + len(GATEWAY_ERROR_RETRY_DELAYS)
+    assert sleeps == list(GATEWAY_ERROR_RETRY_DELAYS)
+    # Only counted once toward the circuit breaker after retries exhausted,
+    # not once per attempt.
+    assert client._consecutive_errors == 1
