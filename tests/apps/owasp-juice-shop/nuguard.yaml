@@ -36,7 +36,8 @@ target:
   # Backend URL is also recorded in the SBOM summary → deployment_urls so nuguard can surface
   # it automatically (extracted from AZURE_WEBAPP_NAME in .github/workflows/deploy-azure.yml).
   #url: http://127.0.0.1:8250   # local dev backend (pnpm dev or python -m uvicorn api:app)
-  url: http://127.0.0.1:3000 
+  #url: http://127.0.0.1:3000   # local dev backend — loopback, blocked by nuguard pentest's SSRF scope
+  url: http://juice-shop-demo.eastus2.azurecontainer.io:3000
 
   # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
   # Juice Shop's backend only recognizes Authorization: Bearer <token> obtained via
