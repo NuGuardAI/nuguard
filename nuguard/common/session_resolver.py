@@ -26,6 +26,8 @@ from typing import TYPE_CHECKING, Any
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from nuguard.common.auth import AuthConfig, AuthSession
     from nuguard.common.bootstrap import TargetHealthReport
     from nuguard.sbom.models import AiSbomDocument
@@ -273,6 +275,7 @@ async def resolve_target_session(
     probe_payload_extras: dict[str, Any] | None = None,
     run_id: str | None = None,
     ws_auth_message: dict[str, Any] | None = None,
+    config_path: "Path | None" = None,
 ) -> tuple[TargetSessionConfig, "TargetHealthReport"]:
     """Resolve all target-connection config and return a :class:`TargetSessionConfig`.
 
@@ -311,6 +314,10 @@ async def resolve_target_session(
         ws_auth_message: First-message auth payload for WebSocket targets that
             authenticate over the first frame instead of headers (e.g.
             ``{"type": "auth", "token": "..."}``); ignored for HTTP targets.
+        config_path: Path to the loaded nuguard.yaml, when known — forwarded to
+            bootstrap so a successful browser-login auth-recovery fallback
+            (see AuthBootstrapper._maybe_recover_via_browser) can persist the
+            recovered session back into the file for future runs.
 
     Returns:
         ``(TargetSessionConfig, TargetHealthReport)``
@@ -378,6 +385,7 @@ async def resolve_target_session(
         probe_payload_extras=_probe_extras or None,
         is_websocket=is_websocket,
         ws_auth_message=ws_auth_message,
+        config_path=config_path,
     )
     bootstrap_headers = bootstrapper.session.headers()
     effective_headers = dict(extra_headers)
@@ -390,6 +398,22 @@ async def resolve_target_session(
     )
     resolution_notes.extend(login_notes)
     login_extras = bootstrapper.session.login_response_extras()
+
+    # ── 4b. Browser-recovery-sniffed extras (lowest precedence — see 4) ────────
+    # Populated only when bootstrap's auth-recovery fallback ran a real browser
+    # session (auth_failed, or a 2xx with an empty/unparseable body) and its
+    # chat-sniff step observed extra fields the app's own UI sends (see
+    # AuthBootstrapper._maybe_recover_via_browser / auth_recovery.py).
+    _browser_extras = getattr(bootstrapper, "discovered_chat_payload_extras", None) or {}
+    if _browser_extras:
+        _new_from_browser = {k: v for k, v in _browser_extras.items() if k not in merged_extras}
+        merged_extras = {**_browser_extras, **merged_extras}
+        if _new_from_browser:
+            resolution_notes.append(
+                f"auto-injected {list(_new_from_browser)} into chat_payload_extras from a "
+                f"browser-login recovery's chat-sniff step — add under target."
+                f"chat_payload_extras in nuguard.yaml to skip that browser step next run."
+            )
 
     # ── 5. SBOM context hints ─────────────────────────────────────────────────
     _auth_username = getattr(effective_auth, "username", None) or None

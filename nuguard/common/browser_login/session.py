@@ -503,19 +503,34 @@ class BrowserLoginSession:
     ) -> tuple[dict[str, str], dict[str, list[str]]]:
         """Diff the sniffed chat body's keys against known message/session
         fields; confirm remaining candidates against the identity payload's
-        values (high confidence) or leave them ambiguous."""
+        values (high confidence) or leave them ambiguous.
+
+        Empty-string values (e.g. a ``sessionID: ""`` the app's own UI sends
+        on a fresh conversation) are confirmed outright rather than dropped
+        or left ambiguous: there is nothing to guess here — it is the exact
+        literal value a real authenticated browser session sent — and some
+        backends 400/no-op when a required field is missing entirely, even
+        though an empty value for it is perfectly valid. This applies even to
+        names in ``DYNAMIC_PAYLOAD_FIELD_NAMES`` (e.g. ``sessionID``): that
+        exclusion exists to avoid persisting a per-request value that would
+        go stale, which doesn't apply to a constant empty string.
+        """
         known_lower = {"message", "text", "prompt", "query", "input"}
         candidates: dict[str, str] = {}
+        empty_fields: dict[str, str] = {}
         for key, value in sniffed_body.items():
             if key.lower() in known_lower:
                 continue
-            if key.lower() in heuristics.DYNAMIC_PAYLOAD_FIELD_NAMES:
+            if not isinstance(value, (str, int, float)):
                 continue
-            if not isinstance(value, (str, int, float)) or value == "":
+            if value == "":
+                empty_fields[key] = ""
+                continue
+            if key.lower() in heuristics.DYNAMIC_PAYLOAD_FIELD_NAMES:
                 continue
             candidates[key] = str(value)
 
-        confirmed: dict[str, str] = {}
+        confirmed: dict[str, str] = dict(empty_fields)
         ambiguous: dict[str, list[str]] = {}
         identity_values = (
             {str(v) for v in identity_payload.values() if isinstance(v, (str, int, float))}

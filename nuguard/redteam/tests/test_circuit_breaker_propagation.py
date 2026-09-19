@@ -70,6 +70,7 @@ class _DeadClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         self._consecutive_errors += 1
         if self._consecutive_errors >= self.threshold:
@@ -319,6 +320,7 @@ async def test_codegen_escalation_propagates_target_unavailable() -> None:
             payload: str,
             session: AttackSession,
             extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
         ) -> tuple[str, list[dict]]:
             self._consecutive_errors += 1
             if self._consecutive_errors >= self.threshold:

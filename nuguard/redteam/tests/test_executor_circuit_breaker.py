@@ -37,6 +37,7 @@ class _FixedResponseClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         return self._response, []
 

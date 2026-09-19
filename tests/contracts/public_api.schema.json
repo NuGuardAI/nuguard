@@ -3789,6 +3789,16 @@
             "title": "Response",
             "type": "string"
           },
+          "raw_request_body": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Raw Request Body"
+          },
           "tool_calls": {
             "items": {
               "additionalProperties": true,
@@ -5989,6 +5999,11 @@
             "title": "Response Text",
             "type": "string"
           },
+          "body_warning": {
+            "default": "",
+            "title": "Body Warning",
+            "type": "string"
+          },
           "checked_at": {
             "format": "date-time",
             "title": "Checked At",
@@ -7564,6 +7579,11 @@
           "response_text": {
             "default": "",
             "title": "Response Text",
+            "type": "string"
+          },
+          "body_warning": {
+            "default": "",
+            "title": "Body Warning",
             "type": "string"
           },
           "checked_at": {

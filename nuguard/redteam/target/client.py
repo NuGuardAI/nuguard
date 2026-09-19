@@ -843,7 +843,9 @@ class TargetAppClient:
         calls: list[dict] = []
 
         while True:
-            text, calls = await self._send_impl(payload, session, extra_headers)
+            text, calls = await self._send_impl(
+                payload, session, extra_headers, _deferred_gateway_accounting=True
+            )
             outcome = classify_transport(text)
             if outcome not in RETRIABLE_OUTCOMES:
                 return text, calls
@@ -994,8 +996,15 @@ class TargetAppClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        _deferred_gateway_accounting: bool = False,
     ) -> tuple[str, list[dict]]:
-        """Inner send implementation (called with or without the request semaphore)."""
+        """Inner send implementation (called with or without the request semaphore).
+
+        ``_deferred_gateway_accounting`` is set only by
+        :meth:`_send_with_transient_retry` — it means that caller, not this
+        method, is responsible for calling ``_record_chat_error`` on a 502/503/504
+        once its own retries are exhausted (see the 502/503/504 branch below).
+        """
         data: dict | list | str = {}
         body: dict | None = None
         # Bounded to max_429_retries + MAX_SCHEMA_HEAL_ATTEMPTS so a schema-heal
@@ -1083,6 +1092,12 @@ class TargetAppClient:
                             _missing_params, self._chat_path,
                         )
                         return f"[CONFIG_ERROR: unresolved path param {_missing_params[0]!r}]", []
+
+                # Capture the exact wire-level body about to be sent, regardless
+                # of whether the request succeeds or fails, so callers can save
+                # "the original request that resulted in this error" even when
+                # send() itself only returns a short error label (e.g. a 502).
+                session.last_request_body = body
 
                 _log.debug(
                     "Target HTTP POST url=%s body=%s",
@@ -1174,11 +1189,13 @@ class TargetAppClient:
                 # will retry with short backoff and only increment the circuit breaker
                 # after all retries are exhausted.  This prevents a single transient
                 # Azure OpenAI quota spike from inflating the shared error counter.
-                # That deferral only applies when a semaphore is configured — that's
-                # the only case send() actually routes through _send_with_transient_retry
-                # (see send() above). Without a semaphore, _send_impl is called directly
-                # and nothing else will ever record the error, so it must count here.
-                if status in (502, 503, 504) and self._request_sem is not None:
+                # That deferral applies whenever _send_with_transient_retry is the
+                # caller (semaphore mode, or retry_transient=True without a
+                # semaphore — e.g. a real chat-turn send) — signalled by
+                # _deferred_gateway_accounting. A bare direct _send_impl call (no
+                # semaphore, retry_transient=False) has nothing else to record the
+                # error, so it must count here.
+                if status in (502, 503, 504) and _deferred_gateway_accounting:
                     pass  # caller handles circuit-breaker accounting after retries
                 elif status >= 500:
                     self._record_chat_error(f"HTTP {status}")

@@ -115,7 +115,10 @@ class TestResolveExtraFields:
         sniffed = {"consumerID": "actor-123", "message": "hi", "sessionID": ""}
         identity = {"actorId": "actor-123", "email": "user@example.com"}
         confirmed, ambiguous = session._resolve_extra_fields(sniffed, identity)
-        assert confirmed == {"consumerID": "actor-123"}
+        # sessionID is confirmed too, despite its empty value: it's the exact
+        # literal value a real authenticated session sent, not a guess, and
+        # some backends need the key present (even empty) to accept a request.
+        assert confirmed == {"consumerID": "actor-123", "sessionID": ""}
         assert ambiguous == {}
 
     def test_unconfirmed_field_is_ambiguous_not_dropped(self) -> None:
@@ -132,11 +135,11 @@ class TestResolveExtraFields:
         assert confirmed == {}
         assert ambiguous == {}
 
-    def test_empty_or_non_scalar_values_are_ignored(self) -> None:
+    def test_non_scalar_values_are_ignored_but_empty_strings_are_confirmed(self) -> None:
         session = _session()
         sniffed = {"message": "hi", "meta": {"nested": True}, "empty": ""}
         confirmed, ambiguous = session._resolve_extra_fields(sniffed, None)
-        assert confirmed == {}
+        assert confirmed == {"empty": ""}
         assert ambiguous == {}
 
 

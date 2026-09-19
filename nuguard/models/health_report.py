@@ -23,6 +23,12 @@ class CredentialCheckResult(BaseModel):
     response_time_ms: float | None = None
     error_detail: str = ""
     response_text: str = ""          # first 500 chars of the probe response body
+    # Non-blocking note for a 2xx response whose body was empty/unparseable.
+    # Does not affect `status` (still "ok" — some apps legitimately ack with
+    # no body) but flags the exact signature a missing required payload field
+    # tends to produce, so it's visible at bootstrap instead of only showing
+    # up as a wall of JSON-decode errors once real scenarios start running.
+    body_warning: str = ""
     checked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -59,4 +65,6 @@ class TargetHealthReport(BaseModel):
             timing = f" ({c.response_time_ms:.0f}ms)" if c.response_time_ms is not None else ""
             detail = f" — {c.error_detail}" if c.error_detail else ""
             lines.append(f"  [{icon}] {c.identity} ({c.auth_type}){timing}{detail}")
+            if c.body_warning:
+                lines.append(f"      ⚠ {c.body_warning}")
         return lines

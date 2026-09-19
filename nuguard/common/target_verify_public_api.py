@@ -24,6 +24,8 @@ from nuguard.models.health_report import CredentialCheckResult
 from nuguard.redteam.target.session import AttackSession
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from nuguard.sbom.models import AiSbomDocument
 
 TargetVerifyStatus = Literal[
@@ -232,6 +234,7 @@ async def verify_target(
     request: TargetVerifyRequest,
     *,
     sbom: "AiSbomDocument | None" = None,
+    config_path: "Path | None" = None,
 ) -> TargetVerifyResult:
     auth_config = _build_auth_config(request)
 
@@ -258,6 +261,7 @@ async def verify_target(
         run_id=str(uuid.uuid4()),
         timeout=request.request_timeout,
         probe_payload_extras=request.chat_payload_extras or None,
+        config_path=config_path,
     )
 
     checks = [_check_from_health(item) for item in health.checks]
@@ -317,6 +321,7 @@ async def resolve_target_session_public(
     request: TargetSessionResolveRequest,
     *,
     sbom: "AiSbomDocument | None" = None,
+    config_path: "Path | None" = None,
 ) -> TargetSessionResolveResult:
     auth_config = _build_auth_config(request)
 
@@ -346,6 +351,7 @@ async def resolve_target_session_public(
             chat_payload_list=payload_list,
             chat_payload_extras=request.chat_payload_extras or {},
             chat_response_key=response_key,
+            config_path=config_path,
         )
         return TargetSessionResolveResult(
             effective_target_url=session_cfg.base_url,
@@ -368,6 +374,7 @@ async def resolve_target_session_public(
         run_id=str(uuid.uuid4()),
         timeout=request.request_timeout,
         probe_payload_extras=request.chat_payload_extras or None,
+        config_path=config_path,
     )
     _ = bootstrapper
     return TargetSessionResolveResult(

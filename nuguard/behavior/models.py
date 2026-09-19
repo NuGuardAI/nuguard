@@ -115,6 +115,11 @@ class TurnRecord(BaseModel):
     turn: int
     prompt: str
     response: str
+    # Full wire-level JSON body actually POSTed for this turn (payload_key
+    # wrapping, chat_payload_extras, session context) — sourced from
+    # AttackSession.last_request_body so the original request survives even
+    # when this turn recorded a send error (e.g. HTTP 502).
+    raw_request_body: Any | None = None
     tool_calls: list[dict] = Field(default_factory=list)
     violations: list[dict] = Field(default_factory=list)
     canary_hits: list[str] = Field(default_factory=list)

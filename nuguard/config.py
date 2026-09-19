@@ -16,10 +16,17 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import yaml  # type: ignore[import-untyped]
-from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from nuguard.common.auth import LoginFlowConfig
+from nuguard.common.auth import LoginFlowConfig, infer_auth_type
 from nuguard.common.errors import ConfigError
 from nuguard.common.logging import get_logger
 
@@ -255,17 +262,39 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         # Structured auth from the shared block — same format as behavior/redteam auth
         _shared_auth = shared_target.get("auth", {}) or {}
         if isinstance(_shared_auth, dict) and _shared_auth:
-            _sa_type = _shared_auth.get("type", "none")
+            # Infer from username/password/cookie_file/header when the user
+            # omits `type:` entirely — mirrors AuthConfig._infer_type /
+            # AppAuthConfig._infer_type (nuguard/common/auth.py,
+            # nuguard/config.py) so `target.auth: {username, password}` works
+            # here too, not just when those raw dicts get pydantic-validated.
+            _sa_type = _shared_auth.get("type") or infer_auth_type(_shared_auth) or "none"
             flat["redteam_auth_type"] = _sa_type
             if _sa_type in ("bearer", "api_key") and "header" in _shared_auth:
                 flat["redteam_auth_header"] = _shared_auth["header"]
-            if _sa_type == "basic":
-                flat["redteam_auth_username"] = _shared_auth.get("username") or ""
-                flat["redteam_auth_password"] = _shared_auth.get("password") or ""
             if _sa_type == "login_flow" and isinstance(_shared_auth.get("login_flow"), dict):
                 flat["redteam_auth_login_flow"] = _shared_auth["login_flow"]
             if _sa_type == "cookie_file":
                 flat["redteam_auth_cookie_file"] = _shared_auth.get("cookie_file") or ""
+            # Username/password are carried through regardless of the resolved
+            # type (not just when type == "basic"): once a browser-login
+            # recovery upgrades auth to cookie_file, these are the only thing
+            # that lets a later recovery attempt (triggered by a body_warning
+            # on an otherwise-healthy cookie_file session) re-drive a browser
+            # login to re-sniff chat_payload_extras. target.browser_login is a
+            # sibling block for exactly this — persisted login credentials
+            # that survive `discover-browser --write` overwriting target.auth
+            # with cookie_file (see nuguard/cli/commands/target_browser.py) —
+            # and takes precedence over target.auth's own username/password,
+            # mirroring that command's own resolution order.
+            _shared_browser_login = shared_target.get("browser_login", {}) or {}
+            if not isinstance(_shared_browser_login, dict):
+                _shared_browser_login = {}
+            _recovery_username = _shared_browser_login.get("username") or _shared_auth.get("username") or ""
+            _recovery_password = _shared_browser_login.get("password") or _shared_auth.get("password") or ""
+            if _recovery_username:
+                flat["redteam_auth_username"] = _recovery_username
+            if _recovery_password:
+                flat["redteam_auth_password"] = _recovery_password
 
     # Redteam section — overrides shared target block when keys are present.
     # Drop keys whose env-var interpolation resolved to None (unset ${VAR}
@@ -531,17 +560,28 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if isinstance(redteam, dict) and "auth" in redteam:
         auth = redteam.get("auth") or {}
         if isinstance(auth, dict):
-            auth_type = auth.get("type", "none")
+            auth_type = auth.get("type") or infer_auth_type(auth) or "none"
             flat["redteam_auth_type"] = auth_type
             if auth_type in ("bearer", "api_key") and "header" in auth:
                 flat["redteam_auth_header"] = auth["header"]
-            if auth_type == "basic":
-                flat["redteam_auth_username"] = auth.get("username") or ""
-                flat["redteam_auth_password"] = auth.get("password") or ""
             if auth_type == "login_flow" and isinstance(auth.get("login_flow"), dict):
                 flat["redteam_auth_login_flow"] = auth.get("login_flow")
             if auth_type == "cookie_file":
                 flat["redteam_auth_cookie_file"] = auth.get("cookie_file") or ""
+            # See matching comment on the shared-target-block auth handling
+            # above: carried through regardless of type so a later recovery
+            # attempt can re-drive a browser login even once type has already
+            # been upgraded to cookie_file. redteam.browser_login overrides
+            # the shared target.browser_login block, same precedence as auth.
+            _redteam_browser_login = redteam.get("browser_login", {}) or {}
+            if not isinstance(_redteam_browser_login, dict):
+                _redteam_browser_login = {}
+            _recovery_username = _redteam_browser_login.get("username") or auth.get("username") or ""
+            _recovery_password = _redteam_browser_login.get("password") or auth.get("password") or ""
+            if _recovery_username:
+                flat["redteam_auth_username"] = _recovery_username
+            if _recovery_password:
+                flat["redteam_auth_password"] = _recovery_password
 
     # Redteam defence_regressions
     if isinstance(redteam, dict) and "defence_regressions" in redteam:
@@ -588,6 +628,18 @@ class AppAuthConfig(BaseModel):
     def _coerce_none_to_empty(cls, v: object) -> str:
         """Treat None (from unexpanded ${ENV_VAR}) as an empty string."""
         return "" if v is None else v  # type: ignore[return-value]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _infer_type(cls, data: object) -> object:
+        """Auto-fill ``type`` from credential fields when omitted — mirrors
+        ``AuthConfig._infer_type`` (nuguard/common/auth.py) so users can write
+        ``target.auth: {username, password}`` without an explicit ``type:``."""
+        if isinstance(data, dict) and "type" not in data:
+            inferred = infer_auth_type(data)
+            if inferred:
+                data = {**data, "type": inferred}
+        return data
 
 
 class GoogleADKConfig(BaseModel):
