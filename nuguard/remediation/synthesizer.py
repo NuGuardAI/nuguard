@@ -29,6 +29,8 @@ from nuguard.remediation.prompts import (
     ARCHITECTURAL_RATIONALE_USER,
     GUARDRAIL_RATIONALE_SYSTEM,
     GUARDRAIL_RATIONALE_USER,
+    PENTEST_FIX_SYSTEM,
+    PENTEST_FIX_USER,
     PRIVILEGE_PATCH_SYSTEM,
     PRIVILEGE_PATCH_USER,
     SYSTEM_PROMPT_PATCH_SYSTEM,
@@ -663,6 +665,90 @@ class RemediationSynthesizer:
         from nuguard.remediation.pentest import build_pentest_remediation
 
         return build_pentest_remediation(findings)
+
+    async def synthesize_pentest_findings_async(
+        self, findings: Sequence["PentestRemediationFinding"]
+    ) -> list[RemediationArtefact]:
+        """Plan runtime guidance (see :meth:`synthesize_pentest_findings`), then,
+        when an LLM client is configured, replace each artefact's
+        ``runtime.implementation`` with a developer/coding-agent-facing fix
+        description grounded in that artefact's own evidence (matched
+        locations, matcher name, description text) instead of the generic
+        category template text. Structured/safety-relevant fields —
+        targets, matched_locations, rule_ids, CWE/CVE ids, verification steps,
+        and the short ``change_detail`` recommendation — always stay the
+        deterministic, already-redacted values from ``build_pentest_remediation``,
+        so an LLM failure or hallucination can only affect prose, never
+        identity, scope, or safety filtering.
+        """
+        from nuguard.remediation.pentest import build_pentest_remediation
+
+        artefacts = build_pentest_remediation(findings)
+        if self._llm is None:
+            return artefacts
+
+        import asyncio
+
+        await asyncio.gather(*(self._enrich_pentest_artefact_async(art) for art in artefacts))
+        return artefacts
+
+    async def _enrich_pentest_artefact_async(self, artefact: RemediationArtefact) -> None:
+        ctx = artefact.runtime
+        if ctx is None:
+            return
+
+        fix = await self._llm_pentest_fix_async(
+            rule=", ".join(ctx.rule_ids),
+            generic_change=artefact.change_detail or "",
+            locations=list(ctx.matched_locations),
+            matcher_names=list(ctx.matcher_names),
+            descriptions=artefact.rationale,
+        )
+        if not fix:
+            return
+
+        from nuguard.remediation.pentest import _text  # noqa: PLC0415
+
+        # Re-apply the pentest text boundary: an LLM-authored fix must pass
+        # the same raw-HTTP/credential stripping as every other pentest text
+        # field before it can land in a report.
+        safe_fix = _text(fix, limit=2000)
+        if not safe_fix:
+            return
+
+        artefact.runtime = ctx.model_copy(update={"implementation": safe_fix})
+
+    async def _llm_pentest_fix_async(
+        self,
+        *,
+        rule: str,
+        generic_change: str,
+        locations: list[str],
+        matcher_names: list[str],
+        descriptions: str,
+    ) -> str:
+        """Generate a concrete, evidence-grounded pentest fix using the LLM (async).
+
+        Evidence is deliberately limited to what ``build_pentest_remediation``
+        already normalizes and would serialize into the report anyway
+        (matched locations, matcher names, description text) — never raw
+        scanner extraction data, which ``PentestRemediationFinding`` excludes
+        by design (see its docstring).
+
+        Returns "" only when no LLM client is configured; an actual LLM
+        failure propagates (see :meth:`_call_llm_async`).
+        """
+        prompt = PENTEST_FIX_USER.format(
+            rule=rule or "unknown",
+            generic_change=generic_change or "(none)",
+            location_count=len(locations),
+            locations="; ".join(locations[:12]) or "(none)",
+            matcher_names=", ".join(matcher_names) or "(none)",
+            descriptions=descriptions[:600] or "(none)",
+        )
+        return await self._call_llm_async(
+            prompt, system=PENTEST_FIX_SYSTEM, label="remediation:pentest_fix"
+        )
 
     def _agent_purpose(self, node: "Node | None") -> str:
         """Best available "what is this agent for" text for a prompt.
