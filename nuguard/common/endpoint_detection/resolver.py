@@ -73,6 +73,11 @@ async def resolve_chat_endpoint(
     payload_source = EndpointSource.CONFIG if key_is_explicit or list_is_explicit else EndpointSource.UNKNOWN
 
     # Static SBOM metadata is the cheapest discovery strategy after config.
+    # Tracked separately from resolved_path so that, if this path turns out
+    # not to be chat-capable when actually probed below, we know to fall back
+    # to full live discovery instead of trusting a possibly-stale SBOM route
+    # (the static source scan can lag behind what's actually deployed).
+    sbom_path_unvalidated: str | None = None
     if resolved_path is None and sbom is not None:
         try:
             sbom_path, sbom_key, sbom_list, sbom_response = discover_chat_config(
@@ -87,6 +92,7 @@ async def resolve_chat_endpoint(
             if sbom_path:
                 resolved_path = sbom_path
                 path_source = EndpointSource.SBOM
+                sbom_path_unvalidated = sbom_path
             if not key_is_explicit and sbom_key:
                 resolved_key = sbom_key
                 payload_source = EndpointSource.SBOM
@@ -176,6 +182,57 @@ async def resolve_chat_endpoint(
                 resolved_response = inferred.response_key
             payload_source = inferred.source
             notes.extend(inferred.notes)
+
+            # The SBOM-derived path didn't validate as chat-capable (probe
+            # found nothing usable at it) — the static source scan may be
+            # stale relative to what's actually deployed (e.g. a route that
+            # moved, or a non-chat route like a GraphQL stub that happens to
+            # share a name). Retry with unconstrained live probing over the
+            # full candidate list instead of silently keeping a route that
+            # explicitly failed validation.
+            if sbom_path_unvalidated and inferred.source is EndpointSource.FALLBACK:
+                fallback_probe = await probe_endpoint(
+                    target_url,
+                    sbom,
+                    auth_headers=auth_headers,
+                    timeout=timeout,
+                    known_payload_key=resolved_key if key_is_explicit else None,
+                    known_payload_list=resolved_list or DEFAULT_PAYLOAD_LIST,
+                    known_response_key=resolved_response,
+                    probe_payload_extras=probe_payload_extras,
+                    llm=llm,
+                )
+                if fallback_probe is not None:
+                    if probe_result_callback is not None:
+                        probe_result_callback(fallback_probe)
+                    resolved_path = fallback_probe.path
+                    path_source = EndpointSource.PROBE
+                    probed_payload = payload_shape_from_probe_result(
+                        fallback_probe,
+                        payload_key=payload_key,
+                        payload_list=payload_list,
+                        value_template=value_template,
+                        response_key=response_key,
+                    )
+                    if not key_is_explicit:
+                        resolved_key = probed_payload.key
+                    if not list_is_explicit:
+                        resolved_list = probed_payload.is_list
+                    if not template_is_explicit:
+                        resolved_template = probed_payload.value_template
+                    if not response_is_explicit:
+                        resolved_response = probed_payload.response_key
+                    payload_source = probed_payload.source
+                    notes.append(
+                        f"SBOM-derived endpoint {sbom_path_unvalidated!r} did not validate as "
+                        f"chat-capable — live probing found {resolved_path!r} instead."
+                    )
+                else:
+                    notes.append(
+                        f"SBOM-derived endpoint {sbom_path_unvalidated!r} did not validate as "
+                        "chat-capable, and full endpoint probing found no alternative; "
+                        "keeping it as a last resort."
+                    )
 
     # Browser detection is deliberately opt-in because it starts a headless browser.
     if resolved_path is None and enable_browser_fallback:

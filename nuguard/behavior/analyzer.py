@@ -46,6 +46,7 @@ class BehaviorAnalyzer:
         config: BehaviorConfig,
         sbom: "AiSbomDocument | None" = None,
         sbom_path: "Path | None" = None,
+        config_path: "Path | None" = None,
         policy: "CognitivePolicy | None" = None,
         controls: "list[PolicyControl] | None" = None,
         llm_client: "LLMClient | None" = None,
@@ -55,6 +56,7 @@ class BehaviorAnalyzer:
         self._config = config
         self._sbom = sbom
         self._sbom_path = sbom_path
+        self._config_path = config_path
         self._policy = policy
         self._controls = controls
         self._llm = llm_client
@@ -287,6 +289,7 @@ class BehaviorAnalyzer:
                     "config": self._config,
                     "sbom": self._sbom,
                     "sbom_path": self._sbom_path,
+                    "config_path": self._config_path,
                     "policy": self._policy,
                     "intent": intent,
                     "llm_client": self._llm,

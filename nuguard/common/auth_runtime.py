@@ -9,6 +9,8 @@ from nuguard.common.bootstrap import AuthBootstrapper
 from nuguard.models.health_report import TargetHealthReport
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     # Deferred to avoid re-entering nuguard.common.__init__ mid-import — see
     # the matching comment in nuguard/common/bootstrap.py.
     from nuguard.redteam.target.canary import CanaryConfig
@@ -79,8 +81,16 @@ async def bootstrap_auth_runtime(
     startup_retries: int | None = None,
     is_websocket: bool = False,
     ws_auth_message: dict[str, object] | None = None,
+    config_path: "Path | None" = None,
 ) -> tuple[AuthBootstrapper, TargetHealthReport]:
-    """Run shared auth bootstrap and return both bootstrapper and report."""
+    """Run shared auth bootstrap and return both bootstrapper and report.
+
+    ``config_path``, when given, is the loaded nuguard.yaml's path — passed
+    through so a browser-login auth-recovery fallback (see
+    ``AuthBootstrapper._maybe_recover_via_browser``) can persist a recovered
+    cookie_file session back into the file for future runs. Omitting it does
+    not disable recovery, only the persistence step.
+    """
     bootstrapper = AuthBootstrapper(
         target_url=target_url,
         endpoint=endpoint,
@@ -92,6 +102,7 @@ async def bootstrap_auth_runtime(
         startup_retries=startup_retries,
         is_websocket=is_websocket,
         ws_auth_message=ws_auth_message,
+        config_path=config_path,
     )
     report = await bootstrapper.run()
     return bootstrapper, report

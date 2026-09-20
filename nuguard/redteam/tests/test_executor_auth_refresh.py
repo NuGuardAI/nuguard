@@ -57,6 +57,7 @@ class _AlwaysUnauthorizedChatClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         return "[HTTP 401]", []
 
@@ -75,6 +76,7 @@ class _AlwaysServerErrorChatClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         return "[HTTP 500]", []
 
@@ -177,6 +179,7 @@ class _FakeClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         self.send_calls += 1
         if self.send_calls == 1:
@@ -422,6 +425,7 @@ class _ChatOnlyClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         return (
             "I'm sorry, but I can't help with personally identifiable "

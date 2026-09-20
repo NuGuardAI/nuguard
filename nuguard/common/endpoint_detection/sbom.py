@@ -179,7 +179,12 @@ def discover_chat_candidates_from_sbom(
                 ws_score -= 5
             candidates.append((ws_score, ws_path, "__websocket__", False, node.name, None))
             continue
-        if method_u and method_u != "POST":
+        # "ANY" means the static adapter couldn't resolve the HTTP verb (Go
+        # net/http and gorilla/mux dispatch on r.Method at runtime; Java
+        # servlet mappings are similar) — not "confirmed not POST" the way a
+        # real GET/PUT/DELETE is. Treat it the same as blank/unset, not the
+        # same as a definitively wrong method.
+        if method_u and method_u not in ("POST", "ANY"):
             continue
 
         discovered_path = meta.endpoint or chat_path

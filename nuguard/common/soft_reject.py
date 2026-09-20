@@ -80,6 +80,22 @@ def is_soft_rejected(
     return extras.get(SOFT_REJECT_FLAG) is True or extras.get(BULK_CATALOG_TRUNCATED_FLAG) is True
 
 
+def is_llm_soft_rejected(
+    node: object,
+) -> bool:
+    """Return whether LLM verification specifically rejected this node as a
+    likely fabricated false positive — narrower than :func:`is_soft_rejected`,
+    which also covers ``bulk_catalog_truncated`` (a node with real
+    deterministic evidence, just deprioritized for counts/findings because
+    its source file registered many similar routes, not because it's fake).
+    Consumers that validate a guess live (e.g. endpoint-discovery candidate
+    lists) rather than asserting "this exists" to a user should exclude
+    LLM-rejected nodes but may still consider bulk-catalog-collapsed ones.
+    """
+    extras = _extras(node)
+    return extras.get(SOFT_REJECT_FLAG) is True
+
+
 def iter_effective_nodes(
     nodes: Iterable[T],
 ) -> Iterator[T]:
@@ -147,6 +163,7 @@ __all__ = [
     "BULK_CATALOG_TRUNCATED_FLAG",
     "NodeCountPartition",
     "SOFT_REJECT_FLAG",
+    "is_llm_soft_rejected",
     "is_soft_rejected",
     "iter_effective_nodes",
     "partition_node_counts",

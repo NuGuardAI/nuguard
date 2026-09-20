@@ -201,3 +201,37 @@ def test_explicit_chat_path_is_authoritative_over_sbom_candidates() -> None:
     assert payload_key == "message"
     assert payload_list is False
     assert response_key is None
+
+
+def test_any_method_endpoint_is_a_valid_chat_candidate() -> None:
+    """Go net/http and gorilla/mux (and Java servlet mappings) emit
+    method="ANY" when the static extractor can't resolve the HTTP verb —
+    dispatch happens at runtime via r.Method. This must not be treated as
+    "confirmed not POST" the way a real GET/PUT/DELETE would be."""
+    sbom = AiSbomDocument(
+        target="healthcare-service",
+        nodes=[
+            Node(
+                name="ANY /chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.816,
+                metadata={
+                    "endpoint": "/chat",
+                    "method": "ANY",
+                    "chat_payload_key": "message",
+                },
+            ),
+        ],
+        edges=[],
+    )
+
+    path, payload_key, payload_list, response_key = discover_chat_config_from_sbom(
+        sbom=sbom,
+        chat_path="",
+        chat_payload_key="message",
+        chat_payload_list=False,
+    )
+
+    assert path == "/chat"
+    assert payload_key == "message"
+    assert payload_list is False

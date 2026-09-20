@@ -30,6 +30,7 @@ class _FakeClient:
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
+        retry_transient: bool = False,
     ) -> tuple[str, list[dict]]:
         self.sent_payloads.append(payload)
         return f"echo: {payload}", []

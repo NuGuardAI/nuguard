@@ -274,6 +274,7 @@ def redteam(
     runner = _run_redteam(
         sbom_doc=sbom_doc,
         sbom_path=sbom_path,
+        config_path=config_path,
         policy_path=policy_path,
         target_url=target_url,
         canary_path=canary_path,
@@ -545,6 +546,7 @@ def _resolve_target_url(sbom_doc: object, launch: bool = False) -> str | None:
 async def _run_redteam(
     sbom_doc: object,
     sbom_path: Path | None,
+    config_path: Path | None,
     policy_path: Path | None,
     target_url: str | None,
     canary_path: Path | None,
@@ -699,6 +701,7 @@ async def _run_redteam(
                 min_impact_score=min_impact_score,
                 scenario_filter=scenario_filter,
                 sbom_path=sbom_path,
+                config_path=config_path,
                 chat_path=chat_path,
                 chat_payload_key=chat_payload_key,
                 chat_payload_list=chat_payload_list,
@@ -760,6 +763,7 @@ async def _run_redteam(
         min_impact_score=min_impact_score,
         scenario_filter=scenario_filter,
         sbom_path=sbom_path,
+        config_path=config_path,
         chat_path=chat_path,
         chat_payload_key=chat_payload_key,
         chat_payload_list=chat_payload_list,
@@ -818,6 +822,7 @@ async def _run_orchestrator(  # noqa: C901
     min_impact_score: float,
     scenario_filter: list[str] | None,
     sbom_path: Path | None = None,
+    config_path: Path | None = None,
     policy_controls: list | None = None,
     chat_path: str = "/chat",
     chat_payload_key: str = "message",
@@ -952,6 +957,7 @@ async def _run_orchestrator(  # noqa: C901
         request,
         sbom=sbom_doc,  # type: ignore[arg-type]
         sbom_path=sbom_path,
+        config_path=config_path,
         policy=cognitive_policy,  # type: ignore[arg-type]
         policy_controls=policy_controls,
         redteam_llm=redteam_llm,

@@ -740,6 +740,7 @@ class RedteamOrchestrator:
         sbom: AiSbomDocument,
         target_url: str,
         sbom_path: Path | None = None,
+        config_path: Path | None = None,
         policy: CognitivePolicy | None = None,
         policy_controls: list | None = None,
         canary_config: CanaryConfig | None = None,
@@ -796,6 +797,7 @@ class RedteamOrchestrator:
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
+        self._config_path = config_path
         self._target_url = target_url
         self._policy = policy
         self._policy_controls = policy_controls  # compiled PolicyControl list
@@ -1257,6 +1259,7 @@ class RedteamOrchestrator:
             run_id=str(_uuid.uuid4()),
             probe_payload_extras=self._chat_payload_extras or None,
             is_websocket=self._chat_payload_key == "__websocket__",
+            config_path=self._config_path,
         )
         self.health_report = health_report
         for line in health_report.summary_lines():
@@ -1302,6 +1305,18 @@ class RedteamOrchestrator:
         )
         for _note in _hint_notes:
             self.config_notes.append(_note)
+        # Browser-recovery-sniffed extras (lowest precedence) — see
+        # session_resolver.resolve_target_session's matching step 4b for why.
+        _browser_extras = getattr(bootstrapper, "discovered_chat_payload_extras", None) or {}
+        if _browser_extras:
+            _new_from_browser = {k: v for k, v in _browser_extras.items() if k not in _merged_extras}
+            _merged_extras = {**_browser_extras, **_merged_extras}
+            if _new_from_browser:
+                self.config_notes.append(
+                    f"auto-injected {list(_new_from_browser)} into chat_payload_extras from a "
+                    f"browser-login recovery's chat-sniff step — add under target."
+                    f"chat_payload_extras in nuguard.yaml to skip that browser step next run."
+                )
         # Strip internal candidate-rotation markers before storing in payload extras
         _merged_extras = {k: v for k, v in _merged_extras.items() if not (k.startswith("__") and k.endswith("_candidates__"))}
         if _merged_extras != self._chat_payload_extras:
@@ -3003,7 +3018,9 @@ class RedteamOrchestrator:
             if finding.success_indicator == "canary_hit" or "Canary" in finding.title:
                 continue
             try:
-                _resp_text, _ = await executor._client.send(trigger_payload, _verify_session)
+                _resp_text, _ = await executor._client.send(
+                    trigger_payload, _verify_session, retry_transient=True
+                )
                 if executor._response_evaluator is not None:
                     _verdict = await executor._response_evaluator.evaluate(
                         goal_type=finding.goal_type or "",
@@ -3063,6 +3080,8 @@ class RedteamOrchestrator:
                     detail["status_code"] = sr.http_status_code
             else:
                 detail["payload"] = sr.resolved_payload
+                if sr.raw_request_body is not None:
+                    detail["raw_request_body"] = sr.raw_request_body
             if sr.response:
                 from nuguard.output.validation_report import _clean_response_for_display
                 cleaned = _clean_response_for_display(sr.response)

@@ -770,6 +770,7 @@ class BehaviorRunner:
         config: BehaviorConfig,
         sbom: "AiSbomDocument | None" = None,
         sbom_path: "Path | None" = None,
+        config_path: "Path | None" = None,
         policy: "CognitivePolicy | None" = None,
         intent: "IntentProfile | None" = None,
         llm_client: "LLMClient | None" = None,
@@ -780,6 +781,7 @@ class BehaviorRunner:
         self._config = config
         self._sbom = sbom
         self._sbom_path = sbom_path
+        self._config_path = config_path
         self._policy = policy
         self._intent = intent
         self._llm = llm_client
@@ -946,6 +948,7 @@ class BehaviorRunner:
         _is_websocket = indicates_websocket(
             self._sbom, chat_path=endpoint, chat_payload_key=payload_key
         )
+        bootstrapper = None
         try:
             bootstrapper, health_report = await bootstrap_auth_runtime(
                 target_url=target_url,
@@ -954,6 +957,7 @@ class BehaviorRunner:
                 run_id=str(_uuid.uuid4()),
                 probe_payload_extras=getattr(self._config, "chat_payload_extras", None) or None,
                 is_websocket=_is_websocket,
+                config_path=self._config_path,
             )
             for line in health_report.summary_lines():
                 _log.info("behavior bootstrap %s", line)
@@ -1007,6 +1011,22 @@ class BehaviorRunner:
         ) if self._sbom is not None else (_merged_extras, [])
         for _note in _login_notes + _hint_notes:
             _log.info("behavior _build_client: %s", _note)
+
+        # Browser-recovery-sniffed extras (lowest precedence) — see
+        # session_resolver.resolve_target_session's matching step 4b for why.
+        _browser_extras = (
+            getattr(bootstrapper, "discovered_chat_payload_extras", None) or {}
+            if bootstrapper is not None else {}
+        )
+        if _browser_extras:
+            _new_from_browser = {k: v for k, v in _browser_extras.items() if k not in _merged_extras}
+            _merged_extras = {**_browser_extras, **_merged_extras}
+            if _new_from_browser:
+                _log.info(
+                    "behavior _build_client: auto-injected %s into chat_payload_extras from a "
+                    "browser-login recovery's chat-sniff step",
+                    list(_new_from_browser),
+                )
 
         client = build_target_app_client(
             target_url=target_url,
@@ -1135,7 +1155,7 @@ class BehaviorRunner:
     @staticmethod
     def _turn_record_to_attack_step(tr: TurnRecord) -> dict:
         """Serialize a TurnRecord into the standard attack_steps dict schema."""
-        return {
+        step: dict = {
             "step_type": "BEHAVIOR_TURN",
             "turn": tr.turn,
             "succeeded": tr.passed,
@@ -1153,6 +1173,9 @@ class BehaviorRunner:
             "latency_ms": tr.latency_ms,
             "is_coverage_turn": tr.is_coverage_turn,
         }
+        if tr.raw_request_body is not None:
+            step["raw_request_body"] = tr.raw_request_body
+        return step
 
     async def _run_scenario(
         self,
@@ -1522,13 +1545,16 @@ class BehaviorRunner:
                 response, canary_hits = await client.send(
                     message,
                     session=session,
+                    retry_transient=True,
                 )
                 # 401 token refresh and retry (mirrors redteam executor pattern)
                 if response.startswith("[HTTP 401]") and self._auth_session is not None:
                     refreshed = await self._auth_session.refresh_if_needed()
                     if refreshed:
                         client.update_default_headers(self._auth_session.headers())
-                        response, canary_hits = await client.send(message, session=session)
+                        response, canary_hits = await client.send(
+                            message, session=session, retry_transient=True
+                        )
                 # 429 scenario-level retry — on top of TargetAppClient's per-request
                 # retries.  Back off and replay the same turn; do NOT record a FAIL
                 # verdict or increment consecutive_failures (target is alive).
@@ -1640,6 +1666,7 @@ class BehaviorRunner:
                     turn=turn_idx + 1,
                     prompt=message,
                     response="",
+                    raw_request_body=session.last_request_body,
                     violations=[],
                     canary_hits=[],
                     passed=False,
@@ -1956,6 +1983,7 @@ class BehaviorRunner:
                 turn=turn_idx + 1,
                 prompt=message,
                 response=response,
+                raw_request_body=session.last_request_body,
                 violations=violations,
                 canary_hits=list(canary_hits or []),
                 passed=len(violations) == 0 and len(canary_hits or []) == 0,
@@ -2292,7 +2320,7 @@ class BehaviorRunner:
             probe_message = f"Can you use {tool_name} to {action}?"
             session = _AS(session_id=f"probe-{family}", target_url=target_url, chain_id="behavior-family-probe")
             try:
-                response, _ = await client.send(probe_message, session=session)
+                response, _ = await client.send(probe_message, session=session, retry_transient=True)
             except Exception as exc:
                 _log.debug("probe_tool_families: send failed for family=%s (%s)", family, exc)
                 results.setdefault(family, "unknown")
