@@ -1,0 +1,27 @@
+id: juiceshop-scoreboard-detection
+
+info:
+  name: OWASP Juice Shop Score Board Detection
+  author: local-security-tester
+  severity: low
+  description: Detects if the Juice Shop application is running and its scoreboard endpoint is exposed.
+  tags: juiceshop, exposure, recon
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/continue-code"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        words:
+          - "orange-juice"
+          - "continueCode"
+        case-insensitive: true
+        condition: or
+# digest: 4a0a00473045022100fc73767f2f358dd49a02cb016b82a54eba12402eaff2b16be04835969ea8ff51022056cb1984aee659bf4310b222f7b9597e7430a374e805cd7908b28f67b653b749:2ded6eed97d125cafacc29c18bc0d60c
