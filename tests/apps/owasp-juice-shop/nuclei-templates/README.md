@@ -1,9 +1,25 @@
 # Custom Nuclei templates — OWASP Juice Shop
 
-Two hand-authored templates for `nuguard pentest --templates-dir`:
+Hand-authored templates for `nuguard pentest --templates-dir`, each verified against the
+live `juice-shop-demo` deployment before being committed (not guessed from the challenge
+list at https://github.com/refabr1k/owasp-juiceshop-solutions):
 
 - `juicebox-scoreboard.yaml` — detects the exposed `/rest/continue-code` scoreboard endpoint.
 - `juiceshop-sqli.yaml` — exploits the `/rest/user/login` form via SQL injection auth bypass.
+- `juiceshop-search-sqli.yaml` — error-based SQL injection in `/rest/products/search?q=`
+  (confirmed via a raw `SQLITE_ERROR` in the response to an unescaped quote).
+- `juiceshop-exposed-directories.yaml` — public directory listings at `/ftp`,
+  `/encryptionkeys`, and `/support/logs`.
+- `juiceshop-exposed-admin-config.yaml` — unauthenticated `/rest/admin/application-configuration`
+  disclosure.
+- `juiceshop-open-redirect.yaml` — `/redirect` allowlist bypass via the `%2f@` userinfo
+  trick (encodes a trusted prefix as URL userinfo, redirecting to an attacker host after
+  the `@`).
+
+Not covered here — these need multi-step state or semantic judgment a single-request Nuclei
+template can't express (IDOR on baskets/feedback/reviews, password-reset flows, CAPTCHA
+bypass, price/coupon manipulation, admin-registration role bypass, DOM XSS requiring real
+JS execution): use NuGuard's `redteam`/`behavior` engines for those instead.
 
 NuGuard's pentest engine always runs Nuclei with `-disable-unsigned-templates`, so these
 must be cryptographically signed before Nuclei will load them (each `# digest:` line at
