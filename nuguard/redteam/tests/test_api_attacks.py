@@ -24,7 +24,9 @@ from nuguard.redteam.scenarios.api_attacks import (
     build_jwt_tampering_probe,
     build_mass_assignment,
     build_open_redirect_probe,
+    build_password_reset_probe,
     build_path_traversal_probe,
+    build_price_tampering,
     build_reflected_xss_probe,
 )
 from nuguard.redteam.scenarios.generator import ScenarioGenerator
@@ -312,6 +314,93 @@ def test_idor_returns_none_when_no_path_params():
 
 
 # ---------------------------------------------------------------------------
+# build_password_reset_probe
+# ---------------------------------------------------------------------------
+
+def test_password_reset_probe_scenario_structure():
+    s = build_password_reset_probe(
+        "ep4", "Apply Reset Code", "/reset-password/{token}", ["token"]
+    )
+    assert s is not None
+    assert s.goal_type == GoalType.API_ATTACK
+    assert s.scenario_type == ScenarioType.PASSWORD_RESET_ABUSE
+    steps = s.chain.steps
+    assert len(steps) == 2
+    assert steps[0].target_path == "/reset-password/000000"
+    assert steps[0].on_failure == "skip"
+    assert steps[1].target_path == "/reset-password/test"
+    assert steps[1].on_failure == "abort"
+    assert all(step.http_method == "GET" for step in steps)
+    assert all(step.success_signal == HTTP_2XX_SENTINEL for step in steps)
+    assert all(step.use_llm_eval for step in steps)
+
+
+def test_password_reset_probe_matches_alternate_token_param_names():
+    for param_name in ("resetToken", "code", "continue_code", "otp"):
+        s = build_password_reset_probe(
+            "ep4", "Reset", f"/reset/{{{param_name}}}", [param_name]
+        )
+        assert s is not None, f"expected a scenario for param name {param_name!r}"
+
+
+def test_password_reset_probe_returns_none_without_token_param():
+    result = build_password_reset_probe("ep4", "Get Profile", "/profile/{id}", ["id"])
+    assert result is None
+
+
+def test_password_reset_probe_returns_none_when_no_path_params():
+    result = build_password_reset_probe("ep4", "List Resets", "/resets", [])
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# build_price_tampering
+# ---------------------------------------------------------------------------
+
+def test_price_tampering_scenario_structure():
+    s = build_price_tampering("ep5", "Checkout", "/checkout", method="POST")
+    assert s is not None
+    assert s.goal_type == GoalType.API_ATTACK
+    assert s.scenario_type == ScenarioType.PRICE_TAMPERING
+    step = s.chain.steps[0]
+    assert step.target_path == "/checkout"
+    assert step.http_method == "POST"
+    assert step.http_body is not None
+    assert step.http_body.get("price") == 0.01
+    assert step.http_body.get("total") == 0.01
+    assert '"price": 0.01' in step.success_signal
+    assert step.success_requires_2xx is True
+
+
+def test_price_tampering_returns_none_when_schema_has_no_price_like_field():
+    result = build_price_tampering(
+        "ep5",
+        "Create Comment",
+        "/comments",
+        method="POST",
+        request_body_schema={"body": "string", "author": "string"},
+    )
+    assert result is None
+
+
+def test_price_tampering_fires_when_schema_has_price_like_field():
+    result = build_price_tampering(
+        "ep5",
+        "Checkout",
+        "/checkout",
+        method="POST",
+        request_body_schema={"totalPrice": "number", "items": "array"},
+    )
+    assert result is not None
+
+
+def test_price_tampering_fires_with_no_schema_at_all():
+    # No schema known -> can't rule it out; still worth probing.
+    result = build_price_tampering("ep5", "Checkout", "/checkout", method="POST")
+    assert result is not None
+
+
+# ---------------------------------------------------------------------------
 # _replace_path_param
 # ---------------------------------------------------------------------------
 
@@ -584,6 +673,73 @@ def test_generator_skips_idor_when_no_id_params():
     scenarios = gen.generate()
     idor = [s for s in scenarios if s.scenario_type == ScenarioType.IDOR]
     assert len(idor) == 0
+
+
+def _api_node_with_schema(
+    node_id: str, name: str, path: str, method: str, request_body_schema: dict[str, str]
+) -> Node:
+    """Like _api_node, but also sets metadata.request_body_schema.
+
+    _api_node itself doesn't expose that field (no existing caller needed it
+    at generator-integration level before build_price_tampering).
+    """
+    return Node(
+        id=_uuid.uuid5(_uuid.NAMESPACE_URL, node_id),
+        name=name,
+        component_type=NodeType.API_ENDPOINT,
+        confidence=0.9,
+        metadata=NodeMetadata(
+            endpoint=path,
+            method=method,
+            request_body_schema=request_body_schema,
+        ),
+    )
+
+
+def test_generator_produces_price_tampering_for_post_endpoint_with_price_field():
+    node = _api_node_with_schema(
+        "ep2b", "Checkout", "/api/checkout", "POST", {"totalPrice": "number"}
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    price = [s for s in scenarios if s.scenario_type == ScenarioType.PRICE_TAMPERING]
+    assert len(price) == 1
+
+
+def test_generator_skips_price_tampering_when_schema_has_no_price_field():
+    node = _api_node_with_schema(
+        "ep2c", "Create Comment", "/api/comments", "POST", {"body": "string"}
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    price = [s for s in scenarios if s.scenario_type == ScenarioType.PRICE_TAMPERING]
+    assert len(price) == 0
+
+
+def test_generator_produces_password_reset_probe_for_token_param_endpoint():
+    node = _api_node(
+        "ep3b", "Apply Reset Code", path="/reset-password/{token}",
+        method="GET", path_params=["token"],
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    reset = [s for s in scenarios if s.scenario_type == ScenarioType.PASSWORD_RESET_ABUSE]
+    assert len(reset) == 1
+
+
+def test_generator_skips_password_reset_probe_for_non_token_param():
+    node = _api_node(
+        "ep3c", "Get User", path="/api/users/{user_id}",
+        method="GET", path_params=["user_id"],
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    reset = [s for s in scenarios if s.scenario_type == ScenarioType.PASSWORD_RESET_ABUSE]
+    assert len(reset) == 0
 
 
 def test_generator_produces_injection_probe_for_endpoint_with_path_params():

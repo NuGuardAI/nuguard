@@ -47,6 +47,32 @@ _ID_PARAM_PATTERN = re.compile(
 )
 _ID_LIKE = {"id", "user_id", "tenant_id", "account_id", "customer_id", "org_id"}
 
+# Path-parameter names that identify a password-reset / account-recovery
+# token, code, or link — the forced-browsing target for
+# ``build_password_reset_probe``.
+_RESET_TOKEN_LIKE = {
+    "token",
+    "reset_token",
+    "resettoken",
+    "code",
+    "continue_code",
+    "continuecode",
+    "otp",
+    "verification_code",
+}
+
+# Body fields that carry a price/amount/total the client should never be
+# trusted to set — the server must recompute these from its own catalog/
+# order state. Used by ``build_price_tampering`` to test whether a naively
+# implemented endpoint echoes/accepts a client-supplied value instead.
+_PRICE_TAMPER_BODY: dict = {
+    "price": 0.01,
+    "amount": 0.01,
+    "total": 0.01,
+    "totalPrice": 0.01,
+    "unitPrice": 0.01,
+}
+
 
 def _replace_first_id_param(
     path: str, path_params: list[str], probe_value: str = "99999"
@@ -507,6 +533,160 @@ def build_idor(
             f"Access GET {path} using a different object ID "
             f"({', '.join(_IDOR_PROBE_VALUES)}).  A 2xx response containing "
             f"another record's data (not just any 2xx) indicates IDOR."
+        ),
+        target_node_ids=[endpoint_id],
+        impact_score=chain.pre_score,
+        chain=chain,
+    )
+
+
+# Deliberately weak/short "guessed" token values — an endpoint that accepts
+# any of these instead of rejecting them outright indicates missing or
+# trivially-bypassable token validation (never a real credential; these are
+# fixed probe literals, not derived from any real account).
+_RESET_TOKEN_PROBE_VALUES: tuple[str, ...] = ("000000", "test")
+
+
+def build_password_reset_probe(
+    endpoint_id: str,
+    endpoint_name: str,
+    path: str,
+    path_params: list[str],
+) -> AttackScenario | None:
+    """Build a password-reset/account-recovery token forced-browsing scenario.
+
+    Substitutes the first reset-token-shaped path parameter (token,
+    reset_token, code, continue_code, otp, ...) with short, guessable probe
+    values. A 2xx response indicates the endpoint accepts an unvalidated or
+    weakly-validated token — the raw-HTTP counterpart to IDOR for the
+    auth-recovery surface, following the exact same probe/fallback shape.
+
+    Returns ``None`` when no substitutable reset-token-like parameter is
+    found in *path*.
+    """
+    token_param = next(
+        (param for param in path_params if param.lower() in _RESET_TOKEN_LIKE),
+        None,
+    )
+    if token_param is None:
+        return None
+
+    probe_paths = [
+        p
+        for p in (
+            _replace_path_param(path, token_param, v) for v in _RESET_TOKEN_PROBE_VALUES
+        )
+        if p is not None
+    ]
+    if not probe_paths:
+        return None
+
+    chain_id = str(uuid.uuid4())
+    steps = [
+        ExploitStep(
+            step_id=f"{chain_id}_s{idx}",
+            step_type="INVOKE",
+            description=f"Forced-browse {endpoint_name} with a guessed reset token",
+            payload="",
+            target_path=probe_path,
+            http_method="GET",
+            target_node_id=endpoint_id,
+            success_signal=HTTP_2XX_SENTINEL,
+            on_failure="abort" if idx == len(probe_paths) else "skip",
+            use_llm_eval=True,
+        )
+        for idx, probe_path in enumerate(probe_paths, start=1)
+    ]
+    chain = ExploitChain(
+        chain_id=chain_id,
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.PASSWORD_RESET_ABUSE,
+        sbom_path=[endpoint_id],
+        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        steps=steps,
+    )
+    chain.pre_score = pre_score(chain)
+    return AttackScenario(
+        scenario_id=str(uuid.uuid4()),
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.PASSWORD_RESET_ABUSE,
+        title=f"Password-Reset Token Abuse — {endpoint_name}",
+        description=(
+            f"Access GET {path} using a short, guessed reset token "
+            f"({', '.join(_RESET_TOKEN_PROBE_VALUES)}).  A 2xx response "
+            f"indicates the token is missing or weakly validated."
+        ),
+        target_node_ids=[endpoint_id],
+        impact_score=chain.pre_score,
+        chain=chain,
+    )
+
+
+def build_price_tampering(
+    endpoint_id: str,
+    endpoint_name: str,
+    path: str,
+    method: str = "POST",
+    request_body_schema: dict[str, str] | None = None,
+) -> AttackScenario | None:
+    """Build a client-controlled price/amount tampering scenario.
+
+    Sibling of :func:`build_mass_assignment`: sends a near-zero price/amount/
+    total in the request body instead of privilege-escalation fields. Success
+    is a 2xx response echoing back the tampered (near-zero) value, indicating
+    the server trusted the client-supplied price instead of recomputing it.
+
+    When *request_body_schema* is provided (from the SBOM), a price/amount-
+    shaped field name is required among the schema fields — this scenario is
+    not generated for endpoints with no evidence they accept such a field, to
+    avoid firing on every arbitrary write endpoint the way a purely-generic
+    probe would.
+    """
+    if request_body_schema is not None:
+        schema_fields = {key.lower() for key in request_body_schema}
+        if not (schema_fields & {key.lower() for key in _PRICE_TAMPER_BODY}):
+            return None
+
+    base_body = _build_realistic_body(request_body_schema) if request_body_schema else {}
+    body = {**base_body, **_PRICE_TAMPER_BODY}
+
+    chain_id = str(uuid.uuid4())
+    chain = ExploitChain(
+        chain_id=chain_id,
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.PRICE_TAMPERING,
+        sbom_path=[endpoint_id],
+        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        steps=[
+            ExploitStep(
+                step_id=f"{chain_id}_s1",
+                step_type="INVOKE",
+                description=f"Send a near-zero client-controlled price to {endpoint_name}",
+                payload="",
+                target_path=path,
+                http_method=method,
+                http_body=body,
+                target_node_id=endpoint_id,
+                # The tampered value echoed back in a 2xx response confirms
+                # the server trusted it rather than recomputing server-side.
+                success_signal='"price": 0.01|"price":0.01|"amount": 0.01|"amount":0.01'
+                '|"total": 0.01|"total":0.01',
+                success_requires_2xx=True,
+                on_failure="abort",
+                use_llm_eval=True,
+            )
+        ],
+    )
+    chain.pre_score = pre_score(chain)
+    return AttackScenario(
+        scenario_id=str(uuid.uuid4()),
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.PRICE_TAMPERING,
+        title=f"Price Tampering — {endpoint_name}",
+        description=(
+            f"POST a near-zero client-controlled price/amount/total to "
+            f"{method} {path}.  A 2xx response echoing back the tampered "
+            f"value confirms the server did not recompute it server-side."
         ),
         target_node_ids=[endpoint_id],
         impact_score=chain.pre_score,
