@@ -6150,6 +6150,11 @@
         "title": "Allow Headless Browser",
         "type": "boolean"
       },
+      "use_bundled_templates": {
+        "default": true,
+        "title": "Use Bundled Templates",
+        "type": "boolean"
+      },
       "auth_config": {
         "anyOf": [
           {
