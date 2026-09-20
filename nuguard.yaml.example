@@ -510,7 +510,7 @@ redteam:
 #   concurrency: 10                  # template concurrency, 1-25 (default: 10)
 #   retries: 1                       # request retries, 0-2 (default: 1)
 #   request_timeout: 10              # per-request seconds, 1-60 (default: 10)
-#   scan_timeout: 900                # whole-scan seconds, 10-3600 (default: 900)
+#   scan_timeout: 2700                # whole-scan seconds, 10-3600 (default: 2700)
 #   stats_interval: 5                # seconds between progress-stats log lines
 #   fail_on: high                    # none|info|low|medium|high|critical (default: high)
 #   format: text                     # text | json | markdown | sarif (default: text)
