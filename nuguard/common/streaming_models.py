@@ -97,6 +97,23 @@ class BehaviorProgressState(BaseModel):
     terminal_status: Literal["running", "completed", "failed"] = "running"
 
 
+class PentestProgressState(BaseModel):
+    """Deterministic, reduced progress state for pentest streams.
+
+    ``scenarios_total``/``scenarios_completed`` count Nuclei *passes*
+    (standard + optional DAST — 1 or 2), reusing the shared event/payload
+    shapes rather than introducing pentest-only field names.
+    """
+
+    run_id: str
+    schema_version: str = STREAM_SCHEMA_VERSION
+    scenarios_total: int = 0
+    scenarios_completed: int = 0
+    findings_count: int = 0
+    progress_pct: float = 0.0
+    terminal_status: Literal["running", "completed", "failed"] = "running"
+
+
 def _pct(completed: int, total: int) -> float:
     if total <= 0:
         return 0.0
@@ -118,6 +135,28 @@ def apply_event_to_redteam_state(state: RedteamProgressState, event: StreamEvent
         delta = StreamDeltaPayload.model_validate(event.payload)
         state.findings_count += len(delta.findings_added)
         state.scenario_record_count += len(delta.scenario_record_added)
+    elif event.event_type == "completed":
+        state.terminal_status = "completed"
+        state.progress_pct = 1.0 if state.scenarios_total > 0 else state.progress_pct
+    elif event.event_type == "failed":
+        state.terminal_status = "failed"
+    return state
+
+
+def apply_event_to_pentest_state(state: PentestProgressState, event: StreamEvent) -> PentestProgressState:
+    """Apply one event to the pentest reduced state deterministically."""
+    if event.event_type == "scenario_started":
+        total = int(event.payload.get("scenarios_total") or 0)
+        if total >= state.scenarios_total and total > 0:
+            state.scenarios_total = total
+            state.progress_pct = _pct(state.scenarios_completed, state.scenarios_total)
+    elif event.event_type == "scenario_progress":
+        completed = int(event.payload.get("scenarios_completed") or state.scenarios_completed)
+        state.scenarios_completed = max(state.scenarios_completed, completed)
+        state.progress_pct = _pct(state.scenarios_completed, state.scenarios_total)
+    elif event.event_type == "findings_delta":
+        delta = StreamDeltaPayload.model_validate(event.payload)
+        state.findings_count += len(delta.findings_added)
     elif event.event_type == "completed":
         state.terminal_status = "completed"
         state.progress_pct = 1.0 if state.scenarios_total > 0 else state.progress_pct

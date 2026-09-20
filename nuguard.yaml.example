@@ -497,6 +497,50 @@ redteam:
   #   DATABASE_URL: ${DATABASE_URL}
   #   SOME_API_KEY: ${SOME_API_KEY}
 
+# ─── Nuclei-based cloud application pentest ────────────────────────────────────
+# `nuguard pentest` uses the shared target.url / target.auth above. Every field
+# here is optional — a CLI flag always overrides its yaml value, which in turn
+# overrides the built-in default (--rate-limit, etc. > pentest.rate_limit, etc.
+# > built-in default). --acknowledge-authorization is intentionally NOT
+# configurable here: it must be a fresh, explicit flag on every invocation,
+# never inherited from a checked-in file.
+# pentest:
+#   profile: safe                    # safe | standard (default: safe)
+#   rate_limit: 25                   # requests/sec, 1-100 (default: 25)
+#   concurrency: 10                  # template concurrency, 1-25 (default: 10)
+#   retries: 1                       # request retries, 0-2 (default: 1)
+#   request_timeout: 10              # per-request seconds, 1-60 (default: 10)
+#   scan_timeout: 2700                # whole-scan seconds, 10-3600 (default: 2700)
+#   stats_interval: 5                # seconds between progress-stats log lines
+#   fail_on: high                    # none|info|low|medium|high|critical (default: high)
+#   format: text                     # text | json | markdown | sarif (default: text)
+#   nuclei_binary: nuclei            # executable name or path (default: nuclei)
+#   templates_dir: ./nuclei-templates    # trusted custom-template dir (see below)
+#   nuclei_secret_file: ./secrets.yaml   # native Nuclei Secret File (alt. to target.auth)
+#   output: ./reports/pentest.md
+#   remediation_output: ./reports/pentest-remediation.json
+#
+#   # RFC1918/unique-local targets. Loopback, link-local, metadata, multicast,
+#   # and reserved addresses always stay blocked regardless of this setting.
+#   allow_private: false
+#
+#   # Same-origin NuGuard POST login flow, driven by target.auth above.
+#   allow_dynamic_auth: false
+#
+#   # Enables Nuclei's DAST/fuzzing templates and stops excluding the
+#   # fuzz/intrusive tags. Sends materially more, more intrusive requests.
+#   allow_active_fuzzing: false
+#
+#   # Enables Nuclei's headless-browser templates: executes page JavaScript in
+#   # a real Chromium instance. Auto-downloads a ~120MB Chromium build from
+#   # storage.googleapis.com on first use; refused when running as root.
+#   allow_headless_browser: false
+#
+#   # Expands the scanned target list with every parameter-free API endpoint
+#   # path discovered in the SBOM (sbom: above), one Nuclei -list entry per
+#   # endpoint alongside target.url. Requires sbom: to be set.
+#   use_sbom_endpoints: false
+
 # ─── Static analysis ──────────────────────────────────────────────────────────
 analyze:
   min_severity: medium              # critical | high | medium | low | info
