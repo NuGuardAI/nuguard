@@ -327,6 +327,7 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "SCRIPTED_IDENTITY_ESCALATION": "privilege_escalation",
     "SCRIPTED_ROLE_ESCALATION": "privilege_escalation",
     "JWT_TAMPERING": "privilege_escalation",
+    "PASSWORD_RESET_ABUSE": "privilege_escalation",
     # -- data_leak: data/PII exfiltration, including covert channels
     "DIRECT_PII_EXTRACTION": "data_leak",
     "CROSS_TENANT_EXFILTRATION": "data_leak",
@@ -377,6 +378,7 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "SQL_INJECTION": "risky_tool",
     "SSRF": "risky_tool",
     "MASS_ASSIGNMENT": "risky_tool",
+    "PRICE_TAMPERING": "risky_tool",
     "IDOR": "risky_tool",
     "DATASTORE_SQL_INJECTION": "risky_tool",
     "SHELL_INJECTION": "risky_tool",
