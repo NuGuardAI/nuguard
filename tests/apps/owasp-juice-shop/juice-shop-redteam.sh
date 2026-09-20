@@ -26,20 +26,20 @@ echo "Log: $LOG_FILE"
 echo "Started: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "---"
 
-#echo "Preparing OpenAI CS Agent for NuGuard Testing..."
+echo "Preparing OpenAI CS Agent for NuGuard Testing..."
 
 #uv run nuguard sbom generate \
 #  --config "$SCRIPT_DIR/nuguard.yaml" \
 #  --format json \
 #  -o "$SCRIPT_DIR/openai-cs.sbom.json"
 
-#echo "SBOM generated successfully."
+echo "SBOM generated successfully."
 
-#echo "Compiling Cognitive Policy controls..."
+echo "Compiling Cognitive Policy controls..."
 
 #uv run nuguard policy compile --config "$SCRIPT_DIR/nuguard.yaml"
 
-#echo "Cognitive Policy Check..."
+echo "Cognitive Policy Check..."
 
 # policy check exits 2 when gaps are found — expected in testing; treat as non-fatal
 #uv run nuguard policy check \
@@ -47,7 +47,7 @@ echo "---"
 #  --format markdown \
 #  -o "$SCRIPT_DIR/reports/openai-cs-policy-check.md" || true
 
-#echo "Done."
+echo "Done."
 
 #echo "---"
 #echo "Running behavior analysis (static + dynamic)..."
@@ -66,13 +66,34 @@ echo "---"
 #echo "Report:       $SCRIPT_DIR/reports/openai-cs-behavior.md"
 
 echo "---"
-echo "Running redteam tests ..."
+echo "Running pentest ..."
+
+# pentest tests exit 2 when findings are present — expected in testing; treat as non-fatal.
+##uv run nuguard pentest  \
+##  --config "$SCRIPT_DIR/nuguard.yaml" \
+##  --acknowledge-authorization \
+##  --allow-dynamic-auth \
+##  --allow-active-fuzzing \
+##  --format markdown \
+##  --output "$SCRIPT_DIR/reports/juice-shop-pentest.md" || true
+
+  uv run nuguard pentest  \
+  --config "$SCRIPT_DIR/nuguard.yaml" \
+  --acknowledge-authorization \
+  --allow-headless-browser \
+  --allow-dynamic-auth \
+  --allow-active-fuzzing \
+  --format markdown \
+  --output "$SCRIPT_DIR/reports/juice-shop-pentest.md" || true
+
+#echo "---"
+#echo "Running redteam tests ..."
 
 # redteam tests exit 2 when findings are present — expected in testing; treat as non-fatal.
-uv run nuguard redteam  \
-  --config "$SCRIPT_DIR/nuguard.yaml" \
-  --format markdown \
-  --output "$SCRIPT_DIR/reports/openai-cs-redteam.md" || true
+#uv run nuguard redteam  \
+#  --config "$SCRIPT_DIR/nuguard.yaml" \
+#  --format markdown \
+#  --output "$SCRIPT_DIR/reports/openai-cs-redteam.md" || true
 
 # Wait for the tee log-capture background process to flush all output before exiting.
 # Without this, the exec > >(tee) pipe may close before the last lines reach the log file.
