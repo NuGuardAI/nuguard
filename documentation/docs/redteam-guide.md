@@ -165,3 +165,33 @@ results. On a fully successful run the checkpoint file is deleted automatically.
 [![Back to Quick Start](https://img.shields.io/badge/←_Back_to_Quick_Start-111111?style=for-the-badge)](quick-start.md)
 
 ---
+
+## Remediation priority and coverage integrity
+
+The shared remediation synthesizer applies source constraints after both
+synchronous and asynchronous generation. A recommendation cannot have a higher
+priority than its source finding. Canonical severity enum values are supported,
+and informational findings remain informational. The existing medium fallback
+is retained for older untyped inputs with missing or unrecognized severities.
+
+Deduplication removes repeated advice, not source finding associations. Combined
+recommendations preserve all finding IDs and per-finding rationales and retain
+the highest eligible source priority. Prompt patches merge only when their
+location, component type, and other security context are compatible. Generated
+artefacts are copied rather than mutating handler-owned objects.
+
+An explicit tool name in a finding is retained. Inferred privilege guidance
+requires a unique high-privilege TOOL reachable through CALLS edges from the
+identified component. Missing, ambiguous, or unrelated tools are not substituted
+from elsewhere in the SBOM. When attribution is unavailable, guidance asks the
+operator to review the intended access policy instead of asserting an invented
+tool or authorization failure.
+
+Catalog coverage uses the current ScenarioCategory taxonomy as its denominator
+and counts each recognized category once. Unrecognized categories in older
+serialized snapshots are reported separately and do not inflate coverage.
+Catalog generation coverage is not proof that scenarios executed successfully.
+
+These safeguards improve remediation and coverage consistency. They do not
+change exploit-success evaluation or independently verify the underlying
+findings. Remediation remains advisory.
