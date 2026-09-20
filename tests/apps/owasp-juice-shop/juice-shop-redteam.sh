@@ -86,6 +86,20 @@ echo "Running pentest ..."
   --format markdown \
   --output "$SCRIPT_DIR/reports/juice-shop-pentest.md" || true
 
+echo "---"
+echo "Running pentest with custom Juice Shop templates ..."
+
+# --templates-dir REPLACES Nuclei's default corpus rather than adding to it,
+# so this app-specific pass (known Juice Shop vulns) runs separately from
+# the full-corpus scan above, not combined with it.
+uv run nuguard pentest  \
+  --config "$SCRIPT_DIR/nuguard.yaml" \
+  --acknowledge-authorization \
+  --allow-dynamic-auth \
+  --templates-dir "$SCRIPT_DIR/nuclei-templates" \
+  --format markdown \
+  --output "$SCRIPT_DIR/reports/juice-shop-custom-templates-pentest.md" || true
+
 #echo "---"
 #echo "Running redteam tests ..."
 
