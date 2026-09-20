@@ -18,6 +18,7 @@ from nuguard.behavior.public_api import BehaviorAnalysisRequest, BehaviorRunRequ
 from nuguard.common.discovery import TargetDiscoveryResult
 from nuguard.common.streaming_models import (
     BehaviorProgressState,
+    PentestProgressState,
     RedteamProgressState,
     StreamDeltaPayload,
     StreamEvent,
@@ -39,6 +40,13 @@ from nuguard.output.public_api import (
     ValidationReportExportRequest,
     ValidationReportExportResult,
     ValidationReportMetaModel,
+)
+from nuguard.pentest.public_api import (
+    PentestAuthConfig,
+    PentestExecutionResult,
+    PentestLoginFlowConfig,
+    PentestRunRequest,
+    PentestRunResult,
 )
 from nuguard.policy.public_api import (
     CognitivePolicyParseDetail,
@@ -91,6 +99,7 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "behavior.BehaviorRunResult": BehaviorRunResult,
     "common.discovery.TargetDiscoveryResult": TargetDiscoveryResult,
     "common.streaming.BehaviorProgressState": BehaviorProgressState,
+    "common.streaming.PentestProgressState": PentestProgressState,
     "common.streaming.RedteamProgressState": RedteamProgressState,
     "common.streaming.StreamDeltaPayload": StreamDeltaPayload,
     "common.streaming.StreamEvent": StreamEvent,
@@ -108,6 +117,11 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "output.ValidationReportExportRequest": ValidationReportExportRequest,
     "output.ValidationReportExportResult": ValidationReportExportResult,
     "output.ValidationReportMetaModel": ValidationReportMetaModel,
+    "pentest.PentestAuthConfig": PentestAuthConfig,
+    "pentest.PentestExecutionResult": PentestExecutionResult,
+    "pentest.PentestLoginFlowConfig": PentestLoginFlowConfig,
+    "pentest.PentestRunRequest": PentestRunRequest,
+    "pentest.PentestRunResult": PentestRunResult,
     "policy.CognitivePolicyParseDetail": CognitivePolicyParseDetail,
     "policy.CognitivePolicyParseRequest": CognitivePolicyParseRequest,
     "policy.CognitivePolicyParseResult": CognitivePolicyParseResult,
