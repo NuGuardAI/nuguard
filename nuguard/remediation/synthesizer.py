@@ -17,12 +17,14 @@ downstream can be corrupted by a hallucinated value.
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from nuguard.common.logging import get_logger
+from nuguard.models.finding import Severity
 from nuguard.remediation.models import RemediationArtefact, RemediationArtefactType
 from nuguard.remediation.prompts import (
     ARCHITECTURAL_RATIONALE_SYSTEM,
@@ -526,101 +528,127 @@ def _classify_finding(finding: dict) -> str:
 
 
 def _artefact_dedup_key(art: RemediationArtefact) -> str:
-    """Cross-finding dedup identity for one artefact.
-
-    Two artefacts collapse to the same key only if they'd tell the reader
-    the same thing — i.e. their actual instructive content (and rationale)
-    matches — not merely because they share a component-derived display
-    label. ``patch_section``/``guardrail_name``/``change_description`` are
-    often a pure function of ``component`` alone (e.g.
-    ``f"Out of Scope — {component}"``), so keying on them collapses
-    genuinely distinct findings on the same component before they ever
-    reach :func:`_merge_artefacts`, silently dropping one finding's
-    remediation entirely instead of merging it.
-
-    ``rationale`` is included alongside the instruction fields because a
-    generic fallback template can produce byte-identical ``patch_text``/
-    guardrail spec for two different findings while ``rationale`` (usually
-    sourced from the finding's own description) still differs — content
-    alone isn't sufficient to prove two artefacts are really duplicates.
-    """
-    if art.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH:
-        content = art.patch_text or art.patch_section or ""
-    elif art.artefact_type == RemediationArtefactType.ARCHITECTURAL_CHANGE:
-        content = art.change_detail or art.change_description or ""
-    else:  # INPUT_GUARDRAIL / OUTPUT_GUARDRAIL
-        content = (
-            f"{art.guardrail_type}|{art.guardrail_trigger}|{art.guardrail_action}"
-            if (art.guardrail_type or art.guardrail_trigger or art.guardrail_action)
-            else (art.guardrail_name or "")
-        )
-    return f"{art.component}:{art.artefact_type.value}:{content}:{art.rationale}"
+    """Compare the full recommendation, excluding only source IDs and priority."""
+    content = art.model_dump(
+        mode="json", exclude={"finding_ids", "priority", "per_finding_rationale"}
+    )
+    return json.dumps(content, sort_keys=True, separators=(",", ":"))
 
 
 def _merge_artefacts(artefacts: list[RemediationArtefact]) -> list[RemediationArtefact]:
-    """Merge artefacts that target the same (component, artefact_type).
-
-    SYSTEM_PROMPT_PATCH artefacts for the same component are merged into one,
-    concatenating their patch_text blocks.  Other types are kept as-is.
-    """
-    groups: dict[tuple[str, str], list[RemediationArtefact]] = {}
-    for a in artefacts:
-        key = (a.component, a.artefact_type.value)
-        groups.setdefault(key, []).append(a)
+    """Combine compatible prompt patches without losing priority or provenance."""
+    groups: dict[str, list[RemediationArtefact]] = {}
+    for art in artefacts:
+        context = art.model_dump(
+            mode="json",
+            exclude={
+                "finding_ids",
+                "priority",
+                "patch_section",
+                "patch_text",
+                "rationale",
+                "per_finding_rationale",
+            },
+        )
+        key = json.dumps(context, sort_keys=True, separators=(",", ":"))
+        groups.setdefault(key, []).append(art)
 
     merged: list[RemediationArtefact] = []
-    for (comp, atype), group in groups.items():
-        if atype != RemediationArtefactType.SYSTEM_PROMPT_PATCH or len(group) == 1:
+    for group in groups.values():
+        base = group[0]
+        if base.artefact_type != RemediationArtefactType.SYSTEM_PROMPT_PATCH or len(group) == 1:
             merged.extend(group)
             continue
-        # Merge patch texts
-        finding_ids: list[str] = []
-        patch_parts: list[str] = []
-        rationale_parts: list[str] = []
-        per_finding_rationale: dict[str, str] = {}
-        for a in group:
-            finding_ids.extend(a.finding_ids)
-            if a.patch_text:
-                patch_parts.append(a.patch_text)
-            if a.rationale:
-                rationale_parts.append(a.rationale)
-                # Each finding this pre-merge artefact addresses keeps its OWN
-                # rationale text, so backfill can recover it even after the
-                # combined `rationale` below is truncated for display — a
-                # finding's remediation must never be reconstructed from a
-                # sibling finding's text (see backfill.py).
-                for fid in a.finding_ids:
-                    per_finding_rationale[fid] = a.rationale
-        base = group[0]
+        finding_ids = sorted({fid for art in group for fid in art.finding_ids})
+        own_rationales = {
+            fid: "\n".join(
+                dict.fromkeys(
+                    art.per_finding_rationale.get(fid, art.rationale)
+                    for art in group
+                    if fid in art.finding_ids
+                )
+            )
+            for fid in finding_ids
+        }
         merged.append(
-            RemediationArtefact(
-                finding_ids=finding_ids,
-                component=base.component,
-                component_type=base.component_type,
-                artefact_type=base.artefact_type,
-                priority=base.priority,
-                patch_location=base.patch_location,
-                patch_section="Security Rules",
-                patch_text="\n\n".join(patch_parts),
-                # Preserve each artefact's own rationale (deduped, order kept)
-                # instead of discarding them behind a content-free "Merged N..."
-                # placeholder — the specific reasons still need to reach the
-                # report even when several findings land on the same patch.
-                rationale="\n".join(dict.fromkeys(rationale_parts))
-                or f"Merged {len(group)} system prompt patches for {comp}",
-                per_finding_rationale=per_finding_rationale,
+            base.model_copy(
+                deep=True,
+                update={
+                    "finding_ids": finding_ids,
+                    "priority": min(
+                        group, key=lambda art: _PRIORITY_RANK.get(art.priority, 99)
+                    ).priority,
+                    "patch_section": "Security Rules",
+                    "patch_text": "\n\n".join(
+                        dict.fromkeys(art.patch_text for art in group if art.patch_text)
+                    ),
+                    "rationale": "\n".join(
+                        dict.fromkeys(art.rationale for art in group if art.rationale)
+                    )
+                    or f"Merged {len(group)} system prompt patches for {base.component}",
+                    "per_finding_rationale": own_rationales,
+                },
             )
         )
-
-    # Sort by priority
-    _prio = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-    merged.sort(key=lambda a: _prio.get(a.priority, 99))
-    return merged
+    return sorted(merged, key=lambda art: _PRIORITY_RANK.get(art.priority, 99))
 
 
 # ---------------------------------------------------------------------------
 # Main synthesizer
 # ---------------------------------------------------------------------------
+
+
+_PRIORITY_RANK = {severity.value: index for index, severity in enumerate(Severity)}
+
+
+def _finding_priority(finding: dict) -> str:
+    raw = finding.get("severity", "medium")
+    value = str(getattr(raw, "value", raw)).strip().lower()
+    # Retain the existing medium fallback for older untyped/missing inputs.
+    return value if value in _PRIORITY_RANK else "medium"
+
+
+def _collect_artefacts(
+    findings: list[dict], batches: list[list[RemediationArtefact]]
+) -> list[RemediationArtefact]:
+    """Apply source constraints once, after either sync or async synthesis."""
+    by_content: dict[str, RemediationArtefact] = {}
+    for finding, batch in zip(findings, batches, strict=True):
+        source_id = str(finding.get("finding_id", ""))
+        source_priority = _finding_priority(finding)
+        for produced in batch:
+            if source_id and (
+                set(produced.finding_ids) != {source_id}
+                or not set(produced.per_finding_rationale) <= {source_id}
+            ):
+                raise ValueError("Remediation source finding IDs do not match their input.")
+            art = produced.model_copy(deep=True)
+            # A recommendation may be less urgent, never more urgent, than its source.
+            if (
+                art.priority not in _PRIORITY_RANK
+                or _PRIORITY_RANK[art.priority] < _PRIORITY_RANK[source_priority]
+            ):
+                art.priority = source_priority
+            key = _artefact_dedup_key(art)
+            existing = by_content.get(key)
+            if existing is None:
+                by_content[key] = art
+                continue
+            # Dedup removes repeated advice, not the findings it addresses.
+            merged_rationales = dict(existing.per_finding_rationale)
+            for member in (existing, art):
+                for fid in member.finding_ids:
+                    value = member.per_finding_rationale.get(fid, member.rationale)
+                    old = merged_rationales.get(fid)
+                    merged_rationales[fid] = (
+                        value if not old or old == value else old + "\n" + value
+                    )
+            existing.finding_ids = sorted(set(existing.finding_ids) | set(art.finding_ids))
+            existing.per_finding_rationale = merged_rationales
+            existing.priority = min(
+                (existing.priority, art.priority), key=_PRIORITY_RANK.__getitem__
+            )
+    return _merge_artefacts(list(by_content.values()))
 
 
 class RemediationSynthesizer:
@@ -694,23 +722,14 @@ class RemediationSynthesizer:
         batches = await asyncio.gather(
             *(self._synthesize_one_async(f) for f in findings),
         )
-        artefacts: list[RemediationArtefact] = []
-        seen_keys: set[str] = set()
-        for batch in batches:
-            for art in batch:
-                key = _artefact_dedup_key(art)
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    artefacts.append(art)
-        return _merge_artefacts(artefacts)
+        return _collect_artefacts(findings, batches)
 
     async def _synthesize_one_async(self, finding: dict) -> list[RemediationArtefact]:
         """Build artefacts for one finding, enriching with LLM-authored
         surgical text where the artefact type allows it (see module docstring)."""
         component = str(finding.get("affected_component", "unknown"))
         finding_id = str(finding.get("finding_id", ""))
-        severity = str(finding.get("severity", "medium")).lower()
-        priority = severity if severity in ("critical", "high", "medium", "low") else "medium"
+        priority = _finding_priority(finding)
         node = self._node_by_name.get(component)
         dtype = _classify_finding(finding)
 
@@ -853,24 +872,14 @@ class RemediationSynthesizer:
         findings should also include ``goal_type`` so the classifier can
         route them directly without heuristics.
         """
-        artefacts: list[RemediationArtefact] = []
-        seen_keys: set[str] = set()
-        for finding in findings:
-            produced = self._synthesize_one(finding)
-            for art in produced:
-                key = _artefact_dedup_key(art)
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    artefacts.append(art)
-
-        return _merge_artefacts(artefacts)
+        batches = [self._synthesize_one(finding) for finding in findings]
+        return _collect_artefacts(findings, batches)
 
     def _synthesize_one(self, finding: dict) -> list[RemediationArtefact]:
         """Return 0–2 artefacts for a single finding (template-only)."""
         component = str(finding.get("affected_component", "unknown"))
         finding_id = str(finding.get("finding_id", ""))
-        severity = str(finding.get("severity", "medium")).lower()
-        priority = severity if severity in ("critical", "high", "medium", "low") else "medium"
+        priority = _finding_priority(finding)
         node = self._node_by_name.get(component)
         dtype = _classify_finding(finding)
 
@@ -1270,59 +1279,67 @@ class RemediationSynthesizer:
     # ------------------------------------------------------------------
 
     def _resolve_privilege_tool_name(self, finding: dict) -> str:
-        """Resolve the specific high-privilege tool name from *finding*, or ""
-        when none can be identified.
+        """Use explicit evidence or one reachable high-privilege TOOL, never a global guess."""
+        explicit = str(finding.get("tool_name", "") or "").strip()
+        match = re.search(r"tool '([^']+)'", str(finding.get("title", "")), re.IGNORECASE)
+        if explicit:
+            return explicit
+        if match:
+            return match.group(1)
 
-        Tries the finding title first ("...can access high-privilege tool
-        'X'"), then falls back to any SBOM TOOL node flagged
-        ``metadata.high_privilege``. Shared by the sync and async privilege
-        remediation paths so they can never re-diverge on tool-name
-        resolution the way they did before (the async path used to fall back
-        to a literal ``"high-privilege-tool"`` placeholder instead of calling
-        this).
-        """
-        tool_match = re.search(r"tool '([^']+)'", str(finding.get("title", "")), re.IGNORECASE)
-        if tool_match:
-            return tool_match.group(1)
-        high_priv_names = [
-            n.name
-            for n in getattr(self._sbom, "nodes", [])
-            if getattr(getattr(n, "metadata", None), "high_privilege", False)
+        if self._sbom is None:
+            return ""
+        roots = [
+            node
+            for node in self._sbom.nodes
+            if node.name == str(finding.get("affected_component", ""))
         ]
-        return high_priv_names[0] if high_priv_names else ""
+        if len(roots) != 1:
+            return ""
+        component = roots[0]
+        nodes = {str(node.id): node for node in self._sbom.nodes}
+        links: dict[str, set[str]] = {}
+        for edge in self._sbom.edges:
+            relationship = getattr(edge.relationship_type, "value", edge.relationship_type)
+            if str(relationship).upper() == "CALLS":
+                links.setdefault(str(edge.source), set()).add(str(edge.target))
+        pending = [str(component.id)]
+        visited: set[str] = set()
+        candidates: set[str] = set()
+        while pending:
+            node_id = pending.pop()
+            if node_id in visited:
+                continue
+            visited.add(node_id)
+            node = nodes.get(node_id)
+            if node is None:
+                continue
+            if _node_type(node) == "TOOL" and bool(_node_meta(node, "high_privilege")):
+                candidates.add(str(node.name))
+            pending.extend(links.get(node_id, set()) - visited)
+        # Multiple eligible tools are ambiguous; keep the existing generic review.
+        return next(iter(candidates)) if len(candidates) == 1 else ""
 
     def _generic_privilege_review_artefact(
-        self,
-        component: str,
-        node: "Node | None",
-        finding_id: str,
-        desc: str,
+        self, component: str, node: "Node | None", finding_id: str, desc: str
     ) -> list[RemediationArtefact]:
-        """Generic architectural-review artefact for a privilege-escalation
-        finding with no specific tool name resolved — emitted instead of a
-        placeholder that reads as a real component (e.g. 'high-privilege-tool')."""
+        """Do not invent a tool or authorization policy when attribution is unknown."""
         return [
             RemediationArtefact(
                 finding_ids=[finding_id],
                 component=component,
-                component_type=_node_type(node) if node else "AGENT",
+                component_type=_node_type(node) if node else "system",
                 artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
                 priority="high",
-                change_description=(
-                    f"Review and restrict the privilege level of tools accessible by '{component}'"
-                ),
+                change_description=f"Review authorization for '{component}'",
                 change_detail=(
-                    f"Agent '{component}' can reach tools with elevated privileges without "
-                    f"authentication.\n\n"
-                    f"Recommended changes:\n"
-                    f"1. Audit all TOOL nodes reachable from '{component}' and label "
-                    f"   high-privilege ones (high_privilege=true in the SBOM).\n"
-                    f"2. Add an AUTH node protecting '{component}' and each high-privilege tool.\n"
-                    f"3. Ensure the application verifies a valid session token before any "
-                    f"   high-privilege tool invocation.\n"
-                    f"4. Remove or scope-limit any tools that do not require root/admin access."
+                    f"Confirm the intended access policy for '{component}' against the finding's evidence. "
+                    "No unique high-privilege tool was identified for this finding. "
+                    "Compare permitted and denied identities on the affected operation; "
+                    "apply server-side authorization where the policy requires it. "
+                    "Do not infer a bypass merely from successful access to a public endpoint, "
+                    "or assign an unrelated SBOM tool to this recommendation."
                 ),
-                requires_auth=True,
                 rationale=desc,
             )
         ]
@@ -1485,7 +1502,7 @@ class RemediationSynthesizer:
                 component=component,
                 component_type=_node_type(node) if node else "AGENT",
                 artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
-                priority="critical",
+                priority=priority,
                 change_description=(
                     f"Add AUTH node protecting '{component}' → '{tool_name}' "
                     f"(privilege: {priv_scope or 'high-privilege'})"
@@ -1519,7 +1536,7 @@ class RemediationSynthesizer:
                     component=tool_name,
                     component_type="TOOL",
                     artefact_type=RemediationArtefactType.INPUT_GUARDRAIL,
-                    priority="critical",
+                    priority=priority,
                     guardrail_name=f"auth_gate_{tool_name.lower().replace(' ', '_')[:24]}",
                     guardrail_type=guardrail_type,
                     guardrail_trigger=f"any call to {tool_name}()",
@@ -1539,7 +1556,7 @@ class RemediationSynthesizer:
                     component=component,
                     component_type=_node_type(node) if node else "AGENT",
                     artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
-                    priority="critical",
+                    priority=priority,
                     patch_section=f"Access Controls — {tool_name}",
                     patch_text=patch_text,
                     privilege_scope=priv_scope or None,

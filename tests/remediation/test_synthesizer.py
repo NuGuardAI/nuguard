@@ -6,6 +6,7 @@ technique rather than the coarse goal_type family, so remediation routing
 no longer collapses e.g. "Approval State Forgery" and "System Prompt
 Extraction" (both PROMPT_DRIVEN_THREAT) into the same template.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -74,7 +75,12 @@ class TestBackwardCompatNoScenarioType:
         assert _classify_finding(finding) == expected_dtype
 
     def test_missing_scenario_type_key_entirely_does_not_error(self) -> None:
-        finding = {"finding_id": "f1", "title": "x", "description": "x", "goal_type": "risky_tool_typo"}
+        finding = {
+            "finding_id": "f1",
+            "title": "x",
+            "description": "x",
+            "goal_type": "risky_tool_typo",
+        }
         # Unknown goal_type and no scenario_type -> falls through to heuristics.
         assert _classify_finding(finding) == "generic"
 
@@ -268,8 +274,10 @@ class TestContentBasedDedup:
         synth = RemediationSynthesizer()
         artefacts = await synth.synthesize_findings_async(findings)
         patches = [
-            a for a in artefacts
-            if a.component == "SupportAgent" and a.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH
+            a
+            for a in artefacts
+            if a.component == "SupportAgent"
+            and a.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH
         ]
         assert len(patches) == 1, "expected both findings' artefacts to survive and merge into one"
         assert "Agent disclosed its full system prompt verbatim." in patches[0].rationale
@@ -299,8 +307,10 @@ class TestContentBasedDedup:
         synth = RemediationSynthesizer()
         artefacts = synth.synthesize_findings(findings)
         patches = [
-            a for a in artefacts
-            if a.component == "SupportAgent" and a.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH
+            a
+            for a in artefacts
+            if a.component == "SupportAgent"
+            and a.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH
         ]
         assert len(patches) == 1
         assert "Agent disclosed its full system prompt verbatim." in patches[0].rationale
@@ -334,7 +344,7 @@ class TestContentBasedDedup:
         artefacts = await synth.synthesize_findings_async(findings)
         guardrails = [a for a in artefacts if a.component == "CIAgent"]
         assert len(guardrails) == 1
-        assert guardrails[0].finding_ids == ["f1"]
+        assert guardrails[0].finding_ids == ["f1", "f2"]
 
 
 class TestCrossComponentIsolation:
@@ -403,7 +413,9 @@ class TestCrossComponentIsolation:
         ]
         synth = RemediationSynthesizer()
         artefacts = await synth.synthesize_findings_async(findings)
-        patches = [a for a in artefacts if a.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH]
+        patches = [
+            a for a in artefacts if a.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH
+        ]
 
         assert len(patches) == 2, "expected one independent artefact per component, not merged"
         by_component = {a.component: a for a in patches}
