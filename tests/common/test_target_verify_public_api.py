@@ -31,6 +31,23 @@ class _FakeBootstrapper:
     session: _FakeAuthSession
 
 
+def _session_config(*, endpoint_source: str = "default"):
+    from nuguard.common.session_resolver import TargetSessionConfig
+
+    return TargetSessionConfig(
+        base_url="http://target",
+        chat_path="/chat",
+        chat_payload_key="message",
+        chat_payload_list=False,
+        chat_payload_extras={},
+        chat_response_key=None,
+        auth_session=_FakeAuthSession(),
+        effective_headers={"Authorization": "Bearer token"},
+        endpoint_source=endpoint_source,
+        resolution_notes=[],
+    )
+
+
 @pytest.mark.parametrize(
     "request_type",
     [TargetVerifyRequest, TargetSessionResolveRequest],
@@ -100,39 +117,13 @@ def test_public_target_requests_require_cookie_file_path(request_type) -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_target_session_public_threads_custom_headers_to_sbom_session(monkeypatch):
-    from nuguard.common.endpoint_detection import EndpointSource, PayloadShape, ResolvedEndpoint
-    from nuguard.common.session_resolver import TargetSessionConfig
-
     captured_extra_headers = []
 
     async def _fake_resolve_target_session(**kwargs):
         captured_extra_headers.append(kwargs["extra_headers"])
         report = TargetHealthReport(target_url="http://target", endpoint="/chat", run_id="r-hdr", checks=[])
-        return (
-            TargetSessionConfig(
-                base_url="http://target",
-                chat_path="/chat",
-                chat_payload_key="message",
-                chat_payload_list=False,
-                chat_payload_extras={},
-                chat_response_key=None,
-                auth_session=_FakeAuthSession(),
-                resolution_notes=[],
-            ),
-            report,
-        )
+        return _session_config(), report
 
-    async def _fake_resolve_chat_endpoint(**kwargs):
-        return ResolvedEndpoint(
-            path="/chat",
-            payload=PayloadShape(key="message", source=EndpointSource.SBOM),
-            path_source=EndpointSource.SBOM,
-        )
-
-    monkeypatch.setattr(
-        "nuguard.common.target_verify_public_api.resolve_chat_endpoint",
-        _fake_resolve_chat_endpoint,
-    )
     monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
 
     await resolve_target_session_public(
@@ -147,14 +138,14 @@ async def test_resolve_target_session_public_threads_custom_headers_to_sbom_sess
 
 
 @pytest.mark.asyncio
-async def test_verify_target_passes_login_flow_to_auth_bootstrap(monkeypatch) -> None:
+async def test_verify_target_passes_login_flow_to_shared_resolver(monkeypatch) -> None:
     login_flow = LoginFlowConfig(
         endpoint="/api/auth/login",
         payload={"email": "alice@example.com", "password": "super-secret"},
     )
     captured_auth_configs = []
 
-    async def _fake_bootstrap_auth_runtime(**kwargs):
+    async def _fake_resolve_target_session(**kwargs):
         captured_auth_configs.append(kwargs["auth_config"])
         report = TargetHealthReport(
             target_url="http://target",
@@ -170,9 +161,9 @@ async def test_verify_target_passes_login_flow_to_auth_bootstrap(monkeypatch) ->
                 )
             ],
         )
-        return _FakeBootstrapper(session=_FakeAuthSession()), report
+        return _session_config(), report
 
-    monkeypatch.setattr("nuguard.common.target_verify_public_api.bootstrap_auth_runtime", _fake_bootstrap_auth_runtime)
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
 
     await verify_target(
         TargetVerifyRequest(
@@ -186,23 +177,20 @@ async def test_verify_target_passes_login_flow_to_auth_bootstrap(monkeypatch) ->
 
 
 @pytest.mark.asyncio
-async def test_resolve_target_session_passes_login_flow_to_auth_bootstrap(monkeypatch) -> None:
+async def test_resolve_target_session_passes_login_flow_to_shared_resolver(monkeypatch) -> None:
     login_flow = LoginFlowConfig(endpoint="/api/auth/login", payload={"api_key": "super-secret"})
     captured_auth_configs = []
 
-    async def _fake_bootstrap_auth_runtime(**kwargs):
+    async def _fake_resolve_target_session(**kwargs):
         captured_auth_configs.append(kwargs["auth_config"])
-        return (
-            _FakeBootstrapper(session=_FakeAuthSession()),
-            TargetHealthReport(
-                target_url="http://target",
-                endpoint="/chat",
-                run_id="r-login-flow",
-                checks=[],
-            ),
+        return _session_config(), TargetHealthReport(
+            target_url="http://target",
+            endpoint="/chat",
+            run_id="r-login-flow",
+            checks=[],
         )
 
-    monkeypatch.setattr("nuguard.common.target_verify_public_api.bootstrap_auth_runtime", _fake_bootstrap_auth_runtime)
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
 
     await resolve_target_session_public(
         TargetSessionResolveRequest(
@@ -217,7 +205,7 @@ async def test_resolve_target_session_passes_login_flow_to_auth_bootstrap(monkey
 
 @pytest.mark.asyncio
 async def test_verify_target_maps_statuses_and_omits_plaintext_credentials(monkeypatch):
-    async def _fake_bootstrap_auth_runtime(**kwargs):
+    async def _fake_resolve_target_session(**kwargs):
         _ = kwargs
         report = TargetHealthReport(
             target_url="http://target",
@@ -234,9 +222,9 @@ async def test_verify_target_maps_statuses_and_omits_plaintext_credentials(monke
                 )
             ],
         )
-        return _FakeBootstrapper(session=_FakeAuthSession()), report
+        return _session_config(), report
 
-    monkeypatch.setattr("nuguard.common.target_verify_public_api.bootstrap_auth_runtime", _fake_bootstrap_auth_runtime)
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
 
     result = await verify_target(
         TargetVerifyRequest(
@@ -264,7 +252,7 @@ async def test_verify_target_runs_optional_discovery_when_checks_ok(monkeypatch)
             _ = (exc_type, exc, tb)
             return False
 
-    async def _fake_bootstrap_auth_runtime(**kwargs):
+    async def _fake_resolve_target_session(**kwargs):
         _ = kwargs
         report = TargetHealthReport(
             target_url="http://target",
@@ -280,7 +268,7 @@ async def test_verify_target_runs_optional_discovery_when_checks_ok(monkeypatch)
                 )
             ],
         )
-        return _FakeBootstrapper(session=_FakeAuthSession()), report
+        return _session_config(), report
 
     async def _fake_run_discovery(client, session, request):
         _ = (client, session, request)
@@ -289,8 +277,8 @@ async def test_verify_target_runs_optional_discovery_when_checks_ok(monkeypatch)
             notes=["discovery ok"],
         )
 
-    monkeypatch.setattr("nuguard.common.target_verify_public_api.bootstrap_auth_runtime", _fake_bootstrap_auth_runtime)
-    monkeypatch.setattr("nuguard.common.target_verify_public_api.build_target_app_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.build_target_app_client_from_session", lambda *args, **kwargs: _FakeClient())
     monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", _fake_run_discovery)
 
     result = await verify_target(TargetVerifyRequest(target_url="http://target"))
@@ -303,9 +291,6 @@ async def test_verify_target_runs_optional_discovery_when_checks_ok(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_resolve_target_session_public_uses_probe_endpoint_source(monkeypatch):
-    from nuguard.common.endpoint_detection import EndpointSource, PayloadShape, ResolvedEndpoint
-    from nuguard.common.session_resolver import TargetSessionConfig
-
     async def _fake_resolve_target_session(**kwargs):
         _ = kwargs
         report = TargetHealthReport(
@@ -314,31 +299,11 @@ async def test_resolve_target_session_public_uses_probe_endpoint_source(monkeypa
             run_id="r2",
             checks=[],
         )
-        return (
-            TargetSessionConfig(
-                base_url="http://target",
-                chat_path="/live",
-                chat_payload_key="message",
-                chat_payload_list=False,
-                chat_payload_extras={},
-                chat_response_key=None,
-                auth_session=_FakeAuthSession(),
-                resolution_notes=["used live probe"],
-            ),
-            report,
-        )
+        session = _session_config(endpoint_source="probe")
+        session.chat_path = "/live"
+        session.resolution_notes = ["used live probe"]
+        return session, report
 
-    async def _fake_resolve_chat_endpoint(**kwargs):
-        return ResolvedEndpoint(
-            path="/live",
-            payload=PayloadShape(key="message", source=EndpointSource.PROBE),
-            path_source=EndpointSource.PROBE,
-        )
-
-    monkeypatch.setattr(
-        "nuguard.common.target_verify_public_api.resolve_chat_endpoint",
-        _fake_resolve_chat_endpoint,
-    )
     monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
 
     result = await resolve_target_session_public(
@@ -358,44 +323,19 @@ async def test_resolve_target_session_public_uses_probe_endpoint_source(monkeypa
 
 @pytest.mark.asyncio
 async def test_resolve_target_session_public_resolves_sbom_host_before_planning(monkeypatch):
-    from nuguard.common.session_resolver import TargetSessionConfig
-
-    planned_target_urls = []
     resolved_session_target_urls = []
-
-    async def _fake_resolve_endpoint_plan(**kwargs):
-        planned_target_urls.append(kwargs["target_url"])
-        return "/chat", "message", False, None, "probe"
 
     async def _fake_resolve_target_session(**kwargs):
         resolved_session_target_urls.append(kwargs["target_url"])
-        return (
-            TargetSessionConfig(
-                base_url=kwargs["target_url"],
-                chat_path="/chat",
-                chat_payload_key="message",
-                chat_payload_list=False,
-                chat_payload_extras={},
-                chat_response_key=None,
-                auth_session=_FakeAuthSession(),
-                resolution_notes=[],
-            ),
-            TargetHealthReport(
-                target_url=kwargs["target_url"],
-                endpoint="/chat",
-                run_id="r-resolved-url",
-                checks=[],
-            ),
+        session = _session_config()
+        session.base_url = kwargs["target_url"]
+        return session, TargetHealthReport(
+            target_url=kwargs["target_url"],
+            endpoint="/chat",
+            run_id="r-resolved-url",
+            checks=[],
         )
 
-    monkeypatch.setattr(
-        "nuguard.common.target_verify_public_api.resolve_target_url",
-        lambda target_url, sbom: ("https://api.example.test", ["used SBOM deployment URL"]),
-    )
-    monkeypatch.setattr(
-        "nuguard.common.target_verify_public_api._resolve_endpoint_plan",
-        _fake_resolve_endpoint_plan,
-    )
     monkeypatch.setattr(
         "nuguard.common.target_verify_public_api.resolve_target_session",
         _fake_resolve_target_session,
@@ -406,9 +346,8 @@ async def test_resolve_target_session_public_resolves_sbom_host_before_planning(
         sbom=object(),
     )
 
-    assert planned_target_urls == ["https://api.example.test"]
-    assert resolved_session_target_urls == ["https://api.example.test"]
-    assert result.effective_target_url == "https://api.example.test"
+    assert resolved_session_target_urls == ["https://static.example.test"]
+    assert result.effective_target_url == "https://static.example.test"
 
 
 @pytest.mark.asyncio
@@ -463,8 +402,7 @@ async def test_parity_tv_001(monkeypatch):
             report,
         )
 
-    monkeypatch.setattr("nuguard.common.target_verify_public_api.bootstrap_auth_runtime", _fake_bootstrap_auth_runtime)
-    monkeypatch.setattr("nuguard.common.target_verify_public_api.build_target_app_client", lambda *args, **kwargs: _FakeClient())
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.build_target_app_client_from_session", lambda *args, **kwargs: _FakeClient())
     monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", _fake_run_discovery)
     monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
     async def _fake_resolve_chat_endpoint(**kwargs):
@@ -487,5 +425,5 @@ async def test_parity_tv_001(monkeypatch):
 
     assert verify_result.all_ok is True
     assert verify_result.endpoint_source in {"config", "default"}
-    assert resolve_result.endpoint_source == "sbom"
+    assert resolve_result.endpoint_source == verify_result.endpoint_source
     assert resolve_result.effective_endpoint == "/chat"

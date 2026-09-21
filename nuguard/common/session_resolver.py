@@ -53,12 +53,15 @@ class TargetSessionConfig:
     chat_payload_list: bool
     chat_payload_extras: dict[str, Any]  # static config + login-response + SBOM hints
     chat_response_key: str | None
-    auth_session: "AuthSession"
+    auth_session: "AuthSession | None"
     resolution_notes: list[str] = field(default_factory=list)
     # Nested payload value template from OpenAPI schema detection.
     # When set, the value for chat_payload_key is built from this template
     # (e.g. {"role": "user", "content": "..."}) instead of a plain string.
     chat_payload_value_template: "dict[str, object] | None" = None
+    effective_headers: dict[str, str] = field(default_factory=dict)
+    endpoint_source: str = "default"
+    payload_format: str = "json"
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +264,7 @@ def apply_sbom_context_hints(
 
 async def resolve_target_session(
     target_url: str,
-    sbom: "AiSbomDocument",
+    sbom: "AiSbomDocument | None",
     auth_config: "AuthConfig | None",
     extra_headers: dict[str, str],
     chat_path: str,
@@ -276,6 +279,11 @@ async def resolve_target_session(
     run_id: str | None = None,
     ws_auth_message: dict[str, Any] | None = None,
     config_path: "Path | None" = None,
+    request_timeout: float | None = None,
+    payload_format: str = "json",
+    endpoint_explicit: bool | None = None,
+    payload_key_explicit: bool = False,
+    response_key_explicit: bool = False,
 ) -> tuple[TargetSessionConfig, "TargetHealthReport"]:
     """Resolve all target-connection config and return a :class:`TargetSessionConfig`.
 
@@ -295,7 +303,7 @@ async def resolve_target_session(
 
     Args:
         target_url: Base URL of the target application (may be a static-hosting URL).
-        sbom: Parsed AI-SBOM used for endpoint and auth discovery.
+        sbom: Parsed AI-SBOM used for endpoint and auth discovery, when available.
         auth_config: Structured auth config; ``None`` falls back to *extra_headers*.
         extra_headers: Static headers (legacy auth or custom).  Used when *auth_config*
             is ``None`` or ``type='none'``.
@@ -345,6 +353,7 @@ async def resolve_target_session(
 
     resolution_notes: list[str] = []
     _run_id = run_id or str(_uuid.uuid4())
+    configured_chat_path = chat_path
 
     # ── 1. URL resolution ────────────────────────────────────────────────────
     resolved_url, url_notes = resolve_target_url(target_url, sbom)
@@ -353,7 +362,40 @@ async def resolve_target_session(
     if resolved_url:
         target_url = resolved_url
 
-    # ── 2. Auth upgrade: basic → login_flow ──────────────────────────────────
+    from nuguard.common.endpoint_detection.frontend_origin import (  # noqa: PLC0415
+        discover_api_origin_from_frontend_bundle,
+    )
+
+    bundle_origin, bundle_notes = await discover_api_origin_from_frontend_bundle(target_url)
+    if bundle_origin:
+        target_url = bundle_origin
+        resolution_notes.extend(bundle_notes)
+
+    # ── 2. Static endpoint selection ─────────────────────────────────────────
+    # Resolve static SBOM information before bootstrap so the bootstrap request
+    # reaches the same route the eventual client will use.  Explicit settings
+    # retain their existing precedence.
+    endpoint_source = "config" if endpoint_explicit else "default"
+    if sbom is not None and not endpoint_explicit:
+        discovered_path, discovered_key, discovered_list, discovered_resp_key = (
+            discover_chat_config_from_sbom(
+                sbom,
+                chat_path=chat_path,
+                chat_payload_key=chat_payload_key,
+                chat_payload_list=chat_payload_list,
+            )
+        )
+        if discovered_path and discovered_path != "/chat":
+            chat_path = discovered_path
+            endpoint_source = "sbom"
+            _log.info("resolve_target_session: SBOM discovered endpoint %s", chat_path)
+        if not payload_key_explicit and discovered_key and discovered_key != chat_payload_key:
+            chat_payload_key = discovered_key
+            chat_payload_list = discovered_list
+        if not response_key_explicit and discovered_resp_key:
+            chat_response_key = discovered_resp_key
+
+    # ── 3. Auth upgrade: basic → login_flow ──────────────────────────────────
     effective_auth = auth_config
     if (
         effective_auth is not None
@@ -369,16 +411,22 @@ async def resolve_target_session(
         headers_override=extra_headers if effective_auth is None else None,
     )
 
-    # ── 3. Auth bootstrap ────────────────────────────────────────────────────
+    # ── 4. Auth bootstrap ────────────────────────────────────────────────────
     # WS detection must happen before bootstrap (it decides handshake vs POST),
     # so it runs zero-I/O against whatever the SBOM already knows — the fuller
     # live-probe-based discovery in steps 6/7 below still applies afterwards.
-    is_websocket = sbom_indicates_websocket(sbom, chat_path=chat_path, chat_payload_key=chat_payload_key)
+    is_websocket = bool(
+        sbom is not None
+        and sbom_indicates_websocket(sbom, chat_path=chat_path, chat_payload_key=chat_payload_key)
+    )
 
     _probe_extras = probe_payload_extras if probe_payload_extras is not None else chat_payload_extras
     bootstrapper, health_report = await bootstrap_auth_runtime(
         target_url=target_url,
-        endpoint=chat_path or ("/ws" if is_websocket else "/chat"),
+        endpoint=(
+            configured_chat_path
+            or ("/ws" if is_websocket else chat_path or "/chat")
+        ),
         auth_config=auth_runtime.auth_config,
         canary_config=canary_config,
         run_id=_run_id,
@@ -386,13 +434,14 @@ async def resolve_target_session(
         is_websocket=is_websocket,
         ws_auth_message=ws_auth_message,
         config_path=config_path,
+        timeout=request_timeout,
     )
     bootstrap_headers = bootstrapper.session.headers()
     effective_headers = dict(extra_headers)
     if bootstrap_headers:
         effective_headers.update(bootstrap_headers)
 
-    # ── 4. Login-response extras ──────────────────────────────────────────────
+    # ── 5. Login-response extras ──────────────────────────────────────────────
     merged_extras, login_notes = _merge_login_response_extras(
         bootstrapper.session, chat_payload_extras
     )
@@ -415,39 +464,22 @@ async def resolve_target_session(
                 f"chat_payload_extras in nuguard.yaml to skip that browser step next run."
             )
 
-    # ── 5. SBOM context hints ─────────────────────────────────────────────────
+    # ── 6. SBOM context hints ─────────────────────────────────────────────────
     _auth_username = getattr(effective_auth, "username", None) or None
-    merged_extras, hint_notes = apply_sbom_context_hints(
-        sbom, chat_path, merged_extras, login_extras, auth_username=_auth_username
-    )
-    resolution_notes.extend(hint_notes)
-
-    # ── 6. SBOM static endpoint discovery ────────────────────────────────────
-    if not chat_path:
-        discovered_path, discovered_key, discovered_list, discovered_resp_key = (
-            discover_chat_config_from_sbom(
-                sbom,
-                chat_path=chat_path,
-                chat_payload_key=chat_payload_key,
-                chat_payload_list=chat_payload_list,
-            )
+    if sbom is not None:
+        merged_extras, hint_notes = apply_sbom_context_hints(
+            sbom, chat_path, merged_extras, login_extras, auth_username=_auth_username
         )
-        if discovered_path and discovered_path != "/chat":
-            chat_path = discovered_path
-            _log.info("resolve_target_session: SBOM discovered endpoint %s", chat_path)
-        if discovered_key and discovered_key != chat_payload_key:
-            chat_payload_key = discovered_key
-            chat_payload_list = discovered_list
-        if discovered_resp_key and not chat_response_key:
-            chat_response_key = discovered_resp_key
+    else:
+        hint_notes = []
+    resolution_notes.extend(hint_notes)
 
     # ── 7. Live probe ─────────────────────────────────────────────────────────
     # Option A — path unknown: full discovery (path + key).
     # Option B — path known but key is default: probe only the known path to
     #            detect the key; keep the user's path unchanged.
-    _original_chat_path = chat_path
     chat_payload_value_template: "dict[str, object] | None" = None
-    if not chat_path:
+    if sbom is not None and not chat_path:
         # Option A: discover both path and key
         probe_result = await probe_endpoint(
             target_url=target_url,
@@ -460,8 +492,9 @@ async def resolve_target_session(
         if probe_result is not None:
             chat_path, chat_payload_key, chat_payload_list = probe_result
             chat_payload_value_template = probe_result.value_template
+            endpoint_source = "probe"
             _log.info("resolve_target_session: live probe selected endpoint %s", chat_path)
-    elif chat_payload_key == "message":
+    elif sbom is not None and not payload_key_explicit and chat_payload_key == "message":
         # Option B: path is known but key is still the default — detect key only
         probe_result = await probe_endpoint(
             target_url=target_url,
@@ -507,6 +540,7 @@ async def resolve_target_session(
             sbom=sbom,
             payload_extras=merged_extras or None,
             chat_payload_value_template=chat_payload_value_template,
+            payload_format=payload_format,
             ws_auth_message=ws_auth_message,
         )
         async with _wu_client:
@@ -552,6 +586,9 @@ async def resolve_target_session(
             auth_session=bootstrapper.session,
             resolution_notes=resolution_notes,
             chat_payload_value_template=chat_payload_value_template,
+            effective_headers=effective_headers,
+            endpoint_source=endpoint_source,
+            payload_format=payload_format,
         ),
         health_report,
     )
