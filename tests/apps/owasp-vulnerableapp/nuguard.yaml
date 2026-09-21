@@ -5,8 +5,10 @@
 # Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
 
 # ─── Project file paths ───────────────────────────────────────────────────────
-sbom: ./openai-cs.sbom.json               # path to pre-generated AI-SBOM JSON
-source: https://github.com/NuGuardAI/openai-cs-agents-demo      # generate SBOM from source dir (alternative to sbom:)
+sbom: ./vulnerableapp.sbom.json               # path to pre-generated AI-SBOM JSON
+source: https://github.com/SasanLabs/VulnerableApp      # generate SBOM from source dir (alternative to sbom:)
+ref: master         # VulnerableApp's default branch is 'master', not 'main'
+
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior
   llm: true                     # use LLM to compile richer test/boundary prompts
@@ -34,51 +36,35 @@ target:
   # Backend URL is also recorded in the SBOM summary → deployment_urls so nuguard can surface
   # it automatically (extracted from AZURE_WEBAPP_NAME in .github/workflows/deploy-azure.yml).
   #url: http://127.0.0.1:8250   # local dev backend (pnpm dev or python -m uvicorn api:app)
-  url: https://openai-cs-agents-backend.azurewebsites.net
+  #url: http://127.0.0.1:3000   # local dev backend — loopback, blocked by nuguard pentest's SSRF scope
+  url: http://vulnerableapp-demo.eastus2.azurecontainer.io:9090/VulnerableApp
+
   # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
-  # The backend (python-backend/api.py) only recognizes Authorization: Bearer <token>
-  # obtained via /login — it does not understand HTTP Basic auth.
+  # Juice Shop's backend only recognizes Authorization: Bearer <token> obtained via
+  # /rest/user/login — it does not understand HTTP Basic auth, and the SBOM's
+  # request_body_schema for that endpoint is empty, so nuguard can't auto-upgrade a
+  # basic-auth config into a login_flow the way it can for apps with a fuller schema.
+  # The token is nested at authentication.token in the login response, not top-level.
   auth:
-    type: login_flow
-    login_flow:
-      endpoint: /login
-      payload:
-        username: alice
-        password: alice123
-      token_response_key: token
-      token_header: "Authorization: Bearer"
-      refresh_on_401: true
+  #  type: login_flow
+  #  login_flow:
+  #    endpoint: /rest/user/login
+  #    payload:
+  #      email: ${JUICE_SHOP_USERNAME}
+  #      password: ${JUICE_SHOP_PASSWORD}
+  #    token_response_key: authentication.token
+  #    token_header: "Authorization: Bearer"
+  #    refresh_on_401: true
+    username: ${APP_USERNAME}
+    password: ${APP_PASSWORD}
+
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 # nuguard behavior exercises the AI app's happy path to verify capabilities work
 # as declared and that all behaviour complies with the cognitive policy.
 #validate:
 behavior:
-  # Required: URL of the running AI application under test
-#  target: https://openai-cs-agents-backend.azurewebsites.net
-#  target: http://127.0.0.1:8250
-  # Path of the chat/agent endpoint on the target (default: /chat)
-#  target_endpoint: /api/chat
-#  chat_payload_key: phrases
-#  chat_payload_list: true
-#  chat_response_key: prognosis
   llm: true
-
-  # Cancel any single scenario after this many seconds. The live Azure demo
-  # backend's multi-agent handoffs plus LLM judging can exceed the 180s
-  # default on slower turns, which previously tripped the CI gate's
-  # behavior_scenarios_executed_zero check with an empty-message timeout.
-  scenario_timeout: 300
-
-  # Golden-data backstop: real seed records from python-backend/database.py.
-  # Used when live pre-scan discovery returns an empty profile, so generated
-  # test payloads reference Alice's actual account/confirmation numbers
-  # instead of LLM-invented placeholders.
-  # golden_data:
-  #   "Cancellation Agent":
-  #     account_id: "11111111"
-  #     name: "Alice Johnson"
-  #     confirmation_number: "AA1234"
 
   # Canary seed file — records planted in the app's data store
   # Used by behavior mode to detect accidental leakage during happy-path runs
@@ -118,33 +104,12 @@ behavior:
 # nuguard redteam exercises adversarial scenarios to find break points.
 redteam:
 
-  # Golden-data backstop: same real seed record as behavior.golden_data.
-  # Eliminates the live DISCOVER step for this known test account, making
-  # {golden_id}/{golden_name} token substitution reliable on this target.
-  # golden_data:
-  #   "Cancellation Agent":
-  #     account_id: "11111111"
-  #     name: "Alice Johnson"
-  #     confirmation_number: "AA1234"
-
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
   # cross-tenant scenarios — no extra identity config needed.
   #canary: ./canary.json
 
-  # Request body shape is auto-discovered from the SBOM (chat_endpoint node: message/false).
-  # No override needed.
-  # v2 engine settings (only used when engine: v2)
-  #v2:
-  #  knowledge_base_version: 0.1.0   # pinned technique KB version
-
-  #  phases: []                      # phase names to run; empty = all
-  #   semantic_judge:
-  #     count: 3                      # independent LLM judges for semantic verdicts
-  #     quorum: 2                     # votes required to confirm a violation
-  #   transferability_enabled: true   # score successful objectives for transferability
-  #   max_per_phase: 0                # cap scenarios per phase; 0 = unlimited
-  #   dry_run_only: true              # enforce dry-run-only for destructive actions
+  dry_run_only: true              # enforce dry-run-only for destructive actions
 
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)
@@ -200,7 +165,7 @@ redteam:
 
   # Guided adversarial conversations using ConversationDirector
   guided_conversations: true        # enable adaptive multi-turn attacks
-  guided_max_turns: 8               # upper-bound cap on turns per guided scenario.
+  guided_max_turns: 10               # upper-bound cap on turns per guided scenario.
                                     # Scenario builders pick 8–12 by default; this
                                     # clamps any higher cap down. Raise/lower to
                                     # trade cost for depth.
@@ -244,9 +209,9 @@ redteam:
   # MCP server hostnames treated as trusted.
   # Servers absent from this list are classified 'untrusted' and eligible
   # as toxic-flow attack sources.
-  mcp_trusted_servers:
-    - internal-tools.example.com
-    - docs-mcp.example.com
+  #mcp_trusted_servers:
+  #  - internal-tools.example.com
+  #  - docs-mcp.example.com
 
   # Extra environment variables injected into the fixture app subprocess
   # during E2E redteam tests. Use ${VAR} interpolation for secrets.
@@ -272,11 +237,11 @@ output:
 
   # CI gating policy — applies to both validate and redteam runs.
   # When any condition triggers, nuguard exits non-zero with a structured summary.
-  ci_policy:
-    fail_on_new_critical: true          # block on any new critical finding
-    fail_on_new_high: false             # high findings are warnings by default
-    fail_on_regression: true            # REGRESSION findings always block
-    fail_on_capability_gap: true        # undeclared/unexercised tools block (validate)
-    fail_on_policy_violation: true      # cognitive policy violations block (validate)
-    effective_coverage_floor: 80        # fail if effective scenario % drops below this
-    # baseline_run_id: ${LAST_GOOD_RUN} # diff findings against a prior run; only new block
+  #ci_policy:
+  #  fail_on_new_critical: true          # block on any new critical finding
+  #  fail_on_new_high: false             # high findings are warnings by default
+  #  fail_on_regression: true            # REGRESSION findings always block
+  #  fail_on_capability_gap: true        # undeclared/unexercised tools block (validate)
+  #  fail_on_policy_violation: true      # cognitive policy violations block (validate)
+  #  effective_coverage_floor: 80        # fail if effective scenario % drops below this
+  #  baseline_run_id: ${LAST_GOOD_RUN} # diff findings against a prior run; only new block

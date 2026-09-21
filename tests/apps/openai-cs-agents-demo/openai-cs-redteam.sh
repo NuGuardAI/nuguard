@@ -74,6 +74,8 @@ uv run nuguard pentest  \
   --acknowledge-authorization \
   --allow-dynamic-auth \
   --allow-active-fuzzing \
+  --allow-headless-browser \
+  --use-sbom-endpoints \
   --format markdown \
   --output "$SCRIPT_DIR/reports/openai-cs-pentest.md" || true
 

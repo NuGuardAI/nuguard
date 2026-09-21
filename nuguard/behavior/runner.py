@@ -2798,10 +2798,19 @@ class BehaviorRunner:
                             _first_turn_405_count = 0
                     return result
                 except Exception as exc:
-                    _log.error(
-                        "BehaviorRunner.run: scenario %s failed: %s",
-                        getattr(scenario, "name", "?"), exc,
-                    )
+                    if isinstance(exc, asyncio.TimeoutError):
+                        _log.error(
+                            "BehaviorRunner.run: scenario %s timed out after %ss "
+                            "(behavior.scenario_timeout) — raise it in nuguard.yaml "
+                            "if the target is consistently this slow",
+                            getattr(scenario, "name", "?"),
+                            getattr(self._config, "scenario_timeout", 180.0),
+                        )
+                    else:
+                        _log.error(
+                            "BehaviorRunner.run: scenario %s failed: %s",
+                            getattr(scenario, "name", "?"), exc,
+                        )
                     return None
                 finally:
                     if _isolate:
