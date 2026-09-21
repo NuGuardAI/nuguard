@@ -14,6 +14,37 @@ Scope: `validate`, `behavior`, and `redteam` endpoint resolution for target chat
 > are unchanged and still enforced by the new package. See
 > `imp_docs/endpoint_refactoring.md` for the full migration.
 
+> **Update (2026-09-21):** A live redteam vs. behavior run against the same
+> target selected two different endpoints, exposing a residual bug in
+> `RedteamOrchestrator`:
+> `__init__` pre-resolved `self._chat_path` via the legacy, zero-I/O
+> `discover_chat_config_from_sbom(...)` *before* `_maybe_probe_endpoints()`
+> ever ran. When the caller left the endpoint unconfigured, this
+> pre-resolution still produced a non-empty guess (e.g. the generic `/chat`
+> fallback), which was then forwarded to
+> `resolve_chat_endpoint(endpoint=self._chat_path or UNSET, ...)` — since the
+> guess was non-empty, the resolver treated it as an explicit, pinned value
+> and skipped its own SBOM ranking / live-probe / stale-candidate retry
+> entirely. **Fixed**: `__init__` now also stores
+> `self._chat_path_explicit = bool(chat_path)` (the *original* caller input,
+> before the SBOM guess overwrites `self._chat_path`), and
+> `_maybe_probe_endpoints()` passes `UNSET` instead of the guess when that
+> flag is `False`. Regression tests:
+> `test_redteam_maybe_probe_passes_unset_when_endpoint_not_explicit` and
+> `test_redteam_maybe_probe_passes_explicit_endpoint_through` in
+> `tests/redteam/test_endpoint_precedence.py`.
+>
+> PR #553 (`bug/551-canonical-target-resolution`, merged the same day)
+> separately reworked `nuguard/common/session_resolver.py`'s
+> `resolve_target_session()` — used by `nuguard target verify` /
+> `resolve_target_session_public` — adding explicit `endpoint_explicit`,
+> `payload_key_explicit`, and `response_key_explicit` parameters so it no
+> longer conflates an auto-discovered SBOM guess with a real user-configured
+> value. It also added frontend-bundle API-origin discovery. That fix is
+> independent of, and does not cover, the `RedteamOrchestrator` issue above
+> (which happens earlier in the redteam pipeline, before
+> `resolve_target_session()` is ever called).
+
 ## Objective
 
 Ensure an explicit endpoint set by config or CLI always wins over SBOM-derived candidates.

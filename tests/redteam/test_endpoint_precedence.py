@@ -6,7 +6,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from nuguard.common.endpoint_detection import EndpointSource, PayloadShape, ResolvedEndpoint
+from nuguard.common.endpoint_detection import (
+    UNSET,
+    EndpointSource,
+    PayloadShape,
+    ResolvedEndpoint,
+)
 from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
@@ -135,3 +140,75 @@ async def test_redteam_live_resolution_reports_sbom_source(monkeypatch) -> None:
     resolver.assert_awaited_once()
     assert orchestrator.resolved_chat_path == "/api/chat/message"
     assert orchestrator.resolved_chat_path_source == "sbom"
+
+
+@pytest.mark.asyncio
+async def test_redteam_maybe_probe_passes_unset_when_endpoint_not_explicit(monkeypatch) -> None:
+    """Regression: when the caller never configured chat_path, __init__'s own
+    plain SBOM guess (e.g. the generic "/chat" fallback) must NOT be forwarded
+    to resolve_chat_endpoint() as if it were an explicit, pinned value — doing
+    so makes the resolver skip its own SBOM/live-probe/stale-candidate-retry
+    discovery entirely (see self._chat_path_explicit in __init__)."""
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    orchestrator = RedteamOrchestrator(
+        sbom=sbom,
+        target_url="http://localhost:8080",
+        chat_path="",
+        chat_payload_key="message",
+        chat_payload_list=False,
+    )
+    # __init__'s legacy SBOM fallback should have set a plain guess here, but
+    # it must NOT be treated as explicit input.
+    assert orchestrator._chat_path_explicit is False
+
+    resolver = AsyncMock(
+        return_value=ResolvedEndpoint(
+            path="/extract",
+            payload=PayloadShape(key="text", is_list=False, source=EndpointSource.PROBE),
+            path_source=EndpointSource.PROBE,
+        )
+    )
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_detection.resolver.resolve_chat_endpoint",
+        resolver,
+    )
+
+    await orchestrator._maybe_probe_endpoints()
+
+    resolver.assert_awaited_once()
+    _, kwargs = resolver.call_args
+    assert kwargs["endpoint"] is UNSET
+    assert orchestrator.resolved_chat_path == "/extract"
+
+
+@pytest.mark.asyncio
+async def test_redteam_maybe_probe_passes_explicit_endpoint_through(monkeypatch) -> None:
+    """When the caller DID configure chat_path explicitly, it must still be
+    forwarded to resolve_chat_endpoint() as the pinned value (never UNSET)."""
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    orchestrator = RedteamOrchestrator(
+        sbom=sbom,
+        target_url="http://localhost:8080",
+        chat_path="/api/agent/chat",
+        chat_payload_key="message",
+        chat_payload_list=False,
+    )
+    assert orchestrator._chat_path_explicit is True
+
+    resolver = AsyncMock(
+        return_value=ResolvedEndpoint(
+            path="/api/agent/chat",
+            payload=PayloadShape(key="message", is_list=False, source=EndpointSource.CONFIG),
+            path_source=EndpointSource.CONFIG,
+        )
+    )
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_detection.resolver.resolve_chat_endpoint",
+        resolver,
+    )
+
+    await orchestrator._maybe_probe_endpoints()
+
+    resolver.assert_awaited_once()
+    _, kwargs = resolver.call_args
+    assert kwargs["endpoint"] == "/api/agent/chat"

@@ -898,6 +898,13 @@ class RedteamOrchestrator:
         self._chat_payload_value_template: "dict | None" = None
         # Track how the effective endpoint was resolved for reporting.
         _input_explicit = bool(chat_path)
+        # Remembered separately from self._chat_path (which __init__ may have just
+        # overwritten with a plain SBOM guess above): _maybe_probe_endpoints() needs
+        # to know whether the ORIGINAL caller input was explicit so it can pass
+        # UNSET (not the SBOM guess) to the shared resolver — otherwise the
+        # resolver treats the guess as a user-pinned endpoint and never runs its
+        # own SBOM/live-probe/stale-candidate-retry discovery.
+        self._chat_path_explicit = _input_explicit
         if _input_explicit and self._chat_path == chat_path:
             self._chat_path_source = "config"
         elif self._chat_path:
@@ -3426,7 +3433,13 @@ class RedteamOrchestrator:
         resolved = await resolve_chat_endpoint(
             target_url=self._target_url,
             sbom=self._sbom,
-            endpoint=self._chat_path or UNSET,
+            # Pass UNSET (not self._chat_path) when the caller never explicitly
+            # configured an endpoint — self._chat_path may already hold a plain
+            # SBOM guess set in __init__ (e.g. the generic "/chat" fallback),
+            # and passing that guess here would make the resolver treat it as
+            # a pinned, non-overridable value, skipping its own SBOM/live-probe
+            # discovery entirely (see self._chat_path_explicit in __init__).
+            endpoint=self._chat_path if self._chat_path_explicit else UNSET,
             payload_key=(
                 self._chat_payload_key
                 if self._chat_payload_key != "message"
