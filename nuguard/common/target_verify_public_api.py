@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pydantic import BaseModel, Field, model_validator
 
 from nuguard.common.auth import AuthConfig, LoginFlowConfig
-from nuguard.common.auth_runtime import bootstrap_auth_runtime
 from nuguard.common.discovery import (
     DiscoveredProfile,
     DiscoveryRequest,
@@ -19,7 +18,7 @@ from nuguard.common.endpoint_detection.sbom import (
     discover_chat_candidates_from_sbom,
 )
 from nuguard.common.session_resolver import resolve_target_session
-from nuguard.common.target_client_builder import build_target_app_client, resolve_target_url
+from nuguard.common.target_client_builder import build_target_app_client_from_session
 from nuguard.models.health_report import CredentialCheckResult
 from nuguard.redteam.target.session import AttackSession
 
@@ -237,31 +236,22 @@ async def verify_target(
     config_path: "Path | None" = None,
 ) -> TargetVerifyResult:
     auth_config = _build_auth_config(request)
-
-    resolved_url, _ = resolve_target_url(request.target_url, sbom)
-    endpoint, payload_key, payload_list, response_key, endpoint_source = await _resolve_endpoint_plan(
-        target_url=resolved_url,
+    session_cfg, health = await resolve_target_session(
+        target_url=request.target_url,
         sbom=sbom,
-        auth_headers=_merge_headers(request, auth_config.to_headers()) or None,
-        chat_path=request.chat_path,
+        auth_config=auth_config,
+        extra_headers=dict(request.headers or {}),
+        chat_path=request.chat_path or "",
         chat_payload_key=request.chat_payload_key,
         chat_payload_list=request.chat_payload_list,
+        chat_payload_extras=dict(request.chat_payload_extras or {}),
         chat_response_key=request.chat_response_key,
-        chat_payload_extras=request.chat_payload_extras,
-        chat_path_explicit="chat_path" in request.model_fields_set,
-        chat_payload_key_explicit="chat_payload_key" in request.model_fields_set,
-        chat_payload_list_explicit="chat_payload_list" in request.model_fields_set,
-        chat_response_key_explicit="chat_response_key" in request.model_fields_set,
-    )
-
-    bootstrapper, health = await bootstrap_auth_runtime(
-        target_url=resolved_url,
-        endpoint=endpoint,
-        auth_config=auth_config,
-        run_id=str(uuid.uuid4()),
-        timeout=request.request_timeout,
         probe_payload_extras=request.chat_payload_extras or None,
         config_path=config_path,
+        request_timeout=request.request_timeout,
+        endpoint_explicit="chat_path" in request.model_fields_set,
+        payload_key_explicit="chat_payload_key" in request.model_fields_set,
+        response_key_explicit="chat_response_key" in request.model_fields_set,
     )
 
     checks = [_check_from_health(item) for item in health.checks]
@@ -270,26 +260,16 @@ async def verify_target(
     discovery_notes: list[str] = []
 
     if all_ok:
-        client = build_target_app_client(
-            resolved_url,
-            endpoint=endpoint,
-            payload_key=payload_key,
-            payload_list=payload_list,
-            response_key=response_key,
+        client = build_target_app_client_from_session(
+            session_cfg,
             timeout=request.request_timeout,
-            auth_headers=_merge_headers(
-                request, auth_config.to_headers(), bootstrapper.session.headers()
-            )
-            or None,
-            sbom=sbom,
-            payload_extras=request.chat_payload_extras or None,
         )
         async with client:
             outcome = await run_discovery(
                 client,
                 AttackSession(
                     session_id=f"verify-{uuid.uuid4()}",
-                    target_url=resolved_url,
+                    target_url=session_cfg.base_url,
                     chain_id="verify-target",
                 ),
                 DiscoveryRequest(
@@ -307,12 +287,21 @@ async def verify_target(
 
     return TargetVerifyResult(
         all_ok=all_ok,
-        endpoint=endpoint,
-        discovered_endpoint=endpoint if endpoint_source in ("sbom", "probe") else None,
-        endpoint_source=endpoint_source,
+        endpoint=session_cfg.chat_path,
+        discovered_endpoint=(
+            session_cfg.chat_path
+            if session_cfg.endpoint_source in ("sbom", "probe")
+            else None
+        ),
+        endpoint_source=cast(
+            EndpointSource,
+            session_cfg.endpoint_source
+            if session_cfg.endpoint_source in {"config", "sbom", "probe", "default"}
+            else "default",
+        ),
         checks=checks,
         discovered_profile=discovered_profile,
-        discovery_hint={"endpoint_source": endpoint_source},
+        discovery_hint={"endpoint_source": session_cfg.endpoint_source},
         discovery_notes=discovery_notes,
     )
 
@@ -324,68 +313,37 @@ async def resolve_target_session_public(
     config_path: "Path | None" = None,
 ) -> TargetSessionResolveResult:
     auth_config = _build_auth_config(request)
-
-    if sbom is not None:
-        resolved_url, _ = resolve_target_url(request.target_url, sbom)
-        endpoint, payload_key, payload_list, response_key, endpoint_source = await _resolve_endpoint_plan(
-            target_url=resolved_url,
-            sbom=sbom,
-            auth_headers=_merge_headers(request, auth_config.to_headers()) or None,
-            chat_path=request.chat_path,
-            chat_payload_key=request.chat_payload_key,
-            chat_payload_list=request.chat_payload_list,
-            chat_response_key=request.chat_response_key,
-            chat_payload_extras=request.chat_payload_extras,
-            chat_path_explicit="chat_path" in request.model_fields_set,
-            chat_payload_key_explicit="chat_payload_key" in request.model_fields_set,
-            chat_payload_list_explicit="chat_payload_list" in request.model_fields_set,
-            chat_response_key_explicit="chat_response_key" in request.model_fields_set,
-        )
-        session_cfg, health = await resolve_target_session(
-            target_url=resolved_url,
-            sbom=sbom,
-            auth_config=auth_config,
-            extra_headers=dict(request.headers or {}),
-            chat_path=endpoint,
-            chat_payload_key=payload_key,
-            chat_payload_list=payload_list,
-            chat_payload_extras=request.chat_payload_extras or {},
-            chat_response_key=response_key,
-            config_path=config_path,
-        )
-        return TargetSessionResolveResult(
-            effective_target_url=session_cfg.base_url,
-            effective_endpoint=session_cfg.chat_path,
-            endpoint_source=endpoint_source,
-            chat_payload_key=session_cfg.chat_payload_key,
-            chat_payload_list=session_cfg.chat_payload_list,
-            chat_response_key=session_cfg.chat_response_key,
-            chat_payload_extras=dict(session_cfg.chat_payload_extras),
-            discovery_notes=list(session_cfg.resolution_notes),
-            health_report=health.model_dump(mode="json"),
-        )
-
-    resolved_url, _ = resolve_target_url(request.target_url, None)
-    endpoint = request.chat_path or "/chat"
-    bootstrapper, health = await bootstrap_auth_runtime(
-        target_url=resolved_url,
-        endpoint=endpoint,
+    session_cfg, health = await resolve_target_session(
+        target_url=request.target_url,
+        sbom=sbom,
         auth_config=auth_config,
-        run_id=str(uuid.uuid4()),
-        timeout=request.request_timeout,
-        probe_payload_extras=request.chat_payload_extras or None,
-        config_path=config_path,
-    )
-    _ = bootstrapper
-    return TargetSessionResolveResult(
-        effective_target_url=resolved_url,
-        effective_endpoint=endpoint,
-        endpoint_source="config" if request.chat_path else "default",
+        extra_headers=dict(request.headers or {}),
+        chat_path=request.chat_path or "",
         chat_payload_key=request.chat_payload_key,
         chat_payload_list=request.chat_payload_list,
-        chat_response_key=request.chat_response_key,
         chat_payload_extras=dict(request.chat_payload_extras or {}),
-        discovery_notes=[],
+        chat_response_key=request.chat_response_key,
+        probe_payload_extras=request.chat_payload_extras or None,
+        config_path=config_path,
+        request_timeout=request.request_timeout,
+        endpoint_explicit="chat_path" in request.model_fields_set,
+        payload_key_explicit="chat_payload_key" in request.model_fields_set,
+        response_key_explicit="chat_response_key" in request.model_fields_set,
+    )
+    return TargetSessionResolveResult(
+        effective_target_url=session_cfg.base_url,
+        effective_endpoint=session_cfg.chat_path,
+        endpoint_source=cast(
+            EndpointSource,
+            session_cfg.endpoint_source
+            if session_cfg.endpoint_source in {"config", "sbom", "probe", "default"}
+            else "default",
+        ),
+        chat_payload_key=session_cfg.chat_payload_key,
+        chat_payload_list=session_cfg.chat_payload_list,
+        chat_response_key=session_cfg.chat_response_key,
+        chat_payload_extras=dict(session_cfg.chat_payload_extras),
+        discovery_notes=list(session_cfg.resolution_notes),
         health_report=health.model_dump(mode="json"),
     )
 

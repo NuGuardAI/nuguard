@@ -25,6 +25,7 @@ from nuguard.common.logging import get_logger
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.common.llm_client import LLMClient
+    from nuguard.common.session_resolver import TargetSessionConfig
     from nuguard.redteam.target.client import TargetAppClient
     from nuguard.redteam.target.ws_client import WebSocketTargetClient
     from nuguard.sbom.models import AiSbomDocument
@@ -512,4 +513,55 @@ def build_target_app_client(
         chat_payload_value_template=chat_payload_value_template,
     )
     client.resolution_notes = resolution_notes
+    return client
+
+
+def build_target_app_client_from_session(
+    session: "TargetSessionConfig",
+    *,
+    timeout: float = 60.0,
+    heal_llm: "LLMClient | None" = None,
+    ws_auth_message: "dict[str, Any] | None" = None,
+    ws_response_complete_key: str | None = None,
+) -> "TargetClient":
+    """Construct a target client from an already resolved session contract.
+
+    This deliberately skips all URL, adapter, and endpoint discovery so each
+    caller can retain its own live-client lifecycle after sharing connection
+    resolution.
+    """
+    from nuguard.redteam.target.client import TargetAppClient
+
+    if session.chat_payload_key == "__websocket__":
+        from nuguard.redteam.target.ws_client import WebSocketTargetClient
+
+        ws_client = WebSocketTargetClient(
+            base_url=session.base_url,
+            chat_path=session.chat_path or "/ws",
+            timeout=timeout,
+            default_headers=session.effective_headers or None,
+            chat_payload_key="message",
+            chat_payload_list=session.chat_payload_list,
+            chat_response_key=session.chat_response_key,
+            chat_payload_extras=session.chat_payload_extras or None,
+            ws_auth_message=ws_auth_message,
+            ws_response_complete_key=ws_response_complete_key,
+        )
+        ws_client.resolution_notes = list(session.resolution_notes)
+        return ws_client
+
+    client = TargetAppClient(
+        base_url=session.base_url,
+        chat_path=session.chat_path,
+        timeout=timeout,
+        default_headers=session.effective_headers or None,
+        chat_payload_key=session.chat_payload_key,
+        chat_payload_list=session.chat_payload_list,
+        chat_payload_format=session.payload_format,
+        chat_response_key=session.chat_response_key,
+        chat_payload_extras=session.chat_payload_extras or None,
+        heal_llm=heal_llm,
+        chat_payload_value_template=session.chat_payload_value_template,
+    )
+    client.resolution_notes = list(session.resolution_notes)
     return client

@@ -440,7 +440,7 @@ async def _run_pre_scan_discovery(
             payload_key=session_cfg.chat_payload_key,
             payload_list=session_cfg.chat_payload_list,
             response_key=session_cfg.chat_response_key,
-            auth_headers=session_cfg.auth_session.headers() or None,
+            auth_headers=session_cfg.effective_headers or None,
             sbom=sbom_doc,
             payload_extras=session_cfg.chat_payload_extras or None,
         )

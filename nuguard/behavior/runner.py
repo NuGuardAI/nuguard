@@ -805,6 +805,8 @@ class BehaviorRunner:
         self._completed_signatures: set[str] = set()
         self.scenario_results: list[ScenarioResult] = []
         self._auth_session: Any = None
+        self._target_session_config: Any = None
+        self._target_session_resolution_attempted = False
         self._coverage_mapping_diagnostics: dict[str, Any] = {}
         # Escalation-ladder state (behavior.escalate_on_refusal): component name
         # -> classified RefusalReason value (or "systemic_deflection"), populated
@@ -875,8 +877,68 @@ class BehaviorRunner:
         except Exception as exc:  # noqa: BLE001
             _log.warning("Behavior progress sink failed: %s", exc)
 
+    async def _resolve_target_session_once(self) -> None:
+        """Resolve shared target connection settings once for this run.
+
+        Behavior historically tolerates non-auth bootstrap failures, so a
+        failed shared resolution deliberately falls back to its existing
+        best-effort setup path below.
+        """
+        if self._target_session_resolution_attempted:
+            return
+        self._target_session_resolution_attempted = True
+
+        from nuguard.common.auth import AuthConfig
+        from nuguard.common.session_resolver import resolve_target_session
+
+        auth_config = None
+        auth = getattr(self._config, "auth", None)
+        if auth and getattr(auth, "type", "none") != "none":
+            auth_config = AuthConfig(
+                type=auth.type,
+                header=getattr(auth, "header", ""),
+                username=getattr(auth, "username", ""),
+                password=getattr(auth, "password", ""),
+                login_flow=getattr(auth, "login_flow", None),
+                cookie_file=getattr(auth, "cookie_file", ""),
+            )
+        try:
+            session_cfg, _health = await resolve_target_session(
+                target_url=getattr(self._config, "target", "") or "",
+                sbom=self._sbom,
+                auth_config=auth_config,
+                extra_headers=dict(getattr(self._config, "headers", None) or {}),
+                chat_path=getattr(self._config, "target_endpoint", "") or "",
+                chat_payload_key=getattr(self._config, "chat_payload_key", "message") or "message",
+                chat_payload_list=bool(getattr(self._config, "chat_payload_list", False)),
+                chat_payload_extras=dict(getattr(self._config, "chat_payload_extras", None) or {}),
+                chat_response_key=getattr(self._config, "chat_response_key", None) or None,
+                config_path=self._config_path,
+                request_timeout=float(getattr(self._config, "request_timeout", 60.0)),
+                payload_format=getattr(self._config, "chat_payload_format", "json") or "json",
+                endpoint_explicit=self._endpoint_is_explicit(),
+                payload_key_explicit="chat_payload_key" in getattr(self._config, "model_fields_set", set()),
+                response_key_explicit="chat_response_key" in getattr(self._config, "model_fields_set", set()),
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("Behavior shared target resolution skipped: %s", exc)
+            return
+        self._target_session_config = session_cfg
+        self._auth_session = session_cfg.auth_session
+        self._resolved_target_url = session_cfg.base_url
+
     async def _build_client(self) -> Any:
         """Build the TargetAppClient from config, with auth bootstrap and health check."""
+        await self._resolve_target_session_once()
+        if self._target_session_config is not None:
+            from nuguard.common.target_client_builder import build_target_app_client_from_session
+
+            return build_target_app_client_from_session(
+                self._target_session_config,
+                timeout=float(getattr(self._config, "request_timeout", 60.0)),
+                heal_llm=self._llm,
+            )
+
         import uuid as _uuid
 
         from nuguard.common.auth_runtime import bootstrap_auth_runtime, resolve_auth_runtime
@@ -940,7 +1002,7 @@ class BehaviorRunner:
             _url_notes = _url_notes + _bundle_notes
 
         # Store resolved URL so _run_scenario can display it correctly.
-        self._resolved_target_url: str = target_url
+        self._resolved_target_url = target_url
 
         endpoint = getattr(self._config, "target_endpoint", "") or ""
         payload_key = getattr(self._config, "chat_payload_key", "message") or "message"
