@@ -7,7 +7,7 @@ module does *no* extraction itself — no token-key/response-shape guessing —
 it only selects candidate files/lines, mirroring gap-fill's ``evidence_files``
 shape. There is no other frontend-source-scanning capability anywhere in
 NuGuard's SBOM pipeline; the runtime bundle-URL scraper
-(``nuguard/common/endpoint_probe.py::discover_api_origin_from_frontend_bundle``)
+(``nuguard/common/endpoint_detection/frontend_origin.py::discover_api_origin_from_frontend_bundle``)
 and the Playwright-driven browser-login tool
 (``nuguard/common/browser_login/``) both operate on a *live deployed* target,
 never on repo source.

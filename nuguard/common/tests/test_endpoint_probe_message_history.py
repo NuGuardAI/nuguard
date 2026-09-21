@@ -13,7 +13,7 @@ import httpx
 import pytest
 import respx
 
-from nuguard.common.endpoint_probe import probe_chat_endpoints
+from nuguard.common.endpoint_detection.live_probe import probe_chat_endpoints
 from nuguard.sbom.models import AiSbomDocument
 
 BASE = "http://test-app"

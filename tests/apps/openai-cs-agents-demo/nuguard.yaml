@@ -6,7 +6,7 @@
 
 # ─── Project file paths ───────────────────────────────────────────────────────
 sbom: ./openai-cs.sbom.json               # path to pre-generated AI-SBOM JSON
-source: .      # generate SBOM from source dir (alternative to sbom:)
+source: https://github.com/NuGuardAI/openai-cs-agents-demo      # generate SBOM from source dir (alternative to sbom:)
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior
   llm: true                     # use LLM to compile richer test/boundary prompts
@@ -63,6 +63,12 @@ behavior:
 #  chat_payload_list: true
 #  chat_response_key: prognosis
   llm: true
+
+  # Cancel any single scenario after this many seconds. The live Azure demo
+  # backend's multi-agent handoffs plus LLM judging can exceed the 180s
+  # default on slower turns, which previously tripped the CI gate's
+  # behavior_scenarios_executed_zero check with an empty-message timeout.
+  scenario_timeout: 300
 
   # Golden-data backstop: real seed records from python-backend/database.py.
   # Used when live pre-scan discovery returns an empty profile, so generated

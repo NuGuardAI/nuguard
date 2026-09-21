@@ -271,6 +271,41 @@ transport. Platforms should resolve secret references server-side before constru
 - `inconclusive_target_errors`
 - `no_findings`
 
+## Pentest APIs
+
+Module: `nuguard.pentest.public_api`
+
+- `PentestAuthConfig`
+- `PentestLoginFlowConfig`
+- `PentestRunRequest`
+- `PentestRunResult`
+- `PentestExecutionResult`
+- `run_pentest_async(request, *, resolver=None)`
+- `run_pentest_stream(request, *, resolver=None)`
+
+Example:
+
+```python
+from nuguard.pentest.public_api import PentestRunRequest, run_pentest_async
+
+result = await run_pentest_async(
+    PentestRunRequest(
+        targets=["https://staging.example.com"],
+        authorized=True,
+    ),
+)
+```
+
+Same secret-safe pattern as `RedteamAuthConfig`: `PentestRunRequest.auth_config` uses `SecretStr`
+fields, credentials are never placed in serialized requests or result models, and diagnostic JSON
+dumps are redacted. `run_pentest_async` never catches or suppresses exceptions from a failed scan
+— only `EngineExecutionError` messages are sanitized when authentication was configured, matching
+the CLI's behavior exactly.
+
+`run_pentest_stream` returns a typed `StreamRunHandle[PentestExecutionResult]` and follows the same
+streaming contract as `run_redteam_stream`/`run_behavior_scenarios` — see Streaming contracts below.
+Reduce events with `apply_event_to_pentest_state` into a `PentestProgressState`.
+
 ## Streaming contracts
 
 Module: `nuguard.common.streaming_models`
@@ -281,6 +316,7 @@ Module: `nuguard.common.streaming_models`
 - `StreamTerminalPayload`
 - `RedteamProgressState`
 - `BehaviorProgressState`
+- `PentestProgressState` (module: `nuguard.pentest.public_api`)
 
 Behavior and redteam streaming APIs return a typed `StreamRunHandle` that emits `StreamEvent` envelopes and resolves to the final result model.
 

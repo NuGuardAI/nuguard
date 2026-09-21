@@ -294,6 +294,7 @@ def scan(
                     _run_redteam(
                         sbom_doc=sbom_doc,
                         sbom_path=sbom_path if sbom_path else None,
+                        config_path=None,
                         policy_path=Path(policy) if policy else None,
                         target_url=_redteam_target,
                         canary_path=None,

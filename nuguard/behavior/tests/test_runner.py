@@ -12,6 +12,7 @@ from nuguard.behavior.models import (
     BehaviorScenarioType,
     IntentProfile,
     ScenarioResult,
+    TurnRecord,
 )
 from nuguard.behavior.runner import BehaviorRunner
 from nuguard.common.discovery import DiscoveredProfile
@@ -1562,7 +1563,7 @@ async def test_probe_tool_families_classifies_reachable_and_blocked():
     mock_client = AsyncMock()
     mock_client.base_url = "http://localhost:8080"
 
-    async def _fake_send(message, session=None):
+    async def _fake_send(message, session=None, retry_transient=False):
         if "get_thing" in message:
             return "Sure, here's the thing you asked for.", []
         return "I'm sorry, I don't have the capability to do that.", []
@@ -1685,3 +1686,33 @@ async def test_discover_reuses_cached_sbom_profile_and_skips_run_discovery():
 
     mock_run_discovery.assert_not_awaited()
     assert result == cached_profile
+
+
+# ---------------------------------------------------------------------------
+# raw_request_body — the original request must survive into the report
+# ---------------------------------------------------------------------------
+
+
+def test_turn_record_to_attack_step_includes_raw_request_body():
+    """A TurnRecord carrying the wire-level request body (captured from
+    AttackSession.last_request_body, even on a send error like HTTP 502) must
+    surface it into the report's attack_steps schema — same key name as
+    redteam's step details, so both packages expose it consistently."""
+    tr = TurnRecord(
+        turn=1,
+        prompt="hello",
+        response="",
+        passed=False,
+        verdict="FAIL",
+        raw_request_body={"consumerID": "abc-123", "message": "hello"},
+    )
+    step = BehaviorRunner._turn_record_to_attack_step(tr)
+    assert step["raw_request_body"] == {"consumerID": "abc-123", "message": "hello"}
+
+
+def test_turn_record_to_attack_step_omits_raw_request_body_when_unset():
+    """When last_request_body was never captured (e.g. no chat send happened
+    yet), the key must not appear at all, matching redteam's behavior."""
+    tr = TurnRecord(turn=1, prompt="hello", response="hi")
+    step = BehaviorRunner._turn_record_to_attack_step(tr)
+    assert "raw_request_body" not in step

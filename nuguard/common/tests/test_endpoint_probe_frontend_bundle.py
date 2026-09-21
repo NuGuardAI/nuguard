@@ -14,7 +14,9 @@ import httpx
 import pytest
 import respx
 
-from nuguard.common.endpoint_probe import discover_api_origin_from_frontend_bundle
+from nuguard.common.endpoint_detection.frontend_origin import (
+    discover_api_origin_from_frontend_bundle,
+)
 
 BASE = "http://frontend-only.test"
 

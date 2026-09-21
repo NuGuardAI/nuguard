@@ -770,6 +770,7 @@ class BehaviorRunner:
         config: BehaviorConfig,
         sbom: "AiSbomDocument | None" = None,
         sbom_path: "Path | None" = None,
+        config_path: "Path | None" = None,
         policy: "CognitivePolicy | None" = None,
         intent: "IntentProfile | None" = None,
         llm_client: "LLMClient | None" = None,
@@ -780,6 +781,7 @@ class BehaviorRunner:
         self._config = config
         self._sbom = sbom
         self._sbom_path = sbom_path
+        self._config_path = config_path
         self._policy = policy
         self._intent = intent
         self._llm = llm_client
@@ -928,7 +930,9 @@ class BehaviorRunner:
         # discovery can't find that origin because every path under target_url
         # is served by the frontend's catch-all route. Best-effort: scan the
         # served bundle for a baked-in API base URL before auth bootstrap runs.
-        from nuguard.common.endpoint_probe import discover_api_origin_from_frontend_bundle
+        from nuguard.common.endpoint_detection.frontend_origin import (
+            discover_api_origin_from_frontend_bundle,
+        )
 
         _bundle_origin, _bundle_notes = await discover_api_origin_from_frontend_bundle(target_url)
         if _bundle_origin:
@@ -940,10 +944,11 @@ class BehaviorRunner:
 
         endpoint = getattr(self._config, "target_endpoint", "") or ""
         payload_key = getattr(self._config, "chat_payload_key", "message") or "message"
-        from nuguard.common.endpoint_probe import sbom_indicates_websocket  # noqa: PLC0415
-        _is_websocket = sbom_indicates_websocket(
+        from nuguard.common.endpoint_detection import indicates_websocket
+        _is_websocket = indicates_websocket(
             self._sbom, chat_path=endpoint, chat_payload_key=payload_key
         )
+        bootstrapper = None
         try:
             bootstrapper, health_report = await bootstrap_auth_runtime(
                 target_url=target_url,
@@ -952,6 +957,7 @@ class BehaviorRunner:
                 run_id=str(_uuid.uuid4()),
                 probe_payload_extras=getattr(self._config, "chat_payload_extras", None) or None,
                 is_websocket=_is_websocket,
+                config_path=self._config_path,
             )
             for line in health_report.summary_lines():
                 _log.info("behavior bootstrap %s", line)
@@ -1006,6 +1012,22 @@ class BehaviorRunner:
         for _note in _login_notes + _hint_notes:
             _log.info("behavior _build_client: %s", _note)
 
+        # Browser-recovery-sniffed extras (lowest precedence) — see
+        # session_resolver.resolve_target_session's matching step 4b for why.
+        _browser_extras = (
+            getattr(bootstrapper, "discovered_chat_payload_extras", None) or {}
+            if bootstrapper is not None else {}
+        )
+        if _browser_extras:
+            _new_from_browser = {k: v for k, v in _browser_extras.items() if k not in _merged_extras}
+            _merged_extras = {**_browser_extras, **_merged_extras}
+            if _new_from_browser:
+                _log.info(
+                    "behavior _build_client: auto-injected %s into chat_payload_extras from a "
+                    "browser-login recovery's chat-sniff step",
+                    list(_new_from_browser),
+                )
+
         client = build_target_app_client(
             target_url=target_url,
             endpoint=endpoint,
@@ -1045,6 +1067,19 @@ class BehaviorRunner:
         if self._endpoint_explicitly_set is not None:
             return self._endpoint_explicitly_set
         return bool(getattr(self._config, "target_endpoint", ""))
+
+    def _discovery_fallback_endpoints(self) -> list[tuple[str, str, bool, str | None]]:
+        """Ranked SBOM candidates for ``DiscoveryRequest.fallback_endpoints``.
+
+        Empty when the endpoint was explicitly configured (no rotation away
+        from a user's choice) or when no SBOM is available.
+        """
+        if self._endpoint_is_explicit() or not self._sbom:
+            return []
+        from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
+            discover_chat_candidates_from_sbom,
+        )
+        return list(discover_chat_candidates_from_sbom(self._sbom)[1:])[:4]
 
     def _coverage_director(self) -> "CoverageDirector":
         """Lazily build (and cache) the CoverageDirector for guided coverage scenarios."""
@@ -1120,7 +1155,7 @@ class BehaviorRunner:
     @staticmethod
     def _turn_record_to_attack_step(tr: TurnRecord) -> dict:
         """Serialize a TurnRecord into the standard attack_steps dict schema."""
-        return {
+        step: dict = {
             "step_type": "BEHAVIOR_TURN",
             "turn": tr.turn,
             "succeeded": tr.passed,
@@ -1138,6 +1173,9 @@ class BehaviorRunner:
             "latency_ms": tr.latency_ms,
             "is_coverage_turn": tr.is_coverage_turn,
         }
+        if tr.raw_request_body is not None:
+            step["raw_request_body"] = tr.raw_request_body
+        return step
 
     async def _run_scenario(
         self,
@@ -1507,13 +1545,16 @@ class BehaviorRunner:
                 response, canary_hits = await client.send(
                     message,
                     session=session,
+                    retry_transient=True,
                 )
                 # 401 token refresh and retry (mirrors redteam executor pattern)
                 if response.startswith("[HTTP 401]") and self._auth_session is not None:
                     refreshed = await self._auth_session.refresh_if_needed()
                     if refreshed:
                         client.update_default_headers(self._auth_session.headers())
-                        response, canary_hits = await client.send(message, session=session)
+                        response, canary_hits = await client.send(
+                            message, session=session, retry_transient=True
+                        )
                 # 429 scenario-level retry — on top of TargetAppClient's per-request
                 # retries.  Back off and replay the same turn; do NOT record a FAIL
                 # verdict or increment consecutive_failures (target is alive).
@@ -1625,6 +1666,7 @@ class BehaviorRunner:
                     turn=turn_idx + 1,
                     prompt=message,
                     response="",
+                    raw_request_body=session.last_request_body,
                     violations=[],
                     canary_hits=[],
                     passed=False,
@@ -1941,6 +1983,7 @@ class BehaviorRunner:
                 turn=turn_idx + 1,
                 prompt=message,
                 response=response,
+                raw_request_body=session.last_request_body,
                 violations=violations,
                 canary_hits=list(canary_hits or []),
                 passed=len(violations) == 0 and len(canary_hits or []) == 0,
@@ -2151,15 +2194,7 @@ class BehaviorRunner:
                 chain_id="behavior-pre-scan",
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
-            from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-                discover_chat_candidates_from_sbom as _disc_candidates,
-            )
-            _explicit_endpoint = self._endpoint_is_explicit()
-            _disc_fallbacks = (
-                []
-                if _explicit_endpoint
-                else (list(_disc_candidates(self._sbom)[1:]) if self._sbom else [])
-            )
+            _disc_fallbacks = self._discovery_fallback_endpoints()
             _cached_profile = self._cached_discovery_profile()
             if _cached_profile is not None:
                 profile = _cached_profile
@@ -2171,7 +2206,7 @@ class BehaviorRunner:
                 _outcome = await run_discovery(
                     client,
                     _disc_session,
-                    DiscoveryRequest(use_case=_use_case, max_turns=2, fallback_endpoints=_disc_fallbacks[:4]),
+                    DiscoveryRequest(use_case=_use_case, max_turns=2, fallback_endpoints=_disc_fallbacks),
                 )
                 profile = _outcome.profile
                 for _disc_note in _outcome.notes:
@@ -2285,7 +2320,7 @@ class BehaviorRunner:
             probe_message = f"Can you use {tool_name} to {action}?"
             session = _AS(session_id=f"probe-{family}", target_url=target_url, chain_id="behavior-family-probe")
             try:
-                response, _ = await client.send(probe_message, session=session)
+                response, _ = await client.send(probe_message, session=session, retry_transient=True)
             except Exception as exc:
                 _log.debug("probe_tool_families: send failed for family=%s (%s)", family, exc)
                 results.setdefault(family, "unknown")
@@ -2541,7 +2576,6 @@ class BehaviorRunner:
                 chain_id="behavior-pre-scan",
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
-            _explicit_endpoint = self._endpoint_is_explicit()
 
             _cached_profile = self._cached_discovery_profile()
             if _cached_profile is not None:
@@ -2556,18 +2590,11 @@ class BehaviorRunner:
                     DiscoveryRequest,
                     run_discovery,
                 )
-                from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-                    discover_chat_candidates_from_sbom as _discover_candidates,
-                )
-                _sbom_fallbacks = (
-                    []
-                    if _explicit_endpoint
-                    else (list(_discover_candidates(self._sbom)[1:]) if self._sbom else [])
-                )
+                _sbom_fallbacks = self._discovery_fallback_endpoints()
                 _outcome = await run_discovery(
                     client,
                     _disc_session,
-                    DiscoveryRequest(use_case=_use_case or "", max_turns=2, fallback_endpoints=_sbom_fallbacks[:4]),
+                    DiscoveryRequest(use_case=_use_case or "", max_turns=2, fallback_endpoints=_sbom_fallbacks),
                 )
                 self._pre_scan_profile = _outcome.profile
                 self._judge.set_profile(_outcome.profile)
@@ -2771,10 +2798,19 @@ class BehaviorRunner:
                             _first_turn_405_count = 0
                     return result
                 except Exception as exc:
-                    _log.error(
-                        "BehaviorRunner.run: scenario %s failed: %s",
-                        getattr(scenario, "name", "?"), exc,
-                    )
+                    if isinstance(exc, asyncio.TimeoutError):
+                        _log.error(
+                            "BehaviorRunner.run: scenario %s timed out after %ss "
+                            "(behavior.scenario_timeout) — raise it in nuguard.yaml "
+                            "if the target is consistently this slow",
+                            getattr(scenario, "name", "?"),
+                            getattr(self._config, "scenario_timeout", 180.0),
+                        )
+                    else:
+                        _log.error(
+                            "BehaviorRunner.run: scenario %s failed: %s",
+                            getattr(scenario, "name", "?"), exc,
+                        )
                     return None
                 finally:
                     if _isolate:

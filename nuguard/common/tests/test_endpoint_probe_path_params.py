@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import uuid
 
-from nuguard.common.endpoint_probe import (
+from nuguard.common.endpoint_detection.sbom import (
     _sbom_post_paths,
     discover_chat_candidates_from_sbom,
 )

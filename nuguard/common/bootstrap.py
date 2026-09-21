@@ -19,6 +19,10 @@ from nuguard.common.logging import get_logger
 from nuguard.models.health_report import CredentialCheckResult, TargetHealthReport
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from nuguard.common.auth_recovery import BrowserAuthRecovery
+
     # Deferred: nuguard.redteam.target.canary imports nuguard.common.logging,
     # which would re-enter nuguard.common.__init__ mid-import (it pulls in this
     # module via auth_runtime) if imported eagerly here. Safe to defer since
@@ -70,6 +74,7 @@ class AuthBootstrapper:
         startup_retries: int | None = None,
         is_websocket: bool = False,
         ws_auth_message: dict[str, object] | None = None,
+        config_path: "Path | None" = None,
     ) -> None:
         self._target_url = target_url.rstrip("/")
         self._endpoint = endpoint
@@ -83,8 +88,21 @@ class AuthBootstrapper:
         # an HTTP POST — see resolve_target_session()'s pre-bootstrap WS detection.
         self._is_websocket = is_websocket
         self._ws_auth_message = ws_auth_message
+        # Path to the loaded nuguard.yaml, when known. Passed through to
+        # attempt_browser_auth_recovery() so a successful browser-login
+        # recovery can be persisted back into the file (see run()); None
+        # disables persistence but not recovery itself — the recovered
+        # session is still used for this run.
+        self._config_path = config_path
         # Initialised during run() — exposed so behavior/redteam can share it
         self._session: AuthSession | None = None
+        # Chat-payload fields (e.g. an opaque consumerID) a browser-login
+        # recovery's chat-sniff step confirmed the app's own UI sends —
+        # populated by _maybe_recover_via_browser() when recovery succeeds.
+        # Callers (see resolve_target_session) merge this into
+        # chat_payload_extras at the lowest precedence, same as
+        # login_response_extras.
+        self.discovered_chat_payload_extras: dict[str, str] = {}
 
     @property
     def full_url(self) -> str:
@@ -206,6 +224,51 @@ class AuthBootstrapper:
                         f"fallback probe to chat endpoint also failed: {result.error_detail}"
                     ),
                 )
+        # Two situations warrant a real-browser recovery attempt before giving
+        # up: (1) a static probe (basic / login_flow, incl. the fallback
+        # above) rejected the credential outright — rescues apps that
+        # authenticate via an interactive redirect/OAuth flow (e.g. Auth0
+        # Universal Login) a plain HTTP client can't drive; (2) the probe got
+        # a 2xx but body_warning flagged an empty/unparseable body — likely a
+        # missing required payload field the SBOM never captured (common when
+        # it only saw the frontend's SPA route, not the real backend API).
+        # Neither requires the user to remember to run
+        # 'nuguard target discover-browser' by hand first. No-ops (returns
+        # None) when the 'browser' extra isn't installed or the login itself
+        # fails, so this never blocks a run that would have failed the same
+        # way before this existed.
+        recovery_reason = (
+            "auth_failed" if result.status == "auth_failed"
+            else "empty_body" if result.status == "ok" and result.body_warning
+            else None
+        )
+        if recovery_reason is not None:
+            recovered = await self._maybe_recover_via_browser(reason=recovery_reason)
+            if recovered is not None:
+                self.discovered_chat_payload_extras = dict(recovered.chat_payload_extras)
+                self._session.replace_config(recovered.auth_config)
+                # Re-probe with any newly-discovered payload fields merged in so
+                # the report reflects whether recovery actually fixed the
+                # request, not just whether the browser login itself succeeded.
+                self._probe_payload_extras = {
+                    **self._probe_payload_extras,
+                    **recovered.chat_payload_extras,
+                }
+                retry_result = await self._check_one(
+                    identity="default",
+                    headers=recovered.auth_config.to_headers(),
+                    auth_type=recovered.auth_config.type,
+                )
+                if retry_result.status == "ok" and not retry_result.body_warning:
+                    result = retry_result
+                else:
+                    logger.warning(
+                        "bootstrap: browser-login recovery captured a session but the "
+                        "retry probe still %s: %s",
+                        "failed" if retry_result.status != "ok" else "had an empty/unparseable body",
+                        retry_result.error_detail or retry_result.body_warning,
+                    )
+
         report.checks.append(result)
 
         # Raise immediately if the default credential cannot reach the target at all
@@ -241,6 +304,33 @@ class AuthBootstrapper:
                 report.checks.append(tenant_result)
 
         return report
+
+    async def _maybe_recover_via_browser(
+        self, *, reason: str
+    ) -> "BrowserAuthRecovery | None":
+        """Attempt browser-login recovery for the default credential.
+
+        Delegates to :func:`nuguard.common.auth_recovery.attempt_browser_auth_recovery`,
+        which only acts on basic/login_flow configs carrying username+password
+        and returns ``None`` on any failure (missing 'browser' extra, login
+        failure, etc.) — this wrapper exists purely to keep that import lazy
+        and swallow unexpected errors so recovery can never crash a run that
+        would otherwise just report the original probe result as before.
+        """
+        try:
+            from nuguard.common.auth_recovery import attempt_browser_auth_recovery
+        except Exception:
+            return None
+        try:
+            return await attempt_browser_auth_recovery(
+                target_url=self._target_url,
+                auth_config=self._default_auth,
+                config_path=self._config_path,
+                reason=reason,
+            )
+        except Exception as exc:  # noqa: BLE001 — recovery must never crash bootstrap
+            logger.warning("bootstrap: browser-login recovery attempt errored: %s", exc)
+            return None
 
     async def _check_one(
         self,
@@ -292,11 +382,16 @@ class AuthBootstrapper:
             "Content-Type": "application/json",
             **headers,
         }
-        # Minimal well-formed payload — enough to get an auth decision from the server.
-        # Does NOT need to produce a meaningful AI response; just needs a 2xx vs 4xx/5xx.
+        # A natural greeting rather than a terse "ping" — a real chat app is far
+        # more likely to produce a normal, non-empty JSON response to something
+        # that reads like an actual first message, reducing false "healthy"
+        # reads on apps that (legitimately or not) special-case single-word
+        # pings with a short/empty reply. Still doesn't need to produce a
+        # *meaningful* AI response; just needs a 2xx vs 4xx/5xx and a body we
+        # can sanity-check below.
         # Extra static fields (chat_payload_extras) are merged in so apps that crash on
         # missing required fields (e.g. vehicleState) don't trip the target_unavailable check.
-        probe_body = {**self._probe_payload_extras, "message": "ping"}
+        probe_body = {**self._probe_payload_extras, "message": "Hello, how can you help me?"}
         start = time.monotonic()
 
         try:
@@ -312,6 +407,35 @@ class AuthBootstrapper:
                 logger.debug(
                     "bootstrap ok: identity=%s status=%d", identity, resp.status_code
                 )
+                # A 2xx with an empty/unparseable body is not necessarily broken —
+                # some endpoints legitimately ack out-of-band (SSE/websocket
+                # follow-up, fire-and-forget) — so this never downgrades status to
+                # a failure. But it's also exactly the signature a wrong/missing
+                # required payload field produces on apps that swallow validation
+                # errors instead of returning 400/422 (e.g. this run's kscope
+                # bug: 200 + empty body when `consumerID` is missing). Surfacing
+                # it as a warning means a broken run shows up here, at bootstrap,
+                # instead of silently "verifying" then burning the circuit
+                # breaker on the same failure a few seconds later once real
+                # scenarios start sending the identical payload shape.
+                body_warning = ""
+                if not resp.text.strip():
+                    body_warning = (
+                        "2xx response had an empty body — if scenario requests start "
+                        "failing with JSON decode errors, this app may require an "
+                        "additional field (check target.chat_payload_extras)"
+                    )
+                else:
+                    try:
+                        resp.json()
+                    except ValueError:
+                        body_warning = (
+                            "2xx response body was not valid JSON — if scenario requests "
+                            "start failing with JSON decode errors, this app may require "
+                            "an additional field (check target.chat_payload_extras)"
+                        )
+                if body_warning:
+                    logger.warning("bootstrap: identity=%s %s", identity, body_warning)
                 return CredentialCheckResult(
                     identity=identity,
                     auth_type=auth_type,
@@ -320,6 +444,7 @@ class AuthBootstrapper:
                     http_status_code=resp.status_code,
                     response_time_ms=elapsed_ms,
                     response_text=resp.text[:500] if resp.text else "",
+                    body_warning=body_warning,
                 )
 
             if resp.status_code in (401, 403):

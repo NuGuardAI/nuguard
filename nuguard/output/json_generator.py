@@ -1,4 +1,5 @@
 """JSON output generators for redteam findings and remediation plans."""
+
 from __future__ import annotations
 
 import json
@@ -9,6 +10,30 @@ from uuid import uuid4
 
 if TYPE_CHECKING:
     from nuguard.models.finding import Finding
+    from nuguard.remediation.models import RemediationArtefact
+
+
+def build_remediation_plan(
+    findings: list["Finding"],
+    *,
+    target_url: str = "",
+    scan_id: str = "",
+    generated_at: str | None = None,
+    remediation_plan: list["RemediationArtefact"] | None = None,
+) -> dict:
+    """Build the common export; supplied metadata makes repeated rendering deterministic."""
+    plan: dict = {
+        "schema_version": "1.0",
+        "generated_at": generated_at or datetime.now(tz=timezone.utc).isoformat(),
+        "scan_id": scan_id or str(uuid4()),
+        "target": target_url or "",
+        "total_findings": len(findings),
+        "findings": [_finding_to_dict(f) for f in findings],
+    }
+    if remediation_plan is not None:
+        plan["remediation_plan"] = [art.model_dump(mode="json") for art in remediation_plan]
+        plan["advisory_only"] = True
+    return plan
 
 
 def write_remediation_plan(
@@ -17,6 +42,7 @@ def write_remediation_plan(
     *,
     target_url: str = "",
     scan_id: str = "",
+    remediation_plan: list["RemediationArtefact"] | None = None,
 ) -> None:
     """Write a machine-readable remediation plan to *output_path* as JSON.
 
@@ -39,14 +65,9 @@ def write_remediation_plan(
     scan_id:
         Optional scan identifier for correlation.
     """
-    plan: dict = {
-        "schema_version": "1.0",
-        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
-        "scan_id": scan_id or str(uuid4()),
-        "target": target_url or "",
-        "total_findings": len(findings),
-        "findings": [_finding_to_dict(f) for f in findings],
-    }
+    plan = build_remediation_plan(
+        findings, target_url=target_url, scan_id=scan_id, remediation_plan=remediation_plan
+    )
     output_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
 
 

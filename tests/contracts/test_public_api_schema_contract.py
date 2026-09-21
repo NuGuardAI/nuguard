@@ -18,6 +18,7 @@ from nuguard.behavior.public_api import BehaviorAnalysisRequest, BehaviorRunRequ
 from nuguard.common.discovery import TargetDiscoveryResult
 from nuguard.common.streaming_models import (
     BehaviorProgressState,
+    PentestProgressState,
     RedteamProgressState,
     StreamDeltaPayload,
     StreamEvent,
@@ -40,6 +41,13 @@ from nuguard.output.public_api import (
     ValidationReportExportResult,
     ValidationReportMetaModel,
 )
+from nuguard.pentest.public_api import (
+    PentestAuthConfig,
+    PentestExecutionResult,
+    PentestLoginFlowConfig,
+    PentestRunRequest,
+    PentestRunResult,
+)
 from nuguard.policy.public_api import (
     CognitivePolicyParseDetail,
     CognitivePolicyParseRequest,
@@ -52,6 +60,8 @@ from nuguard.redteam.public_api import (
     RedteamRunRequest,
     RedteamRunResult,
 )
+from nuguard.remediation.models import RemediationArtefact, RuntimeRemediationContext
+from nuguard.remediation.pentest import PentestRemediationFinding
 from nuguard.sbom.public_api import (
     SbomEnrichmentLlmConfig,
     SbomEnrichmentRequest,
@@ -78,6 +88,9 @@ from nuguard.sbom.toolbox.public_api import (
 _SCHEMA_FILE = Path(__file__).parent / "public_api.schema.json"
 
 _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
+    "remediation.RemediationArtefact": RemediationArtefact,
+    "remediation.RuntimeRemediationContext": RuntimeRemediationContext,
+    "remediation.PentestRemediationFinding": PentestRemediationFinding,
     "analysis.AnalysisRunRequest": AnalysisRunRequest,
     "analysis.AnalysisRunResult": AnalysisRunResult,
     "behavior.BehaviorAnalysisRequest": BehaviorAnalysisRequest,
@@ -86,6 +99,7 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "behavior.BehaviorRunResult": BehaviorRunResult,
     "common.discovery.TargetDiscoveryResult": TargetDiscoveryResult,
     "common.streaming.BehaviorProgressState": BehaviorProgressState,
+    "common.streaming.PentestProgressState": PentestProgressState,
     "common.streaming.RedteamProgressState": RedteamProgressState,
     "common.streaming.StreamDeltaPayload": StreamDeltaPayload,
     "common.streaming.StreamEvent": StreamEvent,
@@ -103,6 +117,11 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "output.ValidationReportExportRequest": ValidationReportExportRequest,
     "output.ValidationReportExportResult": ValidationReportExportResult,
     "output.ValidationReportMetaModel": ValidationReportMetaModel,
+    "pentest.PentestAuthConfig": PentestAuthConfig,
+    "pentest.PentestExecutionResult": PentestExecutionResult,
+    "pentest.PentestLoginFlowConfig": PentestLoginFlowConfig,
+    "pentest.PentestRunRequest": PentestRunRequest,
+    "pentest.PentestRunResult": PentestRunResult,
     "policy.CognitivePolicyParseDetail": CognitivePolicyParseDetail,
     "policy.CognitivePolicyParseRequest": CognitivePolicyParseRequest,
     "policy.CognitivePolicyParseResult": CognitivePolicyParseResult,
@@ -148,7 +167,7 @@ def test_committed_public_api_schema_matches_models() -> None:
 
     assert committed == live, (
         "public_api.schema.json is out of sync with public Pydantic API models. "
-        "Regenerate with: uv run python -c \"import json; "
+        'Regenerate with: uv run python -c "import json; '
         "from tests.contracts.test_public_api_schema_contract import _live_schema_snapshot; "
         "open('tests/contracts/public_api.schema.json','w',encoding='utf-8').write("
         "json.dumps(_live_schema_snapshot(), indent=2) + '\\n')\""

@@ -45,7 +45,9 @@ from .api_attacks import (
     build_mass_assignment,
     build_open_data_exposure,
     build_open_redirect_probe,
+    build_password_reset_probe,
     build_path_traversal_probe,
+    build_price_tampering,
     build_rate_limit_probe,
     build_reflected_xss_probe,
 )
@@ -308,6 +310,8 @@ _ATTACK_PHASE: dict[str, int] = {
     ScenarioType.AUTH_BYPASS.value: 9,
     ScenarioType.MASS_ASSIGNMENT.value: 9,
     ScenarioType.IDOR.value: 9,
+    ScenarioType.PASSWORD_RESET_ABUSE.value: 9,
+    ScenarioType.PRICE_TAMPERING.value: 9,
     ScenarioType.ENV_VAR_PROBE.value: 9,
     ScenarioType.CI_SECRET_PROBE.value: 9,
     ScenarioType.CLOUD_METADATA_SSRF.value: 9,
@@ -1921,6 +1925,16 @@ class ScenarioGenerator:
                     )
                 )
 
+                price_scenario = build_price_tampering(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    method=method,
+                    request_body_schema=request_body_schema,
+                )
+                if price_scenario is not None:
+                    out.append(price_scenario)
+
             # IDOR: explicit metadata flag, explicit path params, or path template pattern
             inferred_params: list[str] = list(meta.path_params or [])
             if not inferred_params:
@@ -1953,6 +1967,15 @@ class ScenarioGenerator:
                 )
                 if scenario is not None:
                     out.append(scenario)
+
+            reset_scenario = build_password_reset_probe(
+                endpoint_id=endpoint_id,
+                endpoint_name=node.name,
+                path=path,
+                path_params=inferred_params,
+            )
+            if reset_scenario is not None:
+                out.append(reset_scenario)
 
             # Injection probe: fuzz path/body params with SQLi/NoSQLi payloads
             # whenever there's at least one candidate to substitute into.

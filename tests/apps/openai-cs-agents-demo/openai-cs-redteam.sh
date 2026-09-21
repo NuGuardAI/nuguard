@@ -66,13 +66,27 @@ echo "---"
 #echo "Report:       $SCRIPT_DIR/reports/openai-cs-behavior.md"
 
 echo "---"
+echo "Running pentest ..."
+
+# pentest tests exit 2 when findings are present — expected in testing; treat as non-fatal.
+uv run nuguard pentest  \
+  --config "$SCRIPT_DIR/nuguard.yaml" \
+  --acknowledge-authorization \
+  --allow-dynamic-auth \
+  --allow-active-fuzzing \
+  --allow-headless-browser \
+  --use-sbom-endpoints \
+  --format markdown \
+  --output "$SCRIPT_DIR/reports/openai-cs-pentest.md" || true
+
+echo "---"
 echo "Running redteam tests ..."
 
 # redteam tests exit 2 when findings are present — expected in testing; treat as non-fatal.
-uv run nuguard redteam  \
-  --config "$SCRIPT_DIR/nuguard.yaml" \
-  --format markdown \
-  --output "$SCRIPT_DIR/reports/openai-cs-redteam.md" || true
+#uv run nuguard redteam  \
+#  --config "$SCRIPT_DIR/nuguard.yaml" \
+#  --format markdown \
+#  --output "$SCRIPT_DIR/reports/openai-cs-redteam.md" || true
 
 # Wait for the tee log-capture background process to flush all output before exiting.
 # Without this, the exec > >(tee) pipe may close before the last lines reach the log file.

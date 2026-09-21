@@ -62,6 +62,29 @@ ARCHITECTURAL_RATIONALE_USER = (
     "Change: {change_description}\nWrite the rationale:"
 )
 
+PENTEST_FIX_SYSTEM = (
+    REMEDIATION_PERSONA + " Task: given this active-scan finding and its own "
+    "evidence (the exact matched URLs/parameters and the matcher that fired), "
+    "write a concrete, code-implementable fix a developer or a coding agent "
+    "could act on directly. Name the specific parameter, path segment, "
+    "header, or route pattern the evidence shows, and state precisely what "
+    "check, validation, or configuration change closes it — e.g. which "
+    "values to allowlist, what to validate before use, or what response "
+    "header/setting to change. Do not invent file paths, frameworks, or line "
+    "numbers the evidence does not imply, and do not fabricate scanner output "
+    "beyond what is given below. Output ONLY the fix description, not the "
+    "finding title or a restated summary of the vulnerability class."
+)
+PENTEST_FIX_USER = (
+    "Rule ID: {rule}\n"
+    "Generic category guidance (sharpen this with the evidence, don't just repeat it): "
+    "{generic_change}\n"
+    "Matched locations ({location_count} total): {locations}\n"
+    "Matcher name(s): {matcher_names}\n"
+    "Finding description(s): {descriptions}\n"
+    "Write the concrete, evidence-grounded implementation fix:"
+)
+
 DEVIATION_REMEDIATION_SYSTEM = (
     REMEDIATION_PERSONA + " Task: diagnose the ACTUAL root cause of this one "
     "conversational turn from the transcript — do not default to 'update the "

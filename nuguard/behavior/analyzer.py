@@ -46,6 +46,7 @@ class BehaviorAnalyzer:
         config: BehaviorConfig,
         sbom: "AiSbomDocument | None" = None,
         sbom_path: "Path | None" = None,
+        config_path: "Path | None" = None,
         policy: "CognitivePolicy | None" = None,
         controls: "list[PolicyControl] | None" = None,
         llm_client: "LLMClient | None" = None,
@@ -55,6 +56,7 @@ class BehaviorAnalyzer:
         self._config = config
         self._sbom = sbom
         self._sbom_path = sbom_path
+        self._config_path = config_path
         self._policy = policy
         self._controls = controls
         self._llm = llm_client
@@ -72,6 +74,34 @@ class BehaviorAnalyzer:
             self._progress_sink(update)
         except Exception as exc:  # noqa: BLE001
             _log.debug("BehaviorAnalyzer progress sink failed: %s", exc)
+
+    def _confirmed_endpoint_from_sbom(
+        self, path: str
+    ) -> "tuple[str, str, bool, str | None] | None":
+        """Return ``(path, payload_key, payload_list, response_key)`` when the SBOM
+        already carries a runtime-probe-confirmed payload shape for *path* (from
+        a prior behavior/redteam run persisted into the enriched SBOM).
+
+        Mirrors ``RedteamOrchestrator._chat_endpoint_confirmed`` so a
+        previously-confirmed endpoint isn't re-probed by ``resolve_chat_endpoint``
+        on every run.
+        """
+        if self._sbom is None:
+            return None
+        from nuguard.common.endpoint_detection.constants import PROBE_SOURCE_RUNTIME_PROBE
+        from nuguard.sbom.types import ComponentType
+
+        for node in self._sbom.nodes:
+            meta = node.metadata
+            if (
+                node.component_type == ComponentType.API_ENDPOINT
+                and meta is not None
+                and meta.endpoint == path
+                and meta.chat_payload_key is not None
+                and (meta.extras or {}).get("source") == PROBE_SOURCE_RUNTIME_PROBE
+            ):
+                return path, meta.chat_payload_key, bool(meta.chat_payload_list), meta.response_text_key
+        return None
 
     async def analyze(
         self,
@@ -135,140 +165,110 @@ class BehaviorAnalyzer:
                 scenario_cache = BehaviorPromptCache(cache_dir=prompt_cache_dir or None)
                 cache_key = scenario_cache.cache_key(self._sbom, self._policy)
 
-                # ── Endpoint auto-discovery ─────────────────────────────
-                # When target_endpoint is not configured, attempt to infer
-                # it from SBOM metadata (zero-I/O) then fall back to a live
-                # HTTP probe.  This mirrors the RedteamOrchestrator logic so
-                # that both analysis modes share the same discovery path.
-                cfg_endpoint = getattr(self._config, "target_endpoint", "") or ""
-                # Captured before any auto-discovery mutation below: BehaviorRunner's
-                # preflight rotation must know whether the endpoint came from the
-                # user's nuguard.yaml (rotation disabled — explicit precedence) or
-                # was inferred here from the SBOM (rotation must stay enabled, since
-                # SBOM candidate scoring can pick the wrong endpoint, e.g. a
-                # vision-only route over the real text-chat one). Once this block
-                # calls self._config.model_copy(update=...) below, target_endpoint
-                # becomes indistinguishable from a user-set value.
-                _user_had_explicit_endpoint = bool(cfg_endpoint)
-                if not cfg_endpoint and self._sbom is not None:
-                    from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-                        discover_chat_config_from_sbom,
-                        probe_chat_endpoints,
+                # ── Common endpoint and payload resolution ──────────────
+                from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
+
+                configured_fields = self._config.model_fields_set
+                probe_auth_headers: dict[str, str] = {}
+                try:
+                    from nuguard.common.auth import AuthConfig
+                    from nuguard.common.auth_runtime import resolve_auth_runtime
+
+                    behavior_auth = getattr(self._config, "auth", None)
+                    if behavior_auth and getattr(behavior_auth, "type", "none") != "none":
+                        probe_auth_headers = resolve_auth_runtime(
+                            auth_config=AuthConfig(
+                                type=behavior_auth.type,
+                                header=getattr(behavior_auth, "header", ""),
+                                username=getattr(behavior_auth, "username", ""),
+                                password=getattr(behavior_auth, "password", ""),
+                            )
+                        ).initial_headers
+                except Exception as exc:  # noqa: BLE001 - probe auth is best effort
+                    _log.debug("BehaviorAnalyzer: could not resolve probe auth headers: %s", exc)
+
+                def _persist_probe_result(result: Any) -> None:
+                    if self._sbom_path is None or self._sbom is None:
+                        return
+                    try:
+                        from nuguard.common.auto_sbom_enricher import persist_probe_result_to_sbom
+
+                        persist_probe_result_to_sbom(result, self._sbom, self._sbom_path)
+                    except Exception as exc:  # noqa: BLE001 - persistence is best effort
+                        _log.debug("behavior: probe result persist failed: %s", exc)
+
+                resolved_updates: dict[str, Any] = {}
+                _key_explicit = "chat_payload_key" in configured_fields
+                _list_explicit = "chat_payload_list" in configured_fields
+                _response_explicit = "chat_response_key" in configured_fields
+
+                # Skip resolve_chat_endpoint (and any live probing) entirely when
+                # the SBOM already has a runtime-probe-confirmed payload shape for
+                # the candidate endpoint and none of the payload fields were
+                # explicitly pinned by the user (an explicit value must still win
+                # over a stale SBOM record, same as resolve_chat_endpoint itself).
+                _confirmed = None
+                if not (_key_explicit or _list_explicit or _response_explicit):
+                    _candidate_path = (
+                        getattr(self._config, "target_endpoint", "")
+                        if "target_endpoint" in configured_fields
+                        else ""
                     )
+                    if not _candidate_path and self._sbom is not None:
+                        from nuguard.common.endpoint_detection.sbom import discover_chat_config
 
-                    # 1. Static SBOM-based discovery (no network)
-                    disc_path, disc_payload_key, disc_payload_list, disc_response_key = (
-                        discover_chat_config_from_sbom(
-                            self._sbom,
-                            chat_path="",
-                            chat_payload_key=getattr(self._config, "chat_payload_key", "message") or "message",
-                            chat_payload_list=bool(getattr(self._config, "chat_payload_list", False)),
-                        )
+                        _candidate_path = discover_chat_config(self._sbom, chat_path=None)[0] or ""
+                    if _candidate_path:
+                        _confirmed = self._confirmed_endpoint_from_sbom(_candidate_path)
+
+                if _confirmed is not None:
+                    _c_path, _c_key, _c_list, _c_resp = _confirmed
+                    resolved_updates["target_endpoint"] = _c_path
+                    resolved_updates["chat_payload_key"] = _c_key
+                    resolved_updates["chat_payload_list"] = _c_list
+                    if _c_resp:
+                        resolved_updates["chat_response_key"] = _c_resp
+                else:
+                    resolved_endpoint = await resolve_chat_endpoint(
+                        target_url=target_url,
+                        sbom=self._sbom,
+                        endpoint=(
+                            getattr(self._config, "target_endpoint", "")
+                            if "target_endpoint" in configured_fields
+                            else UNSET
+                        ),
+                        payload_key=(
+                            getattr(self._config, "chat_payload_key", "message")
+                            if "chat_payload_key" in configured_fields
+                            else UNSET
+                        ),
+                        payload_list=(
+                            getattr(self._config, "chat_payload_list", False)
+                            if "chat_payload_list" in configured_fields
+                            else UNSET
+                        ),
+                        response_key=(
+                            getattr(self._config, "chat_response_key", "") or None
+                            if "chat_response_key" in configured_fields
+                            else UNSET
+                        ),
+                        auth_headers=probe_auth_headers or None,
+                        timeout=15.0,
+                        llm=self._llm if getattr(self._config, "probe_llm", False) else None,
+                        probe_result_callback=_persist_probe_result,
                     )
-
-                    def _resolve_auth_headers() -> dict[str, str]:
-                        auth_headers: dict[str, str] = {}
-                        try:
-                            from nuguard.common.auth import AuthConfig  # noqa: PLC0415
-                            from nuguard.common.auth_runtime import (
-                                resolve_auth_runtime,  # noqa: PLC0415
-                            )
-                            va = getattr(self._config, "auth", None)
-                            if va and getattr(va, "type", "none") != "none":
-                                ac = AuthConfig(
-                                    type=va.type,
-                                    header=getattr(va, "header", ""),
-                                    username=getattr(va, "username", ""),
-                                    password=getattr(va, "password", ""),
-                                )
-                                rt = resolve_auth_runtime(auth_config=ac)
-                                auth_headers = getattr(rt, "initial_headers", {}) or {}
-                        except Exception:
-                            pass
-                        return auth_headers
-
-                    if disc_path:
-                        _log.info(
-                            "BehaviorAnalyzer: SBOM-discovered endpoint %s "
-                            "(key=%s list=%s response_key=%s)",
-                            disc_path, disc_payload_key, disc_payload_list, disc_response_key,
-                        )
-                        # The keyword-scoring fallback in discover_chat_config_from_sbom
-                        # (used when no API_ENDPOINT node carries an explicit
-                        # chat_payload_key, e.g. a plain Express/Node route) returns the
-                        # caller's *default* payload key/shape unchanged — it never
-                        # actually inspected the handler body. Treat "still the literal
-                        # default" as "unconfirmed" and refine it with a live probe
-                        # pinned to this path, mirroring RedteamOrchestrator's Option B
-                        # (_maybe_probe_endpoints) so behavior mode doesn't silently send
-                        # the wrong body shape (e.g. {"message": ...} to an endpoint that
-                        # expects OpenAI-style {"messages": [{"role", "content"}]}).
-                        if disc_payload_key == "message" and not bool(disc_payload_list):
-                            _log.info(
-                                "BehaviorAnalyzer: endpoint known (%s) — probing payload "
-                                "structure to confirm payload key",
-                                disc_path,
-                            )
-                            refine_result = await probe_chat_endpoints(
-                                target_url=target_url,
-                                sbom=self._sbom,
-                                auth_headers=_resolve_auth_headers() or None,
-                                timeout=15.0,
-                                known_response_key=disc_response_key,
-                                hint_path=disc_path,
-                            )
-                            if refine_result:
-                                _, refined_key, refined_list = refine_result
-                                if refined_key != disc_payload_key or refined_list != disc_payload_list:
-                                    _log.info(
-                                        "BehaviorAnalyzer: refined payload shape for %s "
-                                        "(key=%s list=%s)",
-                                        disc_path, refined_key, refined_list,
-                                    )
-                                disc_payload_key, disc_payload_list = refined_key, refined_list
-                        updates: dict = {"target_endpoint": disc_path}
-                        if disc_payload_key and disc_payload_key != getattr(self._config, "chat_payload_key", "message"):
-                            updates["chat_payload_key"] = disc_payload_key
-                        if disc_payload_list != bool(getattr(self._config, "chat_payload_list", False)):
-                            updates["chat_payload_list"] = disc_payload_list
-                        if disc_response_key and not getattr(self._config, "chat_response_key", ""):
-                            updates["chat_response_key"] = disc_response_key
-                        self._config = self._config.model_copy(update=updates)
-                    else:
-                        # 2. Live HTTP probe fallback
-                        probe_result = await probe_chat_endpoints(
-                            target_url=target_url,
-                            sbom=self._sbom,
-                            auth_headers=_resolve_auth_headers() or None,
-                            timeout=15.0,
-                            llm=self._llm if getattr(self._config, "probe_llm", False) else None,
-                        )
-                        if probe_result:
-                            probed_path, probed_key, probed_list = probe_result
-                            _log.info(
-                                "BehaviorAnalyzer: live-probed endpoint %s (key=%s list=%s)",
-                                probed_path, probed_key, probed_list,
-                            )
-                            probe_updates: dict = {"target_endpoint": probed_path}
-                            if probed_key and probed_key != getattr(self._config, "chat_payload_key", "message"):
-                                probe_updates["chat_payload_key"] = probed_key
-                            if probed_list != bool(getattr(self._config, "chat_payload_list", False)):
-                                probe_updates["chat_payload_list"] = probed_list
-                            self._config = self._config.model_copy(update=probe_updates)
-                            if self._sbom_path is not None:
-                                try:
-                                    from nuguard.common.auto_sbom_enricher import (
-                                        persist_probe_result_to_sbom,  # noqa: PLC0415
-                                    )
-                                    persist_probe_result_to_sbom(probe_result, self._sbom, self._sbom_path)
-                                except Exception as _pe:  # noqa: BLE001
-                                    _log.debug("behavior: probe result persist failed: %s", _pe)
-                        else:
-                            _log.warning(
-                                "BehaviorAnalyzer: endpoint auto-discovery found nothing "
-                                "for %s — scenarios will use default /chat",
-                                target_url,
-                            )
+                    if resolved_endpoint.path:
+                        resolved_updates["target_endpoint"] = resolved_endpoint.path
+                    if resolved_endpoint.payload_key:
+                        resolved_updates["chat_payload_key"] = resolved_endpoint.payload_key
+                    resolved_updates["chat_payload_list"] = resolved_endpoint.payload_list
+                    if resolved_endpoint.response_key:
+                        resolved_updates["chat_response_key"] = resolved_endpoint.response_key
+                self._config = self._config.model_copy(update=resolved_updates)
+                _user_had_explicit_endpoint = (
+                    "target_endpoint" in configured_fields
+                    and bool(getattr(self._config, "target_endpoint", ""))
+                )
 
                 # ── Judge verdict cache ──────────────────────────────────
                 # v3: skip repeat LLM judge calls on warm runs
@@ -289,6 +289,7 @@ class BehaviorAnalyzer:
                     "config": self._config,
                     "sbom": self._sbom,
                     "sbom_path": self._sbom_path,
+                    "config_path": self._config_path,
                     "policy": self._policy,
                     "intent": intent,
                     "llm_client": self._llm,

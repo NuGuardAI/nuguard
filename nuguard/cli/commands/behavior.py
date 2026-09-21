@@ -300,6 +300,7 @@ async def _run_behavior(
             request,
             sbom=sbom,
             sbom_path=sbom_path_obj,
+            config_path=config_path,
             policy=policy_obj,
             controls=controls,
             llm_client=llm_client,

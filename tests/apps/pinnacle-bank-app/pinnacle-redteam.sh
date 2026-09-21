@@ -65,18 +65,29 @@ echo "Done: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "Log saved to: $LOG_FILE"
 echo "Report:       $SCRIPT_DIR/reports/pinnacle-bank-behavior.md"
 
+  uv run nuguard pentest  \
+  --config "$SCRIPT_DIR/nuguard-azure.yaml" \
+  --acknowledge-authorization \
+  --allow-headless-browser \
+  --allow-dynamic-auth \
+  --allow-active-fuzzing \
+  --format markdown \
+  --output "$SCRIPT_DIR/reports/pinnacle-bank-pentest.md" || true
+
+echo "---"
+echo "Running pentest with custom Juice Shop templates ..."
 echo "---"
 echo "Running redteam tests ..."
 
 # redteam exits 2 when findings are present — expected in testing, treat as non-fatal.
 # Exit 1 is a hard error (target unreachable, auth failure, config error) — propagate it.
-uv run nuguard redteam \
-  --config "$SCRIPT_DIR/nuguard-azure.yaml" \
-   --format markdown \
-  --output "$SCRIPT_DIR/reports/pinnacle-bank-redteam-new.md" || {
-    _exit=$?
-    [[ $_exit -eq 2 ]] || { echo "ERROR: redteam failed (exit $_exit)" >&2; exit $_exit; }
-  }
+#uv run nuguard redteam \
+#  --config "$SCRIPT_DIR/nuguard-azure.yaml" \
+#   --format markdown \
+#  --output "$SCRIPT_DIR/reports/pinnacle-bank-redteam-new.md" || {
+#    _exit=$?
+#    [[ $_exit -eq 2 ]] || { echo "ERROR: redteam failed (exit $_exit)" >&2; exit $_exit; }
+#  }
 
 # Wait for the tee log-capture background process to flush all output before exiting.
 # Without this, the exec > >(tee) pipe may close before the last lines reach the log file.

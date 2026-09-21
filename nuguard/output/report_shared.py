@@ -3,6 +3,7 @@
 Both :mod:`nuguard.behavior.report` and :mod:`nuguard.redteam.report` import
 from here to keep formatting consistent and avoid duplication.
 """
+
 from __future__ import annotations
 
 import re
@@ -168,10 +169,106 @@ def _privilege_notes(art: Any) -> str:
     return ("- **Access controls**: " + ", ".join(parts)) if parts else ""
 
 
+def _runtime_literal(value: str) -> str:
+    """Render scanner-controlled text as literal Markdown, not markup."""
+    import html
+
+    value = html.escape(" ".join(value.split()), quote=False)
+    return re.sub(r"([\\`*_{}\[\]()#+.!|>-])", r"\\\1", value)
+
+
+def _render_runtime_artefact(lines: list[str], art: Any) -> None:
+    context = art.runtime
+    literal = _runtime_literal
+    lines.extend(
+        [
+            f"**[{art.priority.upper()}] {literal(art.change_description or 'Runtime remediation')}**",
+            f"- **Action ID:** {context.action_id}",
+            "- **Advisory only:** review and apply manually; nothing was changed automatically.",
+            f"- **Source findings:** {', '.join(literal(fid) for fid in art.finding_ids)}",
+            f"- **Rules:** {', '.join(literal(rule) for rule in context.rule_ids)}",
+            f"- **Targets:** {', '.join(literal(target) for target in context.targets)}",
+            f"- **Matched locations:** {', '.join(literal(location) for location in context.matched_locations)}",
+            f"- **Why:** {literal(art.rationale)}",
+            f"- **Recommended change:** {literal(art.change_detail or '')}",
+            f"- **Implementation:** {literal(context.implementation)}",
+            f"- **Guidance sources:** {', '.join(context.guidance_sources)}",
+        ]
+    )
+    for verification in context.verification:
+        lines.append(f"- **Verification:** {literal(verification)}")
+    if context.cve_ids or context.cwe_ids:
+        lines.append("- **Classification:** " + ", ".join((*context.cve_ids, *context.cwe_ids)))
+    if context.matcher_names:
+        lines.append(
+            "- **Matchers:** " + ", ".join(literal(name) for name in context.matcher_names)
+        )
+    for reference in context.references:
+        lines.append("- **Reference:** " + literal(reference))
+    lines.append("")
+
+
+def render_remediation_plan_text(lines: list[str], remediation_plan: list) -> None:
+    """Append plain-text guidance using the same shared artefacts as Markdown."""
+    lines.extend(["Remediation Plan (advisory only)", ""])
+    for art in sorted(remediation_plan, key=_priority_rank):
+        lines.extend(
+            [
+                f"[{art.priority.upper()}] {art.change_description or art.component}",
+                "  Findings: " + ", ".join(art.finding_ids),
+                "  Why: " + art.rationale,
+                "  Recommended change: " + (art.change_detail or art.rationale),
+            ]
+        )
+        context = art.runtime
+        if context is not None:
+            lines.extend(
+                [
+                    "  Action: " + context.action_id,
+                    "  Targets: " + ", ".join(context.targets),
+                    "  Matched: " + ", ".join(context.matched_locations),
+                    "  Implementation: " + context.implementation,
+                    "  Classification: " + ", ".join((*context.cve_ids, *context.cwe_ids)),
+                ]
+            )
+            lines.extend("  Verification: " + check for check in context.verification)
+            lines.extend("  Reference: " + reference for reference in context.references)
+        lines.append("")
+
+
+def remediation_result_properties(
+    artefacts: list, *, target: str = "", matched_at: str = ""
+) -> dict[str, Any]:
+    """Link SARIF results to the run-level plan without copying whole groups."""
+    from nuguard.remediation.pentest import safe_location
+
+    runtime = [art for art in artefacts if art.runtime is not None]
+    if not runtime:
+        return {}
+    location = (
+        safe_location(matched_at) or safe_location(target) or "the original authorized location"
+    )
+    return {
+        "remediation": "\n\n".join(sorted({art.change_detail or art.rationale for art in runtime})),
+        "remediationActionIds": [art.runtime.action_id for art in runtime],
+        "implementationGuidance": sorted({art.runtime.implementation for art in runtime}),
+        "verification": [
+            f"Retest {location} within the same explicitly authorized scope for rules "
+            + ", ".join(art.runtime.rule_ids)
+            + ". Review the response manually; absence from a scan alone does not prove resolution."
+            for art in runtime
+        ],
+        "advisoryOnly": True,
+    }
+
+
 def _render_artefact(lines: list[str], art: Any) -> None:
     """Render one RemediationArtefact as Markdown bullets."""
     from nuguard.remediation.models import RemediationArtefactType
 
+    if getattr(art, "runtime", None) is not None:
+        _render_runtime_artefact(lines, art)
+        return
     atype = art.artefact_type
     priority_badge = f"[{art.priority.upper()}]"
     finding_ref = f" *(findings: {', '.join(art.finding_ids)})*" if art.finding_ids else ""
@@ -201,7 +298,9 @@ def _render_artefact(lines: list[str], art: Any) -> None:
             if atype == RemediationArtefactType.INPUT_GUARDRAIL
             else "Output Guardrail"
         )
-        lines.append(f"**{priority_badge} {label} — `{art.guardrail_name or 'unnamed'}`**{finding_ref}")
+        lines.append(
+            f"**{priority_badge} {label} — `{art.guardrail_name or 'unnamed'}`**{finding_ref}"
+        )
         lines.append("")
         lines.append(f"- **Type**: `{art.guardrail_type or 'unspecified'}`")
         if art.guardrail_trigger:
@@ -259,8 +358,12 @@ def render_remediation_plan_section(lines: list[str], remediation_plan: list) ->
     lines.append("## Remediation Plan")
     lines.append("")
     lines.append(
-        "Concrete, SBOM-node-specific remediations generated from the findings "
-        "above. Apply in priority order."
+        (
+            "Advisory runtime remediations. Review and apply manually in priority order; no changes were applied."
+            if any(getattr(art, "runtime", None) is not None for art in remediation_plan)
+            else "Concrete, SBOM-node-specific remediations generated from the findings "
+            "above. Apply in priority order."
+        )
     )
     lines.append("")
 
@@ -273,7 +376,9 @@ def render_remediation_plan_section(lines: list[str], remediation_plan: list) ->
     )
 
     for comp, arts in ordered_components:
-        lines.append(f"### {comp}")
+        lines.append(
+            f"### {_runtime_literal(comp) if any(getattr(art, 'runtime', None) is not None for art in arts) else comp}"
+        )
         lines.append("")
         for art in sorted(arts, key=_priority_rank):
             _render_artefact(lines, art)

@@ -100,6 +100,7 @@ def test_public_target_requests_require_cookie_file_path(request_type) -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_target_session_public_threads_custom_headers_to_sbom_session(monkeypatch):
+    from nuguard.common.endpoint_detection import EndpointSource, PayloadShape, ResolvedEndpoint
     from nuguard.common.session_resolver import TargetSessionConfig
 
     captured_extra_headers = []
@@ -121,9 +122,16 @@ async def test_resolve_target_session_public_threads_custom_headers_to_sbom_sess
             report,
         )
 
+    async def _fake_resolve_chat_endpoint(**kwargs):
+        return ResolvedEndpoint(
+            path="/chat",
+            payload=PayloadShape(key="message", source=EndpointSource.SBOM),
+            path_source=EndpointSource.SBOM,
+        )
+
     monkeypatch.setattr(
-        "nuguard.common.target_verify_public_api.discover_chat_config_from_sbom",
-        lambda *args, **kwargs: ("/chat", "message", False, None),
+        "nuguard.common.target_verify_public_api.resolve_chat_endpoint",
+        _fake_resolve_chat_endpoint,
     )
     monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
 
@@ -295,11 +303,8 @@ async def test_verify_target_runs_optional_discovery_when_checks_ok(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_resolve_target_session_public_uses_probe_endpoint_source(monkeypatch):
+    from nuguard.common.endpoint_detection import EndpointSource, PayloadShape, ResolvedEndpoint
     from nuguard.common.session_resolver import TargetSessionConfig
-
-    async def _fake_probe_chat_endpoints(**kwargs):
-        _ = kwargs
-        return ("/live", "message", False)
 
     async def _fake_resolve_target_session(**kwargs):
         _ = kwargs
@@ -323,11 +328,17 @@ async def test_resolve_target_session_public_uses_probe_endpoint_source(monkeypa
             report,
         )
 
+    async def _fake_resolve_chat_endpoint(**kwargs):
+        return ResolvedEndpoint(
+            path="/live",
+            payload=PayloadShape(key="message", source=EndpointSource.PROBE),
+            path_source=EndpointSource.PROBE,
+        )
+
     monkeypatch.setattr(
-        "nuguard.common.target_verify_public_api.discover_chat_config_from_sbom",
-        lambda *args, **kwargs: ("", "message", False, None),
+        "nuguard.common.target_verify_public_api.resolve_chat_endpoint",
+        _fake_resolve_chat_endpoint,
     )
-    monkeypatch.setattr("nuguard.common.target_verify_public_api.probe_chat_endpoints", _fake_probe_chat_endpoints)
     monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
 
     result = await resolve_target_session_public(
@@ -402,6 +413,7 @@ async def test_resolve_target_session_public_resolves_sbom_host_before_planning(
 
 @pytest.mark.asyncio
 async def test_parity_tv_001(monkeypatch):
+    from nuguard.common.endpoint_detection import EndpointSource, PayloadShape, ResolvedEndpoint
     from nuguard.common.session_resolver import TargetSessionConfig
 
     async def _fake_bootstrap_auth_runtime(**kwargs):
@@ -455,9 +467,16 @@ async def test_parity_tv_001(monkeypatch):
     monkeypatch.setattr("nuguard.common.target_verify_public_api.build_target_app_client", lambda *args, **kwargs: _FakeClient())
     monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", _fake_run_discovery)
     monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
+    async def _fake_resolve_chat_endpoint(**kwargs):
+        return ResolvedEndpoint(
+            path="/chat",
+            payload=PayloadShape(key="message", source=EndpointSource.SBOM),
+            path_source=EndpointSource.SBOM,
+        )
+
     monkeypatch.setattr(
-        "nuguard.common.target_verify_public_api.discover_chat_config_from_sbom",
-        lambda *args, **kwargs: ("/chat", "message", False, None),
+        "nuguard.common.target_verify_public_api.resolve_chat_endpoint",
+        _fake_resolve_chat_endpoint,
     )
 
     verify_result = await verify_target(TargetVerifyRequest(target_url="http://target"))

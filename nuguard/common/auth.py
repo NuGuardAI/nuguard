@@ -130,6 +130,30 @@ def _parse_netscape_cookies(path: str) -> str:
     return "; ".join(pairs)
 
 
+def infer_auth_type(data: dict[str, Any]) -> str | None:
+    """Infer an auth ``type`` from whichever credential fields are set.
+
+    Lets users write ``auth: {username: ..., password: ...}`` in nuguard.yaml
+    without an explicit ``type:`` line. Checked in order of specificity —
+    cookie_file and login_flow are unambiguous; username+password defaults to
+    "basic" (callers such as ``resolve_auth_config_with_sbom_fallback`` may
+    later upgrade this to "login_flow" once the SBOM confirms a login
+    endpoint); a bare header infers bearer vs. api_key from its prefix.
+
+    Returns ``None`` when nothing is set (caller should default to "none").
+    """
+    if data.get("cookie_file"):
+        return "cookie_file"
+    if data.get("login_flow"):
+        return "login_flow"
+    if data.get("username") and data.get("password"):
+        return "basic"
+    header = data.get("header") or ""
+    if header:
+        return "bearer" if header.strip().lower().startswith("authorization: bearer") else "api_key"
+    return None
+
+
 class AuthConfig(BaseModel):
     """Structured auth configuration parsed from nuguard.yaml auth block."""
 
@@ -149,6 +173,21 @@ class AuthConfig(BaseModel):
     # cookie_file: path to a Netscape-format cookies.txt (absolute or relative
     # to the directory where nuguard is invoked)
     cookie_file: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _infer_type(cls, data: Any) -> Any:
+        """Auto-fill ``type`` from credential fields when the caller omits it.
+
+        Only fires when ``type`` is absent entirely — an explicit ``type:``
+        (including "none") always wins, so this never silently overrides a
+        deliberate choice.
+        """
+        if isinstance(data, dict) and "type" not in data:
+            inferred = infer_auth_type(data)
+            if inferred:
+                data = {**data, "type": inferred}
+        return data
 
     @model_validator(mode="after")
     def _validate_fields(self) -> "AuthConfig":

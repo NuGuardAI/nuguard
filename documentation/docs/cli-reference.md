@@ -36,6 +36,7 @@ Jump straight to a command. Grouped by what you're trying to do.
 |---|---|---|
 | 🎭 | [`nuguard behavior`](#nuguard-behavior) | Intent-aware behavioral analysis against a live AI application |
 | ⚔️ | [`nuguard redteam`](#nuguard-redteam) | Dynamic adversarial testing against a live AI application |
+| 🛡️ | [`nuguard pentest`](#nuguard-pentest) | Explicitly authorized Nuclei-based conventional HTTP/HTTPS pentest |
 | 🔌 | [`nuguard target`](#nuguard-target) | Verify target connectivity and authentication before scanning |
 
 **🧪 Test-Run Management** ![planned](https://img.shields.io/badge/status-planned-6e7681?style=flat-square)
@@ -642,6 +643,89 @@ See [Customizing the Catalog](./redteam-guide.md#customizing-the-catalog) in the
 | `redteam.emit_pytest_dir` | `tests/redteam` | Directory to write generated pytest files |
 | `redteam.tree_breadth` | `0` (off) | TAP: number of tactic variants to branch per depth level |
 | `redteam.tree_max_depth` | `0` (off) | TAP: maximum tree depth before pruning non-improving paths |
+
+</details>
+
+<details>
+<summary id="nuguard-pentest">🛡️ <strong><code>nuguard pentest</code></strong> — explicitly authorized conventional pentest</summary>
+
+<br>
+
+Bounded, explicitly authorized HTTP/HTTPS application pentesting using the open-source [Nuclei](https://github.com/projectdiscovery/nuclei) engine. Separate from `nuguard redteam`/`nuguard behavior`: those exercise the AI-specific chat/agent surface, `pentest` runs conventional web-application checks (exposed endpoints, misconfig, injection, known-CVE templates) against the app's HTTP surface directly.
+
+See [cloud-pentesting.md](./cloud-pentesting.md) for the full engine/scope/authentication model.
+
+Requires Nuclei 3.11.1+ on `PATH` (or `--nuclei-binary`) — NuGuard does not install it. Refuses to run without `--acknowledge-authorization`.
+
+```bash
+# Minimal authorized scan
+nuguard pentest --target https://staging.example.com --acknowledge-authorization
+
+# Target + auth from nuguard.yaml
+nuguard pentest --config nuguard.yaml --acknowledge-authorization
+
+# Also scan every parameter-free API endpoint the SBOM discovered
+nuguard pentest --config nuguard.yaml --acknowledge-authorization \
+  --use-sbom-endpoints
+
+# Opt in to DAST/fuzzing templates and headless (JS-executing) templates
+nuguard pentest --config nuguard.yaml --acknowledge-authorization \
+  --allow-active-fuzzing --allow-headless-browser
+
+# App-specific custom templates, in addition to the always-on bundled ones
+nuguard pentest --config nuguard.yaml --acknowledge-authorization \
+  --templates-dir ./my-nuclei-templates
+
+# CI gate — SARIF output, fail on high+, 45-minute cap
+nuguard pentest --config nuguard.yaml --acknowledge-authorization \
+  --format sarif --output pentest.sarif --fail-on high --scan-timeout 2700
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--target` | `-t` | — | Authorized `http(s)://` target. Repeat for multiple targets |
+| `--target-file` | — | — | UTF-8 file, one authorized target per line |
+| `--config` | `-c` | — | Load `target.url`/`target.auth`/`sbom:`/`pentest:` from `nuguard.yaml`. Explicit `--target` never retargets configured credentials |
+| `--acknowledge-authorization` | — | **required** | Confirm you own or have documented permission to test every target. Always an explicit per-invocation flag — never configurable via `nuguard.yaml` |
+| `--profile` | — | `safe` | `safe` (low/medium/high/critical only) or `standard` (also informational) |
+| `--use-sbom-endpoints` | — | off | Expand the target list with every parameter-free API endpoint path from `--config`'s SBOM, one Nuclei `-list` entry per endpoint. Requires `--config` and exactly one base target; capped at 200 endpoints |
+| `--bundled` / `--no-bundled` | — | on | Run NuGuard's bundled, app-agnostic templates (open redirect, error-based SQLi) as an extra always-on pass. Auto-signed locally on first use — no setup needed; never fails the overall scan if signing doesn't work |
+| `--templates-dir` | — | — | Trusted custom Nuclei templates directory, run as its own pass alongside the standard corpus and the bundled pass. Unsigned templates are rejected — sign with `nuclei -sign -t <dir>` first |
+| `--allow-active-fuzzing` | — | off | Add a second Nuclei DAST/fuzzing pass (`-dast`) and stop excluding the `fuzz`/`intrusive` tags. Materially more, more intrusive requests |
+| `--allow-headless-browser` | — | off | Run Nuclei's headless-browser (JS-executing) templates. Auto-downloads a Chromium build (~120 MB) on first use; refused when running as root |
+| `--allow-private` | — | off | Permit RFC1918/unique-local targets. Loopback, link-local, metadata, multicast, and reserved addresses stay blocked regardless |
+| `--allow-dynamic-auth` | — | off | Allow a bounded, same-origin `login_flow` POST (from `target.auth` in `nuguard.yaml`) to obtain a bearer token before scanning |
+| `--nuclei-secret-file` | — | — | Owner-only, exact-target static Nuclei Secret File — alternative to configured `target.auth` |
+| `--nuclei-binary` | — | `nuclei` | Executable name or path. No arbitrary scanner arguments are accepted |
+| `--rate-limit` | — | `25` | Max requests/second, 1–100 |
+| `--concurrency` | — | `10` | Max template concurrency, 1–25 |
+| `--retries` | — | `1` | Max request retries, 0–2 |
+| `--request-timeout` | — | `10` | Per-request timeout in seconds, 1–60 |
+| `--scan-timeout` | — | `2700` | Whole-scan timeout in seconds, 10–3600 (45 min default — multi-target/DAST/bundled passes need real headroom) |
+| `--stats-interval` | — | `5` | Seconds between live Nuclei progress-stats log lines, 1–60 |
+| `--format` | — | `text` | `text` \| `json` \| `markdown` \| `sarif` |
+| `--output` | `-o` | stdout | Write the report atomically to this owner-only file |
+| `--remediation-output` | — | — | Write an advisory JSON remediation plan (NuGuard's common format) to a separate file |
+| `--fail-on` | — | `high` | Exit `1` when a finding meets this severity: `none`\|`info`\|`low`\|`medium`\|`high`\|`critical` |
+
+Every flag above (except `--acknowledge-authorization`, which is always CLI-only) can instead be set once in `nuguard.yaml` under a `pentest:` block — see `nuguard.yaml.example`. Precedence is CLI flag > `pentest:` in `nuguard.yaml` > built-in default.
+
+```yaml
+pentest:
+  profile: standard
+  allow_active_fuzzing: true
+  use_sbom_endpoints: true
+  scan_timeout: 3600
+```
+
+**How coverage is assembled**, all in one `nuguard pentest` invocation:
+
+1. The standard Nuclei template corpus (always runs, unless `--templates-dir` narrows it).
+2. NuGuard's bundled generic templates (`--bundled`, on by default) — auto-signed locally, no setup.
+3. A DAST/fuzzing pass, only with `--allow-active-fuzzing` (a separate pass: Nuclei's `-dast` replaces rather than adds to the normal corpus, so NuGuard runs it as its own invocation and merges findings).
+4. Your own `--templates-dir`, if given, as its own pass too.
+
+Findings from every pass are deduplicated and merged into one report; live progress (matched/requests/errors) is logged as each pass runs, not batched at the end.
 
 </details>
 

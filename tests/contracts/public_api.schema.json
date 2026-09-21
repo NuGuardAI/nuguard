@@ -663,6 +663,17 @@
             },
             "title": "Per Finding Rationale",
             "type": "object"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RuntimeRemediationContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -685,6 +696,125 @@
         ],
         "title": "RemediationArtefactType",
         "type": "string"
+      },
+      "RuntimeRemediationContext": {
+        "additionalProperties": false,
+        "description": "Advisory runtime provenance attached to a shared remediation artefact.",
+        "properties": {
+          "action_id": {
+            "pattern": "^pentest-remediation:[0-9a-f]{24}$",
+            "title": "Action Id",
+            "type": "string"
+          },
+          "source": {
+            "const": "pentest",
+            "default": "pentest",
+            "title": "Source",
+            "type": "string"
+          },
+          "advisory_only": {
+            "const": true,
+            "default": true,
+            "title": "Advisory Only",
+            "type": "boolean"
+          },
+          "targets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "matched_locations": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Locations",
+            "type": "array"
+          },
+          "rule_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Rule Ids",
+            "type": "array"
+          },
+          "cwe_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cwe Ids",
+            "type": "array"
+          },
+          "cve_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cve Ids",
+            "type": "array"
+          },
+          "references": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "matcher_names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matcher Names",
+            "type": "array"
+          },
+          "guidance_sources": {
+            "default": [],
+            "items": {
+              "enum": [
+                "template",
+                "cwe",
+                "tag",
+                "generic"
+              ],
+              "type": "string"
+            },
+            "title": "Guidance Sources",
+            "type": "array"
+          },
+          "implementation": {
+            "default": "",
+            "title": "Implementation",
+            "type": "string"
+          },
+          "verification": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Verification",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action_id"
+        ],
+        "title": "RuntimeRemediationContext",
+        "type": "object"
       },
       "Severity": {
         "enum": [
@@ -1859,6 +1989,17 @@
             },
             "title": "Per Finding Rationale",
             "type": "object"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RuntimeRemediationContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -1881,6 +2022,125 @@
         ],
         "title": "RemediationArtefactType",
         "type": "string"
+      },
+      "RuntimeRemediationContext": {
+        "additionalProperties": false,
+        "description": "Advisory runtime provenance attached to a shared remediation artefact.",
+        "properties": {
+          "action_id": {
+            "pattern": "^pentest-remediation:[0-9a-f]{24}$",
+            "title": "Action Id",
+            "type": "string"
+          },
+          "source": {
+            "const": "pentest",
+            "default": "pentest",
+            "title": "Source",
+            "type": "string"
+          },
+          "advisory_only": {
+            "const": true,
+            "default": true,
+            "title": "Advisory Only",
+            "type": "boolean"
+          },
+          "targets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "matched_locations": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Locations",
+            "type": "array"
+          },
+          "rule_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Rule Ids",
+            "type": "array"
+          },
+          "cwe_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cwe Ids",
+            "type": "array"
+          },
+          "cve_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cve Ids",
+            "type": "array"
+          },
+          "references": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "matcher_names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matcher Names",
+            "type": "array"
+          },
+          "guidance_sources": {
+            "default": [],
+            "items": {
+              "enum": [
+                "template",
+                "cwe",
+                "tag",
+                "generic"
+              ],
+              "type": "string"
+            },
+            "title": "Guidance Sources",
+            "type": "array"
+          },
+          "implementation": {
+            "default": "",
+            "title": "Implementation",
+            "type": "string"
+          },
+          "verification": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Verification",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action_id"
+        ],
+        "title": "RuntimeRemediationContext",
+        "type": "object"
       },
       "ScenarioResult": {
         "description": "Per-scenario aggregate result.",
@@ -3270,6 +3530,17 @@
             },
             "title": "Per Finding Rationale",
             "type": "object"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RuntimeRemediationContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -3292,6 +3563,125 @@
         ],
         "title": "RemediationArtefactType",
         "type": "string"
+      },
+      "RuntimeRemediationContext": {
+        "additionalProperties": false,
+        "description": "Advisory runtime provenance attached to a shared remediation artefact.",
+        "properties": {
+          "action_id": {
+            "pattern": "^pentest-remediation:[0-9a-f]{24}$",
+            "title": "Action Id",
+            "type": "string"
+          },
+          "source": {
+            "const": "pentest",
+            "default": "pentest",
+            "title": "Source",
+            "type": "string"
+          },
+          "advisory_only": {
+            "const": true,
+            "default": true,
+            "title": "Advisory Only",
+            "type": "boolean"
+          },
+          "targets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "matched_locations": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Locations",
+            "type": "array"
+          },
+          "rule_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Rule Ids",
+            "type": "array"
+          },
+          "cwe_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cwe Ids",
+            "type": "array"
+          },
+          "cve_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cve Ids",
+            "type": "array"
+          },
+          "references": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "matcher_names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matcher Names",
+            "type": "array"
+          },
+          "guidance_sources": {
+            "default": [],
+            "items": {
+              "enum": [
+                "template",
+                "cwe",
+                "tag",
+                "generic"
+              ],
+              "type": "string"
+            },
+            "title": "Guidance Sources",
+            "type": "array"
+          },
+          "implementation": {
+            "default": "",
+            "title": "Implementation",
+            "type": "string"
+          },
+          "verification": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Verification",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action_id"
+        ],
+        "title": "RuntimeRemediationContext",
+        "type": "object"
       },
       "ScenarioResult": {
         "description": "Per-scenario aggregate result.",
@@ -3398,6 +3788,16 @@
           "response": {
             "title": "Response",
             "type": "string"
+          },
+          "raw_request_body": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Raw Request Body"
           },
           "tool_calls": {
             "items": {
@@ -3765,6 +4165,55 @@
       "run_id"
     ],
     "title": "BehaviorProgressState",
+    "type": "object"
+  },
+  "common.streaming.PentestProgressState": {
+    "description": "Deterministic, reduced progress state for pentest streams.\n\n``scenarios_total``/``scenarios_completed`` count Nuclei *passes*\n(standard + optional DAST \u2014 1 or 2), reusing the shared event/payload\nshapes rather than introducing pentest-only field names.",
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "schema_version": {
+        "default": "1.0",
+        "title": "Schema Version",
+        "type": "string"
+      },
+      "scenarios_total": {
+        "default": 0,
+        "title": "Scenarios Total",
+        "type": "integer"
+      },
+      "scenarios_completed": {
+        "default": 0,
+        "title": "Scenarios Completed",
+        "type": "integer"
+      },
+      "findings_count": {
+        "default": 0,
+        "title": "Findings Count",
+        "type": "integer"
+      },
+      "progress_pct": {
+        "default": 0.0,
+        "title": "Progress Pct",
+        "type": "number"
+      },
+      "terminal_status": {
+        "default": "running",
+        "enum": [
+          "running",
+          "completed",
+          "failed"
+        ],
+        "title": "Terminal Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "run_id"
+    ],
+    "title": "PentestProgressState",
     "type": "object"
   },
   "common.streaming.RedteamProgressState": {
@@ -5229,6 +5678,599 @@
     "title": "ValidationReportMetaModel",
     "type": "object"
   },
+  "pentest.PentestAuthConfig": {
+    "$defs": {
+      "PentestLoginFlowConfig": {
+        "description": "Secret-safe public login-flow configuration.",
+        "properties": {
+          "endpoint": {
+            "default": "/login",
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "enum": [
+              "POST",
+              "GET"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Url"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "token_response_key": {
+            "default": "access_token",
+            "title": "Token Response Key",
+            "type": "string"
+          },
+          "token_header": {
+            "default": "Authorization: Bearer",
+            "title": "Token Header",
+            "type": "string"
+          },
+          "refresh_on_401": {
+            "default": true,
+            "title": "Refresh On 401",
+            "type": "boolean"
+          }
+        },
+        "title": "PentestLoginFlowConfig",
+        "type": "object"
+      }
+    },
+    "description": "Secret-safe public authentication configuration for pentest runs.",
+    "properties": {
+      "type": {
+        "default": "none",
+        "enum": [
+          "bearer",
+          "api_key",
+          "basic",
+          "none",
+          "login_flow",
+          "cookie_file"
+        ],
+        "title": "Type",
+        "type": "string"
+      },
+      "header": {
+        "format": "password",
+        "title": "Header",
+        "type": "string",
+        "writeOnly": true
+      },
+      "username": {
+        "format": "password",
+        "title": "Username",
+        "type": "string",
+        "writeOnly": true
+      },
+      "password": {
+        "format": "password",
+        "title": "Password",
+        "type": "string",
+        "writeOnly": true
+      },
+      "login_flow": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PentestLoginFlowConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "cookie_file": {
+        "default": "",
+        "title": "Cookie File",
+        "type": "string"
+      }
+    },
+    "title": "PentestAuthConfig",
+    "type": "object"
+  },
+  "pentest.PentestExecutionResult": {
+    "description": "Final result model returned by the streaming pentest API.",
+    "properties": {
+      "engine": {
+        "title": "Engine",
+        "type": "string"
+      },
+      "engine_version": {
+        "title": "Engine Version",
+        "type": "string"
+      },
+      "profile": {
+        "title": "Profile",
+        "type": "string"
+      },
+      "started_at": {
+        "title": "Started At",
+        "type": "string"
+      },
+      "finished_at": {
+        "title": "Finished At",
+        "type": "string"
+      },
+      "duration_seconds": {
+        "title": "Duration Seconds",
+        "type": "number"
+      },
+      "targets": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Targets",
+        "type": "array"
+      },
+      "findings": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Findings",
+        "type": "array"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "remediation_plan": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Remediation Plan"
+      },
+      "severity_counts": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "title": "Severity Counts",
+        "type": "object"
+      }
+    },
+    "required": [
+      "engine",
+      "engine_version",
+      "profile",
+      "started_at",
+      "finished_at",
+      "duration_seconds",
+      "targets"
+    ],
+    "title": "PentestExecutionResult",
+    "type": "object"
+  },
+  "pentest.PentestLoginFlowConfig": {
+    "description": "Secret-safe public login-flow configuration.",
+    "properties": {
+      "endpoint": {
+        "default": "/login",
+        "title": "Endpoint",
+        "type": "string"
+      },
+      "method": {
+        "default": "POST",
+        "enum": [
+          "POST",
+          "GET"
+        ],
+        "title": "Method",
+        "type": "string"
+      },
+      "base_url": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Base Url"
+      },
+      "payload": {
+        "additionalProperties": true,
+        "title": "Payload",
+        "type": "object"
+      },
+      "token_response_key": {
+        "default": "access_token",
+        "title": "Token Response Key",
+        "type": "string"
+      },
+      "token_header": {
+        "default": "Authorization: Bearer",
+        "title": "Token Header",
+        "type": "string"
+      },
+      "refresh_on_401": {
+        "default": true,
+        "title": "Refresh On 401",
+        "type": "boolean"
+      }
+    },
+    "title": "PentestLoginFlowConfig",
+    "type": "object"
+  },
+  "pentest.PentestRunRequest": {
+    "$defs": {
+      "PentestAuthConfig": {
+        "description": "Secret-safe public authentication configuration for pentest runs.",
+        "properties": {
+          "type": {
+            "default": "none",
+            "enum": [
+              "bearer",
+              "api_key",
+              "basic",
+              "none",
+              "login_flow",
+              "cookie_file"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "header": {
+            "format": "password",
+            "title": "Header",
+            "type": "string",
+            "writeOnly": true
+          },
+          "username": {
+            "format": "password",
+            "title": "Username",
+            "type": "string",
+            "writeOnly": true
+          },
+          "password": {
+            "format": "password",
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "login_flow": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PentestLoginFlowConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "cookie_file": {
+            "default": "",
+            "title": "Cookie File",
+            "type": "string"
+          }
+        },
+        "title": "PentestAuthConfig",
+        "type": "object"
+      },
+      "PentestLoginFlowConfig": {
+        "description": "Secret-safe public login-flow configuration.",
+        "properties": {
+          "endpoint": {
+            "default": "/login",
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "enum": [
+              "POST",
+              "GET"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Url"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "token_response_key": {
+            "default": "access_token",
+            "title": "Token Response Key",
+            "type": "string"
+          },
+          "token_header": {
+            "default": "Authorization: Bearer",
+            "title": "Token Header",
+            "type": "string"
+          },
+          "refresh_on_401": {
+            "default": true,
+            "title": "Refresh On 401",
+            "type": "boolean"
+          }
+        },
+        "title": "PentestLoginFlowConfig",
+        "type": "object"
+      }
+    },
+    "description": "Public, JSON-serializable request for a bounded Nuclei pentest run.",
+    "properties": {
+      "targets": {
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1,
+        "title": "Targets",
+        "type": "array"
+      },
+      "authorized": {
+        "description": "Explicit confirmation that every target is owned or authorized for testing. Must be set True on every call \u2014 never defaulted from a config file, mirroring the CLI's --acknowledge-authorization.",
+        "title": "Authorized",
+        "type": "boolean"
+      },
+      "allow_private": {
+        "default": false,
+        "title": "Allow Private",
+        "type": "boolean"
+      },
+      "profile": {
+        "default": "safe",
+        "enum": [
+          "safe",
+          "standard"
+        ],
+        "title": "Profile",
+        "type": "string"
+      },
+      "nuclei_binary": {
+        "default": "nuclei",
+        "title": "Nuclei Binary",
+        "type": "string"
+      },
+      "templates_dir": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Templates Dir"
+      },
+      "nuclei_secret_file": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Nuclei Secret File"
+      },
+      "rate_limit": {
+        "default": 25,
+        "maximum": 100,
+        "minimum": 1,
+        "title": "Rate Limit",
+        "type": "integer"
+      },
+      "concurrency": {
+        "default": 10,
+        "maximum": 25,
+        "minimum": 1,
+        "title": "Concurrency",
+        "type": "integer"
+      },
+      "retries": {
+        "default": 1,
+        "maximum": 2,
+        "minimum": 0,
+        "title": "Retries",
+        "type": "integer"
+      },
+      "request_timeout_seconds": {
+        "default": 10,
+        "maximum": 60,
+        "minimum": 1,
+        "title": "Request Timeout Seconds",
+        "type": "integer"
+      },
+      "scan_timeout_seconds": {
+        "default": 2700,
+        "maximum": 3600,
+        "minimum": 10,
+        "title": "Scan Timeout Seconds",
+        "type": "integer"
+      },
+      "stats_interval_seconds": {
+        "default": 5,
+        "maximum": 60,
+        "minimum": 1,
+        "title": "Stats Interval Seconds",
+        "type": "integer"
+      },
+      "allow_dynamic_auth": {
+        "default": false,
+        "title": "Allow Dynamic Auth",
+        "type": "boolean"
+      },
+      "allow_active_fuzzing": {
+        "default": false,
+        "title": "Allow Active Fuzzing",
+        "type": "boolean"
+      },
+      "allow_headless_browser": {
+        "default": false,
+        "title": "Allow Headless Browser",
+        "type": "boolean"
+      },
+      "use_bundled_templates": {
+        "default": true,
+        "title": "Use Bundled Templates",
+        "type": "boolean"
+      },
+      "auth_config": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PentestAuthConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "auth_target_url": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Target Url"
+      }
+    },
+    "required": [
+      "targets",
+      "authorized"
+    ],
+    "title": "PentestRunRequest",
+    "type": "object"
+  },
+  "pentest.PentestRunResult": {
+    "description": "Public, JSON-serializable result of a completed pentest run.",
+    "properties": {
+      "engine": {
+        "title": "Engine",
+        "type": "string"
+      },
+      "engine_version": {
+        "title": "Engine Version",
+        "type": "string"
+      },
+      "profile": {
+        "title": "Profile",
+        "type": "string"
+      },
+      "started_at": {
+        "title": "Started At",
+        "type": "string"
+      },
+      "finished_at": {
+        "title": "Finished At",
+        "type": "string"
+      },
+      "duration_seconds": {
+        "title": "Duration Seconds",
+        "type": "number"
+      },
+      "targets": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Targets",
+        "type": "array"
+      },
+      "findings": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Findings",
+        "type": "array"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "remediation_plan": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Remediation Plan"
+      },
+      "severity_counts": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "title": "Severity Counts",
+        "type": "object"
+      }
+    },
+    "required": [
+      "engine",
+      "engine_version",
+      "profile",
+      "started_at",
+      "finished_at",
+      "duration_seconds",
+      "targets"
+    ],
+    "title": "PentestRunResult",
+    "type": "object"
+  },
   "policy.CognitivePolicyParseDetail": {
     "description": "Stable sanitized parser diagnostic.",
     "properties": {
@@ -5597,6 +6639,11 @@
           "response_text": {
             "default": "",
             "title": "Response Text",
+            "type": "string"
+          },
+          "body_warning": {
+            "default": "",
+            "title": "Body Warning",
             "type": "string"
           },
           "checked_at": {
@@ -6152,6 +7199,17 @@
             },
             "title": "Per Finding Rationale",
             "type": "object"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RuntimeRemediationContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -6174,6 +7232,125 @@
         ],
         "title": "RemediationArtefactType",
         "type": "string"
+      },
+      "RuntimeRemediationContext": {
+        "additionalProperties": false,
+        "description": "Advisory runtime provenance attached to a shared remediation artefact.",
+        "properties": {
+          "action_id": {
+            "pattern": "^pentest-remediation:[0-9a-f]{24}$",
+            "title": "Action Id",
+            "type": "string"
+          },
+          "source": {
+            "const": "pentest",
+            "default": "pentest",
+            "title": "Source",
+            "type": "string"
+          },
+          "advisory_only": {
+            "const": true,
+            "default": true,
+            "title": "Advisory Only",
+            "type": "boolean"
+          },
+          "targets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "matched_locations": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Locations",
+            "type": "array"
+          },
+          "rule_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Rule Ids",
+            "type": "array"
+          },
+          "cwe_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cwe Ids",
+            "type": "array"
+          },
+          "cve_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cve Ids",
+            "type": "array"
+          },
+          "references": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "matcher_names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matcher Names",
+            "type": "array"
+          },
+          "guidance_sources": {
+            "default": [],
+            "items": {
+              "enum": [
+                "template",
+                "cwe",
+                "tag",
+                "generic"
+              ],
+              "type": "string"
+            },
+            "title": "Guidance Sources",
+            "type": "array"
+          },
+          "implementation": {
+            "default": "",
+            "title": "Implementation",
+            "type": "string"
+          },
+          "verification": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Verification",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action_id"
+        ],
+        "title": "RuntimeRemediationContext",
+        "type": "object"
       },
       "Severity": {
         "enum": [
@@ -7046,6 +8223,11 @@
             "title": "Response Text",
             "type": "string"
           },
+          "body_warning": {
+            "default": "",
+            "title": "Body Warning",
+            "type": "string"
+          },
           "checked_at": {
             "format": "date-time",
             "title": "Checked At",
@@ -7599,6 +8781,17 @@
             },
             "title": "Per Finding Rationale",
             "type": "object"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/RuntimeRemediationContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
@@ -7621,6 +8814,125 @@
         ],
         "title": "RemediationArtefactType",
         "type": "string"
+      },
+      "RuntimeRemediationContext": {
+        "additionalProperties": false,
+        "description": "Advisory runtime provenance attached to a shared remediation artefact.",
+        "properties": {
+          "action_id": {
+            "pattern": "^pentest-remediation:[0-9a-f]{24}$",
+            "title": "Action Id",
+            "type": "string"
+          },
+          "source": {
+            "const": "pentest",
+            "default": "pentest",
+            "title": "Source",
+            "type": "string"
+          },
+          "advisory_only": {
+            "const": true,
+            "default": true,
+            "title": "Advisory Only",
+            "type": "boolean"
+          },
+          "targets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "matched_locations": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Locations",
+            "type": "array"
+          },
+          "rule_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Rule Ids",
+            "type": "array"
+          },
+          "cwe_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cwe Ids",
+            "type": "array"
+          },
+          "cve_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cve Ids",
+            "type": "array"
+          },
+          "references": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "matcher_names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matcher Names",
+            "type": "array"
+          },
+          "guidance_sources": {
+            "default": [],
+            "items": {
+              "enum": [
+                "template",
+                "cwe",
+                "tag",
+                "generic"
+              ],
+              "type": "string"
+            },
+            "title": "Guidance Sources",
+            "type": "array"
+          },
+          "implementation": {
+            "default": "",
+            "title": "Implementation",
+            "type": "string"
+          },
+          "verification": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Verification",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action_id"
+        ],
+        "title": "RuntimeRemediationContext",
+        "type": "object"
       },
       "Severity": {
         "enum": [
@@ -7850,6 +9162,593 @@
       "resolved_chat_path_source"
     ],
     "title": "RedteamRunResult",
+    "type": "object"
+  },
+  "remediation.PentestRemediationFinding": {
+    "$defs": {
+      "Severity": {
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity",
+        "type": "string"
+      }
+    },
+    "description": "JSON-safe input to the shared synthesizer's explicit pentest route.\n\nRaw HTTP and arbitrary scanner metadata are deliberately not part of this\nboundary. Text and locations are normalized before they can be serialized.",
+    "properties": {
+      "finding_id": {
+        "maxLength": 300,
+        "minLength": 1,
+        "title": "Finding Id",
+        "type": "string"
+      },
+      "rule_id": {
+        "maxLength": 300,
+        "minLength": 1,
+        "title": "Rule Id",
+        "type": "string"
+      },
+      "title": {
+        "default": "",
+        "title": "Title",
+        "type": "string"
+      },
+      "description": {
+        "default": "",
+        "title": "Description",
+        "type": "string"
+      },
+      "severity": {
+        "$ref": "#/$defs/Severity",
+        "default": "info"
+      },
+      "target": {
+        "default": "",
+        "title": "Target",
+        "type": "string"
+      },
+      "matched_at": {
+        "default": "",
+        "title": "Matched At",
+        "type": "string"
+      },
+      "remediation": {
+        "default": "",
+        "title": "Remediation",
+        "type": "string"
+      },
+      "cwe_ids": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Cwe Ids",
+        "type": "array"
+      },
+      "cve_ids": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Cve Ids",
+        "type": "array"
+      },
+      "references": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "References",
+        "type": "array"
+      },
+      "tags": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Tags",
+        "type": "array"
+      },
+      "matcher_name": {
+        "default": "",
+        "title": "Matcher Name",
+        "type": "string"
+      }
+    },
+    "required": [
+      "finding_id",
+      "rule_id"
+    ],
+    "title": "PentestRemediationFinding",
+    "type": "object"
+  },
+  "remediation.RemediationArtefact": {
+    "$defs": {
+      "RemediationArtefactType": {
+        "description": "The type of concrete remediation artefact produced by RemediationSynthesizer.",
+        "enum": [
+          "system_prompt_patch",
+          "input_guardrail",
+          "output_guardrail",
+          "architectural_change"
+        ],
+        "title": "RemediationArtefactType",
+        "type": "string"
+      },
+      "RuntimeRemediationContext": {
+        "additionalProperties": false,
+        "description": "Advisory runtime provenance attached to a shared remediation artefact.",
+        "properties": {
+          "action_id": {
+            "pattern": "^pentest-remediation:[0-9a-f]{24}$",
+            "title": "Action Id",
+            "type": "string"
+          },
+          "source": {
+            "const": "pentest",
+            "default": "pentest",
+            "title": "Source",
+            "type": "string"
+          },
+          "advisory_only": {
+            "const": true,
+            "default": true,
+            "title": "Advisory Only",
+            "type": "boolean"
+          },
+          "targets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Targets",
+            "type": "array"
+          },
+          "matched_locations": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Locations",
+            "type": "array"
+          },
+          "rule_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Rule Ids",
+            "type": "array"
+          },
+          "cwe_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cwe Ids",
+            "type": "array"
+          },
+          "cve_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Cve Ids",
+            "type": "array"
+          },
+          "references": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "matcher_names": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Matcher Names",
+            "type": "array"
+          },
+          "guidance_sources": {
+            "default": [],
+            "items": {
+              "enum": [
+                "template",
+                "cwe",
+                "tag",
+                "generic"
+              ],
+              "type": "string"
+            },
+            "title": "Guidance Sources",
+            "type": "array"
+          },
+          "implementation": {
+            "default": "",
+            "title": "Implementation",
+            "type": "string"
+          },
+          "verification": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Verification",
+            "type": "array"
+          }
+        },
+        "required": [
+          "action_id"
+        ],
+        "title": "RuntimeRemediationContext",
+        "type": "object"
+      }
+    },
+    "description": "A concrete, SBOM-node-specific remediation action.\n\nProduced by RemediationSynthesizer as the final pass after all findings\nare collected. Each artefact targets a specific SBOM node and provides\nactionable instructions (patch text, guardrail spec, or architectural change).",
+    "properties": {
+      "finding_ids": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Finding Ids",
+        "type": "array"
+      },
+      "component": {
+        "title": "Component",
+        "type": "string"
+      },
+      "component_type": {
+        "title": "Component Type",
+        "type": "string"
+      },
+      "artefact_type": {
+        "$ref": "#/$defs/RemediationArtefactType"
+      },
+      "priority": {
+        "title": "Priority",
+        "type": "string"
+      },
+      "patch_location": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Patch Location"
+      },
+      "patch_section": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Patch Section"
+      },
+      "patch_text": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Patch Text"
+      },
+      "guardrail_name": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Guardrail Name"
+      },
+      "guardrail_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Guardrail Type"
+      },
+      "guardrail_trigger": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Guardrail Trigger"
+      },
+      "guardrail_action": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Guardrail Action"
+      },
+      "guardrail_message": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Guardrail Message"
+      },
+      "privilege_scope": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Privilege Scope"
+      },
+      "privilege_node": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Privilege Node"
+      },
+      "requires_auth": {
+        "default": false,
+        "title": "Requires Auth",
+        "type": "boolean"
+      },
+      "requires_hitl": {
+        "default": false,
+        "title": "Requires Hitl",
+        "type": "boolean"
+      },
+      "edge_to_remove": {
+        "anyOf": [
+          {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Edge To Remove"
+      },
+      "change_description": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Change Description"
+      },
+      "change_detail": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Change Detail"
+      },
+      "rationale": {
+        "title": "Rationale",
+        "type": "string"
+      },
+      "per_finding_rationale": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Per Finding Rationale",
+        "type": "object"
+      },
+      "runtime": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/RuntimeRemediationContext"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "component",
+      "component_type",
+      "artefact_type",
+      "priority",
+      "rationale"
+    ],
+    "title": "RemediationArtefact",
+    "type": "object"
+  },
+  "remediation.RuntimeRemediationContext": {
+    "additionalProperties": false,
+    "description": "Advisory runtime provenance attached to a shared remediation artefact.",
+    "properties": {
+      "action_id": {
+        "pattern": "^pentest-remediation:[0-9a-f]{24}$",
+        "title": "Action Id",
+        "type": "string"
+      },
+      "source": {
+        "const": "pentest",
+        "default": "pentest",
+        "title": "Source",
+        "type": "string"
+      },
+      "advisory_only": {
+        "const": true,
+        "default": true,
+        "title": "Advisory Only",
+        "type": "boolean"
+      },
+      "targets": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Targets",
+        "type": "array"
+      },
+      "matched_locations": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Matched Locations",
+        "type": "array"
+      },
+      "rule_ids": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Rule Ids",
+        "type": "array"
+      },
+      "cwe_ids": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Cwe Ids",
+        "type": "array"
+      },
+      "cve_ids": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Cve Ids",
+        "type": "array"
+      },
+      "references": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "References",
+        "type": "array"
+      },
+      "tags": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Tags",
+        "type": "array"
+      },
+      "matcher_names": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Matcher Names",
+        "type": "array"
+      },
+      "guidance_sources": {
+        "default": [],
+        "items": {
+          "enum": [
+            "template",
+            "cwe",
+            "tag",
+            "generic"
+          ],
+          "type": "string"
+        },
+        "title": "Guidance Sources",
+        "type": "array"
+      },
+      "implementation": {
+        "default": "",
+        "title": "Implementation",
+        "type": "string"
+      },
+      "verification": {
+        "default": [],
+        "items": {
+          "type": "string"
+        },
+        "title": "Verification",
+        "type": "array"
+      }
+    },
+    "required": [
+      "action_id"
+    ],
+    "title": "RuntimeRemediationContext",
     "type": "object"
   },
   "sbom.SbomEnrichmentLlmConfig": {
