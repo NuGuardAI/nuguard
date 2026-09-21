@@ -5,8 +5,8 @@
 # Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
 
 # ─── Project file paths ───────────────────────────────────────────────────────
-sbom: ./openai-cs.sbom.json               # path to pre-generated AI-SBOM JSON
-source: https://github.com/NuGuardAI/openai-cs-agents-demo      # generate SBOM from source dir (alternative to sbom:)
+sbom: ./juice-shop.sbom.json               # path to pre-generated AI-SBOM JSON
+source: https://github.com/juice-shop/juice-shop      # generate SBOM from source dir (alternative to sbom:)
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior
   llm: true                     # use LLM to compile richer test/boundary prompts
@@ -34,45 +34,29 @@ target:
   # Backend URL is also recorded in the SBOM summary → deployment_urls so nuguard can surface
   # it automatically (extracted from AZURE_WEBAPP_NAME in .github/workflows/deploy-azure.yml).
   #url: http://127.0.0.1:8250   # local dev backend (pnpm dev or python -m uvicorn api:app)
-  url: https://openai-cs-agents-backend.azurewebsites.net
+  url: https://localhost:3000
   # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
-  # The backend (python-backend/api.py) only recognizes Authorization: Bearer <token>
-  # obtained via /login — it does not understand HTTP Basic auth.
+  #auth:
+  #  type: login_flow
+  #  login_flow:
+  #    endpoint: /login
+  #    payload:
+  #      username: alice
+  #      password: alice123
+  #    token_response_key: token
+  #    token_header: "Authorization: Bearer"
+  #    refresh_on_401: true
   auth:
-    type: login_flow
-    login_flow:
-      endpoint: /login
-      payload:
-        username: alice
-        password: alice123
-      token_response_key: token
-      token_header: "Authorization: Bearer"
-      refresh_on_401: true
+  #  type: basic
+  #  username: alice
+  #  password: alice123
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 # nuguard behavior exercises the AI app's happy path to verify capabilities work
 # as declared and that all behaviour complies with the cognitive policy.
 #validate:
 behavior:
-  # Required: URL of the running AI application under test
-#  target: https://openai-cs-agents-backend.azurewebsites.net
-#  target: http://127.0.0.1:8250
-  # Path of the chat/agent endpoint on the target (default: /chat)
-#  target_endpoint: /api/chat
-#  chat_payload_key: phrases
-#  chat_payload_list: true
-#  chat_response_key: prognosis
   llm: true
-
-  # Golden-data backstop: real seed records from python-backend/database.py.
-  # Used when live pre-scan discovery returns an empty profile, so generated
-  # test payloads reference Alice's actual account/confirmation numbers
-  # instead of LLM-invented placeholders.
-  # golden_data:
-  #   "Cancellation Agent":
-  #     account_id: "11111111"
-  #     name: "Alice Johnson"
-  #     confirmation_number: "AA1234"
 
   # Canary seed file — records planted in the app's data store
   # Used by behavior mode to detect accidental leakage during happy-path runs
@@ -112,15 +96,6 @@ behavior:
 # nuguard redteam exercises adversarial scenarios to find break points.
 redteam:
 
-  # Golden-data backstop: same real seed record as behavior.golden_data.
-  # Eliminates the live DISCOVER step for this known test account, making
-  # {golden_id}/{golden_name} token substitution reliable on this target.
-  # golden_data:
-  #   "Cancellation Agent":
-  #     account_id: "11111111"
-  #     name: "Alice Johnson"
-  #     confirmation_number: "AA1234"
-
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
   # cross-tenant scenarios — no extra identity config needed.
@@ -128,31 +103,12 @@ redteam:
 
   # Request body shape is auto-discovered from the SBOM (chat_endpoint node: message/false).
   # No override needed.
-  # v2 engine settings (only used when engine: v2)
-  #v2:
-  #  knowledge_base_version: 0.1.0   # pinned technique KB version
-
-  #  phases: []                      # phase names to run; empty = all
-  #   semantic_judge:
-  #     count: 3                      # independent LLM judges for semantic verdicts
-  #     quorum: 2                     # votes required to confirm a violation
-  #   transferability_enabled: true   # score successful objectives for transferability
-  #   max_per_phase: 0                # cap scenarios per phase; 0 = unlimited
-  #   dry_run_only: true              # enforce dry-run-only for destructive actions
 
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)
   #   full — all scenarios regardless of score
-  # Max parallel scenarios (default: 5). Lowered to 3 to reduce concurrent Azure OpenAI
-  # load on the shared App Service backend and avoid transient HTTP 502 quota spikes.
-  concurrency: 3
+  profile: full
 
-  profile: ci
-
-  # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
-  # Set false to run the legacy SBOM-only generator without catalog scenarios.
-  use_catalog: true
-  
   # Scenario types to run (omit section to run all):
   #scenarios:
   #  - prompt-injection
@@ -217,30 +173,22 @@ redteam:
 
   # LLM for attack-payload generation (must tolerate adversarial content)
   llm:
-  #  model: azure/gpt-5.4-mini    # any LiteLLM model string (openai/gpt-4o, etc.)
-  #  api_key: ${AZURE_OPENAI_KEY}
-  #  api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
+    model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
 
-    model: azure/DeepSeek-V4-Pro    # any LiteLLM model string (openai/gpt-4o, etc.)
-    api_key: ${AZURE_OPENAI_KEY}
-    api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
-  
   # LLM for response evaluation and finding summarisation
   eval_llm:
-  #  model: azure/gpt-5.4-mini
-  #  api_key: ${AZURE_OPENAI_KEY}
-  #  api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
-
     model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
     api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
-    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}
 
   # MCP server hostnames treated as trusted.
   # Servers absent from this list are classified 'untrusted' and eligible
   # as toxic-flow attack sources.
   mcp_trusted_servers:
-    - internal-tools.example.com
-    - docs-mcp.example.com
+  #  - internal-tools.example.com
+  #  - docs-mcp.example.com
 
   # Extra environment variables injected into the fixture app subprocess
   # during E2E redteam tests. Use ${VAR} interpolation for secrets.
@@ -266,11 +214,11 @@ output:
 
   # CI gating policy — applies to both validate and redteam runs.
   # When any condition triggers, nuguard exits non-zero with a structured summary.
-  ci_policy:
-    fail_on_new_critical: true          # block on any new critical finding
-    fail_on_new_high: false             # high findings are warnings by default
-    fail_on_regression: true            # REGRESSION findings always block
-    fail_on_capability_gap: true        # undeclared/unexercised tools block (validate)
-    fail_on_policy_violation: true      # cognitive policy violations block (validate)
-    effective_coverage_floor: 80        # fail if effective scenario % drops below this
-    # baseline_run_id: ${LAST_GOOD_RUN} # diff findings against a prior run; only new block
+  #ci_policy:
+  #  fail_on_new_critical: true          # block on any new critical finding
+  #  fail_on_new_high: false             # high findings are warnings by default
+  #  fail_on_regression: true            # REGRESSION findings always block
+  #  fail_on_capability_gap: true        # undeclared/unexercised tools block (validate)
+  #  fail_on_policy_violation: true      # cognitive policy violations block (validate)
+  #  effective_coverage_floor: 80        # fail if effective scenario % drops below this
+  #  # baseline_run_id: ${LAST_GOOD_RUN} # diff findings against a prior run; only new block

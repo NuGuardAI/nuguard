@@ -6,20 +6,15 @@
 
 # ─── Project file paths ───────────────────────────────────────────────────────
 sbom: ./openai-cs.sbom.json               # path to pre-generated AI-SBOM JSON
-source: https://github.com/NuGuardAI/openai-cs-agents-demo      # generate SBOM from source dir (alternative to sbom:)
+source: .      # generate SBOM from source dir (alternative to sbom:)
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior
   llm: true                     # use LLM to compile richer test/boundary prompts
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
-#  model: azure/gpt-5.4-mini    # any LiteLLM model string (openai/gpt-4o, etc.)
-#  api_key: ${AZURE_OPENAI_KEY}     # never put keys here; use env var interpolation
-#  api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
-
-  model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
-  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
-  api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+  model: gemini/gemini-3.1-flash-lite    # any LiteLLM model string (openai/gpt-4o, etc.)
+  api_key: ${GEMINI_API_KEY}     # never put keys here; use env var interpolation
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
 sbom_generation:
@@ -34,20 +29,23 @@ target:
   # Backend URL is also recorded in the SBOM summary → deployment_urls so nuguard can surface
   # it automatically (extracted from AZURE_WEBAPP_NAME in .github/workflows/deploy-azure.yml).
   #url: http://127.0.0.1:8250   # local dev backend (pnpm dev or python -m uvicorn api:app)
-  url: https://openai-cs-agents-backend.azurewebsites.net
+  #url: https://openai-cs-agents-backend.azurewebsites.net
+  url: https://delightful-beach-0b11fc40f.3.azurestaticapps.net
   # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
-  # The backend (python-backend/api.py) only recognizes Authorization: Bearer <token>
-  # obtained via /login — it does not understand HTTP Basic auth.
+  #auth:
+  #  type: login_flow
+  #  login_flow:
+  #    endpoint: /login
+  #    payload:
+  #      username: alice
+  #      password: alice123
+  #    token_response_key: token
+  #    token_header: "Authorization: Bearer"
+  #    refresh_on_401: true
   auth:
-    type: login_flow
-    login_flow:
-      endpoint: /login
-      payload:
-        username: alice
-        password: alice123
-      token_response_key: token
-      token_header: "Authorization: Bearer"
-      refresh_on_401: true
+    type: basic
+    username: alice
+    password: alice123
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 # nuguard behavior exercises the AI app's happy path to verify capabilities work
@@ -63,16 +61,6 @@ behavior:
 #  chat_payload_list: true
 #  chat_response_key: prognosis
   llm: true
-
-  # Golden-data backstop: real seed records from python-backend/database.py.
-  # Used when live pre-scan discovery returns an empty profile, so generated
-  # test payloads reference Alice's actual account/confirmation numbers
-  # instead of LLM-invented placeholders.
-  # golden_data:
-  #   "Cancellation Agent":
-  #     account_id: "11111111"
-  #     name: "Alice Johnson"
-  #     confirmation_number: "AA1234"
 
   # Canary seed file — records planted in the app's data store
   # Used by behavior mode to detect accidental leakage during happy-path runs
@@ -112,15 +100,6 @@ behavior:
 # nuguard redteam exercises adversarial scenarios to find break points.
 redteam:
 
-  # Golden-data backstop: same real seed record as behavior.golden_data.
-  # Eliminates the live DISCOVER step for this known test account, making
-  # {golden_id}/{golden_name} token substitution reliable on this target.
-  # golden_data:
-  #   "Cancellation Agent":
-  #     account_id: "11111111"
-  #     name: "Alice Johnson"
-  #     confirmation_number: "AA1234"
-
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
   # cross-tenant scenarios — no extra identity config needed.
@@ -128,31 +107,12 @@ redteam:
 
   # Request body shape is auto-discovered from the SBOM (chat_endpoint node: message/false).
   # No override needed.
-  # v2 engine settings (only used when engine: v2)
-  #v2:
-  #  knowledge_base_version: 0.1.0   # pinned technique KB version
-
-  #  phases: []                      # phase names to run; empty = all
-  #   semantic_judge:
-  #     count: 3                      # independent LLM judges for semantic verdicts
-  #     quorum: 2                     # votes required to confirm a violation
-  #   transferability_enabled: true   # score successful objectives for transferability
-  #   max_per_phase: 0                # cap scenarios per phase; 0 = unlimited
-  #   dry_run_only: true              # enforce dry-run-only for destructive actions
 
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)
   #   full — all scenarios regardless of score
-  # Max parallel scenarios (default: 5). Lowered to 3 to reduce concurrent Azure OpenAI
-  # load on the shared App Service backend and avoid transient HTTP 502 quota spikes.
-  concurrency: 3
+  profile: full
 
-  profile: ci
-
-  # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
-  # Set false to run the legacy SBOM-only generator without catalog scenarios.
-  use_catalog: true
-  
   # Scenario types to run (omit section to run all):
   #scenarios:
   #  - prompt-injection
@@ -217,23 +177,14 @@ redteam:
 
   # LLM for attack-payload generation (must tolerate adversarial content)
   llm:
-  #  model: azure/gpt-5.4-mini    # any LiteLLM model string (openai/gpt-4o, etc.)
-  #  api_key: ${AZURE_OPENAI_KEY}
-  #  api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
+    model: ${AZURE_REDTEAM_LLM_MODEL_NAME}
+    api_key: ${AZURE_REDTEAM_LLM_KEY}
+    api_base: ${AZURE_REDTEAM_LLM_ENDPOINT}
 
-    model: azure/DeepSeek-V4-Pro    # any LiteLLM model string (openai/gpt-4o, etc.)
-    api_key: ${AZURE_OPENAI_KEY}
-    api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
-  
   # LLM for response evaluation and finding summarisation
   eval_llm:
-  #  model: azure/gpt-5.4-mini
-  #  api_key: ${AZURE_OPENAI_KEY}
-  #  api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
-
-    model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
-    api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
-    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+    model: gemini/gemini-3.1-flash-lite
+    api_key: ${GEMINI_API_KEY}
 
   # MCP server hostnames treated as trusted.
   # Servers absent from this list are classified 'untrusted' and eligible
