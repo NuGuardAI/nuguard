@@ -906,6 +906,7 @@ class RedteamOrchestrator:
             self._chat_path_source = "default"  # updated by _maybe_probe_endpoints to "probe" or "auto"
         # Prefer explicit caller-supplied response key; fall back to SBOM-discovered one.
         self._chat_response_key = chat_response_key or _discovered_response_key
+        self._target_session_config: Any = None
         # Populated by run() — scenarios executed and their titles
         self.scenarios_run: int = 0
         self.scenarios_executed: list[tuple[str, str, bool]] = []  # (title, goal_type, had_finding)
@@ -1182,90 +1183,46 @@ class RedteamOrchestrator:
         if not self._chat_path or self._chat_payload_key == "message":
             await self._maybe_probe_endpoints()
 
-        _log.info(
-            "Effective chat endpoint: path=%r key=%r list=%s source=%s",
-            self._chat_path or "/chat",
-            self._chat_payload_key,
-            self._chat_payload_list,
-            self._chat_path_source,
+        from nuguard.common.session_resolver import resolve_target_session
+
+        self._target_session_config, self.health_report = await resolve_target_session(
+            target_url=self._target_url,
+            sbom=self._sbom,
+            auth_config=self._auth_config,
+            extra_headers=self._extra_headers,
+            chat_path=self._chat_path,
+            chat_payload_key=self._chat_payload_key,
+            chat_payload_list=self._chat_payload_list,
+            chat_payload_extras=self._chat_payload_extras,
+            chat_response_key=self._chat_response_key,
+            canary_config=self._canary_config,
+            config_path=self._config_path,
+            request_timeout=self._request_timeout,
+            endpoint_explicit=self._chat_path_source == "config",
+            payload_key_explicit=self._chat_payload_key != "message",
+            response_key_explicit=bool(self._chat_response_key),
         )
+        self._target_url = self._target_session_config.base_url
+        self._chat_path = self._target_session_config.chat_path
+        self._chat_payload_key = self._target_session_config.chat_payload_key
+        self._chat_payload_list = self._target_session_config.chat_payload_list
+        self._chat_response_key = self._target_session_config.chat_response_key
+        self._chat_payload_extras = self._target_session_config.chat_payload_extras
+        self._chat_payload_value_template = self._target_session_config.chat_payload_value_template
+        self._chat_path_source = self._target_session_config.endpoint_source
+        self.config_notes.extend(self._target_session_config.resolution_notes)
 
-        # 0b. Auth bootstrap — resolve effective auth and verify every credential
-        #    before running any scenario. Raises TargetUnavailableError on network
-        #    failure; raises AuthError when the default credential is rejected.
-        import uuid as _uuid
-
-        from nuguard.common.auth_runtime import bootstrap_auth_runtime, resolve_auth_runtime
+        from nuguard.common.auth_runtime import resolve_auth_runtime
         from nuguard.common.errors import AuthError
-        from nuguard.common.target_client_builder import (
-            resolve_auth_config_with_sbom_fallback,
-            resolve_target_url,
-        )
-
-        # Resolve the target URL before bootstrap so auth is verified against the
-        # actual backend URL, not a static-hosting frontend that has no API routes.
-        _resolved_url, _url_notes = resolve_target_url(self._target_url, self._sbom)
-        if _resolved_url and _resolved_url != self._target_url.rstrip("/"):
-            self._target_url = _resolved_url
-            for _note in _url_notes:
-                self.config_notes.append(_note)
-
-        # Some SPAs call a separate-origin backend directly from client-side JS
-        # instead of proxying /api through their own server — SBOM/live-probe
-        # discovery can't find that origin because every path under target_url
-        # is served by the frontend's catch-all route. Best-effort: scan the
-        # served bundle for a baked-in API base URL before auth bootstrap runs.
-        from nuguard.common.endpoint_detection.frontend_origin import (
-            discover_api_origin_from_frontend_bundle,
-        )
-
-        _bundle_origin, _bundle_notes = await discover_api_origin_from_frontend_bundle(
-            self._target_url
-        )
-        if _bundle_origin:
-            self._target_url = _bundle_origin
-            for _note in _bundle_notes:
-                self.config_notes.append(_note)
-
-        # Upgrade basic auth → login_flow when the SBOM has a login endpoint and the
-        # caller has not already provided a login_flow block.
-        _effective_auth = self._auth_config
-        if (
-            _effective_auth is not None
-            and _effective_auth.type == "basic"
-            and _effective_auth.login_flow is None
-        ):
-            _effective_auth, _auth_note = resolve_auth_config_with_sbom_fallback(
-                _effective_auth, self._sbom
-            )
-            if _auth_note:
-                self.config_notes.append(_auth_note)
 
         auth_runtime = resolve_auth_runtime(
-            auth_config=_effective_auth,
-            headers_override=self._extra_headers if _effective_auth is None else None,
+            auth_config=self._auth_config,
+            headers_override=self._extra_headers if self._auth_config is None else None,
         )
-        # Direct-HTTP IDOR probes only prove object-level authorization when run
-        # under a real authenticated identity — with no auth configured, a probe
-        # to another object's ID just re-confirms the endpoint requires auth at
-        # all (a different, weaker claim). Tracked so such scenarios can be
-        # reported as inconclusive rather than a silent "no finding".
         self._no_target_auth = auth_runtime.auth_config.type == "none"
-        bootstrapper, health_report = await bootstrap_auth_runtime(
-            target_url=self._target_url,
-            endpoint=self._chat_path,
-            auth_config=auth_runtime.auth_config,
-            canary_config=self._canary_config,
-            run_id=str(_uuid.uuid4()),
-            probe_payload_extras=self._chat_payload_extras or None,
-            is_websocket=self._chat_payload_key == "__websocket__",
-            config_path=self._config_path,
-        )
-        self.health_report = health_report
-        for line in health_report.summary_lines():
+        for line in self.health_report.summary_lines():
             _log.info("bootstrap %s", line)
-        # Abort on default credential auth failure — scenarios would produce false negatives
-        default_check = health_report.checks[0] if health_report.checks else None
+        default_check = self.health_report.checks[0] if self.health_report.checks else None
         if default_check and default_check.status == "auth_failed":
             raise AuthError(
                 f"Auth failed for identity '{default_check.identity}' "
@@ -1274,53 +1231,21 @@ class RedteamOrchestrator:
                 identity=default_check.identity,
                 detail=default_check.error_detail,
             )
-        bootstrap_headers = bootstrapper.session.headers()
-        # Normalize the static extra headers so a literal "None"/"" string
-        # value (unset ${VAR} → None → stringified anywhere upstream) can't
-        # reach the target. Login-flow/bootstrapped headers override the
-        # normalized static defaults below.
-        from nuguard.common.auth_runtime import _normalize_headers  # noqa: PLC0415
+        self._chat_payload_extras = {
+            key: value
+            for key, value in self._chat_payload_extras.items()
+            if not (key.startswith("__") and key.endswith("_candidates__"))
+        }
+        self._target_session_config.chat_payload_extras = self._chat_payload_extras
+        effective_headers = self._target_session_config.effective_headers
 
-        effective_headers = _normalize_headers(self._extra_headers)
-        # Login-flow/bootstrapped session headers must override static defaults.
-        if bootstrap_headers:
-            effective_headers.update(bootstrap_headers)
-
-        # Merge login-response identity/session fields and SBOM context hints into
-        # chat_payload_extras so the right user identity is sent in every request.
-        from nuguard.common.session_resolver import (  # noqa: PLC0415
-            _merge_login_response_extras,
-            apply_sbom_context_hints,
+        _log.info(
+            "Effective chat endpoint: path=%r key=%r list=%s source=%s",
+            self._chat_path or "/chat",
+            self._chat_payload_key,
+            self._chat_payload_list,
+            self._chat_path_source,
         )
-        _merged_extras, _login_notes = _merge_login_response_extras(
-            bootstrapper.session, self._chat_payload_extras
-        )
-        for _note in _login_notes:
-            self.config_notes.append(_note)
-        _login_extras = bootstrapper.session.login_response_extras()
-        _auth_username = getattr(getattr(self, "_auth_config", None), "username", None) or None
-        _merged_extras, _hint_notes = apply_sbom_context_hints(
-            self._sbom, self._chat_path, _merged_extras, _login_extras,
-            auth_username=_auth_username,
-        )
-        for _note in _hint_notes:
-            self.config_notes.append(_note)
-        # Browser-recovery-sniffed extras (lowest precedence) — see
-        # session_resolver.resolve_target_session's matching step 4b for why.
-        _browser_extras = getattr(bootstrapper, "discovered_chat_payload_extras", None) or {}
-        if _browser_extras:
-            _new_from_browser = {k: v for k, v in _browser_extras.items() if k not in _merged_extras}
-            _merged_extras = {**_browser_extras, **_merged_extras}
-            if _new_from_browser:
-                self.config_notes.append(
-                    f"auto-injected {list(_new_from_browser)} into chat_payload_extras from a "
-                    f"browser-login recovery's chat-sniff step — add under target."
-                    f"chat_payload_extras in nuguard.yaml to skip that browser step next run."
-                )
-        # Strip internal candidate-rotation markers before storing in payload extras
-        _merged_extras = {k: v for k, v in _merged_extras.items() if not (k.startswith("__") and k.endswith("_candidates__"))}
-        if _merged_extras != self._chat_payload_extras:
-            self._chat_payload_extras = _merged_extras
 
         # 0. Pre-scan discovery: connect to the live agent as the authenticated
         # user and extract their real name + account/booking IDs.  Runs before
@@ -1336,21 +1261,13 @@ class RedteamOrchestrator:
                 DiscoveryRequest,
                 run_discovery,
             )
-            from nuguard.common.target_client_builder import (
-                build_target_app_client as _btac,  # noqa: PLC0415
+            from nuguard.common.target_client_builder import (  # noqa: PLC0415
+                build_target_app_client_from_session as _btac,
             )
             from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
             _disc_client = _btac(
-                target_url=self._target_url,
-                endpoint=self._chat_path,
-                payload_key=self._chat_payload_key,
-                payload_list=self._chat_payload_list,
-                payload_format="json",
-                response_key=self._chat_response_key,
+                self._target_session_config,
                 timeout=self._request_timeout,
-                auth_headers=effective_headers or None,
-                sbom=self._sbom,
-                payload_extras=self._chat_payload_extras or None,
             )
             _disc_session = _AS(
                 session_id="pre-scan-discovery",
@@ -1715,25 +1632,16 @@ class RedteamOrchestrator:
         if self._sbom.summary:
             app_name = getattr(self._sbom.summary, "application_name", "") or ""
 
-        from nuguard.common.target_client_builder import build_target_app_client
+        from nuguard.common.target_client_builder import build_target_app_client_from_session
 
-        client = build_target_app_client(
-            target_url=self._target_url,
-            endpoint=self._chat_path,
-            payload_key=self._chat_payload_key,
-            payload_list=self._chat_payload_list,
-            payload_format="json",
-            response_key=self._chat_response_key,
+        self._target_session_config.effective_headers = effective_headers
+        self._target_session_config.chat_payload_extras = self._chat_payload_extras
+        self._target_session_config.chat_payload_value_template = self._chat_payload_value_template
+        self._target_session_config.chat_response_key = self._chat_response_key
+        client = build_target_app_client_from_session(
+            self._target_session_config,
             timeout=self._request_timeout,
-            auth_headers=effective_headers or None,
-            sbom=self._sbom,
-            adk_cfg=None,
-            # chat_path was already resolved by discover_chat_config_from_sbom in __init__,
-            # so treat endpoint/payload as explicitly set to skip re-discovery.
-            explicitly_set=frozenset({"target_endpoint", "chat_payload_key", "chat_response_key"}),
-            payload_extras=self._chat_payload_extras or None,
             heal_llm=self._eval_llm or self._redteam_llm,
-            chat_payload_value_template=self._chat_payload_value_template,
         )
         for _note in (getattr(client, "resolution_notes", None) or []):
             if isinstance(_note, str) and _note:
@@ -1876,7 +1784,7 @@ class RedteamOrchestrator:
                 eval_llm=self._eval_llm,
                 mutation_llm=self._redteam_llm,
                 app_log_reader=self._app_log_reader,
-                auth_session=bootstrapper.session,
+                auth_session=self._target_session_config.auth_session,
                 app_domain=_warmup_app_domain,
                 allowed_topics=_warmup_allowed_topics,
                 turn_delay_seconds=self._turn_delay_seconds,
@@ -1926,7 +1834,7 @@ class RedteamOrchestrator:
                     tree_breadth=_tap_breadth,
                     tree_max_depth=_tap_depth,
                     evaluator=_tap_evaluator,
-                    auth_session=bootstrapper.session,
+                    auth_session=self._target_session_config.auth_session,
                 )
 
             findings, executed, records = await self._run_scenarios(scenarios, executor, guided_executor)

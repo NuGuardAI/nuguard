@@ -314,8 +314,8 @@ def test_behavior_runner_merges_config_headers_into_client(
 
     captured: dict[str, object] = {}
 
-    def _fake_build_target_app_client(**kwargs: object):
-        captured["auth_headers"] = kwargs.get("auth_headers")
+    def _fake_build_target_app_client_from_session(session: object, **kwargs: object):
+        captured["auth_headers"] = getattr(session, "effective_headers")
         # Return a minimal stand-in with the attrs the runner reads after build.
         class _FakeClient:
             resolution_notes: list[str] = []
@@ -347,8 +347,8 @@ def test_behavior_runner_merges_config_headers_into_client(
         )
 
     monkeypatch.setattr(
-        "nuguard.common.target_client_builder.build_target_app_client",
-        _fake_build_target_app_client,
+        "nuguard.common.target_client_builder.build_target_app_client_from_session",
+        _fake_build_target_app_client_from_session,
     )
     monkeypatch.setattr(
         "nuguard.common.auth_runtime.bootstrap_auth_runtime",
