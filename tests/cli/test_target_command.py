@@ -115,9 +115,14 @@ def test_verify_404_endpoint_not_found() -> None:
     )
     # Rich wraps long lines at the terminal width, which can split a phrase
     # across a newline — normalize whitespace before substring checks.
+    # Don't assert on table-column text: Rich wraps a narrow column's content
+    # across multiple cell rows and inserts "│" boundary characters between
+    # the wrapped words, so a status/detail string can never be reconstructed
+    # as one contiguous substring there. Only the plain-text failure-summary
+    # line below the table (a simple console.print, not a table cell) is
+    # reliably a single substring after whitespace normalization.
     output = " ".join(result.output.split())
     assert result.exit_code == 1
-    assert "endpoint_not_found" in output
     assert "endpoint not found (HTTP 404)" in output
     assert "Set --endpoint" in output
 
@@ -133,7 +138,6 @@ def test_verify_405_endpoint_not_found_method_message() -> None:
     )
     output = " ".join(result.output.split())
     assert result.exit_code == 1
-    assert "endpoint_not_found" in output
     assert "rejected the HTTP method" in output
     assert "Set --endpoint" not in output
 
