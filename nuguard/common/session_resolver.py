@@ -420,6 +420,13 @@ async def resolve_target_session(
         and sbom_indicates_websocket(sbom, chat_path=chat_path, chat_payload_key=chat_payload_key)
     )
 
+    # Captured here (not from health_report.endpoint afterwards) so step 7b
+    # below can tell "bootstrap used the hardcoded '/chat' fallback because
+    # nothing was known yet" apart from "bootstrap used the WS-handshake
+    # placeholder '/ws' by design, independent of the real discovered path" —
+    # only the former is stale once live probing finds a real path.
+    _chat_path_unknown_at_bootstrap = not chat_path and not is_websocket
+
     _probe_extras = probe_payload_extras if probe_payload_extras is not None else chat_payload_extras
     bootstrapper, health_report = await bootstrap_auth_runtime(
         target_url=target_url,
@@ -478,8 +485,11 @@ async def resolve_target_session(
     # Option A — path unknown: full discovery (path + key).
     # Option B — path known but key is default: probe only the known path to
     #            detect the key; keep the user's path unchanged.
+    # Both options run without an SBOM too (issue #532) — probe_endpoint falls
+    # back to the generic HTTP_ENDPOINT_FALLBACK_PATHS candidate list when
+    # sbom=None, so a target without an SBOM can still be discovered.
     chat_payload_value_template: "dict[str, object] | None" = None
-    if sbom is not None and not chat_path:
+    if not chat_path:
         # Option A: discover both path and key
         probe_result = await probe_endpoint(
             target_url=target_url,
@@ -494,7 +504,7 @@ async def resolve_target_session(
             chat_payload_value_template = probe_result.value_template
             endpoint_source = "probe"
             _log.info("resolve_target_session: live probe selected endpoint %s", chat_path)
-    elif sbom is not None and not payload_key_explicit and chat_payload_key == "message":
+    elif not payload_key_explicit and chat_payload_key == "message":
         # Option B: path is known but key is still the default — detect key only
         probe_result = await probe_endpoint(
             target_url=target_url,
@@ -513,6 +523,40 @@ async def resolve_target_session(
                 "resolve_target_session: key detection on %s found key=%r list=%s template=%s",
                 chat_path, chat_payload_key, chat_payload_list, bool(chat_payload_value_template),
             )
+
+    # ── 7b. Re-validate health against a discovered path ──────────────────────
+    # Step 4's bootstrap health check ran against the hardcoded "/chat"
+    # fallback when nothing was known yet (no config, no SBOM candidate) —
+    # Option A above can only discover the real path *after* that check
+    # already ran. Without this, a target with no SBOM and no configured
+    # endpoint would report a stale "/chat" 404 in the health report even
+    # though live probing just found a working route seconds later (issue
+    # #532 — verification must reflect the endpoint that will actually be
+    # used, not a pre-discovery guess). Scoped to exactly that gap — an
+    # explicit/SBOM-resolved path never reaches here unchanged (chat_path was
+    # already known at step 4), and the WS handshake placeholder "/ws" is a
+    # deliberate, separate mechanism this must not second-guess.
+    if _chat_path_unknown_at_bootstrap and chat_path and chat_path != "/chat":
+        _log.info(
+            "resolve_target_session: re-validating health against discovered endpoint %s "
+            "(was %r)", chat_path, health_report.endpoint,
+        )
+        _is_websocket_final = chat_payload_key == "__websocket__"
+        bootstrapper, health_report = await bootstrap_auth_runtime(
+            target_url=target_url,
+            endpoint=chat_path,
+            auth_config=auth_runtime.auth_config,
+            canary_config=canary_config,
+            run_id=_run_id,
+            probe_payload_extras=_probe_extras or None,
+            is_websocket=_is_websocket_final,
+            ws_auth_message=ws_auth_message,
+            config_path=config_path,
+            timeout=request_timeout,
+        )
+        _revalidated_headers = bootstrapper.session.headers()
+        if _revalidated_headers:
+            effective_headers.update(_revalidated_headers)
 
     # ── 8. Quality check ──────────────────────────────────────────────────────
     # The bootstrap already sent a probe; inspect its response for anonymous-session markers.

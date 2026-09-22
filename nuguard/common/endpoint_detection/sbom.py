@@ -29,12 +29,17 @@ if TYPE_CHECKING:
 _log = get_logger(__name__)
 
 
-def _sbom_websocket_paths(sbom: "AiSbomDocument") -> list[str]:
+def _sbom_websocket_paths(sbom: "AiSbomDocument | None") -> list[str]:
     """Return WebSocket endpoint paths declared in the SBOM.
 
     These come from API_ENDPOINT nodes with ``metadata.method == "WEBSOCKET"``
     (e.g. FastAPI ``@app.websocket(...)`` routes detected by the SBOM adapter).
+    ``None`` (no SBOM available) returns an empty list — callers fall back to
+    the generic path list.
     """
+    if sbom is None:
+        return []
+
     from nuguard.sbom.models import NodeType  # noqa: PLC0415
 
     paths: list[str] = []
@@ -54,8 +59,15 @@ def _sbom_websocket_paths(sbom: "AiSbomDocument") -> list[str]:
     return paths
 
 
-def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
-    """Return POST endpoint paths from the SBOM, scored by chat-likelihood."""
+def _sbom_post_paths(sbom: "AiSbomDocument | None") -> list[str]:
+    """Return POST endpoint paths from the SBOM, scored by chat-likelihood.
+
+    ``None`` (no SBOM available) returns an empty list — callers fall back to
+    the generic path list.
+    """
+    if sbom is None:
+        return []
+
     from nuguard.sbom.models import NodeType  # noqa: PLC0415
 
     scored: list[tuple[int, str]] = []

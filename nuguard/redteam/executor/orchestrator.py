@@ -1213,7 +1213,7 @@ class RedteamOrchestrator:
         self.config_notes.extend(self._target_session_config.resolution_notes)
 
         from nuguard.common.auth_runtime import resolve_auth_runtime
-        from nuguard.common.errors import AuthError
+        from nuguard.common.errors import AuthError, TargetEndpointNotFoundError
 
         auth_runtime = resolve_auth_runtime(
             auth_config=self._auth_config,
@@ -1229,6 +1229,14 @@ class RedteamOrchestrator:
                 f"(HTTP {default_check.http_status_code}): {default_check.error_detail}",
                 status_code=default_check.http_status_code or 0,
                 identity=default_check.identity,
+                detail=default_check.error_detail,
+            )
+        if default_check and default_check.status == "endpoint_not_found":
+            raise TargetEndpointNotFoundError(
+                f"Endpoint not found for identity '{default_check.identity}' "
+                f"(HTTP {default_check.http_status_code}): {default_check.error_detail}",
+                url=default_check.endpoint,
+                http_status_code=default_check.http_status_code or 0,
                 detail=default_check.error_detail,
             )
         self._chat_payload_extras = {
