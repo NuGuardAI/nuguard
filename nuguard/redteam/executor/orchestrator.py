@@ -3393,32 +3393,38 @@ class RedteamOrchestrator:
 
         return findings
 
-    def _chat_endpoint_confirmed(self, path: str) -> bool:
-        """True if the SBOM already carries a runtime-probe-confirmed payload
-        shape for this exact endpoint (from this run's enrichment load or a
-        prior behavior/redteam run persisted into the enriched SBOM)."""
-        from nuguard.common.endpoint_detection.constants import (  # noqa: PLC0415
-            PROBE_SOURCE_RUNTIME_PROBE,
-        )
-
-        for node in self._sbom.nodes:
-            meta = node.metadata
-            if (
-                node.component_type == NodeType.API_ENDPOINT
-                and meta is not None
-                and meta.endpoint == path
-                and meta.chat_payload_key is not None
-                and (meta.extras or {}).get("source") == PROBE_SOURCE_RUNTIME_PROBE
-            ):
-                return True
-        return False
-
     async def _maybe_probe_endpoints(self) -> None:
         """Use the common resolver for full or targeted endpoint detection."""
         from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
+        from nuguard.common.endpoint_detection.sbom import find_confirmed_chat_endpoint
 
-        if self._chat_path and self._chat_endpoint_confirmed(self._chat_path):
-            return
+        # A prior behavior/redteam run may already have persisted a live-probe
+        # confirmation for the real chat endpoint into the enriched SBOM — this
+        # scans every node (not just whatever the keyword-ranked SBOM candidate
+        # currently is), so it works even when the confirmed path doesn't look
+        # chat-like (e.g. "/extract"). Respects an explicitly configured
+        # endpoint: only that exact path's confirmation is consulted, never a
+        # different cached one.
+        if self._sbom is not None:
+            _confirmed = find_confirmed_chat_endpoint(
+                self._sbom,
+                expected_path=self._chat_path if self._chat_path_explicit else None,
+                ttl_seconds=self._liveness_cache_ttl_seconds,
+            )
+            if _confirmed is not None:
+                path, key, is_list, resp_key = _confirmed
+                self._chat_path = path
+                self._chat_payload_key = key
+                self._chat_payload_list = is_list
+                self._chat_response_key = resp_key or self._chat_response_key
+                if not self._chat_path_explicit:
+                    self._chat_path_source = "sbom"
+                _log.info(
+                    "redteam: using previously-confirmed endpoint %s from enriched SBOM "
+                    "(payload_key=%r list=%s)",
+                    path, key, is_list,
+                )
+                return
 
         def _persist_probe_result(result: Any) -> None:
             if self._sbom_path is None:
