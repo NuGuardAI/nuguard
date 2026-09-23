@@ -490,13 +490,20 @@ class AuthBootstrapper:
                     error_detail=detail,
                 )
 
-            if 400 <= resp.status_code < 500:
-                # Other 4xx (400, 404, 422, …): the server responded, so it is
-                # reachable. The probe payload likely doesn't match the API
-                # contract — the actual scenario payloads will use the correct
-                # format. Treat as connectivity-ok.
-                logger.debug(
-                    "bootstrap ok (probe format mismatch): identity=%s status=%d",
+            if resp.status_code in (404, 405):
+                # The target is up and responding, but this specific route
+                # either doesn't exist (404) or doesn't accept the HTTP method
+                # we send (405) — a routing problem, not a payload-shape one.
+                # Unlike 400/422 below, this is NOT "connectivity-ok": a chat
+                # endpoint that 404s would previously be reported as verified,
+                # then fail every real scenario request the same way.
+                detail = (
+                    "HTTP 404 — endpoint does not exist at this path"
+                    if resp.status_code == 404
+                    else "HTTP 405 — endpoint exists but does not accept this HTTP method"
+                )
+                logger.warning(
+                    "bootstrap endpoint_not_found: identity=%s status=%d",
                     identity,
                     resp.status_code,
                 )
@@ -504,9 +511,39 @@ class AuthBootstrapper:
                     identity=identity,
                     auth_type=auth_type,
                     endpoint=self.full_url,
+                    status="endpoint_not_found",
+                    http_status_code=resp.status_code,
+                    response_time_ms=elapsed_ms,
+                    error_detail=detail,
+                )
+
+            if 400 <= resp.status_code < 500:
+                # Other 4xx (400, 422, …): the server responded, so it is
+                # reachable. The probe payload likely doesn't match the API
+                # contract — the actual scenario payloads will use the correct
+                # format. Treat as connectivity-ok, but for 400/422 specifically
+                # flag it: the endpoint is real, but the probe's minimal payload
+                # didn't match its contract, so it may need chat_payload_extras
+                # or a different payload key.
+                logger.debug(
+                    "bootstrap ok (probe format mismatch): identity=%s status=%d",
+                    identity,
+                    resp.status_code,
+                )
+                payload_hint = ""
+                if resp.status_code in (400, 422):
+                    payload_hint = (
+                        f"HTTP {resp.status_code} — endpoint exists but rejected the probe "
+                        "payload; may need target.chat_payload_extras or a different payload key"
+                    )
+                return CredentialCheckResult(
+                    identity=identity,
+                    auth_type=auth_type,
+                    endpoint=self.full_url,
                     status="ok",
                     http_status_code=resp.status_code,
                     response_time_ms=elapsed_ms,
+                    payload_hint=payload_hint,
                 )
 
             if resp.status_code == 500:

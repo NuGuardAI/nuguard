@@ -102,3 +102,57 @@ class TargetUnavailableError(NuGuardError):
         self.url = url
         self.cause = cause
         self.source = source
+
+
+class TargetEndpointNotFoundError(NuGuardError):
+    """Raised when the configured/resolved chat endpoint returns 404 or 405.
+
+    Distinct from :class:`TargetUnavailableError`: the target itself is up and
+    responding, but this specific route doesn't exist (404) or doesn't accept
+    the HTTP method NuGuard sends (405). Retrying the same request won't help —
+    the fix is a different endpoint, not a later attempt.
+
+    Attributes:
+        url: The endpoint URL that returned 404/405.
+        http_status_code: 404 or 405.
+        detail: Raw response detail for diagnostics.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        url: str = "",
+        http_status_code: int = 0,
+        detail: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.url = url
+        self.http_status_code = http_status_code
+        self.detail = detail
+
+
+class TargetRateLimitedError(NuGuardError):
+    """Raised when the target returns HTTP 429 during endpoint discovery.
+
+    A target-wide condition, not a per-candidate one — getting 429 on one
+    candidate path means the remaining candidates are likely to hit the same
+    quota, so discovery stops entirely rather than continuing to probe.
+
+    Attributes:
+        url: The URL that returned 429.
+        retry_after: Seconds to wait before retrying, parsed from the
+            response's ``Retry-After`` header, or ``None`` if absent/unparseable.
+        detail: Raw response detail for diagnostics.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        url: str = "",
+        retry_after: float | None = None,
+        detail: str = "",
+    ) -> None:
+        super().__init__(message)
+        self.url = url
+        self.retry_after = retry_after
+        self.detail = detail
