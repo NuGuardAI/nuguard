@@ -110,6 +110,12 @@ Adversarial attack scenarios against a live target.
 
 [![Read the Red-Team Guide](https://img.shields.io/badge/→_Read_the_Red--Team_Guide-da3633?style=for-the-badge)](redteam-guide.md#quick-start)
 
+### 🎯 Running a Cloud Pentest
+
+Nuclei-backed, bounded conventional pentest against a live target — explicit authorization required.
+
+[![Read the Cloud Pentesting Guide](https://img.shields.io/badge/→_Read_the_Cloud_Pentesting_Guide-9e6a03?style=for-the-badge)](cloud-pentesting.md)
+
 ### Run Everything at Once
 
 <img src="assets/quickstart-5-scan.svg" alt="nuguard scan --source . --output-dir nuguard-reports (default: SBOM plus static analysis). To opt in to policy and red-team: nuguard scan --source . --steps sbom,analyze,policy,redteam --policy cognitive_policy.md --target http://localhost:3000 --output-dir nuguard-reports" width="760">
