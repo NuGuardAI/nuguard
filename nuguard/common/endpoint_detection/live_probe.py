@@ -557,6 +557,34 @@ async def _blind_probe(
                 _log.debug("endpoint_detection: %s — %d (not found/method not allowed)", path, status)
                 break  # try next path
 
+            if status in (401, 403):
+                # An auth rejection doesn't depend on the payload key — trying
+                # the remaining shapes on this path can't fix it. Move to the
+                # next candidate path instead of burning the rest of the sweep.
+                _log.debug("endpoint_detection: %s — %d (auth rejected)", path, status)
+                break
+
+            if status == 429:
+                # Target-wide condition, not a per-candidate one: getting
+                # rate-limited on one path means the rest are likely to hit
+                # the same quota. Stop probing entirely instead of continuing
+                # to hammer the target (issue #532).
+                from nuguard.common.errors import TargetRateLimitedError  # noqa: PLC0415
+
+                retry_after_raw = resp.headers.get("Retry-After")
+                retry_after: float | None = None
+                if retry_after_raw is not None:
+                    try:
+                        retry_after = float(retry_after_raw)
+                    except ValueError:
+                        retry_after = None
+                _log.warning("endpoint_detection: %s — 429 rate limited, aborting probe", path)
+                raise TargetRateLimitedError(
+                    f"Rate limited while probing {base}{path} (HTTP 429)",
+                    url=f"{base}{path}",
+                    retry_after=retry_after,
+                )
+
             if status >= 500:
                 _log.debug("endpoint_detection: %s — %d server error", path, status)
                 if server_error_fallback is None:
@@ -799,7 +827,7 @@ def _looks_like_chat_response(data: object, response_key: str | None = None) -> 
 
 async def probe_chat_endpoints(
     target_url: str,
-    sbom: "AiSbomDocument",
+    sbom: "AiSbomDocument | None",
     auth_headers: dict[str, str] | None = None,
     timeout: float = 15.0,
     known_payload_key: str | None = None,
@@ -820,7 +848,10 @@ async def probe_chat_endpoints(
     When ``hint_path`` is provided (Option B), only that specific path is probed
     — detection discovers the payload key/list for a user-specified endpoint.
     When ``known_payload_key`` is supplied the detection pipeline is skipped and
-    the probe verifies paths with that key only.
+    the probe verifies paths with that key only. ``sbom=None`` skips all
+    SBOM-derived candidates and the ADK fast-path, probing only the generic
+    ``HTTP_ENDPOINT_FALLBACK_PATHS``/``WEBSOCKET_ENDPOINT_FALLBACK_PATHS`` list
+    (issue #532 — endpoint discovery must work without an SBOM).
     """
     paths = _sbom_post_paths(sbom)
     ws_paths = _sbom_websocket_paths(sbom)

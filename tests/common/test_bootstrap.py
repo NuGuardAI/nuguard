@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 import respx
-import httpx
 
 from nuguard.common.auth import AuthConfig, LoginFlowConfig
-from nuguard.common.bootstrap import AuthBootstrapper, BOOTSTRAP_STARTUP_RETRIES
+from nuguard.common.bootstrap import BOOTSTRAP_STARTUP_RETRIES, AuthBootstrapper
 from nuguard.common.errors import TargetUnavailableError
 from nuguard.redteam.target.canary import CanaryConfig, CanaryTenant
 
@@ -85,6 +85,84 @@ async def test_default_credential_500_treated_as_ok() -> None:
     assert report.all_ok is True
     assert report.checks[0].status == "ok"
     assert report.checks[0].http_status_code == 500
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_default_credential_404_endpoint_not_found() -> None:
+    # HTTP 404 means the target is up but this specific route doesn't exist —
+    # a routing problem, not a payload-shape one. Must not be reported "ok"
+    # (issue #532): that would let a bad endpoint look verified.
+    respx.post(FULL_URL).mock(return_value=httpx.Response(404))
+    report = await _bootstrapper().run()
+    assert report.all_ok is False
+    check = report.checks[0]
+    assert check.status == "endpoint_not_found"
+    assert check.http_status_code == 404
+    assert "does not exist" in check.error_detail
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_default_credential_405_endpoint_not_found() -> None:
+    # HTTP 405 means the route exists but rejects the HTTP method we send —
+    # distinct wording from 404 since the fix is different (method, not path).
+    respx.post(FULL_URL).mock(return_value=httpx.Response(405))
+    report = await _bootstrapper().run()
+    assert report.all_ok is False
+    check = report.checks[0]
+    assert check.status == "endpoint_not_found"
+    assert check.http_status_code == 405
+    assert "does not accept this HTTP method" in check.error_detail
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_endpoint_not_found_is_not_retried() -> None:
+    # Unlike target_unavailable, endpoint_not_found must not get cold-start
+    # backoff retries — retrying the same wrong path can't help.
+    route = respx.post(FULL_URL).mock(return_value=httpx.Response(404))
+    report = await _bootstrapper(startup_retries=2).run()
+    assert report.checks[0].status == "endpoint_not_found"
+    assert route.call_count == 1
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_default_credential_400_ok_with_payload_hint() -> None:
+    # 400/422 stay "ok" (the endpoint is real) but carry a payload_hint flag
+    # rather than being silently indistinguishable from a fully-working probe.
+    respx.post(FULL_URL).mock(return_value=httpx.Response(400))
+    report = await _bootstrapper().run()
+    assert report.all_ok is True
+    check = report.checks[0]
+    assert check.status == "ok"
+    assert check.http_status_code == 400
+    assert "may need target.chat_payload_extras" in check.payload_hint
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_default_credential_422_ok_with_payload_hint() -> None:
+    respx.post(FULL_URL).mock(return_value=httpx.Response(422))
+    report = await _bootstrapper().run()
+    assert report.all_ok is True
+    check = report.checks[0]
+    assert check.status == "ok"
+    assert check.payload_hint != ""
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_default_credential_429_ok_without_payload_hint() -> None:
+    # Other 4xx (e.g. 429) stay "ok" like 400/422 always did, but get no
+    # payload_hint — a rate limit isn't a payload-shape signal.
+    respx.post(FULL_URL).mock(return_value=httpx.Response(429))
+    report = await _bootstrapper().run()
+    assert report.all_ok is True
+    check = report.checks[0]
+    assert check.status == "ok"
+    assert check.payload_hint == ""
 
 
 @pytest.mark.anyio

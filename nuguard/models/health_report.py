@@ -17,6 +17,7 @@ class CredentialCheckResult(BaseModel):
         "ok",                      # 2xx — auth confirmed
         "auth_failed",             # 401 or 403
         "target_unavailable",      # 5xx or network error
+        "endpoint_not_found",      # 404 or 405 — target is up, this route isn't
         "skipped",                 # session_token empty; skipped intentionally
     ]
     http_status_code: int | None = None
@@ -29,6 +30,11 @@ class CredentialCheckResult(BaseModel):
     # tends to produce, so it's visible at bootstrap instead of only showing
     # up as a wall of JSON-decode errors once real scenarios start running.
     body_warning: str = ""
+    # Non-blocking note for a 400/422 response (still "ok" — the endpoint is
+    # reachable, the probe's minimal payload just didn't match its contract).
+    # Flags that the route may need target.chat_payload_extras or a different
+    # payload key, rather than silently treating the probe as fully verified.
+    payload_hint: str = ""
     checked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -58,6 +64,7 @@ class TargetHealthReport(BaseModel):
             "ok": "✓",
             "auth_failed": "✗ AUTH",
             "target_unavailable": "✗ UNAVAILABLE",
+            "endpoint_not_found": "✗ NOT FOUND",
             "skipped": "–",
         }
         for c in self.checks:
@@ -67,4 +74,6 @@ class TargetHealthReport(BaseModel):
             lines.append(f"  [{icon}] {c.identity} ({c.auth_type}){timing}{detail}")
             if c.body_warning:
                 lines.append(f"      ⚠ {c.body_warning}")
+            if c.payload_hint:
+                lines.append(f"      ⚠ {c.payload_hint}")
         return lines

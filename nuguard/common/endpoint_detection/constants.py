@@ -25,6 +25,23 @@ HTTP_ENDPOINT_FALLBACK_PATHS = (
     "/v1/chat",
     "/query",
     "/agent",
+    # Additional namespaced agent routes (issue #532) — tried after the
+    # candidates above so SBOM-discovered and user-configured routes always
+    # take precedence; ordered roughly by likelihood.
+    "/api/agent/chat",
+    "/agent/chat",
+    "/api/v1/chat",
+    "/api/chat/completions",
+    "/v1/chat/completions",
+    "/api/messages",
+    "/messages",
+    "/api/conversation",
+    "/conversation",
+    "/api/ask",
+    "/ask",
+    "/api/query",
+    "/api/agent/run",
+    "/api/run",
 )
 
 WEBSOCKET_ENDPOINT_FALLBACK_PATHS = (

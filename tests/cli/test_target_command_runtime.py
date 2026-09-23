@@ -62,12 +62,34 @@ async def test_verify_redteam_uses_headers_override(monkeypatch: pytest.MonkeyPa
             initial_headers={"Authorization": "Bearer final-token"},
         )
 
-    async def _fake_bootstrap_auth_runtime(**kwargs: object) -> tuple[object, TargetHealthReport]:
+    async def _fake_resolve_target_session(**kwargs: object):
+        # No SBOM here (cfg has no `sbom` field), so _verify_async routes
+        # through resolve_target_session directly rather than
+        # bootstrap_auth_runtime — see the no-SBOM branch of _verify_async.
         captured["bootstrap_auth_type"] = getattr(kwargs.get("auth_config"), "type", None)
-        return object(), _ok_report("http://redteam.test", "/chat")
+        from nuguard.common.session_resolver import TargetSessionConfig
+
+        class _FakeAuthSession:
+            def headers(self) -> dict[str, str]:
+                return {}
+
+        session_cfg = TargetSessionConfig(
+            base_url="http://redteam.test",
+            chat_path="/chat",
+            chat_payload_key="message",
+            chat_payload_list=False,
+            chat_payload_extras={},
+            chat_response_key=None,
+            auth_session=_FakeAuthSession(),
+            resolution_notes=[],
+        )
+        return session_cfg, _ok_report("http://redteam.test", "/chat")
 
     monkeypatch.setattr(target_cmd, "resolve_auth_runtime", _fake_resolve_auth_runtime)
-    monkeypatch.setattr(target_cmd, "bootstrap_auth_runtime", _fake_bootstrap_auth_runtime)
+    monkeypatch.setattr(
+        "nuguard.common.session_resolver.resolve_target_session",
+        _fake_resolve_target_session,
+    )
 
     with pytest.raises(typer.Exit) as exc:
         await target_cmd._verify_async(
