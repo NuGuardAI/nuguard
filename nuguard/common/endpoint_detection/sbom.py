@@ -9,6 +9,7 @@ callers/tests.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
 from nuguard.common.endpoint_detection.constants import (
@@ -27,6 +28,75 @@ if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
+
+
+def _confirmation_is_fresh(confirmed_at: str | None, ttl_seconds: float) -> bool:
+    """True when *confirmed_at* (ISO-8601) is within *ttl_seconds* of now.
+
+    Mirrors ``nuguard.common.endpoint_liveness._cached_liveness_is_fresh``.
+    """
+    if not confirmed_at:
+        return False
+    try:
+        checked_at = datetime.fromisoformat(confirmed_at)
+    except ValueError:
+        return False
+    if checked_at.tzinfo is None:
+        checked_at = checked_at.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - checked_at).total_seconds()
+    return 0 <= age <= ttl_seconds
+
+
+def find_confirmed_chat_endpoint(
+    sbom: "AiSbomDocument",
+    *,
+    expected_path: str | None = None,
+    ttl_seconds: float | None = None,
+) -> tuple[str, str, bool, str | None] | None:
+    """Return the endpoint a prior behavior/redteam run confirmed live and
+    persisted into the enriched SBOM, or ``None`` if there is no such
+    confirmation (or it has expired — see *ttl_seconds*).
+
+    Unlike SBOM keyword ranking (:func:`_sbom_post_paths`), this scans every
+    ``API_ENDPOINT`` node for the ``runtime_probe`` marker directly — the
+    confirmed endpoint's path never has to *look* chat-like (e.g. ``/extract``
+    is found here even though it scores zero in keyword ranking).
+
+    Args:
+        sbom: The (ideally enriched) SBOM to scan.
+        expected_path: When given, only a confirmation for this exact path is
+            returned — used when the caller already has an explicit endpoint
+            configured and only wants to know if *that* endpoint is confirmed
+            (skipping a redundant live probe), never to discover a different one.
+        ttl_seconds: When given, a confirmation older than this is treated as
+            expired (returns ``None``) so a stale/moved endpoint eventually
+            gets re-verified instead of being trusted forever.
+
+    Returns:
+        ``(path, payload_key, payload_list, response_key)`` or ``None``.
+    """
+    from nuguard.sbom.models import NodeType  # noqa: PLC0415
+
+    for node in sbom.nodes:
+        meta = node.metadata
+        if (
+            node.component_type != NodeType.API_ENDPOINT
+            or meta is None
+            or meta.chat_payload_key is None
+        ):
+            continue
+        if expected_path is not None and meta.endpoint != expected_path:
+            continue
+        extras = meta.extras or {}
+        if extras.get("source") != PROBE_SOURCE_RUNTIME_PROBE:
+            continue
+        if ttl_seconds is not None and not _confirmation_is_fresh(
+            extras.get("confirmed_at"), ttl_seconds
+        ):
+            continue
+        endpoint = meta.endpoint or expected_path or ""
+        return endpoint, meta.chat_payload_key, bool(meta.chat_payload_list), meta.response_text_key
+    return None
 
 
 def _sbom_websocket_paths(sbom: "AiSbomDocument | None") -> list[str]:
@@ -463,4 +533,3 @@ def indicates_websocket(
             chat_payload_key=chat_payload_key,
         )
     )
-
