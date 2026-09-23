@@ -377,6 +377,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_capability_discovery"] = bool(redteam["capability_discovery"])
     if "liveness_cache_ttl_seconds" in redteam:
         flat["redteam_liveness_cache_ttl_seconds"] = float(redteam["liveness_cache_ttl_seconds"])
+    if "liveness_enabled" in redteam:
+        flat["redteam_liveness_enabled"] = bool(redteam["liveness_enabled"])
     if "browser_discover_endpoints" in redteam:
         flat["redteam_browser_discover_endpoints"] = bool(redteam["browser_discover_endpoints"])
     if "llm_capability_dedup" in redteam:
@@ -758,6 +760,15 @@ class BehaviorConfig(BaseModel):
             "cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached "
             "result — including one written by a prior redteam run against the same "
             "enriched SBOM — is used as-is, skipping the live ping entirely."
+        ),
+    )
+    liveness_enabled: bool = Field(
+        default=True,
+        description=(
+            "Run the pre-scenario per-endpoint liveness sweep (yaml: behavior.liveness_enabled). "
+            "The sweep only ever sends safe HTTP methods (GET/HEAD/OPTIONS) — mutating methods "
+            "are never probed regardless of this setting (issue #555). Set to false to skip the "
+            "sweep entirely, e.g. against a rate-limited or per-request-billed target."
         ),
     )
     browser_discover_endpoints: bool = Field(
@@ -1425,6 +1436,15 @@ class NuGuardConfig(BaseSettings):
             "cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached "
             "result — including one written by a prior behavior run against the same "
             "enriched SBOM — is used as-is, skipping the live ping entirely."
+        ),
+    )
+    redteam_liveness_enabled: bool = Field(
+        default=True,
+        description=(
+            "Run the pre-scenario per-endpoint liveness sweep (yaml: redteam.liveness_enabled). "
+            "The sweep only ever sends safe HTTP methods (GET/HEAD/OPTIONS) — mutating methods "
+            "are never probed regardless of this setting (issue #555). Set to false to skip the "
+            "sweep entirely, e.g. against a rate-limited or per-request-billed target."
         ),
     )
     redteam_browser_discover_endpoints: bool = Field(

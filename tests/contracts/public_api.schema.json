@@ -1075,6 +1075,12 @@
             "title": "Liveness Cache Ttl Seconds",
             "type": "number"
           },
+          "liveness_enabled": {
+            "default": true,
+            "description": "Run the pre-scenario per-endpoint liveness sweep (yaml: behavior.liveness_enabled). The sweep only ever sends safe HTTP methods (GET/HEAD/OPTIONS) \u2014 mutating methods are never probed regardless of this setting (issue #555). Set to false to skip the sweep entirely, e.g. against a rate-limited or per-request-billed target.",
+            "title": "Liveness Enabled",
+            "type": "boolean"
+          },
           "browser_discover_endpoints": {
             "default": false,
             "description": "After browser login, crawl caller-declared browser_discovery_nav_targets and sniff network requests via Playwright to find REST endpoints the static SBOM extractor missed, merging them into the SBOM as new API_ENDPOINT nodes (yaml: behavior.browser_discover_endpoints). Off by default \u2014 requires the 'browser' extra (Playwright/Chromium) and browser login already configured (target.browser_login / target.auth).",
@@ -2594,6 +2600,12 @@
             "description": "How long a per-endpoint liveness result (yaml: behavior.liveness_cache_ttl_seconds) cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached result \u2014 including one written by a prior redteam run against the same enriched SBOM \u2014 is used as-is, skipping the live ping entirely.",
             "title": "Liveness Cache Ttl Seconds",
             "type": "number"
+          },
+          "liveness_enabled": {
+            "default": true,
+            "description": "Run the pre-scenario per-endpoint liveness sweep (yaml: behavior.liveness_enabled). The sweep only ever sends safe HTTP methods (GET/HEAD/OPTIONS) \u2014 mutating methods are never probed regardless of this setting (issue #555). Set to false to skip the sweep entirely, e.g. against a rate-limited or per-request-billed target.",
+            "title": "Liveness Enabled",
+            "type": "boolean"
           },
           "browser_discover_endpoints": {
             "default": false,
@@ -8108,6 +8120,11 @@
         "default": 3600.0,
         "title": "Liveness Cache Ttl Seconds",
         "type": "number"
+      },
+      "liveness_enabled": {
+        "default": true,
+        "title": "Liveness Enabled",
+        "type": "boolean"
       },
       "llm_capability_dedup": {
         "default": false,

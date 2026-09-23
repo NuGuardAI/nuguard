@@ -780,6 +780,7 @@ class RedteamOrchestrator:
         discovery_max_turns: int = 3,
         capability_discovery: bool = True,
         liveness_cache_ttl_seconds: float = 3600.0,
+        liveness_enabled: bool = True,
         llm_capability_dedup: bool = False,
         chat_payload_extras: dict[str, Any] | None = None,
         catalog: "tuple | None" = None,
@@ -868,6 +869,7 @@ class RedteamOrchestrator:
         self._discovery_max_turns = max(1, discovery_max_turns)
         self._capability_discovery = capability_discovery
         self._liveness_cache_ttl_seconds = max(0.0, liveness_cache_ttl_seconds)
+        self._liveness_enabled = liveness_enabled
         self._llm_capability_dedup = llm_capability_dedup
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
         self._pre_run_warmup = max(0, pre_run_warmup)
@@ -1714,6 +1716,7 @@ class RedteamOrchestrator:
                     effective_headers or None,
                     ttl_seconds=self._liveness_cache_ttl_seconds,
                     sbom_path=self._sbom_path,
+                    liveness_enabled=self._liveness_enabled,
                 )
                 _log.info(
                     "Redteam: endpoint liveness — checked=%d cached=%d operational=%d "

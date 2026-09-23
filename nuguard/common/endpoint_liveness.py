@@ -24,9 +24,9 @@ from typing import TYPE_CHECKING, Protocol
 
 from pydantic import BaseModel, Field
 
-from nuguard.common.endpoint_preflight import _ROTATION_TRIGGER_PREFIXES, _TEST_MESSAGE
+from nuguard.common.endpoint_detection.constants import HAS_PATH_PARAM_RE
+from nuguard.common.endpoint_preflight import _ROTATION_TRIGGER_PREFIXES
 from nuguard.common.logging import get_logger
-from nuguard.common.response_extraction import build_minimal_payload
 
 if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument, NodeMetadata
@@ -67,6 +67,44 @@ _AUTH_ENFORCED_STATUS_CODES = frozenset({401, 403})
 # is expressed as "[HTTP NNN]" string prefixes over chat-path responses).
 _DEAD_STATUS_CODES = frozenset({400, 404, 405, 422})
 
+# Issue #555: the liveness sweep is a *check*, not an attack — it must never
+# have side effects. HTTP's own definition of "safe" methods (RFC 7231
+# §4.2.1: not expected to cause side effects when correctly implemented) is
+# the correct, principled boundary, not an arbitrary policy. DELETE/POST/PUT/
+# PATCH are never sent by this sweep, unconditionally — no opt-in, no
+# deny-list carve-out, because there is no exception to gate: nothing
+# mutating is ever dispatched in the first place. A previous run against an
+# older version of this code (or a mis-declared method) may have left a
+# stale True/False on a now-correctly-skipped node; see _probe_decision's
+# caller, which resets `operational` to None on every skip so stale data
+# from before this fix — or from any other reason liveness couldn't verify
+# this node — never lingers and gets mistaken for a current result.
+_SAFE_LIVENESS_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _probe_decision(meta: "NodeMetadata") -> tuple[bool, str | None]:
+    """Return (allowed, skip_reason) — pure and synchronous, no I/O.
+
+    Decided *before* any network call and before the cache-freshness check
+    (see :func:`check_endpoint_liveness`), so a policy skip is never masked
+    by a stale cache hit from before this decision applied. Two conditions,
+    evaluated in order:
+
+    1. An unresolved path template (``:id``/``{id}``/``<id>``) can only
+       produce 4xx/5xx noise from the literal placeholder — it proves
+       nothing about liveness and was observed doing exactly this in
+       production (issue #555's reproduction: 18 requests to a literal
+       ``:id`` path returned 500 "invalid input syntax for type uuid").
+    2. A mutating method (``DELETE``/``POST``/``PUT``/``PATCH``) is never
+       probed — see the module-level note above.
+    """
+    if HAS_PATH_PARAM_RE.search(meta.endpoint or ""):
+        return False, "unresolved path parameter — cannot be safely probed without a real ID"
+    method = (meta.method or "GET").upper()
+    if method not in _SAFE_LIVENESS_METHODS:
+        return False, f"{method} is not a safe method (GET/HEAD/OPTIONS only) — never dynamically probed"
+    return True, None
+
 
 class LivenessReport(BaseModel):
     """Aggregate result of a :func:`check_endpoint_liveness` pass."""
@@ -103,6 +141,12 @@ def _classify_status(status_code: int, response_text: str) -> tuple[bool, str]:
         return False, f"HTTP {status_code} — rotation-trigger status, endpoint likely wrong/dead."
     if status_code == 0 or response_text.startswith("[REQUEST_ERROR"):
         return False, f"[NETWORK] {response_text}"
+    if status_code >= 500:
+        # Every probe this sweep can now send is a safe, bodyless GET/HEAD/
+        # OPTIONS (issue #555) — there is no "probe payload mismatch" excuse
+        # left for a 5xx the way there might be for a POST with a guessed
+        # body. A server erroring on a plain GET is genuinely broken.
+        return False, f"HTTP {status_code} — server error on a safe probe, endpoint likely broken."
     return True, f"HTTP {status_code} — endpoint reachable."
 
 
@@ -112,23 +156,22 @@ async def _ping_one(
     *,
     per_endpoint_timeout: float,
 ) -> tuple[bool | None, str]:
-    """Ping a single endpoint; returns (operational, note). Never raises."""
+    """Ping a single endpoint; returns (operational, note). Never raises.
+
+    Callers must gate this with :func:`_probe_decision` first — this function
+    assumes *meta*'s method is already known to be safe (GET/HEAD/OPTIONS).
+    GET/HEAD/OPTIONS never carry a request body under normal REST semantics,
+    so no body-construction is needed here (unlike the old POST/PUT/PATCH
+    path this replaced, which built one from the endpoint's chat/schema
+    metadata — see git history if that's ever needed again for a different
+    purpose).
+    """
     endpoint = meta.endpoint or ""
     method = (meta.method or "GET").upper()
-    is_chat_like = bool(meta.accepts_user_input) or bool(getattr(meta, "chat_payload_key", None))
-
-    body: dict | None = None
-    if method in ("POST", "PUT", "PATCH"):
-        if is_chat_like:
-            chat_key = getattr(meta, "chat_payload_key", None) or "message"
-            body = {chat_key: _TEST_MESSAGE}
-        else:
-            schema = getattr(meta, "request_body_schema", None) or {}
-            body = build_minimal_payload(schema) if schema else {}
 
     try:
         status_code, response_text, _json = await asyncio.wait_for(
-            client.invoke_endpoint(endpoint, method=method, body=body),
+            client.invoke_endpoint(endpoint, method=method, body=None),
             timeout=per_endpoint_timeout,
         )
     except asyncio.TimeoutError:
@@ -171,17 +214,29 @@ async def check_endpoint_liveness(
     max_concurrent: int = 5,
     ttl_seconds: float | None = None,
     sbom_path: "Path | str | None" = None,
+    liveness_enabled: bool = True,
 ) -> LivenessReport:
-    """Ping every attackable ``API_ENDPOINT`` node in *sbom* and record
+    """Ping every safely-attackable ``API_ENDPOINT`` node in *sbom* and record
     ``operational``/``liveness_checked_at``/``liveness_notes`` on each node's
     metadata in place.
 
+    Never sends a mutating request (``DELETE``/``POST``/``PUT``/``PATCH``) —
+    see :func:`_probe_decision`. Those nodes, and nodes with an unresolved
+    path parameter, are left at ``operational=None`` (never probed, not
+    confirmed dead) rather than being invoked or skipped-as-if-dead.
+
     Nodes whose ``endpoint`` value fails :func:`_looks_like_rest_path` (bind
-    address, MCP/SSE annotation, ...) are skipped entirely — never probed,
-    left at ``operational=None`` — since there is no HTTP path to ping.
-    Nodes flagged ``rate_limited`` are probed serially (never concurrently
-    with each other) to avoid tripping the target's own rate limiter during
-    what is meant to be a lightweight diagnostic pass.
+    address, MCP/SSE annotation, ...) are also skipped entirely — never
+    probed, left at ``operational=None`` — since there is no HTTP path to
+    ping. Nodes flagged ``rate_limited`` are probed serially (never
+    concurrently with each other) to avoid tripping the target's own rate
+    limiter during what is meant to be a lightweight diagnostic pass.
+
+    Every skip resets ``operational`` to ``None`` and records a note on the
+    node itself (not just the returned report), so stale True/False data
+    from a previous run — including from before this method/path-param
+    filtering existed — never lingers and gets mistaken for a current
+    result.
 
     When *ttl_seconds* is given, a node whose cached
     ``operational``/``liveness_checked_at`` is still fresh (see
@@ -199,7 +254,17 @@ async def check_endpoint_liveness(
     but is not applied directly here — *client* is expected to already carry
     its configured auth headers (mirrors how :func:`~nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint`
     receives a pre-authenticated client).
+
+    *liveness_enabled* — when ``False``, the sweep is skipped entirely (no
+    requests of any kind, not even safe ones) and an empty report with a
+    note is returned. Independent of the method/path-param safety filtering
+    above, which is unconditional and has no corresponding opt-out — this
+    only controls whether the (already-safe) sweep runs at all, e.g. to
+    avoid its request volume against a rate-limited or billed target.
     """
+    if not liveness_enabled:
+        return LivenessReport(notes=["Endpoint liveness sweep disabled (liveness_enabled=False)."])
+
     from nuguard.sbom.types import ComponentType as _CT  # noqa: PLC0415
 
     report = LivenessReport()
@@ -216,6 +281,16 @@ async def check_endpoint_liveness(
             report.skipped += 1
             note = f"{node.name}: skipped (not an HTTP path — bind address / MCP-SSE annotation)."
             report.notes.append(note)
+            meta.operational = None
+            meta.liveness_notes = [note]
+            continue
+        _allowed, _skip_reason = _probe_decision(meta)
+        if not _allowed:
+            report.skipped += 1
+            note = f"{node.name}: skipped ({_skip_reason})."
+            report.notes.append(note)
+            meta.operational = None
+            meta.liveness_notes = [note]
             continue
         if ttl_seconds is not None and _cached_liveness_is_fresh(meta, ttl_seconds):
             report.cached += 1
@@ -281,6 +356,7 @@ async def ensure_endpoint_liveness(
     per_endpoint_timeout: float = 10.0,
     max_concurrent: int = 5,
     sbom_path: "Path | str | None" = None,
+    liveness_enabled: bool = True,
 ) -> LivenessReport:
     """Cache-aware convenience wrapper around :func:`check_endpoint_liveness`.
 
@@ -298,4 +374,5 @@ async def ensure_endpoint_liveness(
         max_concurrent=max_concurrent,
         ttl_seconds=ttl_seconds,
         sbom_path=sbom_path,
+        liveness_enabled=liveness_enabled,
     )
