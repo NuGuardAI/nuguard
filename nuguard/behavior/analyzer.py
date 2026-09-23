@@ -383,17 +383,27 @@ class BehaviorAnalyzer:
                     # dynamic_findings is left empty here — a `--resume` run
                     # to completion recomputes the fully correct combined
                     # findings, this is only the crash-time snapshot.
-                    _partial_exc.partial_result = BehaviorAnalysisResult(
-                        intent=intent,
-                        static_findings=static_findings,
-                        dynamic_findings=[],
-                        coverage=[],
-                        scenario_results=[
-                            ScenarioResult(**r)
-                            for r in _partial_exc.partial_payload.get("scenario_results", [])
-                        ],
-                        scan_outcome="partial",
-                    )
+                    try:
+                        _partial_exc.partial_result = BehaviorAnalysisResult(
+                            intent=intent,
+                            static_findings=static_findings,
+                            dynamic_findings=[],
+                            coverage=[],
+                            scenario_results=[
+                                ScenarioResult(**r)
+                                for r in _partial_exc.partial_payload.get("scenario_results", [])
+                            ],
+                            scan_outcome="partial",
+                        )
+                    except Exception:
+                        # A secondary failure while assembling the salvage result
+                        # must not erase the PartialRunError itself — callers
+                        # still get exc.cause/checkpoint_path and can resume,
+                        # just without a ready-made partial_result (stays None,
+                        # its __init__ default).
+                        _log.exception(
+                            "Failed to build partial BehaviorAnalysisResult after PartialRunError"
+                        )
                     raise
                 _dynamic_run_result = run_result
                 _dynamic_scan_outcome = run_result.scan_outcome

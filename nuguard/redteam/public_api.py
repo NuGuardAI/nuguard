@@ -470,7 +470,17 @@ async def run_redteam(
         try:
             findings = await orchestrator.run()
         except PartialRunError as exc:
-            exc.partial_result = _build_partial_result(orchestrator, exc)
+            try:
+                exc.partial_result = _build_partial_result(orchestrator, exc)
+            except Exception:
+                # A secondary failure while assembling the salvage result must
+                # not erase the PartialRunError itself — callers still get
+                # exc.cause/checkpoint_path and can resume, just without a
+                # ready-made partial_result. exc.partial_result stays None
+                # (its __init__ default).
+                _log.exception(
+                    "Failed to build partial RedteamRunResult after PartialRunError"
+                )
             raise
     finally:
         try:
