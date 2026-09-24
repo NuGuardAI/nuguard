@@ -1,7 +1,7 @@
 # Workflow export scanning
 
 NuGuard can statically scan exported workflows from n8n, Langflow, Flowise,
-and Microsoft Copilot Studio. The export is normalized into the existing
+Microsoft Copilot Studio, and Sparkflows. The export is normalized into the existing
 AI-SBOM component graph, allowing existing discovery, policy, and analysis
 logic to reason about low-code workflows.
 
@@ -13,6 +13,7 @@ logic to reason about low-code workflows.
 | Langflow | Flow JSON with native node metadata and graph edges |
 | Flowise | Chatflow or agentflow JSON, including encoded `flowData` |
 | Copilot Studio | `AdaptiveDialog` topics in `.mcs.yml` or `.mcs.yaml` |
+| Sparkflows | Exported project tree containing `project.json` plus `agents/`, `workflows/`, `datasets/`, or `analytics_app/` JSON resources |
 
 Recognition uses platform-specific structural fingerprints. A generic JSON
 document containing `nodes` and `edges` is not sufficient on its own.
@@ -72,7 +73,7 @@ endpoint context.
 Behavior and red-team execution still require a running deployment and a
 configured base URL. The adapters emit an API endpoint only when the export
 contains a concrete trigger path or URL. They do not invent deployment URLs
-for Langflow, Flowise, or Copilot Studio.
+for Langflow, Flowise, Copilot Studio, or Sparkflows.
 
 The scanner does not launch workflow platforms, execute workflow nodes,
 invoke connectors, or run exported code.
