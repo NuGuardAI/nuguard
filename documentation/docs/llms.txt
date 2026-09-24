@@ -11,6 +11,7 @@ surface.
 License: Apache-2.0 · Built by NuGuard AI (https://nuguard.ai/)
 
 Start here for an implementation-oriented path: quick-start.md
+Technology coverage matrix: supported-technologies.md
 
 ---
 

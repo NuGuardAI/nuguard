@@ -237,6 +237,7 @@ The implemented assessment path is `sbom`, `analyze`, `scan`, `policy`, `validat
 
 ## Where to go next
 
+- [Supported technologies](supported-technologies.md) — languages, frameworks, platforms, Kubernetes, and datastores
 - [CLI reference](cli-reference.md) — flags, defaults, and exit codes
 - [AI-SBOM schema](sbom-schema.md) — build integrations against the inventory
 - [Static analysis](static-analysis-guide.md) — understand source and supply-chain checks

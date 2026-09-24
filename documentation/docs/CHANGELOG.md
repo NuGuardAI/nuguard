@@ -8,6 +8,7 @@ Track user-facing documentation updates here, especially changes to CLI behavior
 - A source-first Getting Started workflow covering static scans, sandbox target verification, runtime test selection, CI gates, and coding-agent integration.
 - Light and dark workflow visuals aligned with the NuGuard documentation theme.
 - Documentation for bounded, explicitly authorized cloud pentesting and low-code workflow export scanning in the primary docs navigation.
+- A supported-technologies matrix covering languages, AI and agentic SDKs, low-code exports, cloud platforms, Kubernetes, and datastores.
 
 ### Changed
 - The Quick Start and AI Developer Guide are merged into one canonical Getting Started guide; the former AI Developer Guide URL now points readers to it.

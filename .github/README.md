@@ -65,7 +65,7 @@ Beyond the AI stack itself, the supply-chain/infrastructure analysis covers:
 | **Data & Storage** | SQL schemas (PHI/PII classification), SQLAlchemy models, Django models, Pydantic models, prompt files (`.txt`/`.md`/`.jinja`) |
 | **Output formats** | SARIF, CycloneDX, SPDX, Markdown |
 
-See the [full framework matrix](../documentation/docs/index.html#frameworks) for details.
+See the [full supported technologies matrix](../documentation/docs/supported-technologies.md) for languages, AI SDKs, low-code platforms, cloud, Kubernetes, and datastores.
 
 ## Comparison
 
