@@ -426,7 +426,7 @@ def build_target_app_client(
     if sbom is not None:
         try:
             from nuguard.redteam.target.framework_adapters.factory import make_framework_adapter
-            framework_adapter = make_framework_adapter(sbom, adk_cfg)
+            framework_adapter = make_framework_adapter(sbom, adk_cfg, target_url=target_url)
             if framework_adapter is not None and not endpoint:
                 endpoint = framework_adapter.run_path
                 _log.info(
@@ -435,6 +435,32 @@ def build_target_app_client(
                 )
         except Exception as exc:
             _log.debug("build_target_app_client: framework adapter detection failed: %s", exc)
+
+    # ── 1b. CES auth preflight ───────────────────────────────────────────────
+    # Issue #552: once CES has genuinely been selected (target_url itself is
+    # a CES API URL — see make_framework_adapter), a missing/broken gcloud
+    # credential must surface immediately as a clear adapter/auth failure,
+    # not as an opaque mid-scan crash the first time a scenario happens to
+    # send a turn. get_gcloud_token() caches its result, so this preflight
+    # call costs nothing extra once GoogleCESAdapter.send() authenticates
+    # for real. Deliberately outside the try/except above — a real CES auth
+    # failure is not a "detection failed, fall back to generic HTTP" case,
+    # it's a fatal misconfiguration for a target NuGuard was told is CES.
+    if framework_adapter is not None:
+        from nuguard.redteam.target.framework_adapters.google_ces import GoogleCESAdapter
+
+        if isinstance(framework_adapter, GoogleCESAdapter):
+            from nuguard.common.ces_client import CESAuthError, get_gcloud_token
+            from nuguard.common.errors import AuthError
+
+            try:
+                get_gcloud_token()
+            except CESAuthError as exc:
+                raise AuthError(
+                    f"CES adapter selected for target {target_url!r} but gcloud "
+                    f"authentication failed: {exc}",
+                    identity="google-ces",
+                ) from exc
 
     # ── 2. SBOM-based endpoint / payload discovery ──────────────────────────
     config_has_explicit_endpoint = bool(endpoint) and ("target_endpoint" in explicitly_set)

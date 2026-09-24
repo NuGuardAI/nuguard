@@ -543,6 +543,178 @@ def test_make_framework_adapter_disabled_returns_none() -> None:
     assert make_framework_adapter(sbom, cfg) is None
 
 
+# ─── Issue #552: SBOM metadata alone must not be trusted immediately ──────────
+# Uses the real nuguard.config.GoogleADKConfig (not the MagicMock helper
+# above) because the gate depends on pydantic's model_fields_set, which a
+# MagicMock does not meaningfully populate.
+
+
+def test_make_framework_adapter_no_config_requires_verification() -> None:
+    sbom = _make_sbom(frameworks=["google-adk"])
+    adapter = make_framework_adapter(sbom, None)
+    assert isinstance(adapter, GoogleADKAdapter)
+    assert adapter._requires_verification is True
+    assert adapter._verified is False
+
+
+def test_make_framework_adapter_config_without_enabled_requires_verification() -> None:
+    from nuguard.config import GoogleADKConfig
+
+    sbom = _make_sbom(frameworks=["google-adk"])
+    cfg = GoogleADKConfig(app_name="my_app")  # enabled never mentioned — SBOM-only trust
+    adapter = make_framework_adapter(sbom, cfg)
+    assert isinstance(adapter, GoogleADKAdapter)
+    assert adapter._requires_verification is True
+    assert adapter._verified is False
+
+
+def test_make_framework_adapter_explicit_enabled_true_skips_verification() -> None:
+    from nuguard.config import GoogleADKConfig
+
+    sbom = _make_sbom(frameworks=["google-adk"])
+    cfg = GoogleADKConfig(app_name="my_app", enabled=True)
+    adapter = make_framework_adapter(sbom, cfg)
+    assert isinstance(adapter, GoogleADKAdapter)
+    assert adapter._requires_verification is False
+    assert adapter._verified is True
+
+
+def test_make_framework_adapter_explicit_enabled_false_still_returns_none() -> None:
+    from nuguard.config import GoogleADKConfig
+
+    sbom = _make_sbom(frameworks=["google-adk"])
+    cfg = GoogleADKConfig(app_name="my_app", enabled=False)
+    assert make_framework_adapter(sbom, cfg) is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_session_deferred_verification_falls_back_when_not_adk() -> None:
+    """An SBOM-only-trusted adapter must fall back (not send /run) when the
+    target's /list-apps doesn't look like ADK — even when app_name is
+    already known (e.g. from a false-positive SBOM adk_app_name extra)."""
+    adapter = GoogleADKAdapter(app_name="already_known", requires_verification=True)
+
+    with respx.mock(base_url="http://proxy.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(404, text="not found"))
+        async with httpx.AsyncClient(base_url="http://proxy.test") as client:
+            with pytest.raises(RuntimeError, match="app_name could not be determined"):
+                await adapter.ensure_session(client, "s1")
+
+    assert adapter._verified is False
+
+
+@pytest.mark.asyncio
+async def test_ensure_session_deferred_verification_proceeds_when_adk_shaped() -> None:
+    """A positively-verified /list-apps response lets the adapter proceed
+    exactly as an explicitly-configured one would."""
+    adapter = GoogleADKAdapter(app_name="my_app", user_id="u", requires_verification=True)
+    session_path = _SESSION_PATH_TEMPLATE.format(app_name="my_app", user_id="u")
+
+    with respx.mock(base_url="http://real-adk.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(200, json=["my_app"]))
+        rx.post(session_path).mock(return_value=httpx.Response(200, json={"id": "sess-1"}))
+        async with httpx.AsyncClient(base_url="http://real-adk.test") as client:
+            sid = await adapter.ensure_session(client, "s1")
+
+    assert sid == "sess-1"
+    assert adapter._verified is True
+
+
+@pytest.mark.asyncio
+async def test_ensure_session_verification_only_happens_once_per_adapter() -> None:
+    adapter = GoogleADKAdapter(app_name="my_app", user_id="u", requires_verification=True)
+    session_path = _SESSION_PATH_TEMPLATE.format(app_name="my_app", user_id="u")
+    list_apps_calls = 0
+
+    def _list_apps(request: httpx.Request) -> httpx.Response:
+        nonlocal list_apps_calls
+        list_apps_calls += 1
+        return httpx.Response(200, json=["my_app"])
+
+    with respx.mock(base_url="http://real-adk.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(side_effect=_list_apps)
+        rx.post(session_path).mock(return_value=httpx.Response(200, json={"id": "sess-1"}))
+        async with httpx.AsyncClient(base_url="http://real-adk.test") as client:
+            await adapter.ensure_session(client, "scenario-a")
+            await adapter.ensure_session(client, "scenario-b")
+
+    assert list_apps_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_ensure_session_explicit_opt_in_skips_verification_entirely() -> None:
+    """requires_verification=False (explicit adk.enabled=true) must never call
+    /list-apps at all — matches pre-#552 behavior exactly when app_name is
+    already known."""
+    adapter = GoogleADKAdapter(app_name="my_app", user_id="u", requires_verification=False)
+    session_path = _SESSION_PATH_TEMPLATE.format(app_name="my_app", user_id="u")
+
+    with respx.mock(base_url="http://app.test", assert_all_called=False) as rx:
+        list_apps_route = rx.get(_LIST_APPS_PATH).mock(
+            return_value=httpx.Response(500)  # must never be hit
+        )
+        rx.post(session_path).mock(return_value=httpx.Response(200, json={"id": "sess-1"}))
+        async with httpx.AsyncClient(base_url="http://app.test") as client:
+            sid = await adapter.ensure_session(client, "s1")
+
+    assert sid == "sess-1"
+    assert list_apps_route.called is False
+
+
+@pytest.mark.asyncio
+async def test_verify_contract_true_on_200_list() -> None:
+    adapter = GoogleADKAdapter()
+    with respx.mock(base_url="http://app.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(200, json=["a", "b"]))
+        async with httpx.AsyncClient(base_url="http://app.test") as client:
+            assert await adapter._verify_contract(client) is True
+
+
+@pytest.mark.asyncio
+async def test_verify_contract_true_on_200_empty_list() -> None:
+    adapter = GoogleADKAdapter()
+    with respx.mock(base_url="http://app.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(200, json=[]))
+        async with httpx.AsyncClient(base_url="http://app.test") as client:
+            assert await adapter._verify_contract(client) is True
+
+
+@pytest.mark.asyncio
+async def test_verify_contract_false_on_404() -> None:
+    adapter = GoogleADKAdapter()
+    with respx.mock(base_url="http://app.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(404))
+        async with httpx.AsyncClient(base_url="http://app.test") as client:
+            assert await adapter._verify_contract(client) is False
+
+
+@pytest.mark.asyncio
+async def test_verify_contract_false_on_non_list_json() -> None:
+    adapter = GoogleADKAdapter()
+    with respx.mock(base_url="http://app.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(200, json={"apps": []}))
+        async with httpx.AsyncClient(base_url="http://app.test") as client:
+            assert await adapter._verify_contract(client) is False
+
+
+@pytest.mark.asyncio
+async def test_verify_contract_false_on_non_json_body() -> None:
+    adapter = GoogleADKAdapter()
+    with respx.mock(base_url="http://app.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(200, text="<html>not json</html>"))
+        async with httpx.AsyncClient(base_url="http://app.test") as client:
+            assert await adapter._verify_contract(client) is False
+
+
+@pytest.mark.asyncio
+async def test_verify_contract_false_on_connection_error() -> None:
+    adapter = GoogleADKAdapter()
+    with respx.mock(base_url="http://app.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(side_effect=httpx.ConnectError("refused"))
+        async with httpx.AsyncClient(base_url="http://app.test") as client:
+            assert await adapter._verify_contract(client) is False
+
+
 def test_make_framework_adapter_reads_adk_app_name_from_sbom_extras() -> None:
     """Factory must read adk_app_name from SBOM node extras to bypass /list-apps."""
     summary = MagicMock()
@@ -600,14 +772,15 @@ def test_make_framework_adapter_handles_missing_frameworks_attr() -> None:
 
 
 @pytest.mark.asyncio
-async def test_probe_returns_run_path_for_adk_sbom() -> None:
-    """When SBOM has ADK framework, probe_chat_endpoints skips the generic loop."""
+async def test_probe_returns_run_path_for_verified_adk_sbom() -> None:
+    """SBOM ADK framework + a live-verified /list-apps response takes the
+    fast path (issue #552: SBOM metadata alone is no longer sufficient)."""
     from nuguard.common.endpoint_detection.live_probe import probe_chat_endpoints
 
     sbom = _make_sbom(frameworks=["google-adk"])
 
-    # No HTTP calls should reach the generic probe loop (would 404 anyway)
-    with respx.mock(assert_all_called=False):
+    with respx.mock(base_url="http://localhost:8090", assert_all_called=False) as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(200, json=["my_app"]))
         result = await probe_chat_endpoints(
             target_url="http://localhost:8090",
             sbom=sbom,
@@ -618,6 +791,27 @@ async def test_probe_returns_run_path_for_adk_sbom() -> None:
     assert path == "/run"
     assert key == "__adk__"
     assert is_list is False
+
+
+@pytest.mark.asyncio
+async def test_probe_falls_through_to_generic_when_adk_not_verified() -> None:
+    """Issue #552: SBOM ADK evidence without a live /list-apps confirmation
+    must not blindly return /run with the unconsumed "__adk__" payload key —
+    a proxy app whose SBOM merely mentions ADK must not get a wrong,
+    unrecognised payload shape assumed for it."""
+    from nuguard.common.endpoint_detection.live_probe import probe_chat_endpoints
+
+    sbom = _make_sbom(frameworks=["google-adk"])
+
+    with respx.mock(base_url="http://localhost:8090", assert_all_called=False) as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(404))
+        rx.post(path__regex=".*").mock(return_value=httpx.Response(404))
+        result = await probe_chat_endpoints(
+            target_url="http://localhost:8090",
+            sbom=sbom,
+        )
+
+    assert result is None  # falls through to generic detection, which also finds nothing
 
 
 @pytest.mark.asyncio
@@ -636,6 +830,62 @@ async def test_probe_uses_generic_path_for_non_adk_sbom() -> None:
         )
 
     assert result is None  # all paths 404 → no winner
+
+
+# ─── _verify_adk_list_apps ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_verify_adk_list_apps_true_on_200_list() -> None:
+    from nuguard.common.endpoint_detection.live_probe import _verify_adk_list_apps
+
+    with respx.mock(base_url="http://app.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(200, json=["a"]))
+        assert await _verify_adk_list_apps("http://app.test", None, 5.0) is True
+
+
+@pytest.mark.asyncio
+async def test_verify_adk_list_apps_false_on_404() -> None:
+    from nuguard.common.endpoint_detection.live_probe import _verify_adk_list_apps
+
+    with respx.mock(base_url="http://app.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(404))
+        assert await _verify_adk_list_apps("http://app.test", None, 5.0) is False
+
+
+@pytest.mark.asyncio
+async def test_verify_adk_list_apps_false_on_non_list_json() -> None:
+    from nuguard.common.endpoint_detection.live_probe import _verify_adk_list_apps
+
+    with respx.mock(base_url="http://app.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(return_value=httpx.Response(200, json={"apps": []}))
+        assert await _verify_adk_list_apps("http://app.test", None, 5.0) is False
+
+
+@pytest.mark.asyncio
+async def test_verify_adk_list_apps_false_on_connection_error() -> None:
+    from nuguard.common.endpoint_detection.live_probe import _verify_adk_list_apps
+
+    with respx.mock(base_url="http://app.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(side_effect=httpx.ConnectError("refused"))
+        assert await _verify_adk_list_apps("http://app.test", None, 5.0) is False
+
+
+@pytest.mark.asyncio
+async def test_verify_adk_list_apps_forwards_auth_headers() -> None:
+    from nuguard.common.endpoint_detection.live_probe import _verify_adk_list_apps
+
+    seen_headers: dict[str, str] = {}
+
+    def _capture(request: httpx.Request) -> httpx.Response:
+        seen_headers.update(request.headers)
+        return httpx.Response(200, json=[])
+
+    with respx.mock(base_url="http://app.test") as rx:
+        rx.get(_LIST_APPS_PATH).mock(side_effect=_capture)
+        await _verify_adk_list_apps("http://app.test", {"Authorization": "Bearer t"}, 5.0)
+
+    assert seen_headers.get("authorization") == "Bearer t"
 
 
 # ─── AdkConfig in BehaviorConfig ─────────────────────────────────────────────
