@@ -102,6 +102,13 @@ Install the NuGuard plugin and run SBOM, analysis, behavior, and red-team scans 
 
 [![Read the Plugin Guide](https://img.shields.io/badge/→_Read_the_Plugin_Guide-111111?style=for-the-badge)](../documentation/docs/plugin-guide.md)
 
+
+### 🎯 Need to pentest a live target?
+
+Nuclei-backed, bounded conventional pentest — explicit authorization required.
+
+[![Read the Cloud Pentesting Guide](https://img.shields.io/badge/→_Read_the_Cloud_Pentesting_Guide-111111?style=for-the-badge)](../documentation/docs/cloud-pentesting.md)
+
 ## Hosted Version
 
 > **Running NuGuard at organizational scale?** The managed SaaS adds what a CISO or VP Engineering needs on top of everything in this repo — no infra to stand up or maintain.
@@ -176,6 +183,7 @@ Filter by profile (CI, Standard, Full), and configure destructive or non-destruc
 <a href="../documentation/docs/policy-engine-guide.md">Policy engine</a> ·
 <a href="../documentation/docs/static-analysis-guide.md">Static analysis</a> ·
 <a href="../documentation/docs/redteam-guide.md">Red-team Guide</a> ·
+<a href="../documentation/docs/cloud-pentesting.md">Cloud Pentesting</a> ·
 <a href="../documentation/docs/plugin-guide.md">Claude plugin</a> ·
 <a href="../documentation/docs/troubleshooting.md">Troubleshooting</a> ·
 <a href="SECURITY.md">Security</a> ·
