@@ -664,13 +664,16 @@ nuguard pentest --target https://staging.example.com --acknowledge-authorization
 # Target + auth from nuguard.yaml
 nuguard pentest --config nuguard.yaml --acknowledge-authorization
 
-# Also scan every parameter-free API endpoint the SBOM discovered
-nuguard pentest --config nuguard.yaml --acknowledge-authorization \
-  --use-sbom-endpoints
-
-# Opt in to DAST/fuzzing templates and headless (JS-executing) templates
+# Opt in to DAST/fuzzing templates and headless (JS-executing) templates.
+# DAST fuzzes real request shapes from an OpenAPI document: an explicit
+# --openapi-spec, else the target's own live /openapi.json, else one
+# synthesized from --config's SBOM endpoints.
 nuguard pentest --config nuguard.yaml --acknowledge-authorization \
   --allow-active-fuzzing --allow-headless-browser
+
+# Fuzz against an explicit OpenAPI document instead
+nuguard pentest --config nuguard.yaml --acknowledge-authorization \
+  --allow-active-fuzzing --openapi-spec ./openapi.json
 
 # App-specific custom templates, in addition to the always-on bundled ones
 nuguard pentest --config nuguard.yaml --acknowledge-authorization \
@@ -688,10 +691,12 @@ nuguard pentest --config nuguard.yaml --acknowledge-authorization \
 | `--config` | `-c` | — | Load `target.url`/`target.auth`/`sbom:`/`pentest:` from `nuguard.yaml`. Explicit `--target` never retargets configured credentials |
 | `--acknowledge-authorization` | — | **required** | Confirm you own or have documented permission to test every target. Always an explicit per-invocation flag — never configurable via `nuguard.yaml` |
 | `--profile` | — | `safe` | `safe` (low/medium/high/critical only) or `standard` (also informational) |
-| `--use-sbom-endpoints` | — | off | Expand the target list with every parameter-free API endpoint path from `--config`'s SBOM, one Nuclei `-list` entry per endpoint. Requires `--config` and exactly one base target; capped at 200 endpoints |
+| `--allow-active-fuzzing` | — | off | Add a second Nuclei DAST/fuzzing pass (`-dast`), fed an OpenAPI document (see `--openapi-spec` below) so it fuzzes real request shapes, and stop excluding the `fuzz`/`intrusive` tags. Materially more, more intrusive requests |
+| `--openapi-spec` | — | — | OpenAPI 3.x document driving `--allow-active-fuzzing`'s DAST pass. Takes priority over the target's own live spec and the SBOM-synthesized fallback |
+| `--live-openapi` / `--no-live-openapi` | — | on | Probe the target for a live OpenAPI/Swagger document (e.g. `/openapi.json`) to drive DAST when `--openapi-spec` is not given |
+| `--use-sbom-endpoints` / `--no-use-sbom-endpoints` | — | on when `sbom:` is configured | Allow DAST's OpenAPI input to fall back to a document synthesized from `--config`'s SBOM API endpoints when the target serves no live spec |
 | `--bundled` / `--no-bundled` | — | on | Run NuGuard's bundled, app-agnostic templates (open redirect, error-based SQLi) as an extra always-on pass. Auto-signed locally on first use — no setup needed; never fails the overall scan if signing doesn't work |
 | `--templates-dir` | — | — | Trusted custom Nuclei templates directory, run as its own pass alongside the standard corpus and the bundled pass. Unsigned templates are rejected — sign with `nuclei -sign -t <dir>` first |
-| `--allow-active-fuzzing` | — | off | Add a second Nuclei DAST/fuzzing pass (`-dast`) and stop excluding the `fuzz`/`intrusive` tags. Materially more, more intrusive requests |
 | `--allow-headless-browser` | — | off | Run Nuclei's headless-browser (JS-executing) templates. Auto-downloads a Chromium build (~120 MB) on first use; refused when running as root |
 | `--allow-private` | — | off | Permit RFC1918/unique-local targets. Loopback, link-local, metadata, multicast, and reserved addresses stay blocked regardless |
 | `--allow-dynamic-auth` | — | off | Allow a bounded, same-origin `login_flow` POST (from `target.auth` in `nuguard.yaml`) to obtain a bearer token before scanning |

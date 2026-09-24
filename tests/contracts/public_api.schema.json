@@ -6181,6 +6181,31 @@
         "title": "Use Bundled Templates",
         "type": "boolean"
       },
+      "openapi_spec": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Path to an OpenAPI 3.x document to drive the active-fuzzing DAST pass with real request shapes instead of bare target URLs. Takes priority over the target's own live spec and the SBOM-synthesized fallback.",
+        "title": "Openapi Spec"
+      },
+      "use_live_openapi": {
+        "default": true,
+        "description": "Probe the target itself for a live OpenAPI/Swagger document to drive DAST when openapi_spec is not given.",
+        "title": "Use Live Openapi",
+        "type": "boolean"
+      },
+      "use_sbom_endpoints": {
+        "default": true,
+        "description": "Allow DAST's OpenAPI input to fall back to a spec synthesized from the caller-supplied SBOM's API endpoints when no live spec is found.",
+        "title": "Use Sbom Endpoints",
+        "type": "boolean"
+      },
       "auth_config": {
         "anyOf": [
           {
