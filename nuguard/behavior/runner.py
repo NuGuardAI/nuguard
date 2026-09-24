@@ -2649,7 +2649,6 @@ class BehaviorRunner:
                     _bootstrap_hdrs2 or None,
                     ttl_seconds=self._config.liveness_cache_ttl_seconds,
                     sbom_path=self._sbom_path,
-                    liveness_enabled=getattr(self._config, "liveness_enabled", True),
                 )
                 _log.info(
                     "Behavior: endpoint liveness — checked=%d cached=%d operational=%d "

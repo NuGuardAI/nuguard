@@ -214,7 +214,6 @@ async def check_endpoint_liveness(
     max_concurrent: int = 5,
     ttl_seconds: float | None = None,
     sbom_path: "Path | str | None" = None,
-    liveness_enabled: bool = True,
 ) -> LivenessReport:
     """Ping every safely-attackable ``API_ENDPOINT`` node in *sbom* and record
     ``operational``/``liveness_checked_at``/``liveness_notes`` on each node's
@@ -259,17 +258,7 @@ async def check_endpoint_liveness(
     but is not applied directly here — *client* is expected to already carry
     its configured auth headers (mirrors how :func:`~nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint`
     receives a pre-authenticated client).
-
-    *liveness_enabled* — when ``False``, the sweep is skipped entirely (no
-    requests of any kind, not even safe ones) and an empty report with a
-    note is returned. Independent of the method/path-param safety filtering
-    above, which is unconditional and has no corresponding opt-out — this
-    only controls whether the (already-safe) sweep runs at all, e.g. to
-    avoid its request volume against a rate-limited or billed target.
     """
-    if not liveness_enabled:
-        return LivenessReport(notes=["Endpoint liveness sweep disabled (liveness_enabled=False)."])
-
     from nuguard.sbom.types import ComponentType as _CT  # noqa: PLC0415
 
     report = LivenessReport()
@@ -369,7 +358,6 @@ async def ensure_endpoint_liveness(
     per_endpoint_timeout: float = 10.0,
     max_concurrent: int = 5,
     sbom_path: "Path | str | None" = None,
-    liveness_enabled: bool = True,
 ) -> LivenessReport:
     """Cache-aware convenience wrapper around :func:`check_endpoint_liveness`.
 
@@ -387,5 +375,4 @@ async def ensure_endpoint_liveness(
         max_concurrent=max_concurrent,
         ttl_seconds=ttl_seconds,
         sbom_path=sbom_path,
-        liveness_enabled=liveness_enabled,
     )

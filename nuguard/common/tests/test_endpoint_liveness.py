@@ -289,20 +289,6 @@ async def test_unresolved_path_param_never_probed_regardless_of_method() -> None
 
 
 @pytest.mark.asyncio
-async def test_liveness_disabled_sends_no_requests_even_for_safe_methods() -> None:
-    node = _node("/api/status")  # GET — would normally be probed
-    sbom = _sbom(node)
-    client = _FakeClient({"/api/status": (200, "OK", {})})
-
-    report = await check_endpoint_liveness(sbom, client, liveness_enabled=False)
-
-    assert client.calls == []
-    assert node.metadata.operational is None
-    assert report.checked == 0
-    assert report.notes and "disabled" in report.notes[0]
-
-
-@pytest.mark.asyncio
 async def test_5xx_on_safe_method_marks_non_operational() -> None:
     node = _node("/api/status")
     sbom = _sbom(node)
