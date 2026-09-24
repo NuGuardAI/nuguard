@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="300" viewBox="0 0 1100 300" role="img" aria-labelledby="title desc">
+  <title id="title">From inventory to grounded remediation</title>
+  <desc id="desc">NuGuard connects inventory, findings, evidence, risk context, and remediation. Evidence grounds both the finding and the recommended code change.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#0b1224"/><stop offset="1" stop-color="#111827"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#020617" flood-opacity=".42"/></filter>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9z" fill="#64748b"/></marker>
+    <marker id="verify-arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9z" fill="#22c55e"/></marker>
+    <style>
+      .eyebrow{font:700 12px Inter,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;fill:#22c55e}
+      .heading{font:700 22px Inter,system-ui,sans-serif;fill:#f8fafc}
+      .label{font:700 16px Inter,system-ui,sans-serif;fill:#f8fafc}
+      .copy{font:400 13px Inter,system-ui,sans-serif;fill:#9ca3af}
+      .step{font:800 12px Inter,system-ui,sans-serif;fill:#0b1224}
+    </style>
+  </defs>
+  <rect width="1100" height="300" rx="18" fill="url(#bg)"/>
+  <circle cx="1040" cy="-30" r="180" fill="#22c55e" opacity=".055"/>
+  <text x="42" y="42" class="eyebrow">Evidence before action</text>
+  <text x="42" y="72" class="heading">From discovered asset to defensible fix</text>
+
+  <g filter="url(#shadow)">
+    <rect x="42" y="108" width="168" height="116" rx="12" fill="#1e293b" stroke="#334155"/>
+    <circle cx="68" cy="134" r="12" fill="#22c55e"/><text x="64.5" y="138.5" class="step">1</text>
+    <text x="88" y="140" class="label">Inventory</text>
+    <text x="62" y="174" class="copy">Agent · tool · model</text>
+    <text x="62" y="198" class="copy">API · datastore · IaC</text>
+  </g>
+  <path d="M220 166h34" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="264" y="108" width="168" height="116" rx="12" fill="#1e293b" stroke="#334155"/>
+    <circle cx="290" cy="134" r="12" fill="#22c55e"/><text x="286.5" y="138.5" class="step">2</text>
+    <text x="310" y="140" class="label">Finding</text>
+    <text x="284" y="174" class="copy">What failed</text>
+    <text x="284" y="198" class="copy">Severity · affected asset</text>
+  </g>
+  <path d="M442 166h34" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="486" y="96" width="168" height="140" rx="12" fill="#163324" stroke="#22c55e" stroke-width="2"/>
+    <circle cx="512" cy="122" r="12" fill="#22c55e"/><text x="508.5" y="126.5" class="step">3</text>
+    <text x="532" y="128" class="label">Evidence</text>
+    <text x="506" y="162" class="copy">File · line · relationship</text>
+    <text x="506" y="186" class="copy">Response · canary · trace</text>
+    <rect x="506" y="202" width="109" height="23" rx="11.5" fill="#14532d"/>
+    <text x="520" y="218" class="eyebrow" style="font-size:10px">source of truth</text>
+  </g>
+  <path d="M664 166h34" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="708" y="108" width="168" height="116" rx="12" fill="#1e293b" stroke="#334155"/>
+    <circle cx="734" cy="134" r="12" fill="#22c55e"/><text x="730.5" y="138.5" class="step">4</text>
+    <text x="754" y="140" class="label">Risk context</text>
+    <text x="728" y="174" class="copy">Impact · exploit path</text>
+    <text x="728" y="198" class="copy">OWASP · MITRE ATLAS</text>
+  </g>
+  <path d="M886 166h34" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="930" y="108" width="128" height="116" rx="12" fill="#1e293b" stroke="#334155"/>
+    <circle cx="956" cy="134" r="12" fill="#22c55e"/><text x="952.5" y="138.5" class="step">5</text>
+    <text x="976" y="140" class="label">Fix</text>
+    <text x="950" y="174" class="copy">Code change</text>
+    <text x="950" y="198" class="copy">Rerun · verify</text>
+  </g>
+
+  <path d="M994 238v26H570v-18" fill="none" stroke="#22c55e" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#verify-arrow)" opacity=".72"/>
+  <text x="712" y="281" class="copy" style="fill:#86efac">A fix is complete only when the evidence no longer reproduces</text>
+</svg>

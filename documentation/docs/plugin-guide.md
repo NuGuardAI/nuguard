@@ -1,4 +1,4 @@
-# NuGuard Plugin Guide
+# NuGuard Plugin and MCP Guide
 
 **Talk to your coding agent, get an AI security audit.** NuGuard exposes SBOM generation, static analysis, behavioral testing, and adversarial red-teaming as tools your agent can call directly — no separate terminal, no context-switching. Ask it to audit your AI application and it orchestrates the full pipeline, interprets the findings, and recommends fixes right there in the chat.
 
@@ -10,7 +10,7 @@
 
 ---
 
-## 📦 Installation
+## Choose Your Coding Agent
 
 Each panel below is self-contained — expand the one that matches your agent and follow it top to bottom.
 
@@ -113,7 +113,7 @@ If you're using Option B (`npx`):
   "mcpServers": {
     "nuguard": {
       "command": "npx",
-      "args": ["-y", "nuguard"],
+      "args": ["-y", "@nuguardai/nuguard"],
       "env": {
         "LITELLM_API_KEY": "your-api-key-here",
         "NUGUARD_DEFAULT_CONFIG": "/absolute/path/to/nuguard.yaml"
@@ -161,7 +161,7 @@ NuGuard runs as a standard [MCP](https://modelcontextprotocol.io) server, so any
   "mcpServers": {
     "nuguard": {
       "command": "npx",
-      "args": ["-y", "nuguard"],
+      "args": ["-y", "@nuguardai/nuguard"],
       "env": {
         "LITELLM_API_KEY": "your-api-key-here",
         "NUGUARD_DEFAULT_CONFIG": "/absolute/path/to/nuguard.yaml"
@@ -555,7 +555,7 @@ Restart Claude Desktop after editing `claude_desktop_config.json`. On macOS and 
 { "command": "/usr/local/bin/nuguard-mcp" }
 ```
 ```json
-{ "command": "/usr/local/bin/npx", "args": ["-y", "nuguard"] }
+{ "command": "/usr/local/bin/npx", "args": ["-y", "@nuguardai/nuguard"] }
 ```
 
 Find the absolute path with `which nuguard-mcp` (macOS/Linux) or `where nuguard-mcp` (Windows).

@@ -8,6 +8,17 @@ Current schema version: **1.5.0**
 
 Schema URI: `https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json`
 
+The schema is language-neutral. Current extractors normalize Python, TypeScript/JavaScript, Go, C#, and Java application evidence into the same nodes, edges, dependencies, and summary fields.
+
+```text
+Application source and manifests
+        │
+        ├── framework adapters ──→ nodes + evidence
+        ├── relationship hints ──→ edges
+        ├── package scanners ────→ deps
+        └── repository signals ──→ summary
+```
+
 ---
 
 ## Top-Level Object
@@ -45,6 +56,8 @@ Schema URI: `https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json`
 ## Node
 
 A Node represents a detected AI component, service boundary, infrastructure resource, policy surface, or artifact used by the application.
+
+Java source scanning uses the same component types as every other language. Current Java adapters recognize Spring AI, LangChain4j, Quarkus LangChain4j, OpenAI Java, Azure OpenAI Java, AWS Bedrock, Google Gen AI, and Vertex AI, plus Spring MVC/WebFlux and JAX-RS/Quarkus endpoints. Consumers do not need a Java-specific schema branch.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -183,6 +196,7 @@ A `PROMPT` node is connected to the `AGENT` or `GUARDRAIL` node whose instructio
 | `chat_payload_key` | string | Inferred primary prompt field in the request body, e.g. `"message"` or `"query"` |
 | `chat_payload_list` | boolean | True when the chat payload key is typed as a list |
 | `response_text_key` | string | Inferred primary response text field in the response body |
+| `login_token_response_key` | string | Dotted field path used to locate an authentication token in a login endpoint response, e.g. `"access_token"` or `"tokens.accessToken"`. This stores only the field name, never the token value. `extras.login_token_response_key_source` records whether it came from static DTO extraction or LLM inference. |
 | `context_payload_fields` | object | Non-chat context fields detected in POST body schemas. Values are `"identity"` for static user/tenant/account identifiers or `"session"` for per-conversation identifiers. |
 | `path_param_sources` | object | Maps each entry in `path_params` to the `API_ENDPOINT` path that creates the identified resource, e.g. `{"id": "/chat/conversations"}` for `/chat/conversations/:id/messages` |
 | `no_auth_required` | boolean | True when the endpoint is invocable without authentication |
@@ -491,15 +505,37 @@ A directed relationship between two nodes.
 
 ## PackageDep
 
-A single declared package dependency from a manifest file.
+A single declared package dependency from a manifest file. The scanner reads declarations without executing package managers or build tools and does not resolve the full transitive dependency graph.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `name` | string | **yes** | Package name. Python names are PEP 503-normalized; JavaScript names retain their package spelling. |
+| `name` | string | **yes** | Ecosystem package name. Python names are PEP 503-normalized; Java uses `groupId:artifactId`; other ecosystems retain their native package spelling. |
 | `version_spec` | string | **yes** | Version specifier as declared, e.g. `">=1.70,<2.0"`, `"^18.0.0"`, or `""` |
-| `purl` | string | **yes** | Package URL, e.g. `"pkg:pypi/openai@1.70.0"` or `"pkg:npm/%40langchain/core@0.3.0"` |
-| `group` | string | **yes** | Dependency group: `"runtime"`, `"dev"`, `"optional:<name>"`, or `"optional:peer"` |
-| `source_file` | string | **yes** | Manifest file the dependency was extracted from, e.g. `"pyproject.toml"` or `"package.json"` |
+| `purl` | string | **yes** | Package URL using the ecosystem type, such as `pkg:pypi`, `pkg:npm`, `pkg:nuget`, `pkg:maven`, or `pkg:golang` |
+| `group` | string | **yes** | Normalized dependency group: `"runtime"`, `"dev"`, or an ecosystem-specific `"optional:<name>"` value such as `optional:peer`, `optional:maven`, `optional:gradle`, or `optional:indirect` |
+| `source_file` | string | **yes** | Repository-relative manifest file from which the dependency was extracted |
+
+### Supported dependency manifests
+
+| Ecosystem | Manifests | Notes |
+|---|---|---|
+| Python | `pyproject.toml`, `requirements*.txt`, `setup.cfg` | Supports PEP 621, Poetry, Hatch, uv, and legacy `install_requires` declarations |
+| JavaScript/TypeScript | `package.json` | Reads runtime, development, optional, and peer dependency sections |
+| C#/.NET | `*.csproj`, `packages.config`, `Directory.Packages.props` | Emits NuGet PURLs and honors centrally managed package versions |
+| Java | `pom.xml`, `build.gradle`, `build.gradle.kts`, `gradle/libs.versions.toml` | Resolves common Maven properties, dependency management, Gradle variables, and version-catalog references without invoking Maven or Gradle |
+| Go | `go.mod`, `go.sum` | Emits Go PURLs; indirect modules use the `optional:indirect` group |
+
+For Java dependencies, a resolved declaration such as `org.springframework.ai:spring-ai-openai-spring-boot-starter:1.0.1` is represented as:
+
+```json
+{
+  "name": "org.springframework.ai:spring-ai-openai-spring-boot-starter",
+  "version_spec": "==1.0.1",
+  "purl": "pkg:maven/org.springframework.ai/spring-ai-openai-spring-boot-starter@1.0.1",
+  "group": "runtime",
+  "source_file": "pom.xml"
+}
+```
 
 ---
 
