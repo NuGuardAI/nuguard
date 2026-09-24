@@ -13,7 +13,7 @@ NuGuard discovers AI application components from source code, workflow exports, 
 ```text
 Application estate
 ├── Code                 Python · TypeScript/JavaScript · Go · C# · Java
-├── Agentic stack        frameworks · model SDKs · MCP · guardrails
+├── Agentic stack        frameworks · model SDKs · MCP · guardrails · Prompts · Tools
 ├── Visual workflows     n8n · Langflow · Flowise · Copilot Studio · Sparkflows
 ├── Runtime platform     AWS · Azure · GCP · Kubernetes · containers
 └── Data layer           SQL · NoSQL · vector · object storage · warehouses
