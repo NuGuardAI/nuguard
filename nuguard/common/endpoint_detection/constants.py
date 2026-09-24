@@ -25,6 +25,23 @@ HTTP_ENDPOINT_FALLBACK_PATHS = (
     "/v1/chat",
     "/query",
     "/agent",
+    # Additional namespaced agent routes (issue #532) — tried after the
+    # candidates above so SBOM-discovered and user-configured routes always
+    # take precedence; ordered roughly by likelihood.
+    "/api/agent/chat",
+    "/agent/chat",
+    "/api/v1/chat",
+    "/api/chat/completions",
+    "/v1/chat/completions",
+    "/api/messages",
+    "/messages",
+    "/api/conversation",
+    "/conversation",
+    "/api/ask",
+    "/ask",
+    "/api/query",
+    "/api/agent/run",
+    "/api/run",
 )
 
 WEBSOCKET_ENDPOINT_FALLBACK_PATHS = (
@@ -182,6 +199,11 @@ DEFAULT_OPENAPI_TIMEOUT_SECONDS = 5.0
 DEFAULT_LIVENESS_TIMEOUT_SECONDS = 10.0
 DEFAULT_ENRICHMENT_TIMEOUT_SECONDS = 4.0
 DEFAULT_MAX_PROBE_REQUESTS = 10
+# How long a persisted runtime-probe-confirmed chat endpoint (see
+# ``ProbeExtras.confirmed_at`` below) is trusted before it must be
+# re-verified by a fresh live probe. Mirrors
+# ``nuguard.common.endpoint_liveness.DEFAULT_LIVENESS_CACHE_TTL_SECONDS``.
+DEFAULT_ENDPOINT_CONFIRMATION_TTL_SECONDS = 3600.0
 
 # ``NodeMetadata.extras`` (nuguard.sbom.models) is a generic ``dict[str, Any]``
 # shared by many unrelated adapters. These are the subset of keys written by
@@ -198,5 +220,11 @@ class ProbeExtras(TypedDict, total=False):
 
     source: str
     probe_value_template: dict[str, Any] | None
+    # ISO-8601 UTC timestamp set when ``source == PROBE_SOURCE_RUNTIME_PROBE``
+    # is persisted — lets a later run decide whether this confirmation is
+    # still fresh enough to trust without re-probing (see
+    # ``DEFAULT_ENDPOINT_CONFIRMATION_TTL_SECONDS`` and
+    # ``nuguard.common.endpoint_detection.sbom.find_confirmed_chat_endpoint``).
+    confirmed_at: str
     probe_get_404: bool
     probe_post_405: bool

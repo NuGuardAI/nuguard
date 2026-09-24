@@ -376,7 +376,11 @@ def redteam(
             partial.resolved_chat_path_source, partial.remediation_plan,
         )
     except Exception as exc:
-        from nuguard.common.errors import AuthError, TargetUnavailableError  # noqa: PLC0415
+        from nuguard.common.errors import (  # noqa: PLC0415
+            AuthError,
+            TargetEndpointNotFoundError,
+            TargetUnavailableError,
+        )
         if isinstance(exc, TargetUnavailableError):
             typer.echo(
                 f"Error: target is unreachable at {exc.url!r}.\n"
@@ -389,6 +393,14 @@ def redteam(
                 f"Error: authentication failed — {exc}\n"
                 "Check your auth credentials in nuguard.yaml or --auth-header.\n"
                 "Run 'nuguard target verify' to diagnose authentication.",
+                err=True,
+            )
+        elif isinstance(exc, TargetEndpointNotFoundError):
+            typer.echo(
+                f"Error: chat endpoint not found — {exc}\n"
+                "Check target_endpoint in nuguard.yaml, or pass --sbom to enable "
+                "auto-discovery.\n"
+                "Run 'nuguard target verify' to diagnose connectivity.",
                 err=True,
             )
         else:

@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from nuguard.common.auth import AuthConfig
-from nuguard.common.auth_runtime import bootstrap_auth_runtime, resolve_auth_runtime
+from nuguard.common.auth_runtime import resolve_auth_runtime
 from nuguard.common.errors import TargetUnavailableError
 from nuguard.config import load_config
 from nuguard.redteam.target.canary import CanaryConfig
@@ -213,6 +213,12 @@ async def _verify_async(
     console.print()
 
     session_cfg: "TargetSessionConfig | None" = None
+    chat_payload_key = getattr(cfg, "redteam_chat_payload_key", "message")
+    chat_payload_list = getattr(cfg, "redteam_chat_payload_list", False)
+    chat_response_key = getattr(cfg, "redteam_chat_response_key", "") or None
+    chat_payload_extras = getattr(cfg, "redteam_chat_payload_extras", None) or {}
+    configured_fields: set[str] = getattr(cfg, "model_fields_set", set())
+
     if sbom_doc is not None:
         from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
         from nuguard.common.session_resolver import resolve_target_session
@@ -228,12 +234,6 @@ async def _verify_async(
         if resolved_target_url:
             target_url = resolved_target_url
 
-        chat_payload_key = getattr(cfg, "redteam_chat_payload_key", "message")
-        chat_payload_list = getattr(cfg, "redteam_chat_payload_list", False)
-        chat_response_key = getattr(cfg, "redteam_chat_response_key", "") or None
-        chat_payload_extras = getattr(cfg, "redteam_chat_payload_extras", None) or {}
-
-        configured_fields: set[str] = getattr(cfg, "model_fields_set", set())
         resolved_endpoint = await resolve_chat_endpoint(
             target_url=target_url,
             sbom=sbom_doc,
@@ -293,26 +293,49 @@ async def _verify_async(
                 console.print(f"    - {note}")
         console.print()
     else:
-        ep = ep_configured or "/chat"
+        # No SBOM — still route through the shared resolver (issue #532) so
+        # an unconfigured endpoint gets the same live-probe fallback-path
+        # discovery behavior/redteam use, instead of silently defaulting to
+        # "/chat" and reporting a resulting 404 as "verified". Account/
+        # golden-data pre-scan discovery below stays SBOM-gated — that's a
+        # separate capability from endpoint discovery.
+        from nuguard.common.session_resolver import resolve_target_session
+
         console.print("[bold]API Endpoint[/bold]")
-        console.print(f"  Path:          {ep}")
         console.print(
-            "  [dim]No SBOM available — chat-endpoint auto-discovery and account/golden-data "
-            "discovery skipped. Pass --sbom (or set sbom: in nuguard.yaml) to enable.[/dim]"
+            "  [dim]No SBOM available — account/golden-data discovery skipped. "
+            "Pass --sbom (or set sbom: in nuguard.yaml) to enable.[/dim]"
         )
-        console.print()
 
         try:
-            _, report = await bootstrap_auth_runtime(
+            session_cfg, report = await resolve_target_session(
                 target_url=target_url,
-                endpoint=ep,
+                sbom=None,
                 auth_config=auth,
+                extra_headers=auth_runtime.initial_headers,
+                chat_path=ep_configured,
+                chat_payload_key=chat_payload_key,
+                chat_payload_list=chat_payload_list,
+                chat_payload_extras=chat_payload_extras,
+                chat_response_key=chat_response_key,
                 canary_config=canary_config,
                 config_path=config_path,
+                endpoint_explicit=bool(ep_configured),
+                payload_key_explicit="redteam_chat_payload_key" in configured_fields,
+                response_key_explicit="redteam_chat_response_key" in configured_fields,
             )
         except TargetUnavailableError as exc:
             console.print(f"[red]✗ Target unavailable:[/red] {exc}")
             raise typer.Exit(code=2)
+
+        console.print(f"  Path:          {session_cfg.chat_path}")
+        console.print(f"  Payload key:   {session_cfg.chat_payload_key!r}")
+        console.print(f"  Response key:  {session_cfg.chat_response_key!r}")
+        if session_cfg.resolution_notes:
+            console.print("  Notes:")
+            for note in session_cfg.resolution_notes:
+                console.print(f"    - {note}")
+        console.print()
 
     # Pre-scan discovery: connect as the authenticated user and extract their
     # real account/name and reference IDs — same conversation used by 'behavior'
@@ -343,6 +366,7 @@ async def _verify_async(
         "ok": "green",
         "auth_failed": "red",
         "target_unavailable": "red",
+        "endpoint_not_found": "red",
         "skipped": "dim",
     }
 
@@ -358,6 +382,8 @@ async def _verify_async(
         detail_cell = check.error_detail[:60] if check.error_detail else ""
         if not detail_cell and check.body_warning:
             detail_cell = f"[yellow]⚠ {check.body_warning[:60]}[/yellow]"
+        if not detail_cell and check.payload_hint:
+            detail_cell = f"[yellow]⚠ {check.payload_hint[:60]}[/yellow]"
 
         if check.identity == "default":
             identity_extra = ""
@@ -410,6 +436,20 @@ async def _verify_async(
                 )
                 if hint is not None:
                     console.print(f"   [yellow]{hint}[/yellow]")
+            elif f.status == "endpoint_not_found":
+                if f.http_status_code == 405:
+                    console.print(
+                        f"  → [cyan]{f.identity}[/cyan]: endpoint exists at {f.endpoint} but "
+                        f"rejected the HTTP method NuGuard uses for chat requests (POST). "
+                        f"This route may not be the right chat endpoint — check "
+                        f"target_endpoint in nuguard.yaml."
+                    )
+                else:
+                    console.print(
+                        f"  → [cyan]{f.identity}[/cyan]: endpoint not found (HTTP 404) at "
+                        f"{f.endpoint}. Set --endpoint, target_endpoint in nuguard.yaml, "
+                        f"or pass --sbom to enable auto-discovery."
+                    )
             else:
                 console.print(
                     f"  → [cyan]{f.identity}[/cyan]: target unreachable. "

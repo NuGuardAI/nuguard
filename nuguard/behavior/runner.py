@@ -807,6 +807,12 @@ class BehaviorRunner:
         self._auth_session: Any = None
         self._target_session_config: Any = None
         self._target_session_resolution_attempted = False
+        # Health report from the shared resolver (see _resolve_target_session_once),
+        # checked on every _build_client() call — not just the first — so a bad
+        # default-credential status is caught regardless of which public method
+        # (discover(), probe_tool_families(), run(), a standalone public_api call)
+        # happens to trigger resolution first. See _raise_if_default_credential_unusable.
+        self.health_report: Any = None
         self._coverage_mapping_diagnostics: dict[str, Any] = {}
         # Escalation-ladder state (behavior.escalate_on_refusal): component name
         # -> classified RefusalReason value (or "systemic_deflection"), populated
@@ -903,7 +909,7 @@ class BehaviorRunner:
                 cookie_file=getattr(auth, "cookie_file", ""),
             )
         try:
-            session_cfg, _health = await resolve_target_session(
+            session_cfg, health_report = await resolve_target_session(
                 target_url=getattr(self._config, "target", "") or "",
                 sbom=self._sbom,
                 auth_config=auth_config,
@@ -926,11 +932,52 @@ class BehaviorRunner:
         self._target_session_config = session_cfg
         self._auth_session = session_cfg.auth_session
         self._resolved_target_url = session_cfg.base_url
+        self.health_report = health_report
+
+    def _raise_if_default_credential_unusable(self) -> None:
+        """Raise if the shared resolver's health check found the default credential unusable.
+
+        Called on every ``_build_client()`` invocation, not gated by
+        ``_resolve_target_session_once``'s one-shot resolution flag. Resolution
+        itself only ever runs once (see that method), but the check here must
+        re-run every call: ``discover()`` and ``probe_tool_families()``
+        deliberately swallow a ``_build_client()`` failure as non-fatal, so if
+        this check only ran on the first call, whichever of those methods
+        happens to run first would silently absorb it and — because of the
+        one-shot flag — it would never be re-evaluated when ``run()`` later
+        calls ``_build_client()`` itself, the one caller that must not proceed
+        against a target it already knows can't authenticate or doesn't have
+        the configured route.
+        """
+        if self.health_report is None or not self.health_report.checks:
+            return
+        default_check = self.health_report.checks[0]
+        if default_check.status == "auth_failed":
+            from nuguard.common.errors import AuthError
+
+            raise AuthError(
+                f"Auth failed for identity '{default_check.identity}' "
+                f"(HTTP {default_check.http_status_code}): {default_check.error_detail}",
+                status_code=default_check.http_status_code or 0,
+                identity=default_check.identity,
+                detail=default_check.error_detail,
+            )
+        if default_check.status == "endpoint_not_found":
+            from nuguard.common.errors import TargetEndpointNotFoundError
+
+            raise TargetEndpointNotFoundError(
+                f"Endpoint not found for identity '{default_check.identity}' "
+                f"(HTTP {default_check.http_status_code}): {default_check.error_detail}",
+                url=default_check.endpoint,
+                http_status_code=default_check.http_status_code or 0,
+                detail=default_check.error_detail,
+            )
 
     async def _build_client(self) -> Any:
         """Build the TargetAppClient from config, with auth bootstrap and health check."""
         await self._resolve_target_session_once()
         if self._target_session_config is not None:
+            self._raise_if_default_credential_unusable()
             from nuguard.common.target_client_builder import build_target_app_client_from_session
 
             return build_target_app_client_from_session(
@@ -1032,11 +1079,25 @@ class BehaviorRunner:
                     identity=default_check.identity,
                     detail=default_check.error_detail,
                 )
+            if default_check and default_check.status == "endpoint_not_found":
+                from nuguard.common.errors import TargetEndpointNotFoundError
+
+                raise TargetEndpointNotFoundError(
+                    f"Endpoint not found for identity '{default_check.identity}' "
+                    f"(HTTP {default_check.http_status_code}): {default_check.error_detail}",
+                    url=default_check.endpoint,
+                    http_status_code=default_check.http_status_code or 0,
+                    detail=default_check.error_detail,
+                )
             bootstrap_headers = bootstrapper.session.headers()
             self._auth_session = bootstrapper.session
         except AuthError:
             raise
         except Exception as exc:
+            from nuguard.common.errors import TargetEndpointNotFoundError
+
+            if isinstance(exc, TargetEndpointNotFoundError):
+                raise
             _log.debug("_build_client: bootstrap skipped: %s", exc)
             bootstrap_headers = getattr(runtime, "initial_headers", {}) or {}
 

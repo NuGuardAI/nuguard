@@ -4805,6 +4805,7 @@
           "ok",
           "auth_failed",
           "target_unavailable",
+          "endpoint_not_found",
           "skipped"
         ],
         "title": "Status",
@@ -4849,6 +4850,18 @@
         ],
         "default": null,
         "title": "Error Detail"
+      },
+      "payload_hint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Payload Hint"
       }
     },
     "required": [
@@ -5115,6 +5128,7 @@
               "ok",
               "auth_failed",
               "target_unavailable",
+              "endpoint_not_found",
               "skipped"
             ],
             "title": "Status",
@@ -5159,6 +5173,18 @@
             ],
             "default": null,
             "title": "Error Detail"
+          },
+          "payload_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Payload Hint"
           }
         },
         "required": [
@@ -6602,6 +6628,7 @@
               "ok",
               "auth_failed",
               "target_unavailable",
+              "endpoint_not_found",
               "skipped"
             ],
             "title": "Status",
@@ -6644,6 +6671,11 @@
           "body_warning": {
             "default": "",
             "title": "Body Warning",
+            "type": "string"
+          },
+          "payload_hint": {
+            "default": "",
+            "title": "Payload Hint",
             "type": "string"
           },
           "checked_at": {
@@ -8184,6 +8216,7 @@
               "ok",
               "auth_failed",
               "target_unavailable",
+              "endpoint_not_found",
               "skipped"
             ],
             "title": "Status",
@@ -8226,6 +8259,11 @@
           "body_warning": {
             "default": "",
             "title": "Body Warning",
+            "type": "string"
+          },
+          "payload_hint": {
+            "default": "",
+            "title": "Payload Hint",
             "type": "string"
           },
           "checked_at": {
