@@ -58,6 +58,12 @@ class ReportMeta:
             d["finding_triggers"] = self.finding_triggers
         return d
 
+    @staticmethod
+    def _display_source(source: str) -> str:
+        if source == "enriched_sbom_cache":
+            return "enriched_sbom(cache: previous live_verified)"
+        return source
+
     def to_markdown_lines(self) -> list[str]:
         llm_str = ", ".join(self.llm_models) if self.llm_models else "not used"
         lines = [
@@ -68,8 +74,9 @@ class ReportMeta:
             lines.append(f"**Target:** `{self.target_full_url}`  ")
             endpoint = self.effective_endpoint or self.target_endpoint or ""
             if endpoint:
+                source_display = self._display_source(self.target_endpoint_source)
                 lines.append(
-                    f"**Effective Endpoint:** `{endpoint}` (source: {self.target_endpoint_source})  "
+                    f"**Effective Endpoint:** `{endpoint}` (source: {source_display})  "
                 )
         for note in self.endpoint_discovery_notes:
             lines.append(f"**Endpoint Note:** {note}  ")
