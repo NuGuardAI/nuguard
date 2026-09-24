@@ -243,11 +243,16 @@ async def check_endpoint_liveness(
     :func:`_cached_liveness_is_fresh`) is not re-probed at all — this is what
     lets a redteam run after a behavior run (or vice versa) skip repeating the
     same live network round-trips, once both read/write the same enriched
-    SBOM. When *sbom_path* is also given and at least one node's liveness was
-    freshly probed (not purely served from cache), the updated *sbom* is
-    persisted via :func:`~nuguard.common.auto_sbom_enricher.persist_liveness_sbom`
-    so the next run benefits from this one's results. Passing neither
-    parameter preserves the original always-probe, never-persist behavior.
+    SBOM. When *sbom_path* is also given and this sweep changed at least one
+    node's persisted state — either a fresh probe, or a skip that corrected a
+    stale ``operational`` value left over from before this method/path-param
+    filtering existed (or from any other run that couldn't have reached this
+    node) — the updated *sbom* is persisted via
+    :func:`~nuguard.common.auto_sbom_enricher.persist_liveness_sbom` so the
+    next run benefits from this one's results. A skip whose node was already
+    at ``operational=None`` writes nothing new and does not trigger a
+    persist on its own. Passing neither parameter preserves the original
+    always-probe, never-persist behavior.
 
     *auth_headers* is accepted for interface symmetry with other probe
     helpers in this package (e.g. :func:`~nuguard.common.endpoint_detection.live_probe.probe_chat_endpoints`)
@@ -274,13 +279,19 @@ async def check_endpoint_liveness(
 
     concurrent_nodes = []
     serial_nodes = []
-    any_freshly_probed = False
+    # True once this sweep has changed something worth writing back to the
+    # enriched SBOM — either a fresh network probe, or a skip that corrected
+    # a stale operational value. A skip on a node already at operational=None
+    # is a no-op and does not set this (nothing changed to persist).
+    any_state_changed = False
     for node in endpoint_nodes:
         meta = node.metadata
         if not _looks_like_rest_path(meta.endpoint):
             report.skipped += 1
             note = f"{node.name}: skipped (not an HTTP path — bind address / MCP-SSE annotation)."
             report.notes.append(note)
+            if meta.operational is not None:
+                any_state_changed = True
             meta.operational = None
             meta.liveness_notes = [note]
             continue
@@ -289,6 +300,8 @@ async def check_endpoint_liveness(
             report.skipped += 1
             note = f"{node.name}: skipped ({_skip_reason})."
             report.notes.append(note)
+            if meta.operational is not None:
+                any_state_changed = True
             meta.operational = None
             meta.liveness_notes = [note]
             continue
@@ -314,13 +327,13 @@ async def check_endpoint_liveness(
     semaphore = asyncio.Semaphore(max(1, max_concurrent))
 
     async def _run(node: object) -> None:
-        nonlocal any_freshly_probed
+        nonlocal any_state_changed
         meta = node.metadata  # type: ignore[attr-defined]
         operational, note = await _ping_one(client, meta, per_endpoint_timeout=per_endpoint_timeout)
         meta.operational = operational
         meta.liveness_checked_at = _now_iso()
         meta.liveness_notes = [note]
-        any_freshly_probed = True
+        any_state_changed = True
         report.checked += 1
         if operational:
             report.operational += 1
@@ -336,7 +349,7 @@ async def check_endpoint_liveness(
     for node in serial_nodes:
         await _run(node)
 
-    if sbom_path is not None and any_freshly_probed:
+    if sbom_path is not None and any_state_changed:
         from nuguard.common.auto_sbom_enricher import persist_liveness_sbom  # noqa: PLC0415
 
         try:

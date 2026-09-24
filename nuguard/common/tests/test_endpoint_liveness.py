@@ -1,12 +1,17 @@
 """Unit tests for nuguard/common/endpoint_liveness.py."""
 from __future__ import annotations
 
+import json
 import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from nuguard.common.auto_sbom_enricher import enriched_sbom_artifact_path, persist_liveness_sbom
 from nuguard.common.endpoint_liveness import _probe_decision, check_endpoint_liveness
+from nuguard.common.endpoint_scenario_gate import should_skip_direct_http_scenario
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
 
@@ -341,3 +346,145 @@ async def test_liveness_notes_populated_for_structurally_skipped_node_too() -> N
 
     assert node.metadata.liveness_notes
     assert "bind address" in node.metadata.liveness_notes[0]
+
+
+# ── Issue #555 layer 3: a skip-triggered correction must reach disk ────────
+# The in-memory reset to operational=None on every skip was always correct,
+# but persistence only fired when a *live network probe* happened
+# (any_freshly_probed). A sweep whose only work is correcting a stale
+# True/False on a mutating endpoint — because every other node is either
+# already cache-fresh or also skipped — never triggered a live probe, so the
+# correction silently never reached the enriched SBOM on disk. Any later
+# process that reads the enriched SBOM directly (a report generator, a
+# subsequent run) would keep seeing the stale, incorrect value forever.
+
+
+def _read_enriched_operational(sbom_path: Path, endpoint_name: str) -> Any:
+    raw = json.loads(enriched_sbom_artifact_path(sbom_path).read_text())
+    for n in raw["nodes"]:
+        if n["name"] == endpoint_name:
+            return n["metadata"].get("operational")
+    raise AssertionError(f"{endpoint_name!r} not found in persisted SBOM")
+
+
+@pytest.mark.asyncio
+async def test_skip_only_correction_is_persisted_even_with_no_fresh_probe(tmp_path: Path) -> None:
+    sbom_path = tmp_path / "fake_app.sbom.json"
+
+    # A stale enriched SBOM on disk: a DELETE endpoint incorrectly marked
+    # operational=True by a pre-#555 sweep, alongside a GET endpoint that is
+    # already cache-fresh — so this run's sweep has nothing that needs a live
+    # network probe at all.
+    delete_node = _node("/api/users/me", method="DELETE")
+    delete_node.metadata.operational = True
+    delete_node.metadata.liveness_checked_at = "2020-01-01T00:00:00+00:00"
+
+    get_node = _node("/api/status", method="GET")
+    get_node.metadata.operational = True
+    get_node.metadata.liveness_checked_at = datetime.now(timezone.utc).isoformat()
+
+    sbom = _sbom(delete_node, get_node)
+    persist_liveness_sbom(sbom, sbom_path)
+    assert _read_enriched_operational(sbom_path, "/api/users/me") is True
+
+    client = _FakeClient({"/api/status": (200, "OK", {})})
+    report = await check_endpoint_liveness(sbom, client, ttl_seconds=3600.0, sbom_path=sbom_path)
+
+    assert client.calls == []  # no network call for either node
+    assert report.checked == 0
+    assert delete_node.metadata.operational is None  # in-memory correction (already worked before this fix)
+    assert _read_enriched_operational(sbom_path, "/api/users/me") is None  # ...now also on disk
+
+
+@pytest.mark.asyncio
+async def test_no_persist_when_nothing_actually_changed(tmp_path: Path) -> None:
+    # A mutating endpoint already at operational=None (the terminal, correct
+    # state) plus an already cache-fresh safe endpoint: nothing in this sweep
+    # changes, so no write should happen at all — persisting on every no-op
+    # sweep would make the sbom_path convenience wrapper needlessly re-write
+    # the artifact on every single run forever.
+    sbom_path = tmp_path / "fake_app.sbom.json"
+
+    delete_node = _node("/api/users/me", method="DELETE")
+    delete_node.metadata.operational = None
+
+    get_node = _node("/api/status", method="GET")
+    get_node.metadata.operational = True
+    get_node.metadata.liveness_checked_at = datetime.now(timezone.utc).isoformat()
+
+    sbom = _sbom(delete_node, get_node)
+    persist_liveness_sbom(sbom, sbom_path)
+    written_path = enriched_sbom_artifact_path(sbom_path)
+    mtime_before = written_path.stat().st_mtime_ns
+
+    client = _FakeClient({"/api/status": (200, "OK", {})})
+    await check_endpoint_liveness(sbom, client, ttl_seconds=3600.0, sbom_path=sbom_path)
+
+    assert written_path.stat().st_mtime_ns == mtime_before  # untouched
+
+
+@pytest.mark.asyncio
+async def test_fresh_probe_alongside_skip_correction_still_persists_both(tmp_path: Path) -> None:
+    # Regression guard for the pre-existing (already-working) path: a fresh
+    # probe on one node must still trigger persistence of everything,
+    # including a skip-correction on an unrelated node in the same sweep.
+    sbom_path = tmp_path / "fake_app.sbom.json"
+
+    delete_node = _node("/api/users/me", method="DELETE")
+    delete_node.metadata.operational = True
+    delete_node.metadata.liveness_checked_at = "2020-01-01T00:00:00+00:00"
+
+    get_node = _node("/api/status", method="GET")  # not cached — will be freshly probed
+
+    sbom = _sbom(delete_node, get_node)
+    persist_liveness_sbom(sbom, sbom_path)
+
+    client = _FakeClient({"/api/status": (200, "OK", {})})
+    report = await check_endpoint_liveness(sbom, client, ttl_seconds=3600.0, sbom_path=sbom_path)
+
+    assert client.calls == [("GET", "/api/status")]
+    assert report.checked == 1
+    assert _read_enriched_operational(sbom_path, "/api/users/me") is None
+    assert _read_enriched_operational(sbom_path, "/api/status") is True
+
+
+# ── Issue #555 layer 4: downstream consumer wiring ──────────────────────────
+# should_skip_direct_http_scenario is the single decision point both behavior
+# and redteam scenario generation use to decide whether to attack an
+# endpoint. This proves the actual pipeline connection end to end — real
+# check_endpoint_liveness output feeding the real gate function — not just
+# each half of the contract verified in isolation (which
+# nuguard/common/tests/test_endpoint_scenario_gate.py already covers for the
+# gate side, and the tests above cover for the sweep side).
+
+
+@pytest.mark.asyncio
+async def test_mutating_endpoint_never_probed_still_generates_scenarios() -> None:
+    node = _node("/api/users/me", method="DELETE")
+    sbom = _sbom(node)
+    client = _FakeClient({"/api/users/me": (200, "OK", {})})
+
+    await check_endpoint_liveness(sbom, client)
+
+    assert node.metadata.operational is None
+    skip, reason = should_skip_direct_http_scenario(node.metadata)
+    assert skip is False
+    assert reason is None
+
+
+@pytest.mark.asyncio
+async def test_confirmed_dead_safe_endpoint_still_skips_scenarios() -> None:
+    # Contrast case: a *safe* endpoint that the sweep actually confirmed dead
+    # (operational=False) must still gate scenario generation off, same as
+    # before this fix — the fix only changes what happens to mutating
+    # endpoints, not the meaning of a confirmed-dead result.
+    node = _node("/api/status", method="GET")
+    sbom = _sbom(node)
+    client = _FakeClient({"/api/status": (404, "not found", {})})
+
+    await check_endpoint_liveness(sbom, client)
+
+    assert node.metadata.operational is False
+    skip, reason = should_skip_direct_http_scenario(node.metadata)
+    assert skip is True
+    assert reason is not None and "non-operational" in reason
