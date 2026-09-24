@@ -2,6 +2,23 @@
 
 Track user-facing documentation updates here, especially changes to CLI behavior, workflows, and troubleshooting guidance.
 
+## v0.9.8 - 2026-09-23
+
+### Added
+- A source-first Getting Started workflow covering static scans, sandbox target verification, runtime test selection, CI gates, and coding-agent integration.
+- Light and dark workflow visuals aligned with the NuGuard documentation theme.
+- Documentation for bounded, explicitly authorized cloud pentesting and low-code workflow export scanning in the primary docs navigation.
+
+### Changed
+- The Quick Start and AI Developer Guide are merged into one canonical Getting Started guide; the former AI Developer Guide URL now points readers to it.
+- Quick-start and homepage content now reflect 125 adversarial scenarios, the `pentest` command, Go/C# scanning, and n8n, Langflow, Flowise, and Copilot Studio exports.
+- The AI-SBOM schema guide now documents Java framework extraction, Maven and Gradle dependency manifests, ecosystem-specific PURLs, and login-token response-key metadata.
+- Coding-agent setup now uses the scoped `@nuguardai/nuguard` npm launcher and describes Claude, VS Code, Cursor, Windsurf, Cline, and other MCP clients.
+- Offline language now distinguishes the LLM-optional deterministic core from vulnerability providers and scanner updates that can use the network.
+
+### Fixed
+- Corrected stale MCP launcher examples and clarified which registered test-run management commands remain placeholders.
+
 ## v0.8.8 - 2026-07-22
 
 ### Fixed
