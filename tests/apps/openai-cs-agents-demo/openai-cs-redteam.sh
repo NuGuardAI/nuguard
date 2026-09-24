@@ -69,13 +69,18 @@ echo "---"
 echo "Running pentest ..."
 
 # pentest tests exit 2 when findings are present — expected in testing; treat as non-fatal.
+# --use-sbom-endpoints is no longer needed explicitly: it now controls the
+# SBOM-synthesized OpenAPI fallback for DAST (see openapi_input.py) and
+# defaults to on whenever nuguard.yaml's 'sbom:' is set, which it is here.
+# --profile standard is safe for this sandbox target and surfaces the
+# exposure/misconfig/tech-detection templates the 'safe' profile skips.
 uv run nuguard pentest  \
   --config "$SCRIPT_DIR/nuguard.yaml" \
   --acknowledge-authorization \
   --allow-dynamic-auth \
   --allow-active-fuzzing \
   --allow-headless-browser \
-  --use-sbom-endpoints \
+  --profile standard \
   --format markdown \
   --output "$SCRIPT_DIR/reports/openai-cs-pentest.md" || true
 

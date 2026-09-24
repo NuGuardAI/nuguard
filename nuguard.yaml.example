@@ -529,6 +529,9 @@ redteam:
 #
 #   # Enables Nuclei's DAST/fuzzing templates and stops excluding the
 #   # fuzz/intrusive tags. Sends materially more, more intrusive requests.
+#   # Fuzzing needs real request shapes (query/path params, JSON bodies) to
+#   # do anything useful — see openapi_spec/use_live_openapi/
+#   # use_sbom_endpoints below for where that input comes from.
 #   allow_active_fuzzing: false
 #
 #   # Enables Nuclei's headless-browser templates: executes page JavaScript in
@@ -536,10 +539,21 @@ redteam:
 #   # storage.googleapis.com on first use; refused when running as root.
 #   allow_headless_browser: false
 #
-#   # Expands the scanned target list with every parameter-free API endpoint
-#   # path discovered in the SBOM (sbom: above), one Nuclei -list entry per
-#   # endpoint alongside target.url. Requires sbom: to be set.
-#   use_sbom_endpoints: false
+#   # OpenAPI document driving allow_active_fuzzing's DAST pass with real
+#   # request shapes instead of bare target URLs. Resolved in priority order:
+#   # 1. openapi_spec below, if set.
+#   # 2. The target's own live spec (e.g. /openapi.json), when
+#   #    use_live_openapi is true (the default).
+#   # 3. A spec synthesized from the SBOM's discovered API endpoints (sbom:
+#   #    above), when use_sbom_endpoints is true (default: on whenever sbom:
+#   #    is set). This is the fallback for targets whose docs routes are
+#   #    disabled — an SBOM is not required when the target serves its own
+#   #    live spec.
+#   # Every source is pinned to the validated target before use, so an
+#   # untrusted live document can never redirect the scanner to another host.
+#   openapi_spec: ./openapi.json
+#   use_live_openapi: true
+#   use_sbom_endpoints: true
 
 # ─── Static analysis ──────────────────────────────────────────────────────────
 analyze:
