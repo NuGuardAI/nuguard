@@ -18,6 +18,7 @@
   <a href="#framework-coverage">Framework coverage</a> ·
   <a href="#comparison">Comparison</a> ·
   <a href="#getting-started">Getting started</a> ·
+  <a href="https://nuguardai.github.io/nuguard/">Documentation</a> ·
   <a href="#faq">FAQ</a>
 </p>
 
@@ -48,24 +49,17 @@ A real scan of a live fintech agent — Pinnacle Bank Assistant — walking thro
 
 ## Framework Coverage
 
-NuGuard's AI-SBOM extractor understands framework-specific code, not just generic regex — it recognizes agent/tool/model declarations natively across:
+NuGuard uses framework-aware adapters and structured configuration parsers to map the AI application stack into one evidence-backed AI-SBOM.
 
-| Language | Frameworks |
+| Area | High-level coverage |
 |---|---|
-| **Python** | LangChain, LangGraph, OpenAI Agents SDK, CrewAI (code + YAML), AutoGen (code + YAML), Google ADK, LlamaIndex, Agno, AWS BedrockAgentCore, Azure AI Agent Service, Azure Semantic Kernel, Guardrails AI, MCP Server (FastMCP + low-level) |
-| **TypeScript / JavaScript** | LangChain.js, LangGraph.js, OpenAI Agents (TS), Azure AI Agents (TS), Agno (TS), MCP Server (TS) |
-| **Go** | LangChainGo, Eino, Genkit, Anthropic SDK, OpenAI SDK, Google GenAI, MCP Server, net/http, Gorilla Mux, gqlgen |
-| **C#** | Azure Semantic Kernel, ASP.NET Core, ML.NET |
+| **Languages** | Python, TypeScript/JavaScript, Go, C#, and Java, plus structured configuration and infrastructure formats |
+| **AI and agentic stack** | Major agent frameworks, model-provider SDKs, MCP servers/clients, prompts, tools, guardrails, auth, and API endpoints |
+| **Low-code / no-code** | n8n, Langflow, Flowise, Microsoft Copilot Studio, and Sparkflows exports |
+| **Cloud and delivery** | AWS, Azure, Google Cloud, Kubernetes, Helm, Docker, Terraform, CloudFormation, Bicep, Deployment Manager, and GitHub Actions |
+| **Data layer** | Relational, document, key-value, vector, search, warehouse, and object-storage technologies |
 
-Beyond the AI stack itself, the supply-chain/infrastructure analysis covers:
-
-| Category | Coverage |
-|---|---|
-| **Infrastructure & Configuration** | Terraform, CloudFormation, Azure Bicep, Kubernetes manifests, GCP Deployment Manager, GitHub Actions, Dockerfiles, Nginx configs |
-| **Data & Storage** | SQL schemas (PHI/PII classification), SQLAlchemy models, Django models, Pydantic models, prompt files (`.txt`/`.md`/`.jinja`) |
-| **Output formats** | SARIF, CycloneDX, SPDX, Markdown |
-
-See the [full supported technologies matrix](../documentation/docs/supported-technologies.md) for languages, AI SDKs, low-code platforms, cloud, Kubernetes, and datastores.
+See the [Supported Technologies documentation](https://nuguardai.github.io/nuguard/doc.html?page=supported-technologies) for the detailed language, framework, SDK, platform, Kubernetes, and datastore matrix.
 
 ## Comparison
 
@@ -178,7 +172,9 @@ Filter by profile (CI, Standard, Full), and configure destructive or non-destruc
 
 <sub>
 <strong>Docs:</strong>
+<a href="https://nuguardai.github.io/nuguard/">Published documentation</a> ·
 <a href="../documentation/docs/quick-start.md">Getting started / Quick start</a> ·
+<a href="../documentation/docs/supported-technologies.md">Supported technologies</a> ·
 <a href="../documentation/docs/cli-reference.md">CLI reference</a> ·
 <a href="../documentation/docs/policy-engine-guide.md">Policy engine</a> ·
 <a href="../documentation/docs/static-analysis-guide.md">Static analysis</a> ·
