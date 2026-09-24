@@ -288,22 +288,43 @@ def scan(
                 import asyncio as _asyncio  # noqa: PLC0415
 
                 from nuguard.cli.commands.redteam import _run_redteam  # noqa: PLC0415
-                (
-                    _rt_findings, _rt_records, _rt_outcome, _rt_notes, _, _, _, _, _, _, _, _
-                ) = _asyncio.run(
-                    _run_redteam(
-                        sbom_doc=sbom_doc,
-                        sbom_path=sbom_path if sbom_path else None,
-                        config_path=None,
-                        policy_path=Path(policy) if policy else None,
-                        target_url=_redteam_target,
-                        canary_path=None,
-                        profile="ci",
-                        min_impact_score=3.0,
+                from nuguard.common.run_checkpoint import PartialRunError  # noqa: PLC0415
+                try:
+                    (
+                        _rt_findings, _rt_records, _rt_outcome, _rt_notes, _, _, _, _, _, _, _, _
+                    ) = _asyncio.run(
+                        _run_redteam(
+                            sbom_doc=sbom_doc,
+                            sbom_path=sbom_path if sbom_path else None,
+                            config_path=None,
+                            policy_path=Path(policy) if policy else None,
+                            target_url=_redteam_target,
+                            canary_path=None,
+                            profile="ci",
+                            min_impact_score=3.0,
+                        )
                     )
-                )
-                for _note in _rt_notes:
-                    typer.echo(f"    ⚠ {_note}", err=True)
+                except PartialRunError as _pre:
+                    # Issue #508 salvage path: the redteam run aborted after
+                    # >=1 scenario completed. Unlike the standalone `nuguard
+                    # redteam` command, don't discard those findings — surface
+                    # whatever was salvaged instead of losing them to the
+                    # generic `except Exception` below.
+                    _partial = _pre.partial_result
+                    if _partial is None:
+                        raise
+                    _rt_findings = _partial.findings
+                    _rt_outcome = _partial.scan_outcome
+                    typer.echo(
+                        f"    ⚠ Red-team step aborted, salvaged partial results: {_pre.cause}",
+                        err=True,
+                    )
+                    if _pre.checkpoint_path:
+                        typer.echo(
+                            f"      Checkpoint saved: {_pre.checkpoint_path} "
+                            "(resume with 'nuguard redteam --resume')",
+                            err=True,
+                        )
                 typer.echo(
                     f"    ✓ Red-team complete: {len(_rt_findings)} finding(s) (outcome: {_rt_outcome})"
                 )

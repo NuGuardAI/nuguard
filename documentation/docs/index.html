@@ -14,9 +14,9 @@
       gtag('config', 'G-W0YCF4LTEJ');
     </script>
     <!-- Primary SEO -->
-    <title>NuGuard — AI Application Security Suite | SBOM · Static Analysis · Policy · Red-Team</title>
+    <title>NuGuard — AI Application Security | SBOM · Analysis · Red-Team · Pentest</title>
     <meta name="description"
-        content="NuGuard is an open-source security suite for agentic AI applications. AI-SBOM generation, static risk analysis, cognitive policy enforcement, and SBOM-driven dynamic red-teaming. 20+ frameworks. Fully offline core. Apache-2.0." />
+        content="NuGuard is an open-source security suite for agentic AI applications: AI-SBOM generation, static analysis, policy enforcement, behavior testing, red-teaming, and authorized web pentesting. LLM-optional core. Apache-2.0." />
     <meta name="keywords"
         content="AI security, agentic AI security, AI SBOM, AI Bill of Materials, LLM security, red team AI, prompt injection testing, OWASP LLM Top 10, NIST AI RMF, EU AI Act, AI governance, CycloneDX, SARIF, SPDX, MCP security, LangChain security, open source AI security, AI vulnerability scanning, AI compliance, CISO AI, CTO AI security" />
     <meta name="author" content="NuGuard AI" />
@@ -28,7 +28,7 @@
     <meta property="og:url" content="./" />
     <meta property="og:title" content="NuGuard — AI Application Security Suite" />
     <meta property="og:description"
-        content="End-to-end security for agentic AI applications. AI-SBOM generation, static analysis, cognitive policy enforcement, and SBOM-driven red-teaming — in one open-source pipeline." />
+        content="End-to-end security for agentic AI applications: AI-SBOM generation, static analysis, policy enforcement, behavior testing, red-teaming, and authorized web pentesting." />
     <meta property="og:image" content="nuguard-logo.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
@@ -39,7 +39,7 @@
     <meta name="twitter:site" content="@nuguardai" />
     <meta name="twitter:title" content="NuGuard — AI Application Security Suite" />
     <meta name="twitter:description"
-        content="AI-SBOM · Static Analysis · Cognitive Policy · Red-Team — one pipeline, 20+ frameworks, fully offline core. Apache-2.0." />
+        content="AI-SBOM · Static Analysis · Policy · Behavior · Red-Team · Pentest — one open-source security suite with an LLM-optional core." />
     <meta name="twitter:image" content="nuguard-logo.png" />
 
     <!-- Structured Data -->
@@ -50,7 +50,7 @@
       "name": "NuGuard ",
       "alternateName": "AI Application Security Suite by NuGuard AI",
       "url": "./",
-      "description": "Open-source end-to-end security platform for agentic AI applications: AI-SBOM generation, static risk analysis, cognitive policy enforcement, and SBOM-driven dynamic red-teaming.",
+      "description": "Open-source security for agentic AI applications: AI-SBOM generation, static analysis, cognitive policy enforcement, behavior testing, red-teaming, and explicitly authorized web pentesting.",
       "applicationCategory": "SecurityApplication",
       "operatingSystem": "Linux, macOS, Windows",
       "offers": {
@@ -115,6 +115,8 @@
             <li><a href="#for-whom">For Whom</a></li>
             <li><a href="#behavior">Behavior</a></li>
             <li><a href="#redteam">Red-Team</a></li>
+            <li><a href="#pentest">Pentest</a></li>
+            <li><a href="#frameworks">Ecosystem</a></li>
             <li><a href="doc.html?page=quick-start">Docs</a></li>
             <li><a href="https://github.com/NuGuardAI/nuguard" class="nav-icon-link" aria-label="GitHub"><svg width="20"
                         height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -139,10 +141,11 @@
 
                     <ul class="hero-list">
                         <li><strong class="accent">AI-SBOM</strong>   — map every agent, model, tool, and datastore from source code</li>
-                        <li><strong class="accent">Static Analysis</strong>  — AI Stack analysis, MITRE ATLAS, CVEs, IaC misconfigurations</li>
+                        <li><strong class="accent">Deep Analysis</strong>  — AI stack analysis, Semgrep, Checkov, MITRE ATLAS, CVEs, and IaC misconfigurations</li>
                         <li><strong class="accent">Cognitive Policy</strong> — document and enforce behavioral intent</li>
                         <li><strong class="accent">Behavior Validation</strong> — ensure AI agents and MCP tools act as intended</li>
                         <li><strong class="accent">Red-Team</strong>  — offensive testing that exercises your sub-agents and MCP tools</li>
+                        <li><strong class="accent">Web Pentest</strong> — bounded conventional testing for explicitly authorized targets</li>
                     </ul>
 
                     <div class="hero-actions">
@@ -192,6 +195,7 @@
                                 </div>
                                 <div style="display:flex;flex-direction:column;gap:0.32rem;">
                                     <div style="font-size:0.68rem;color:var(--text-dim);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>Python · TypeScript</div>
+                                    <div style="font-size:0.68rem;color:var(--text-dim);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>Go · C#</div>
                                     <div style="font-size:0.68rem;color:var(--text-dim);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>Jupyter · SQL</div>
                                     <div style="font-size:0.68rem;color:var(--text-dim);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>Dockerfiles · K8s</div>
                                     <div style="font-size:0.68rem;color:var(--text-dim);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>YAML · Nginx</div>
@@ -244,7 +248,9 @@
                                 <div style="display:flex;flex-direction:column;gap:0.32rem;">
                                     <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>AI Safety &amp; Security Analysis</div>
                                     <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>MITRE ATLAS v2 mapping</div>
-                                    <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>CVE Scanning</div>
+                                    <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>Semgrep AI-security rules</div>
+                                    <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>Checkov IaC misconfigurations</div>
+                                    <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>CVE scanning · MITRE ATLAS</div>
                                 </div>
                             </div>
                         </div><!-- end column 1 -->
@@ -383,20 +389,20 @@
         <div class="container">
             <div class="stats-row">
                 <div class="stat">
-                    <div class="stat-value">4</div>
-                    <div class="stat-label">Integrated AI security capabilities</div>
+                    <div class="stat-value">6</div>
+                    <div class="stat-label">Integrated security capabilities</div>
                 </div>
                 <div class="stat">
                     <div class="stat-value">20+</div>
                     <div class="stat-label">AI frameworks supported</div>
                 </div>
                 <div class="stat">
-                    <div class="stat-value">100+</div>
-                    <div class="stat-label">Dynamically generated tests</div>
+                    <div class="stat-value">125</div>
+                    <div class="stat-label">Adversarial scenarios</div>
                 </div>
                 <div class="stat">
-                    <div class="stat-value">100%</div>
-                    <div class="stat-label">Air-gapped — LLM optional</div>
+                    <div class="stat-value">0</div>
+                    <div class="stat-label">LLM keys needed for core scans</div>
                 </div>
             </div>
         </div>
@@ -414,7 +420,7 @@
                 <div class="card">
                     <div class="card-icon" style="background: rgba(88,196,220,0.12);">🤖</div>
                     <h3>Agents</h3>
-                    <p>Frameworks like LangGraph, Claude Agent SDK, AutoGen, OpenAI Agents SDK, Google ADK, AWS BedrockAgentCore, Azure Agent SDK, Agno, CrewAI,and more.</p>
+                    <p>Frameworks like LangGraph, Claude Agent SDK, AutoGen, OpenAI Agents SDK, Google ADK, AWS BedrockAgentCore, Azure Agent SDK, Agno, CrewAI, and more.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(188,140,255,0.12);">🧠</div>
@@ -580,6 +586,44 @@
         </div>
     </section>
 
+    <!-- Authorized web pentesting -->
+    <section id="pentest" style="border-top: 1px solid var(--border);">
+        <div class="container">
+            <div class="section-label">Authorized Web Pentest</div>
+            <h2 style="max-width: 720px;">Test the application surface, with guardrails</h2>
+            <p style="max-width: 760px; margin-bottom: 2.5rem;">
+                NuGuard complements AI-specific testing with bounded conventional HTTP/HTTPS
+                pentesting for targets you own or are explicitly authorized to assess.
+                Active testing is opt-in and separate from source analysis.
+            </p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;">
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-top:3px solid #f85149;border-radius:12px;padding:1.75rem;">
+                    <h3 style="margin:0 0 1rem;color:var(--text);">Bounded HTTP scanning</h3>
+                    <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.45rem;">
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Nuclei-powered conventional web checks</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Safe profile by default, with bounded rate and timeouts</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Markdown, JSON, and SARIF reports with remediation</li>
+                    </ul>
+                </div>
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-top:3px solid #bc8cff;border-radius:12px;padding:1.75rem;">
+                    <h3 style="margin:0 0 1rem;color:var(--text);">Explicit authorization</h3>
+                    <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.45rem;">
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Requires an authorization acknowledgement</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Targets are validated before active traffic is sent</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Optional fuzzing and browser checks remain opt-in</li>
+                    </ul>
+                </div>
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-top:3px solid #58c4dc;border-radius:12px;padding:1.75rem;">
+                    <h3 style="margin:0 0 1rem;color:var(--text);">Run it when ready</h3>
+                    <pre style="margin:0;white-space:pre-wrap;color:var(--text-muted);font-size:0.8rem;"><span style="color:var(--accent);">$</span> nuguard pentest \
+    --target https://staging.example.com \
+    --acknowledge-authorization</pre>
+                </div>
+            </div>
+            <a href="doc.html?page=cloud-pentesting" class="btn-secondary" style="display:inline-flex;margin-top:1.5rem;">Read the pentesting guide →</a>
+        </div>
+    </section>
+
     <!-- Quickstart -->
     <section id="quickstart" class="band-surface">
         <div class="container">
@@ -588,19 +632,21 @@
                     <div class="section-label">Quickstart</div>
                     <h2>From install to security posture in minutes</h2>
                     <p style="margin-bottom: 1.5rem;">
-                        Developer-friendly security tool — AI-SBOM generation, Deep AI Stack Analysis, Cognitive Policy Enforcement —
+                        Developer-friendly security tool — AI-SBOM generation, deep source analysis, Cognitive Policy Enforcement —
                         requires minimal security expertise to get started.
                     </p>
                     <p style="margin-bottom: 2rem;">
                         Add <code style="font-family:var(--mono);font-size:0.85rem;color:var(--accent)">--llm</code> for LLM enrichment. Most features work out-of-the-box without an LLM key.
                     </p>
-                    <a href="doc.html?page=quick-start" class="btn-primary" style="display: inline-flex;">Full guide →</a>
+                    <a href="doc.html?page=quick-start" class="btn-primary" style="display: inline-flex;">Get Started →</a>
                     <a href="doc.html?page=plugin-guide" class="btn-secondary"
-                        style="display: inline-flex; margin-top: 0.75rem;">Plugin Guide (Claude) →</a>
+                        style="display: inline-flex; margin-top: 0.75rem;">Plugin &amp; MCP Guide →</a>
                     <a href="doc.html?page=behavior-guide" class="btn-secondary"
                         style="display: inline-flex; margin-top: 0.75rem;">Behavior Testing Guide →</a>
                     <a href="doc.html?page=redteam-guide" class="btn-secondary"
                         style="display: inline-flex; margin-top: 0.75rem;">Red Team Guide →</a>
+                    <a href="doc.html?page=cloud-pentesting" class="btn-secondary"
+                        style="display: inline-flex; margin-top: 0.75rem;">Cloud Pentesting Guide →</a>
                 </div>
 
                 <div class="code-window">
@@ -620,8 +666,8 @@ $ pip install nuguard
 <span class="hl-comment"># Generate AI-SBOM from source</span>
 $ nuguard sbom generate --source ./my-ai-app --output app.sbom.json
 
-<span class="hl-comment"># Static analysis (7 scanners, no running app needed)</span>
-$ nuguard analyze --sbom app.sbom.json --format markdown
+<span class="hl-comment"># Deep source analysis (Semgrep + Checkov when installed)</span>
+$ nuguard analyze --sbom app.sbom.json --source ./my-ai-app --format markdown
 
 <span class="hl-comment"># Behavior Validation</span>
 $ nuguard behavior --policy cognitive_policy.md \
@@ -692,6 +738,10 @@ jobs:
         <div class="container">
             <div class="section-label">Supported frameworks</div>
             <h2 style="margin-bottom: 2.5rem;">Deep support across the AI ecosystem</h2>
+            <p style="margin: -1.5rem 0 2rem; color: var(--text-muted);">
+                See the <a href="doc.html?page=supported-technologies">complete supported technologies matrix</a>
+                for languages, AI SDKs, workflow platforms, cloud, Kubernetes, and datastores.
+            </p>
 
             <div class="fw-section">
                 <h3>Python</h3>
@@ -751,6 +801,21 @@ jobs:
             </div>
 
             <div class="fw-section">
+                <h3>Java</h3>
+                <div class="fw-chips">
+                    <span class="fw-chip">Spring AI</span>
+                    <span class="fw-chip">LangChain4j</span>
+                    <span class="fw-chip">Quarkus LangChain4j</span>
+                    <span class="fw-chip">OpenAI Java</span>
+                    <span class="fw-chip">Azure OpenAI Java</span>
+                    <span class="fw-chip">AWS Bedrock</span>
+                    <span class="fw-chip">Google Gen AI</span>
+                    <span class="fw-chip">Spring MVC / WebFlux</span>
+                    <span class="fw-chip">JAX-RS</span>
+                </div>
+            </div>
+
+            <div class="fw-section">
                 <h3>Infrastructure &amp; Configuration</h3>
                 <div class="fw-chips">
                     <span class="fw-chip">Terraform</span>
@@ -762,6 +827,18 @@ jobs:
                     <span class="fw-chip">Dockerfiles</span>
                     <span class="fw-chip">Nginx configs</span>
                 </div>
+            </div>
+
+            <div class="fw-section">
+                <h3>Low-code &amp; No-code Workflow Exports</h3>
+                <div class="fw-chips">
+                    <span class="fw-chip">n8n</span>
+                    <span class="fw-chip">Langflow</span>
+                    <span class="fw-chip">Flowise</span>
+                    <span class="fw-chip">Microsoft Copilot Studio</span>
+                    <span class="fw-chip">Sparkflows</span>
+                </div>
+                <p style="margin:1rem 0 0;color:var(--text-muted);font-size:0.85rem;">Scan exported workflows without connecting to or executing the hosted platform. Credentials and secret-bearing values are redacted from evidence.</p>
             </div>
 
             <div class="fw-section">
@@ -824,8 +901,8 @@ jobs:
                 <span style="display:none;font-weight:600;font-size:0.95rem;color:var(--text-dim)">NuGuard</span>
             </div>
             <ul class="footer-links">
-                <li><a href="doc.html?page=quick-start">Quick Start</a></li>
-                <li><a href="doc.html?page=plugin-guide">Plugin Guide</a></li>
+                <li><a href="doc.html?page=quick-start">Getting Started</a></li>
+                <li><a href="doc.html?page=plugin-guide">Plugin &amp; MCP Guide</a></li>
                 <li><a href="https://github.com/NuGuardAI/nuguard" class="icon-link" aria-label="GitHub"><svg width="15"
                             height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                             <path

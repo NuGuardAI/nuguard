@@ -2,11 +2,16 @@
 
 NuGuard is a security suite for AI-powered and agentic applications.
 It covers the full security pipeline: AI Bill of Materials (AI-SBOM) generation,
-static risk analysis, cognitive policy enforcement, and dynamic adversarial red-teaming.
-The four capabilities share a single intermediate representation — the AI-SBOM — so every
-downstream step works from evidence derived directly from source code.
+static risk analysis, cognitive policy enforcement, behavior testing, dynamic adversarial
+red-teaming, and explicitly authorized web pentesting. The AI-specific capabilities share
+the AI-SBOM as their intermediate representation, so downstream tests work from evidence
+derived directly from source code. Pentest separately evaluates the conventional HTTP/HTTPS
+surface.
 
 License: Apache-2.0 · Built by NuGuard AI (https://nuguard.ai/)
+
+Start here for an implementation-oriented path: quick-start.md
+Technology coverage matrix: supported-technologies.md
 
 ---
 
@@ -26,9 +31,14 @@ nuguard policy check           Cognitive Policy linting and compliance assessmen
         │
         ▼
 nuguard redteam                Dynamic adversarial testing against the live application
+
+Authorized web target
+        │
+        ▼
+nuguard pentest                Bounded Nuclei testing of the HTTP/HTTPS surface
 ```
 
-Run any single step in isolation or chain all four with `nuguard scan --steps sbom,analyze,policy,redteam --policy cognitive_policy.md --target <url>`.
+Run any AI-specific step in isolation or chain them with `nuguard scan --steps sbom,analyze,policy,redteam --policy cognitive_policy.md --target <url>`. Run `nuguard pentest` separately and only against a system you own or have documented permission to test.
 
 ---
 
@@ -46,8 +56,8 @@ derives attack scenarios from that graph.
 
 ### 2. Framework-aware AST extraction — not regex scraping
 
-NuGuard uses Python `ast` and tree-sitter (TypeScript) to parse 15+ AI framework APIs
-at the syntax level: LangChain, LangGraph, OpenAI Agents SDK, CrewAI (code + YAML),
+NuGuard uses language-aware parsers to inspect AI framework APIs at the syntax level:
+LangChain, LangGraph, OpenAI Agents SDK, CrewAI (code + YAML),
 AutoGen (code + YAML), Google ADK, LlamaIndex, Agno, AWS BedrockAgentCore, Azure AI
 Agent Service, Guardrails AI, FastMCP / MCP Server (Python + TypeScript), Azure Semantic
 Kernel, LangChain.js, LangGraph.js. Regex fallbacks catch model names, auth keywords,
@@ -87,19 +97,21 @@ rapport → normalise → bridge → escalate → inject. The ConversationDirect
 progress after each turn and redirects based on the target's response. This catches
 gradual context manipulation that single-shot prompt injection tests miss.
 
-### 7. Fully offline by default
+### 7. LLM-optional core
 
-Structural NGA rules, ATLAS checks, policy linting, and policy-to-SBOM cross-checks all
-run with zero network access and no API key. LLM enrichment and OSV/Grype CVE lookups are
-opt-in flags. This makes the core pipeline safe for air-gapped environments and fast
-enough for pre-commit hooks and CI gates.
+Structural NGA rules, local ATLAS checks, policy linting, and policy-to-SBOM cross-checks
+need no LLM key. Some vulnerability providers and external scanner updates use network
+access unless disabled or pinned. LLM enrichment remains optional. This keeps the
+deterministic core suitable for pre-commit hooks, CI gates, and controlled environments.
 
 ---
 
 ## 1. AI-SBOM Generation (`nuguard sbom`)
 
 Scans Python, TypeScript/JavaScript, Go, C#, Jupyter notebooks, SQL schemas, Dockerfiles,
-Terraform, CloudFormation, Azure Bicep, Kubernetes manifests, and Nginx configs.
+Terraform, CloudFormation, Azure Bicep, Kubernetes manifests, and Nginx configs. It also
+normalizes exported n8n, Langflow, Flowise, and Microsoft Copilot Studio workflows into
+the same AI-SBOM graph without executing those workflows.
 
 **Component types detected:** AGENT, MODEL, TOOL, PROMPT, DATASTORE, GUARDRAIL,
 AUTH, DEPLOYMENT, CONTAINER_IMAGE, VECTOR_STORE, EMBEDDING, PIPELINE, CHAIN,
@@ -254,7 +266,24 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 
 ---
 
-## 5. Unified Pipeline (`nuguard scan`)
+## 5. Authorized Web Pentesting (`nuguard pentest`)
+
+Runs bounded conventional HTTP/HTTPS checks through Nuclei. This is separate from
+AI-specific behavior and red-team testing and refuses to start without an explicit
+authorization acknowledgement.
+
+```bash
+nuguard pentest --target https://staging.example.com --acknowledge-authorization
+```
+
+Default safeguards exclude unsigned, intrusive, fuzzing, headless-browser, OAST,
+denial-of-service, and brute-force templates. Active fuzzing and headless-browser
+templates require separate opt-in flags. See cloud-pentesting.md for scope,
+authentication, engine, timeout, and remediation details.
+
+---
+
+## 6. Unified Pipeline (`nuguard scan`)
 
 ```bash
 # Full pipeline: SBOM → analyze → policy → redteam
@@ -278,7 +307,7 @@ All flags map to `nuguard.yaml`. Priority order:
 Secrets use `${ENV_VAR}` interpolation and are never stored directly.
 
 ```bash
-nuguard init    # writes nuguard.yaml.example, canary.example.json, cognitive_policy.md
+nuguard init    # writes nuguard.yaml and missing starter policy/canary files
 ```
 
 ---
@@ -319,10 +348,14 @@ nuguard policy check --policy cognitive_policy.md --sbom app.sbom.json \
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
   --policy cognitive_policy.md --canary canary.json --profile full
 
-# 5. Export findings as SARIF for GitHub Code Scanning
+# 5. Test an explicitly authorized staging web surface
+nuguard pentest --target https://staging.example.com \
+  --acknowledge-authorization
+
+# 6. Export findings as SARIF for GitHub Code Scanning
 nuguard sbom plugin run sarif_export --sbom app.sbom.json --output results.sarif
 
-# 6. All in one
+# 7. Run the AI-specific pipeline in one command
 nuguard scan --source . --steps sbom,analyze,policy,redteam \
   --policy cognitive_policy.md --target http://localhost:8000 \
   --output-dir ./nuguard-reports
@@ -343,19 +376,16 @@ json_str = AiSbomSerializer.to_json(doc)
 
 ---
 
-## Community & Support
+## 7. Coding Agent Integration (MCP)
 
-- GitHub: https://github.com/NuGuardAI/nuguard
-- Issues: https://github.com/NuGuardAI/nuguard/issues
-- Discord: https://discord.gg/EF99Ck7a
-- NuGuard AI: https://nuguard.ai/
+NuGuard ships an MCP server that exposes seven security tools to Claude, VS Code,
+Cursor, Windsurf, Cline, and other MCP-compatible clients. Install with
+`pip install "nuguard[mcp]"`, run without installing via
+`uvx --from "nuguard[mcp]" nuguard-mcp`, or use the scoped Node.js launcher:
 
----
-
-## 6. Claude MCP Plugin (`nuguard[mcp]`)
-
-NuGuard ships an MCP server that exposes the full security pipeline as Claude tools.
-Install with `pip install "nuguard[mcp]"` or run without installing via `uvx --from "nuguard[mcp]" nuguard-mcp`.
+```bash
+npx -y @nuguardai/nuguard
+```
 
 **Claude Desktop config** (`claude_desktop_config.json`):
 ```json
@@ -389,5 +419,14 @@ passed via environment variables on the MCP server process — never as tool par
 Set `NUGUARD_DEFAULT_CONFIG` to the absolute path of a `nuguard.yaml` to avoid
 repeating `config_path` in every tool call.
 
-See the full MCP Plugin Guide for Claude Desktop setup, Smithery configuration, all
-tool parameters, an end-to-end example scenario, and troubleshooting tips.
+See plugin-guide.md for Claude, VS Code, Cursor, Windsurf, Cline, Smithery, tool
+parameters, an end-to-end example, and troubleshooting tips.
+
+---
+
+## Community & Support
+
+- GitHub: https://github.com/NuGuardAI/nuguard
+- Issues: https://github.com/NuGuardAI/nuguard/issues
+- Discord: https://discord.gg/EF99Ck7a
+- NuGuard AI: https://nuguard.ai/

@@ -6,9 +6,12 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Callable, Coroutine, Generic, TypeVar
 
+from nuguard.common.logging import get_logger
 from nuguard.common.streaming_models import StreamEvent
 
 T = TypeVar("T")
+
+logger = get_logger(__name__)
 
 
 class StreamExecutionError(RuntimeError):
@@ -169,7 +172,13 @@ def create_stream_handle(
                 )
                 controller.set_final_exception(StreamCancelledError("Stream execution cancelled"))
             raise exc
-        except Exception:
+        except Exception as exc:
+            logger.exception(
+                "Stream worker %s failed with %s: %s",
+                run_id,
+                type(exc).__name__,
+                exc,
+            )
             if not controller.final_result_settled:
                 controller.publish_terminal(
                     event_type="failed",
@@ -181,9 +190,9 @@ def create_stream_handle(
                         "error_message": "Stream execution failed",
                     },
                 )
-                controller.set_final_exception(
-                    StreamExecutionError("stream_execution_failed", "Stream execution failed")
-                )
+                wrapped = StreamExecutionError("stream_execution_failed", "Stream execution failed")
+                wrapped.__cause__ = exc
+                controller.set_final_exception(wrapped)
         finally:
             if heartbeat_task is not None:
                 heartbeat_task.cancel()

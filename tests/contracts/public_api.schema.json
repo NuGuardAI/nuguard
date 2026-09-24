@@ -6149,7 +6149,7 @@
       },
       "scan_timeout_seconds": {
         "default": 2700,
-        "maximum": 3600,
+        "maximum": 86400,
         "minimum": 10,
         "title": "Scan Timeout Seconds",
         "type": "integer"
