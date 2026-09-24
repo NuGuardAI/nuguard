@@ -131,4 +131,3 @@ nuguard analyze --sbom app.sbom.json --format markdown
 ```
 
 If a technology is detected only by the generic signal layer, treat it as a lead rather than proof. Use the evidence path and line number to confirm the component, then open a feature request with a minimal example when deeper extraction is needed.
-
