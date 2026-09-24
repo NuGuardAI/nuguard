@@ -115,6 +115,8 @@
             <li><a href="#for-whom">For Whom</a></li>
             <li><a href="#behavior">Behavior</a></li>
             <li><a href="#redteam">Red-Team</a></li>
+            <li><a href="#pentest">Pentest</a></li>
+            <li><a href="#frameworks">Ecosystem</a></li>
             <li><a href="doc.html?page=quick-start">Docs</a></li>
             <li><a href="https://github.com/NuGuardAI/nuguard" class="nav-icon-link" aria-label="GitHub"><svg width="20"
                         height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -139,7 +141,7 @@
 
                     <ul class="hero-list">
                         <li><strong class="accent">AI-SBOM</strong>   — map every agent, model, tool, and datastore from source code</li>
-                        <li><strong class="accent">Static Analysis</strong>  — AI Stack analysis, MITRE ATLAS, CVEs, IaC misconfigurations</li>
+                        <li><strong class="accent">Deep Analysis</strong>  — AI stack analysis, Semgrep, Checkov, MITRE ATLAS, CVEs, and IaC misconfigurations</li>
                         <li><strong class="accent">Cognitive Policy</strong> — document and enforce behavioral intent</li>
                         <li><strong class="accent">Behavior Validation</strong> — ensure AI agents and MCP tools act as intended</li>
                         <li><strong class="accent">Red-Team</strong>  — offensive testing that exercises your sub-agents and MCP tools</li>
@@ -246,7 +248,9 @@
                                 <div style="display:flex;flex-direction:column;gap:0.32rem;">
                                     <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>AI Safety &amp; Security Analysis</div>
                                     <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>MITRE ATLAS v2 mapping</div>
-                                    <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>CVE Scanning</div>
+                                    <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>Semgrep AI-security rules</div>
+                                    <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>Checkov IaC misconfigurations</div>
+                                    <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>CVE scanning · MITRE ATLAS</div>
                                 </div>
                             </div>
                         </div><!-- end column 1 -->
@@ -582,6 +586,44 @@
         </div>
     </section>
 
+    <!-- Authorized web pentesting -->
+    <section id="pentest" style="border-top: 1px solid var(--border);">
+        <div class="container">
+            <div class="section-label">Authorized Web Pentest</div>
+            <h2 style="max-width: 720px;">Test the application surface, with guardrails</h2>
+            <p style="max-width: 760px; margin-bottom: 2.5rem;">
+                NuGuard complements AI-specific testing with bounded conventional HTTP/HTTPS
+                pentesting for targets you own or are explicitly authorized to assess.
+                Active testing is opt-in and separate from source analysis.
+            </p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;">
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-top:3px solid #f85149;border-radius:12px;padding:1.75rem;">
+                    <h3 style="margin:0 0 1rem;color:var(--text);">Bounded HTTP scanning</h3>
+                    <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.45rem;">
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Nuclei-powered conventional web checks</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Safe profile by default, with bounded rate and timeouts</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Markdown, JSON, and SARIF reports with remediation</li>
+                    </ul>
+                </div>
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-top:3px solid #bc8cff;border-radius:12px;padding:1.75rem;">
+                    <h3 style="margin:0 0 1rem;color:var(--text);">Explicit authorization</h3>
+                    <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.45rem;">
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Requires an authorization acknowledgement</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Targets are validated before active traffic is sent</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);">✓ Optional fuzzing and browser checks remain opt-in</li>
+                    </ul>
+                </div>
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-top:3px solid #58c4dc;border-radius:12px;padding:1.75rem;">
+                    <h3 style="margin:0 0 1rem;color:var(--text);">Run it when ready</h3>
+                    <pre style="margin:0;white-space:pre-wrap;color:var(--text-muted);font-size:0.8rem;"><span style="color:var(--accent);">$</span> nuguard pentest \
+    --target https://staging.example.com \
+    --acknowledge-authorization</pre>
+                </div>
+            </div>
+            <a href="doc.html?page=cloud-pentesting" class="btn-secondary" style="display:inline-flex;margin-top:1.5rem;">Read the pentesting guide →</a>
+        </div>
+    </section>
+
     <!-- Quickstart -->
     <section id="quickstart" class="band-surface">
         <div class="container">
@@ -590,7 +632,7 @@
                     <div class="section-label">Quickstart</div>
                     <h2>From install to security posture in minutes</h2>
                     <p style="margin-bottom: 1.5rem;">
-                        Developer-friendly security tool — AI-SBOM generation, Deep AI Stack Analysis, Cognitive Policy Enforcement —
+                        Developer-friendly security tool — AI-SBOM generation, deep source analysis, Cognitive Policy Enforcement —
                         requires minimal security expertise to get started.
                     </p>
                     <p style="margin-bottom: 2rem;">
@@ -624,8 +666,8 @@ $ pip install nuguard
 <span class="hl-comment"># Generate AI-SBOM from source</span>
 $ nuguard sbom generate --source ./my-ai-app --output app.sbom.json
 
-<span class="hl-comment"># Static analysis (7 scanners, no running app needed)</span>
-$ nuguard analyze --sbom app.sbom.json --format markdown
+<span class="hl-comment"># Deep source analysis (Semgrep + Checkov when installed)</span>
+$ nuguard analyze --sbom app.sbom.json --source ./my-ai-app --format markdown
 
 <span class="hl-comment"># Behavior Validation</span>
 $ nuguard behavior --policy cognitive_policy.md \
@@ -759,6 +801,21 @@ jobs:
             </div>
 
             <div class="fw-section">
+                <h3>Java</h3>
+                <div class="fw-chips">
+                    <span class="fw-chip">Spring AI</span>
+                    <span class="fw-chip">LangChain4j</span>
+                    <span class="fw-chip">Quarkus LangChain4j</span>
+                    <span class="fw-chip">OpenAI Java</span>
+                    <span class="fw-chip">Azure OpenAI Java</span>
+                    <span class="fw-chip">AWS Bedrock</span>
+                    <span class="fw-chip">Google Gen AI</span>
+                    <span class="fw-chip">Spring MVC / WebFlux</span>
+                    <span class="fw-chip">JAX-RS</span>
+                </div>
+            </div>
+
+            <div class="fw-section">
                 <h3>Infrastructure &amp; Configuration</h3>
                 <div class="fw-chips">
                     <span class="fw-chip">Terraform</span>
@@ -773,13 +830,15 @@ jobs:
             </div>
 
             <div class="fw-section">
-                <h3>Low-code Workflow Exports</h3>
+                <h3>Low-code &amp; No-code Workflow Exports</h3>
                 <div class="fw-chips">
                     <span class="fw-chip">n8n</span>
                     <span class="fw-chip">Langflow</span>
                     <span class="fw-chip">Flowise</span>
                     <span class="fw-chip">Microsoft Copilot Studio</span>
+                    <span class="fw-chip">Sparkflows</span>
                 </div>
+                <p style="margin:1rem 0 0;color:var(--text-muted);font-size:0.85rem;">Scan exported workflows without connecting to or executing the hosted platform. Credentials and secret-bearing values are redacted from evidence.</p>
             </div>
 
             <div class="fw-section">

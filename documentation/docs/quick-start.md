@@ -153,9 +153,21 @@ nuguard redteam \
 
 NuGuard's catalog contains 125 scenarios spanning prompt injection, data exfiltration, tool abuse, privilege escalation, policy violations, MCP toxic flows, and API attacks. Filters let you run only the scenarios relevant to the application.
 
-### Test the conventional web surface
+### Pentest the conventional web surface
 
-`pentest` is separate from AI-specific behavior and red-team testing. It runs bounded Nuclei checks against the HTTP surface and refuses to start without an explicit authorization acknowledgement.
+`pentest` complements AI-specific behavior and red-team testing with bounded
+HTTP/HTTPS application checks. It is a separate active-testing command and
+refuses to start without an explicit authorization acknowledgement.
+
+Install [Nuclei](https://github.com/projectdiscovery/nuclei) 3.11.1 or newer
+and make sure it is available on `PATH`:
+
+```bash
+nuclei -version
+```
+
+Run the default safe profile only against an application you own or have
+documented permission to test:
 
 ```bash
 nuguard pentest \
@@ -163,7 +175,23 @@ nuguard pentest \
   --acknowledge-authorization
 ```
 
-Run it only against systems you own or have documented permission to test. Read the [cloud pentesting guide](cloud-pentesting.md) before enabling active fuzzing or browser-based templates.
+NuGuard validates target scope, rate-limits requests, bounds timeouts, and
+returns remediation-ready findings. Write a machine-readable report for CI:
+
+```bash
+nuguard pentest \
+  --target https://staging.example.com \
+  --acknowledge-authorization \
+  --format sarif \
+  --output pentest.sarif \
+  --fail-on high
+```
+
+Do not enable active fuzzing or browser-based templates until you have reviewed
+the [cloud pentesting guide](cloud-pentesting.md) and confirmed that the target
+and test window are authorized. For repeatable runs, targets and scanner
+settings can also be placed in the `pentest:` section of `nuguard.yaml`; the
+authorization acknowledgement remains a per-invocation CLI flag.
 
 ## 7. Add a CI gate
 
