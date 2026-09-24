@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -135,3 +136,48 @@ async def test_redteam_live_resolution_reports_sbom_source(monkeypatch) -> None:
     resolver.assert_awaited_once()
     assert orchestrator.resolved_chat_path == "/api/chat/message"
     assert orchestrator.resolved_chat_path_source == "sbom"
+
+
+@pytest.mark.asyncio
+async def test_redteam_maybe_probe_uses_cached_confirmed_endpoint(monkeypatch) -> None:
+    """Regression: when the enriched SBOM already has a runtime-probe-confirmed
+    endpoint, _maybe_probe_endpoints() must use it directly and skip calling
+    resolve_chat_endpoint() (and therefore the live-probe sweep) entirely —
+    even when the confirmed path (e.g. "/extract") doesn't rank as a
+    chat-like keyword candidate."""
+    confirmed_node = Node(
+        id=uuid.uuid5(_NS, "API_ENDPOINT/ANY//extract"),
+        name="ANY /extract",
+        component_type=ComponentType.API_ENDPOINT,
+        confidence=0.8,
+        metadata=NodeMetadata(
+            endpoint="/extract",
+            method="ANY",
+            chat_payload_key="text",
+            chat_payload_list=False,
+            extras={
+                "source": "runtime_probe",
+                "confirmed_at": datetime.now(timezone.utc).isoformat(),
+            },
+        ),
+    )
+    sbom = AiSbomDocument(target="./app", nodes=[confirmed_node], edges=[])
+    orchestrator = RedteamOrchestrator(
+        sbom=sbom,
+        target_url="http://localhost:8080",
+        chat_path="",
+        chat_payload_key="message",
+        chat_payload_list=False,
+    )
+
+    resolver = AsyncMock()
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_detection.resolver.resolve_chat_endpoint",
+        resolver,
+    )
+
+    await orchestrator._maybe_probe_endpoints()
+
+    resolver.assert_not_awaited()
+    assert orchestrator.resolved_chat_path == "/extract"
+    assert orchestrator._chat_payload_key == "text"
