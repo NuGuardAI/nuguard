@@ -251,7 +251,7 @@ class ValidateRunner:
 
         if _confirmed is not None:
             endpoint, resolved_payload_key, resolved_payload_list, resolved_response_key = _confirmed
-            endpoint_source = "sbom"
+            endpoint_source = "enriched_sbom_cache"
         else:
             resolved_endpoint = await resolve_chat_endpoint(
                 target_url=target_url,

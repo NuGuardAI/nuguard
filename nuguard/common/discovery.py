@@ -519,7 +519,7 @@ class TargetDiscoveryResult(BaseModel):
     effective_target_url: str
     effective_endpoint: str
     discovered_profile: DiscoveredProfile | None = None
-    endpoint_source: Literal["config", "sbom", "probe", "default"] = "default"
+    endpoint_source: Literal["config", "sbom", "probe", "default", "enriched_sbom_cache"] = "default"
     discovery_notes: list[str] = Field(default_factory=list)
 
 

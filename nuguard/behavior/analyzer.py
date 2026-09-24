@@ -223,6 +223,8 @@ class BehaviorAnalyzer:
                     resolved_updates["chat_payload_list"] = _c_list
                     if _c_resp:
                         resolved_updates["chat_response_key"] = _c_resp
+                    if "target_endpoint_source" not in resolved_updates:
+                        resolved_updates["target_endpoint_source"] = "enriched_sbom_cache"
                 else:
                     resolved_endpoint = await resolve_chat_endpoint(
                         target_url=target_url,
