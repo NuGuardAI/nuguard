@@ -9,6 +9,7 @@ from typing import Any
 from ...normalization import canonicalize_text
 from ...types import ComponentType
 from ..base import ComponentDetection, RelationshipHint
+from ._http_params import build_http_request
 from ._java_base import JavaFrameworkAdapter
 from .java_ai import _agent_canonical, _method_contains_ai
 
@@ -101,6 +102,12 @@ class JavaWebAdapter(JavaFrameworkAdapter):
                 value = self._route_value(annotation)
                 if value and path is None:
                     path = value
+            elif name == "Path":
+                # JAX-RS sub-resource path on the method; the verb comes from
+                # a separate @GET/@POST annotation.
+                value = self._route_value(annotation)
+                if value and path is None:
+                    path = value
             elif self._is_request_mapping_annotation(name):
                 method_match = re.search(r"RequestMethod\.([A-Z]+)", annotation)
                 if method is None:
@@ -177,6 +184,13 @@ class JavaWebAdapter(JavaFrameworkAdapter):
             accepts_user_input = bool(method.parameters) or any(
                 name in annotation_names for name in {"RequestBody", "RequestParam", "PathVariable"}
             )
+            http_request = build_http_request(
+                method,
+                result,
+                framework=framework,
+                annotation_name=self._annotation_name,
+                annotation_value=self._annotation_value,
+            )
             relationships = [
                 RelationshipHint(
                     source_canonical=endpoint_canonical,
@@ -205,6 +219,7 @@ class JavaWebAdapter(JavaFrameworkAdapter):
                         "no_auth_required": permit_all,
                         "accepts_user_input": accepts_user_input,
                         "parameters": list(method.parameters),
+                        "http_request": http_request.model_dump(mode="json"),
                     },
                     file_path=file_path,
                     line=method.line,

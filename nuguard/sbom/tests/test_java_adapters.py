@@ -242,3 +242,137 @@ def test_route_value_falls_back_to_bare_constant_identifier() -> None:
     assert adapter._route_value('@RequestMapping("/api")') == "/api"
     # Nothing plausible to extract.
     assert adapter._route_value('@VulnerableAppRequestMapping(value = 1)') == ""
+
+
+def _http_request_by_route(source: str, file_path: str) -> dict[str, dict]:
+    parsed = parse_java(source, file_path)
+    return {
+        item.display_name: item.metadata["http_request"]
+        for item in JavaWebAdapter().extract(source, file_path, parsed)
+        if item.component_type == ComponentType.API_ENDPOINT
+    }
+
+
+def _params(http_request: dict) -> dict[tuple[str, str], dict]:
+    return {(p["name"], p["location"]): p for p in http_request["parameters"]}
+
+
+def test_http_request_maps_spring_parameter_annotations() -> None:
+    source = """package demo;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api")
+public class ItemController {
+    private static final String URL_PARAM_KEY = "url";
+
+    @GetMapping("/items/{id}")
+    public String item(@PathVariable("id") String itemId,
+                       @RequestParam(value = "q", required = false) String query,
+                       @RequestParam(name = "page", defaultValue = "1") Integer page,
+                       @RequestHeader("X-Trace") String trace,
+                       @CookieValue("session") String session,
+                       @RequestParam Map<String, String> queryParams,
+                       HttpServletRequest request) {
+        return queryParams.get("sort") + queryParams.get(URL_PARAM_KEY);
+    }
+
+    @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public String upload(@RequestPart("file") MultipartFile file) {
+        return "ok";
+    }
+
+    @RequestMapping(value = "/any")
+    public String any(String keyword) {
+        return keyword;
+    }
+}
+"""
+    routes = _http_request_by_route(source, "ItemController.java")
+
+    item = routes["GET /api/items/{id}"]
+    assert item["methods"] == ["GET"]
+    assert item["has_unresolved_inputs"] is False
+    params = _params(item)
+    assert params[("id", "path")]["required"] is True
+    assert params[("q", "query")]["required"] is False
+    assert params[("page", "query")] == {
+        "name": "page",
+        "location": "query",
+        "type_hint": "int",
+        "required": False,
+    }
+    assert ("X-Trace", "header") in params
+    assert ("session", "cookie") in params
+    # Map keys resolved from literal and same-file constant lookups.
+    assert ("sort", "query") in params
+    assert ("url", "query") in params
+    assert not any(name == "request" for name, _ in params)
+
+    upload = routes["POST /api/upload"]
+    assert _params(upload)[("file", "multipart")]["required"] is True
+    assert upload["content_types"] == ["multipart/form-data"]
+
+    any_route = routes["ANY /api/any"]
+    assert any_route["methods"] == ["UNKNOWN"]
+    assert ("keyword", "query") in _params(any_route)
+
+
+def test_http_request_marks_unresolvable_inputs_instead_of_guessing() -> None:
+    source = """package demo;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class SearchController {
+    @GetMapping("/search")
+    public String search(@RequestParam Map<String, String> queryParams) {
+        return queryParams.get(Constants.ID);
+    }
+
+    @PostMapping("/orders")
+    public String create(@RequestBody OrderDto order) {
+        return "ok";
+    }
+}
+"""
+    routes = _http_request_by_route(source, "SearchController.java")
+
+    search = routes["GET /search"]
+    assert search["parameters"] == []
+    assert search["has_unresolved_inputs"] is True
+
+    create = routes["POST /orders"]
+    assert create["parameters"] == []
+    assert create["has_unresolved_inputs"] is True
+    assert create["content_types"] == ["application/json"]
+
+
+def test_http_request_maps_jax_rs_parameter_annotations() -> None:
+    source = """package demo;
+
+import jakarta.ws.rs.*;
+
+@Path("/users")
+public class UserResource {
+    @GET
+    @Path("/{id}")
+    public String get(@PathParam("id") long id, @QueryParam("expand") String expand) {
+        return "ok";
+    }
+
+    @POST
+    public String create(@FormParam("name") String name) {
+        return "ok";
+    }
+}
+"""
+    routes = _http_request_by_route(source, "UserResource.java")
+
+    get = _params(routes["GET /users/{id}"])
+    assert get[("id", "path")]["type_hint"] == "int"
+    assert ("expand", "query") in get
+    create = routes["POST /users"]
+    assert ("name", "form") in _params(create)
+    assert create["content_types"] == ["application/x-www-form-urlencoded"]
