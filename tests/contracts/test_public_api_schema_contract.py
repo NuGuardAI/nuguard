@@ -43,6 +43,7 @@ from nuguard.output.public_api import (
 )
 from nuguard.pentest.public_api import (
     PentestAuthConfig,
+    PentestCoverageResult,
     PentestExecutionResult,
     PentestLoginFlowConfig,
     PentestRunRequest,
@@ -118,6 +119,7 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "output.ValidationReportExportResult": ValidationReportExportResult,
     "output.ValidationReportMetaModel": ValidationReportMetaModel,
     "pentest.PentestAuthConfig": PentestAuthConfig,
+    "pentest.PentestCoverageResult": PentestCoverageResult,
     "pentest.PentestExecutionResult": PentestExecutionResult,
     "pentest.PentestLoginFlowConfig": PentestLoginFlowConfig,
     "pentest.PentestRunRequest": PentestRunRequest,

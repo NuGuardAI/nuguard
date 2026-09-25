@@ -5813,7 +5813,129 @@
     "title": "PentestAuthConfig",
     "type": "object"
   },
+  "pentest.PentestCoverageResult": {
+    "description": "Public, typed mirror of :class:`nuguard.pentest.coverage.PentestCoverageResult`.\n\nDescribes structural/runtime scan coverage \u2014 whether NuGuard discovered\ninput-bearing operations, and whether every configured pass actually\ncompleted \u2014 so a zero-finding result can be told apart from a scan that\nnever had enough real request surface to be meaningful. See\n:mod:`nuguard.pentest.coverage` for the status thresholds.",
+    "properties": {
+      "status": {
+        "enum": [
+          "sufficient",
+          "degraded",
+          "insufficient"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "operations_discovered": {
+        "default": 0,
+        "title": "Operations Discovered",
+        "type": "integer"
+      },
+      "operations_with_inputs": {
+        "default": 0,
+        "title": "Operations With Inputs",
+        "type": "integer"
+      },
+      "dast_targets_total": {
+        "default": 0,
+        "title": "Dast Targets Total",
+        "type": "integer"
+      },
+      "dast_targets_with_document": {
+        "default": 0,
+        "title": "Dast Targets With Document",
+        "type": "integer"
+      },
+      "passes_seen": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Passes Seen",
+        "type": "array"
+      },
+      "passes_with_errors": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Passes With Errors",
+        "type": "array"
+      },
+      "reasons": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Reasons",
+        "type": "array"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "title": "PentestCoverageResult",
+    "type": "object"
+  },
   "pentest.PentestExecutionResult": {
+    "$defs": {
+      "PentestCoverageResult": {
+        "description": "Public, typed mirror of :class:`nuguard.pentest.coverage.PentestCoverageResult`.\n\nDescribes structural/runtime scan coverage \u2014 whether NuGuard discovered\ninput-bearing operations, and whether every configured pass actually\ncompleted \u2014 so a zero-finding result can be told apart from a scan that\nnever had enough real request surface to be meaningful. See\n:mod:`nuguard.pentest.coverage` for the status thresholds.",
+        "properties": {
+          "status": {
+            "enum": [
+              "sufficient",
+              "degraded",
+              "insufficient"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "operations_discovered": {
+            "default": 0,
+            "title": "Operations Discovered",
+            "type": "integer"
+          },
+          "operations_with_inputs": {
+            "default": 0,
+            "title": "Operations With Inputs",
+            "type": "integer"
+          },
+          "dast_targets_total": {
+            "default": 0,
+            "title": "Dast Targets Total",
+            "type": "integer"
+          },
+          "dast_targets_with_document": {
+            "default": 0,
+            "title": "Dast Targets With Document",
+            "type": "integer"
+          },
+          "passes_seen": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Passes Seen",
+            "type": "array"
+          },
+          "passes_with_errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Passes With Errors",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "PentestCoverageResult",
+        "type": "object"
+      }
+    },
     "description": "Final result model returned by the streaming pentest API.",
     "properties": {
       "engine": {
@@ -5884,6 +6006,27 @@
         },
         "title": "Severity Counts",
         "type": "object"
+      },
+      "coverage": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PentestCoverageResult"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "outcome": {
+        "default": "completed",
+        "enum": [
+          "completed",
+          "completed_with_coverage_gaps",
+          "failed"
+        ],
+        "title": "Outcome",
+        "type": "string"
       }
     },
     "required": [
@@ -6244,6 +6387,68 @@
     "type": "object"
   },
   "pentest.PentestRunResult": {
+    "$defs": {
+      "PentestCoverageResult": {
+        "description": "Public, typed mirror of :class:`nuguard.pentest.coverage.PentestCoverageResult`.\n\nDescribes structural/runtime scan coverage \u2014 whether NuGuard discovered\ninput-bearing operations, and whether every configured pass actually\ncompleted \u2014 so a zero-finding result can be told apart from a scan that\nnever had enough real request surface to be meaningful. See\n:mod:`nuguard.pentest.coverage` for the status thresholds.",
+        "properties": {
+          "status": {
+            "enum": [
+              "sufficient",
+              "degraded",
+              "insufficient"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "operations_discovered": {
+            "default": 0,
+            "title": "Operations Discovered",
+            "type": "integer"
+          },
+          "operations_with_inputs": {
+            "default": 0,
+            "title": "Operations With Inputs",
+            "type": "integer"
+          },
+          "dast_targets_total": {
+            "default": 0,
+            "title": "Dast Targets Total",
+            "type": "integer"
+          },
+          "dast_targets_with_document": {
+            "default": 0,
+            "title": "Dast Targets With Document",
+            "type": "integer"
+          },
+          "passes_seen": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Passes Seen",
+            "type": "array"
+          },
+          "passes_with_errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Passes With Errors",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "PentestCoverageResult",
+        "type": "object"
+      }
+    },
     "description": "Public, JSON-serializable result of a completed pentest run.",
     "properties": {
       "engine": {
@@ -6314,6 +6519,27 @@
         },
         "title": "Severity Counts",
         "type": "object"
+      },
+      "coverage": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PentestCoverageResult"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "outcome": {
+        "default": "completed",
+        "enum": [
+          "completed",
+          "completed_with_coverage_gaps",
+          "failed"
+        ],
+        "title": "Outcome",
+        "type": "string"
       }
     },
     "required": [
@@ -10438,6 +10664,84 @@
         "title": "Evidence",
         "type": "object"
       },
+      "HttpParameterMetadata": {
+        "description": "One named input point of an HTTP API_ENDPOINT, independent of language/framework.",
+        "properties": {
+          "name": {
+            "description": "Parameter name as sent on the wire (not the handler variable)",
+            "title": "Name",
+            "type": "string"
+          },
+          "location": {
+            "description": "Where the value is carried in the request",
+            "enum": [
+              "path",
+              "query",
+              "header",
+              "cookie",
+              "json",
+              "form",
+              "multipart"
+            ],
+            "title": "Location",
+            "type": "string"
+          },
+          "type_hint": {
+            "default": "string",
+            "description": "Best-effort source type, e.g. 'int'",
+            "title": "Type Hint",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "description": "True when the handler requires the input",
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "location"
+        ],
+        "title": "HttpParameterMetadata",
+        "type": "object"
+      },
+      "HttpRequestMetadata": {
+        "description": "Structured request shape for an HTTP API_ENDPOINT, populated by framework adapters.\n\nSource adapters own parsing of their language's handler signatures; consumers\nsuch as ``nuguard pentest`` read only this structure.",
+        "properties": {
+          "methods": {
+            "description": "Every HTTP method the route accepts; 'UNKNOWN' when not statically known",
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/$defs/HttpParameterMetadata"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "content_types": {
+            "description": "Request content types the handler accepts",
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Types",
+            "type": "array"
+          },
+          "has_unresolved_inputs": {
+            "default": false,
+            "description": "True when the handler accepts inputs whose names could not be resolved statically (e.g. a map of all query parameters)",
+            "title": "Has Unresolved Inputs",
+            "type": "boolean"
+          }
+        },
+        "title": "HttpRequestMetadata",
+        "type": "object"
+      },
       "InstrumentationDetail": {
         "description": "Observability and monitoring tooling configured for a component or application.",
         "properties": {
@@ -11445,6 +11749,18 @@
             "default": null,
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
+          },
+          "http_request": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HttpRequestMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Structured HTTP request shape (methods, named inputs, content types)"
           },
           "request_body_schema": {
             "additionalProperties": {
@@ -13537,6 +13853,84 @@
         "title": "Evidence",
         "type": "object"
       },
+      "HttpParameterMetadata": {
+        "description": "One named input point of an HTTP API_ENDPOINT, independent of language/framework.",
+        "properties": {
+          "name": {
+            "description": "Parameter name as sent on the wire (not the handler variable)",
+            "title": "Name",
+            "type": "string"
+          },
+          "location": {
+            "description": "Where the value is carried in the request",
+            "enum": [
+              "path",
+              "query",
+              "header",
+              "cookie",
+              "json",
+              "form",
+              "multipart"
+            ],
+            "title": "Location",
+            "type": "string"
+          },
+          "type_hint": {
+            "default": "string",
+            "description": "Best-effort source type, e.g. 'int'",
+            "title": "Type Hint",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "description": "True when the handler requires the input",
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "location"
+        ],
+        "title": "HttpParameterMetadata",
+        "type": "object"
+      },
+      "HttpRequestMetadata": {
+        "description": "Structured request shape for an HTTP API_ENDPOINT, populated by framework adapters.\n\nSource adapters own parsing of their language's handler signatures; consumers\nsuch as ``nuguard pentest`` read only this structure.",
+        "properties": {
+          "methods": {
+            "description": "Every HTTP method the route accepts; 'UNKNOWN' when not statically known",
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/$defs/HttpParameterMetadata"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "content_types": {
+            "description": "Request content types the handler accepts",
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Types",
+            "type": "array"
+          },
+          "has_unresolved_inputs": {
+            "default": false,
+            "description": "True when the handler accepts inputs whose names could not be resolved statically (e.g. a map of all query parameters)",
+            "title": "Has Unresolved Inputs",
+            "type": "boolean"
+          }
+        },
+        "title": "HttpRequestMetadata",
+        "type": "object"
+      },
       "InstrumentationDetail": {
         "description": "Observability and monitoring tooling configured for a component or application.",
         "properties": {
@@ -14544,6 +14938,18 @@
             "default": null,
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
+          },
+          "http_request": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HttpRequestMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Structured HTTP request shape (methods, named inputs, content types)"
           },
           "request_body_schema": {
             "additionalProperties": {
@@ -16851,6 +17257,84 @@
         "title": "Evidence",
         "type": "object"
       },
+      "HttpParameterMetadata": {
+        "description": "One named input point of an HTTP API_ENDPOINT, independent of language/framework.",
+        "properties": {
+          "name": {
+            "description": "Parameter name as sent on the wire (not the handler variable)",
+            "title": "Name",
+            "type": "string"
+          },
+          "location": {
+            "description": "Where the value is carried in the request",
+            "enum": [
+              "path",
+              "query",
+              "header",
+              "cookie",
+              "json",
+              "form",
+              "multipart"
+            ],
+            "title": "Location",
+            "type": "string"
+          },
+          "type_hint": {
+            "default": "string",
+            "description": "Best-effort source type, e.g. 'int'",
+            "title": "Type Hint",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "description": "True when the handler requires the input",
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "location"
+        ],
+        "title": "HttpParameterMetadata",
+        "type": "object"
+      },
+      "HttpRequestMetadata": {
+        "description": "Structured request shape for an HTTP API_ENDPOINT, populated by framework adapters.\n\nSource adapters own parsing of their language's handler signatures; consumers\nsuch as ``nuguard pentest`` read only this structure.",
+        "properties": {
+          "methods": {
+            "description": "Every HTTP method the route accepts; 'UNKNOWN' when not statically known",
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/$defs/HttpParameterMetadata"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "content_types": {
+            "description": "Request content types the handler accepts",
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Types",
+            "type": "array"
+          },
+          "has_unresolved_inputs": {
+            "default": false,
+            "description": "True when the handler accepts inputs whose names could not be resolved statically (e.g. a map of all query parameters)",
+            "title": "Has Unresolved Inputs",
+            "type": "boolean"
+          }
+        },
+        "title": "HttpRequestMetadata",
+        "type": "object"
+      },
       "InstrumentationDetail": {
         "description": "Observability and monitoring tooling configured for a component or application.",
         "properties": {
@@ -17858,6 +18342,18 @@
             "default": null,
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
+          },
+          "http_request": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HttpRequestMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Structured HTTP request shape (methods, named inputs, content types)"
           },
           "request_body_schema": {
             "additionalProperties": {
@@ -19858,6 +20354,84 @@
         "title": "Evidence",
         "type": "object"
       },
+      "HttpParameterMetadata": {
+        "description": "One named input point of an HTTP API_ENDPOINT, independent of language/framework.",
+        "properties": {
+          "name": {
+            "description": "Parameter name as sent on the wire (not the handler variable)",
+            "title": "Name",
+            "type": "string"
+          },
+          "location": {
+            "description": "Where the value is carried in the request",
+            "enum": [
+              "path",
+              "query",
+              "header",
+              "cookie",
+              "json",
+              "form",
+              "multipart"
+            ],
+            "title": "Location",
+            "type": "string"
+          },
+          "type_hint": {
+            "default": "string",
+            "description": "Best-effort source type, e.g. 'int'",
+            "title": "Type Hint",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "description": "True when the handler requires the input",
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "location"
+        ],
+        "title": "HttpParameterMetadata",
+        "type": "object"
+      },
+      "HttpRequestMetadata": {
+        "description": "Structured request shape for an HTTP API_ENDPOINT, populated by framework adapters.\n\nSource adapters own parsing of their language's handler signatures; consumers\nsuch as ``nuguard pentest`` read only this structure.",
+        "properties": {
+          "methods": {
+            "description": "Every HTTP method the route accepts; 'UNKNOWN' when not statically known",
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/$defs/HttpParameterMetadata"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "content_types": {
+            "description": "Request content types the handler accepts",
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Types",
+            "type": "array"
+          },
+          "has_unresolved_inputs": {
+            "default": false,
+            "description": "True when the handler accepts inputs whose names could not be resolved statically (e.g. a map of all query parameters)",
+            "title": "Has Unresolved Inputs",
+            "type": "boolean"
+          }
+        },
+        "title": "HttpRequestMetadata",
+        "type": "object"
+      },
       "InstrumentationDetail": {
         "description": "Observability and monitoring tooling configured for a component or application.",
         "properties": {
@@ -20865,6 +21439,18 @@
             "default": null,
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
+          },
+          "http_request": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HttpRequestMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Structured HTTP request shape (methods, named inputs, content types)"
           },
           "request_body_schema": {
             "additionalProperties": {
