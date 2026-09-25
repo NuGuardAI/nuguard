@@ -80,6 +80,7 @@ echo "Running pentest ..."
   uv run nuguard pentest  \
   --config "$SCRIPT_DIR/nuguard.yaml" \
   --acknowledge-authorization \
+  --profile standard \
   --allow-headless-browser \
   --allow-dynamic-auth \
   --allow-active-fuzzing \
@@ -95,6 +96,7 @@ echo "Running pentest with custom Juice Shop templates ..."
 uv run nuguard pentest  \
   --config "$SCRIPT_DIR/nuguard.yaml" \
   --acknowledge-authorization \
+  --profile standard \
   --allow-dynamic-auth \
   --templates-dir "$SCRIPT_DIR/nuclei-templates" \
   --format markdown \
@@ -104,10 +106,10 @@ uv run nuguard pentest  \
 #echo "Running redteam tests ..."
 
 # redteam tests exit 2 when findings are present — expected in testing; treat as non-fatal.
-#uv run nuguard redteam  \
-#  --config "$SCRIPT_DIR/nuguard.yaml" \
-#  --format markdown \
-#  --output "$SCRIPT_DIR/reports/openai-cs-redteam.md" || true
+uv run nuguard redteam  \
+  --config "$SCRIPT_DIR/nuguard.yaml" \
+  --format markdown \
+  --output "$SCRIPT_DIR/reports/openai-cs-redteam.md" || true
 
 # Wait for the tee log-capture background process to flush all output before exiting.
 # Without this, the exec > >(tee) pipe may close before the last lines reach the log file.
