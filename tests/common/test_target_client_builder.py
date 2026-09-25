@@ -311,4 +311,195 @@ class TestWebSocketDiscovery:
             )
         _, kwargs = MockWsClient.call_args
         assert kwargs["ws_auth_message"] == {"type": "auth", "token": "t"}
-        assert kwargs["ws_response_complete_key"] == "done"
+
+    def test_known_websocket_target_skips_framework_adapter_detection(
+        self, minimal_sbom_doc
+    ) -> None:
+        """Issue #552 follow-up: CES/ADK adapters are HTTP-only concepts.
+        make_framework_adapter must never even be called once the caller has
+        already established this is a WebSocket target — calling it wastes
+        work at best, and (before this fix) could leak an HTTP-only run_path
+        into the WS client's chat_path at worst."""
+        with (
+            patch("nuguard.redteam.target.ws_client.WebSocketTargetClient"),
+            patch(
+                "nuguard.redteam.target.framework_adapters.factory.make_framework_adapter"
+            ) as mock_make_adapter,
+            _patch_discover(("/ws/chat", "__websocket__", False, None)),
+        ):
+            build_target_app_client(
+                "http://app.test", sbom=minimal_sbom_doc, payload_key="__websocket__"
+            )
+        mock_make_adapter.assert_not_called()
+
+    def test_framework_adapter_endpoint_never_leaks_into_websocket_chat_path(
+        self,
+    ) -> None:
+        """The concrete #552 follow-up bug: a caller that already knows the
+        target is WebSocket (payload_key="__websocket__") must never end up
+        with the WS client's chat_path set to an HTTP framework adapter's
+        run_path (e.g. ADK's "/run"), even when the SBOM reports ADK
+        evidence and *endpoint* was still empty going in."""
+        sbom = MagicMock()
+        sbom.summary.frameworks = ["google-adk"]
+        sbom.nodes = []
+
+        with (
+            patch("nuguard.redteam.target.ws_client.WebSocketTargetClient") as MockWsClient,
+            _patch_discover(("/ws", "__websocket__", False, None)),
+        ):
+            build_target_app_client(
+                "http://app.test", sbom=sbom, payload_key="__websocket__"
+            )
+        _, kwargs = MockWsClient.call_args
+        assert kwargs["chat_path"] == "/ws"
+
+    def test_genuine_sbom_websocket_discovery_not_blocked_by_adapter_endpoint(
+        self,
+    ) -> None:
+        """Deeper version of the same bug: even when the caller does NOT yet
+        know the target is WebSocket (default payload_key), a framework
+        adapter's run_path must not be written into *endpoint* before SBOM
+        discovery runs — doing so made discover_chat_config_from_sbom treat
+        it as "explicit" and short-circuit, so a real WS endpoint reported by
+        the same SBOM could never be discovered at all when ADK/CES evidence
+        was also present."""
+        sbom = MagicMock()
+        sbom.summary.frameworks = ["google-adk"]
+        sbom.nodes = []
+
+        with (
+            patch("nuguard.redteam.target.ws_client.WebSocketTargetClient") as MockWsClient,
+            _patch_discover(("/ws", "__websocket__", False, None)),
+        ):
+            build_target_app_client("http://app.test", sbom=sbom)  # payload_key not yet known
+        _, kwargs = MockWsClient.call_args
+        assert kwargs["chat_path"] == "/ws"
+
+    def test_adk_run_path_fallback_still_applies_for_genuine_http_target(self) -> None:
+        """Regression guard: the fallback itself must still work when
+        discovery genuinely finds nothing better than the generic default —
+        the #552 follow-up fix must not accidentally disable the original,
+        intentional ADK endpoint fallback for real HTTP ADK targets."""
+        sbom = MagicMock()
+        sbom.summary.frameworks = ["google-adk"]
+        sbom.nodes = []
+
+        with (
+            _patch_client() as MockClient,
+            _patch_discover(("/chat", "message", False, None)),
+        ):
+            build_target_app_client("http://app.test", sbom=sbom)
+        _, kwargs = MockClient.call_args
+        assert kwargs["chat_path"] == "/run"
+
+
+# ---------------------------------------------------------------------------
+# Issue #552 regression: real Blissful Store fixture (the app the bug was
+# reported against). Uses the REAL make_framework_adapter/_make_ces_adapter
+# factory logic (only TargetAppClient itself is mocked, to avoid a real
+# network call) — this is an integration test of the actual selection code,
+# not of a mocked stand-in for it.
+# ---------------------------------------------------------------------------
+
+
+def _load_blissful_store_sbom():
+    from pathlib import Path
+
+    from nuguard.sbom.serializer import AiSbomSerializer
+
+    path = (
+        Path(__file__).parents[2]
+        / "tests"
+        / "apps"
+        / "blissful-store"
+        / "reports"
+        / "blissfuls-store-sbom-llm-gemini-2.0-flash.json"
+    )
+    return AiSbomSerializer.from_json(path.read_text(encoding="utf-8"))
+
+
+class TestIssue552BlissfulStoreRegression:
+    """Blissful Store's real, checked-in SBOM reports both google_adk and
+    google-ces in summary.frameworks (confirmed CES API_ENDPOINT nodes
+    pointing at real ces.googleapis.com session URLs) — exactly the
+    combination that, pre-#552, caused behavior/redteam to redirect traffic
+    to ces.googleapis.com (and fail on local gcloud auth) instead of the
+    app's own configured target, per its nuguard.yaml
+    (``target: http://localhost:8081/``)."""
+
+    def test_ces_is_never_selected_for_the_real_proxy_target(self) -> None:
+        sbom = _load_blissful_store_sbom()
+        assert "google-ces" in sbom.summary.frameworks  # sanity: fixture still has the evidence
+
+        with _patch_client() as MockClient, _patch_discover():
+            build_target_app_client("http://localhost:8081/", sbom=sbom)
+
+        _, kwargs = MockClient.call_args
+        from nuguard.redteam.target.framework_adapters.google_ces import GoogleCESAdapter
+
+        assert not isinstance(kwargs["framework_adapter"], GoogleCESAdapter)
+
+    def test_client_base_url_stays_the_configured_proxy_not_ces(self) -> None:
+        sbom = _load_blissful_store_sbom()
+
+        with _patch_client() as MockClient, _patch_discover():
+            build_target_app_client("http://localhost:8081/", sbom=sbom)
+
+        _, kwargs = MockClient.call_args
+        assert kwargs["base_url"].rstrip("/") == "http://localhost:8081"
+
+
+class TestIssue552CesAuthPreflight:
+    """CES auth failures must surface immediately as a clear AuthError when
+    building the client, not silently or mid-scan (issue #552, item 5)."""
+
+    def _ces_sbom(self) -> MagicMock:
+        summary = MagicMock()
+        summary.frameworks = ["google-ces"]
+        sbom = MagicMock()
+        sbom.summary = summary
+        sbom.nodes = []
+        return sbom
+
+    def test_ces_auth_failure_raises_autherror_immediately(self) -> None:
+        from nuguard.common.ces_client import CESAuthError
+        from nuguard.common.errors import AuthError
+
+        with (
+            _patch_client(),
+            patch(
+                "nuguard.common.ces_client.get_gcloud_token",
+                side_effect=CESAuthError("no gcloud credentials found"),
+            ),
+        ):
+            try:
+                build_target_app_client(
+                    "https://ces.googleapis.com/v1beta/projects/p",
+                    sbom=self._ces_sbom(),
+                )
+            except AuthError as exc:
+                assert exc.identity == "google-ces"
+                assert "gcloud" in str(exc)
+            else:
+                raise AssertionError("expected AuthError to be raised")
+
+    def test_ces_auth_success_builds_client_normally(self) -> None:
+        with (
+            _patch_client() as MockClient,
+            patch("nuguard.common.ces_client.get_gcloud_token", return_value="fake-token"),
+        ):
+            build_target_app_client(
+                "https://ces.googleapis.com/v1beta/projects/p",
+                sbom=self._ces_sbom(),
+            )
+        MockClient.assert_called_once()
+
+    def test_no_preflight_call_for_non_ces_target(self) -> None:
+        """A proxy target must never even attempt gcloud auth."""
+        with (
+            _patch_client(),
+            patch("nuguard.common.ces_client.get_gcloud_token") as mock_token,
+        ):
+            build_target_app_client("http://localhost:8081", sbom=self._ces_sbom())
+        mock_token.assert_not_called()

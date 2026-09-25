@@ -422,19 +422,43 @@ def build_target_app_client(
         target_url = _resolved_url
 
     # ── 1. Framework adapter ────────────────────────────────────────────────
+    # CES/ADK adapters are HTTP-only concepts (runSession / RunAgentRequest
+    # over POST) — skip detection entirely once the caller has already
+    # established this is a WebSocket target (payload_key="__websocket__",
+    # set by SBOM/live discovery elsewhere).
     framework_adapter = None
-    if sbom is not None:
+    if sbom is not None and payload_key != "__websocket__":
         try:
             from nuguard.redteam.target.framework_adapters.factory import make_framework_adapter
-            framework_adapter = make_framework_adapter(sbom, adk_cfg)
-            if framework_adapter is not None and not endpoint:
-                endpoint = framework_adapter.run_path
-                _log.info(
-                    "build_target_app_client: framework adapter detected — using endpoint %s",
-                    endpoint,
-                )
+            framework_adapter = make_framework_adapter(sbom, adk_cfg, target_url=target_url)
         except Exception as exc:
             _log.debug("build_target_app_client: framework adapter detection failed: %s", exc)
+
+    # ── 1b. CES auth preflight ───────────────────────────────────────────────
+    # Issue #552: once CES has genuinely been selected (target_url itself is
+    # a CES API URL — see make_framework_adapter), a missing/broken gcloud
+    # credential must surface immediately as a clear adapter/auth failure,
+    # not as an opaque mid-scan crash the first time a scenario happens to
+    # send a turn. get_gcloud_token() caches its result, so this preflight
+    # call costs nothing extra once GoogleCESAdapter.send() authenticates
+    # for real. Deliberately outside the try/except above — a real CES auth
+    # failure is not a "detection failed, fall back to generic HTTP" case,
+    # it's a fatal misconfiguration for a target NuGuard was told is CES.
+    if framework_adapter is not None:
+        from nuguard.redteam.target.framework_adapters.google_ces import GoogleCESAdapter
+
+        if isinstance(framework_adapter, GoogleCESAdapter):
+            from nuguard.common.ces_client import CESAuthError, get_gcloud_token
+            from nuguard.common.errors import AuthError
+
+            try:
+                get_gcloud_token()
+            except CESAuthError as exc:
+                raise AuthError(
+                    f"CES adapter selected for target {target_url!r} but gcloud "
+                    f"authentication failed: {exc}",
+                    identity="google-ces",
+                ) from exc
 
     # ── 2. SBOM-based endpoint / payload discovery ──────────────────────────
     config_has_explicit_endpoint = bool(endpoint) and ("target_endpoint" in explicitly_set)
@@ -470,6 +494,23 @@ def build_target_app_client(
                 payload_list = discovered_list
         except Exception as exc:
             _log.debug("build_target_app_client: SBOM chat config discovery failed: %s", exc)
+
+    # ── 2b. Framework adapter endpoint — lowest-priority fallback ───────────
+    # Applied only after genuine SBOM discovery (step 2) has had a fair shot
+    # at *endpoint*/*payload_key*, and only if nothing else supplied either.
+    # Issue #552: previously this ran *before* step 2 and set *endpoint*
+    # unconditionally whenever it was still empty — but
+    # discover_chat_config_from_sbom treats any non-empty chat_path as
+    # "explicit and must never be overridden by SBOM", so that early write
+    # silently defeated step 2's own WebSocket/endpoint discovery for any
+    # SBOM that also carried CES/ADK framework evidence, even when the real
+    # target is a WebSocket chat endpoint discoverable from the same SBOM.
+    if framework_adapter is not None and not endpoint and payload_key not in ("__websocket__",):
+        endpoint = framework_adapter.run_path
+        _log.info(
+            "build_target_app_client: framework adapter detected — using endpoint %s",
+            endpoint,
+        )
 
     # ── 3. Three-tier response key: explicit > SBOM-discovered > None ───────
     if not config_has_explicit_response_key and discovered_response_key:
