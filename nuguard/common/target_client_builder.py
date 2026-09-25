@@ -422,17 +422,15 @@ def build_target_app_client(
         target_url = _resolved_url
 
     # ── 1. Framework adapter ────────────────────────────────────────────────
+    # CES/ADK adapters are HTTP-only concepts (runSession / RunAgentRequest
+    # over POST) — skip detection entirely once the caller has already
+    # established this is a WebSocket target (payload_key="__websocket__",
+    # set by SBOM/live discovery elsewhere).
     framework_adapter = None
-    if sbom is not None:
+    if sbom is not None and payload_key != "__websocket__":
         try:
             from nuguard.redteam.target.framework_adapters.factory import make_framework_adapter
             framework_adapter = make_framework_adapter(sbom, adk_cfg, target_url=target_url)
-            if framework_adapter is not None and not endpoint:
-                endpoint = framework_adapter.run_path
-                _log.info(
-                    "build_target_app_client: framework adapter detected — using endpoint %s",
-                    endpoint,
-                )
         except Exception as exc:
             _log.debug("build_target_app_client: framework adapter detection failed: %s", exc)
 
@@ -496,6 +494,23 @@ def build_target_app_client(
                 payload_list = discovered_list
         except Exception as exc:
             _log.debug("build_target_app_client: SBOM chat config discovery failed: %s", exc)
+
+    # ── 2b. Framework adapter endpoint — lowest-priority fallback ───────────
+    # Applied only after genuine SBOM discovery (step 2) has had a fair shot
+    # at *endpoint*/*payload_key*, and only if nothing else supplied either.
+    # Issue #552: previously this ran *before* step 2 and set *endpoint*
+    # unconditionally whenever it was still empty — but
+    # discover_chat_config_from_sbom treats any non-empty chat_path as
+    # "explicit and must never be overridden by SBOM", so that early write
+    # silently defeated step 2's own WebSocket/endpoint discovery for any
+    # SBOM that also carried CES/ADK framework evidence, even when the real
+    # target is a WebSocket chat endpoint discoverable from the same SBOM.
+    if framework_adapter is not None and not endpoint and payload_key not in ("__websocket__",):
+        endpoint = framework_adapter.run_path
+        _log.info(
+            "build_target_app_client: framework adapter detected — using endpoint %s",
+            endpoint,
+        )
 
     # ── 3. Three-tier response key: explicit > SBOM-discovered > None ───────
     if not config_has_explicit_response_key and discovered_response_key:

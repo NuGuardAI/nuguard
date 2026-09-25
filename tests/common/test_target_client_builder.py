@@ -312,6 +312,87 @@ class TestWebSocketDiscovery:
         _, kwargs = MockWsClient.call_args
         assert kwargs["ws_auth_message"] == {"type": "auth", "token": "t"}
 
+    def test_known_websocket_target_skips_framework_adapter_detection(
+        self, minimal_sbom_doc
+    ) -> None:
+        """Issue #552 follow-up: CES/ADK adapters are HTTP-only concepts.
+        make_framework_adapter must never even be called once the caller has
+        already established this is a WebSocket target — calling it wastes
+        work at best, and (before this fix) could leak an HTTP-only run_path
+        into the WS client's chat_path at worst."""
+        with (
+            patch("nuguard.redteam.target.ws_client.WebSocketTargetClient"),
+            patch(
+                "nuguard.redteam.target.framework_adapters.factory.make_framework_adapter"
+            ) as mock_make_adapter,
+            _patch_discover(("/ws/chat", "__websocket__", False, None)),
+        ):
+            build_target_app_client(
+                "http://app.test", sbom=minimal_sbom_doc, payload_key="__websocket__"
+            )
+        mock_make_adapter.assert_not_called()
+
+    def test_framework_adapter_endpoint_never_leaks_into_websocket_chat_path(
+        self,
+    ) -> None:
+        """The concrete #552 follow-up bug: a caller that already knows the
+        target is WebSocket (payload_key="__websocket__") must never end up
+        with the WS client's chat_path set to an HTTP framework adapter's
+        run_path (e.g. ADK's "/run"), even when the SBOM reports ADK
+        evidence and *endpoint* was still empty going in."""
+        sbom = MagicMock()
+        sbom.summary.frameworks = ["google-adk"]
+        sbom.nodes = []
+
+        with (
+            patch("nuguard.redteam.target.ws_client.WebSocketTargetClient") as MockWsClient,
+            _patch_discover(("/ws", "__websocket__", False, None)),
+        ):
+            build_target_app_client(
+                "http://app.test", sbom=sbom, payload_key="__websocket__"
+            )
+        _, kwargs = MockWsClient.call_args
+        assert kwargs["chat_path"] == "/ws"
+
+    def test_genuine_sbom_websocket_discovery_not_blocked_by_adapter_endpoint(
+        self,
+    ) -> None:
+        """Deeper version of the same bug: even when the caller does NOT yet
+        know the target is WebSocket (default payload_key), a framework
+        adapter's run_path must not be written into *endpoint* before SBOM
+        discovery runs — doing so made discover_chat_config_from_sbom treat
+        it as "explicit" and short-circuit, so a real WS endpoint reported by
+        the same SBOM could never be discovered at all when ADK/CES evidence
+        was also present."""
+        sbom = MagicMock()
+        sbom.summary.frameworks = ["google-adk"]
+        sbom.nodes = []
+
+        with (
+            patch("nuguard.redteam.target.ws_client.WebSocketTargetClient") as MockWsClient,
+            _patch_discover(("/ws", "__websocket__", False, None)),
+        ):
+            build_target_app_client("http://app.test", sbom=sbom)  # payload_key not yet known
+        _, kwargs = MockWsClient.call_args
+        assert kwargs["chat_path"] == "/ws"
+
+    def test_adk_run_path_fallback_still_applies_for_genuine_http_target(self) -> None:
+        """Regression guard: the fallback itself must still work when
+        discovery genuinely finds nothing better than the generic default —
+        the #552 follow-up fix must not accidentally disable the original,
+        intentional ADK endpoint fallback for real HTTP ADK targets."""
+        sbom = MagicMock()
+        sbom.summary.frameworks = ["google-adk"]
+        sbom.nodes = []
+
+        with (
+            _patch_client() as MockClient,
+            _patch_discover(("/chat", "message", False, None)),
+        ):
+            build_target_app_client("http://app.test", sbom=sbom)
+        _, kwargs = MockClient.call_args
+        assert kwargs["chat_path"] == "/run"
+
 
 # ---------------------------------------------------------------------------
 # Issue #552 regression: real Blissful Store fixture (the app the bug was

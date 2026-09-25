@@ -117,6 +117,17 @@ def test_target_url_is_ces_selects_ces_adapter() -> None:
     assert adapter.ces_config.project == "my-proj"
 
 
+def test_ces_still_wins_over_adk_at_a_ces_target_url() -> None:
+    """CES's priority over ADK (unchanged pre-#552 design intent) must still
+    hold under the new target_url gating: when target_url is genuinely a CES
+    URL and the SBOM reports both frameworks, CES wins, not ADK."""
+    sbom = _make_sbom(frameworks=["google-ces", "google_adk"], ces_endpoint=_REAL_CES_ENDPOINT)
+    adapter = make_framework_adapter(
+        sbom, target_url="https://ces.googleapis.com/v1beta/projects/my-proj"
+    )
+    assert isinstance(adapter, GoogleCESAdapter)
+
+
 def test_target_url_is_ces_selects_adapter_even_without_sbom_evidence() -> None:
     """The caller pointing target_url directly at CES is itself sufficient —
     matches issue #552's 'or when the caller explicitly requests CES mode'."""
