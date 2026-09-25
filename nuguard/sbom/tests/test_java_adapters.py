@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from nuguard.sbom.adapters.java import JavaAIAdapter, JavaWebAdapter
+from nuguard.sbom.adapters.java._java_base import JavaFrameworkAdapter
 from nuguard.sbom.core.java_parser import parse_java
 from nuguard.sbom.types import ComponentType
 
@@ -102,3 +103,98 @@ public class ChatResource {
     assert framework.display_name == "jax-rs"
     assert endpoint.metadata["framework"] == "jax-rs"
     assert endpoint.display_name == "GET /chat"
+
+
+def test_composed_spring_annotations_are_resolved_as_routes() -> None:
+    """Domain-specific annotations that alias @RequestMapping via @AliasFor.
+
+    Modelled on SasanLabs/VulnerableApp, which defines its vulnerability
+    endpoints through custom ``@XxxRestController``/``@XxxRequestMapping``
+    annotations rather than the literal Spring ones. Before this fix, none of
+    these routes were ever extracted because the adapter only matched the
+    literal annotation names.
+    """
+    source = """package demo;
+
+import org.springframework.web.bind.annotation.RequestParam;
+
+@VulnerableAppRestController(
+        descriptionLabel = "SQL_INJECTION_VULNERABILITY",
+        value = "BlindSQLInjectionVulnerability")
+public class BlindSQLInjectionVulnerability {
+
+    @VulnerableAppRequestMapping(value = LevelConstants.LEVEL_1, htmlTemplate = "L1")
+    public String getCarInformationLevel1(@RequestParam Map<String, String> queryParams) {
+        return "ok";
+    }
+
+    @VulnerableAppRequestMapping(value = LevelConstants.LEVEL_2, htmlTemplate = "L2")
+    public String getCarInformationLevel2(@RequestParam Map<String, String> queryParams) {
+        return "ok";
+    }
+}
+"""
+    parsed = parse_java(source, "BlindSQLInjectionVulnerability.java")
+    detections = JavaWebAdapter().extract(
+        source, "BlindSQLInjectionVulnerability.java", parsed
+    )
+    endpoints = [
+        item for item in detections if item.component_type == ComponentType.API_ENDPOINT
+    ]
+
+    # The composed-annotation value can't be resolved (it's a constant
+    # reference, not a string literal), but both methods still surface as
+    # distinct endpoints under the class-level path rather than being
+    # dropped or collapsed into one.
+    assert len(endpoints) == 2
+    assert len({item.canonical_name for item in endpoints}) == 2
+    for endpoint in endpoints:
+        assert endpoint.display_name == "ANY /BlindSQLInjectionVulnerability"
+        assert endpoint.metadata["api_endpoint"] == "/BlindSQLInjectionVulnerability"
+
+
+def test_two_annotations_on_one_method_do_not_drop_the_path() -> None:
+    """@GetMapping (no path) followed by a separate @RequestMapping(path).
+
+    A real pattern in VulnerableAppRestController.java: the first matching
+    annotation used to win outright, so the empty @GetMapping path shadowed
+    the real @RequestMapping("/allEndPoint") path that followed it.
+    """
+    source = """package demo;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class VulnerableAppRestController {
+
+    @GetMapping
+    @RequestMapping("/allEndPoint")
+    public String allEndPoints() {
+        return "ok";
+    }
+}
+"""
+    parsed = parse_java(source, "VulnerableAppRestController.java")
+    detections = JavaWebAdapter().extract(
+        source, "VulnerableAppRestController.java", parsed
+    )
+    endpoint = next(
+        item for item in detections if item.component_type == ComponentType.API_ENDPOINT
+    )
+    assert endpoint.display_name == "GET /allEndPoint"
+
+
+def test_annotation_value_prefers_named_value_over_leading_attribute() -> None:
+    # value= appears after another named attribute — a positional match on
+    # the first quoted string would wrongly grab descriptionLabel's value.
+    annotation = (
+        '@VulnerableAppRestController('
+        'descriptionLabel = "SQL_INJECTION_VULNERABILITY", '
+        'value = "BlindSQLInjectionVulnerability")'
+    )
+    assert (
+        JavaFrameworkAdapter._annotation_value(annotation)
+        == "BlindSQLInjectionVulnerability"
+    )
