@@ -121,6 +121,23 @@ Where schema or model definitions are available, NuGuard also records classified
 
 Dependency discovery covers Python (`pyproject.toml`, `requirements*.txt`, `setup.cfg`), npm (`package.json`), .NET/NuGet (`*.csproj`, `packages.config`, `Directory.Packages.props`), Java/Maven/Gradle (`pom.xml`, `build.gradle`, `build.gradle.kts`, version catalogs), and Go (`go.mod`, `go.sum`). See the [AI-SBOM Schema](sbom-schema.md#supported-dependency-manifests) for the normalized dependency shape.
 
+## Live target protocols
+
+The sections above describe what a scan recognizes in source and configuration. `nuguard behavior` and `nuguard redteam` also send test traffic to a running application. This table lists the protocols they can use. A protocol that a scan detects but that isn't supported here shows up in the AI-SBOM, but NuGuard can't send test traffic to it yet.
+
+| Protocol | Live testing | How NuGuard reaches the target |
+|---|---|---|
+| HTTP/REST (JSON) | Supported | The default transport for every language and framework. The chat endpoint and the request/response keys come from config, from the AI-SBOM, or from a live probe. When the target rejects a request as malformed (HTTP 400 or 422), NuGuard infers the missing fields and retries. |
+| Server-Sent Events | Supported | Any HTTP chat endpoint that answers with `text/event-stream` is parsed as an event stream. Status, ping, and heartbeat frames are ignored. |
+| WebSocket | Supported | Used automatically when the AI-SBOM or a live probe finds a WebSocket chat endpoint, such as FastAPI `@app.websocket` or Flask-Sock `@sock.route`. The `http(s)` target URL is rewritten to `ws(s)`. |
+| Google ADK | Supported, protocol-aware | A dedicated adapter handles ADK session creation, message submission, and `/run_sse` response parsing. |
+| Google Customer Engagement Suite (CES) | Supported, protocol-aware | A dedicated adapter calls the CES `runSession` API with a gcloud bearer token. |
+| MCP | Scan only | Detected MCP servers, clients, and tools shape attack scenarios, including toxic-flow chains from MCP content into write-capable tools. NuGuard does not connect to an MCP server as a test target. |
+| GraphQL | Not yet | Go `gqlgen` servers are detected as a framework, but individual operations are not extracted, and there is no GraphQL-aware test client. |
+| gRPC | Not yet | No detection or test client. |
+
+Outside the two protocol-aware Google adapters, NuGuard tests every HTTP target the same way, whatever language or web framework built it. For example, detecting Gin, Spring, or NestJS does not change how the attack traffic is sent.
+
 ## Confirm support in a scan
 
 Run a source-only scan and inspect the evidence attached to each AI-SBOM node:
