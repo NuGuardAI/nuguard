@@ -1,5 +1,17 @@
 # Custom Nuclei templates — OWASP Juice Shop
 
+NuGuard now ships app-agnostic forms of these vulnerability checks in
+`nuguard/pentest/templates`; the bundled pass runs them by default. That suite
+adds bounded generic checks for auth-bypass SQLi/NoSQLi, error-based SQLi,
+command injection, reflected XSS, SSTI, CRLF injection, path traversal, open
+redirect, credentialed CORS, sensitive files/configuration, directory listings,
+stack traces, TRACE, and clickjacking headers.
+
+The files in this directory remain deliberately Juice Shop-specific fixtures.
+Use them only when reproducing the exact demo findings below (for example the
+scoreboard endpoint and Juice Shop's allowlist bypass). A normal NuGuard
+pentest no longer needs `--templates-dir` to receive generalized coverage.
+
 Hand-authored templates for `nuguard pentest --templates-dir`, each verified against the
 live `juice-shop-demo` deployment before being committed (not guessed from the challenge
 list at https://github.com/refabr1k/owasp-juiceshop-solutions):

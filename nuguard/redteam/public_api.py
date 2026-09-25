@@ -191,6 +191,8 @@ class RedteamRunRequest(BaseModel):
     stall_abort_threshold: int = 8
     skip_discovery: bool = False
     discovery_max_turns: int = 3
+    require_engagement: bool = True
+    engagement_error_threshold: int = 5
     capability_discovery: bool = True
     liveness_cache_ttl_seconds: float = 3600.0
     llm_capability_dedup: bool = False
@@ -239,6 +241,7 @@ class RedteamRunResult(BaseModel):
         "aborted_target_unavailable",
         "aborted_auth_failure",
         "aborted_endpoint_unreachable",
+        "aborted_target_not_engaged",
         "inconclusive_target_errors",
         "no_findings",
         "partial",
@@ -448,6 +451,8 @@ async def run_redteam(
         stall_abort_threshold=request.stall_abort_threshold,
         skip_discovery=request.skip_discovery,
         discovery_max_turns=request.discovery_max_turns,
+        require_engagement=request.require_engagement,
+        engagement_error_threshold=request.engagement_error_threshold,
         capability_discovery=request.capability_discovery,
         liveness_cache_ttl_seconds=request.liveness_cache_ttl_seconds,
         llm_capability_dedup=request.llm_capability_dedup,

@@ -321,7 +321,7 @@
         "description": "FastAPI GET endpoint /me requiring authentication, returning current user data.",
         "auth_required": true,
         "operational": true,
-        "liveness_checked_at": "2026-09-18T02:18:59.468548+00:00",
+        "liveness_checked_at": "2026-09-25T05:43:23.098879+00:00",
         "liveness_notes": [
           "HTTP 200 \u2014 endpoint reachable."
         ],
@@ -425,10 +425,9 @@
         "method": "POST",
         "description": "POST /chat API endpoint in FastAPI, requiring authentication, for chat functionality.",
         "auth_required": true,
-        "operational": true,
         "liveness_checked_at": "2026-09-18T02:19:03.776200+00:00",
         "liveness_notes": [
-          "HTTP 200 \u2014 endpoint reachable."
+          "Chat Endpoint: skipped (POST is not a safe method (GET/HEAD/OPTIONS only) \u2014 never dynamically probed)."
         ],
         "request_body_schema": {
           "conversation_id": "Optional[str]",
@@ -522,7 +521,8 @@
             "final_confidence": 0.936
           },
           "description_source": "llm_generated",
-          "source": "runtime_probe"
+          "source": "runtime_probe",
+          "confirmed_at": "2026-09-25T05:40:40.044249+00:00"
         }
       },
       "evidence": [
@@ -557,10 +557,9 @@
         "method": "POST",
         "description": "FastAPI POST endpoint at /login requiring authentication for user login functionality.",
         "auth_required": true,
-        "operational": false,
         "liveness_checked_at": "2026-09-18T02:18:59.637009+00:00",
         "liveness_notes": [
-          "HTTP 422 \u2014 rotation-trigger status, endpoint likely wrong/dead."
+          "Login: skipped (POST is not a safe method (GET/HEAD/OPTIONS only) \u2014 never dynamically probed)."
         ],
         "request_body_schema": {
           "username": "str",
@@ -678,10 +677,9 @@
         "method": "POST",
         "description": "POST /logout API endpoint in FastAPI requiring authentication to terminate user sessions.",
         "auth_required": true,
-        "operational": true,
         "liveness_checked_at": "2026-09-18T02:18:59.637606+00:00",
         "liveness_notes": [
-          "HTTP 200 \u2014 endpoint reachable."
+          "Logout: skipped (POST is not a safe method (GET/HEAD/OPTIONS only) \u2014 never dynamically probed)."
         ],
         "request_body_schema": {},
         "chat_payload_list": false,
