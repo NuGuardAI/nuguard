@@ -112,7 +112,10 @@ def test_composed_spring_annotations_are_resolved_as_routes() -> None:
     endpoints through custom ``@XxxRestController``/``@XxxRequestMapping``
     annotations rather than the literal Spring ones. Before this fix, none of
     these routes were ever extracted because the adapter only matched the
-    literal annotation names.
+    literal annotation names. The ``value = LevelConstants.LEVEL_1`` bare
+    constant reference (not a string literal) is resolved to ``LEVEL_1`` via
+    the identifier-name fallback — confirmed live against the real deployed
+    app: ``GET /VulnerableApp/BlindSQLInjectionVulnerability/LEVEL_1`` -> 200.
     """
     source = """package demo;
 
@@ -138,19 +141,48 @@ public class BlindSQLInjectionVulnerability {
     detections = JavaWebAdapter().extract(
         source, "BlindSQLInjectionVulnerability.java", parsed
     )
+    endpoints = {
+        item.metadata["api_endpoint"]: item
+        for item in detections
+        if item.component_type == ComponentType.API_ENDPOINT
+    }
+
+    assert set(endpoints) == {
+        "/BlindSQLInjectionVulnerability/LEVEL_1",
+        "/BlindSQLInjectionVulnerability/LEVEL_2",
+    }
+    assert len({item.canonical_name for item in endpoints.values()}) == 2
+
+
+def test_unresolvable_route_value_still_yields_distinct_endpoints() -> None:
+    """A path value that isn't a string literal or a bare identifier.
+
+    Nothing in ``value = 1`` can be turned into a plausible path segment, so
+    the class-level path is used as-is — but distinct handler methods must
+    still not collapse into one SBOM node.
+    """
+    source = """package demo;
+
+@VulnerableAppRestController(value = "SomeVulnerability")
+public class SomeVulnerability {
+
+    @VulnerableAppRequestMapping(value = 1)
+    public String stepOne() { return "ok"; }
+
+    @VulnerableAppRequestMapping(value = 1)
+    public String stepTwo() { return "ok"; }
+}
+"""
+    parsed = parse_java(source, "SomeVulnerability.java")
+    detections = JavaWebAdapter().extract(source, "SomeVulnerability.java", parsed)
     endpoints = [
         item for item in detections if item.component_type == ComponentType.API_ENDPOINT
     ]
 
-    # The composed-annotation value can't be resolved (it's a constant
-    # reference, not a string literal), but both methods still surface as
-    # distinct endpoints under the class-level path rather than being
-    # dropped or collapsed into one.
     assert len(endpoints) == 2
     assert len({item.canonical_name for item in endpoints}) == 2
     for endpoint in endpoints:
-        assert endpoint.display_name == "ANY /BlindSQLInjectionVulnerability"
-        assert endpoint.metadata["api_endpoint"] == "/BlindSQLInjectionVulnerability"
+        assert endpoint.metadata["api_endpoint"] == "/SomeVulnerability"
 
 
 def test_two_annotations_on_one_method_do_not_drop_the_path() -> None:
@@ -198,3 +230,15 @@ def test_annotation_value_prefers_named_value_over_leading_attribute() -> None:
         JavaFrameworkAdapter._annotation_value(annotation)
         == "BlindSQLInjectionVulnerability"
     )
+
+
+def test_route_value_falls_back_to_bare_constant_identifier() -> None:
+    adapter = JavaWebAdapter()
+    assert (
+        adapter._route_value('@VulnerableAppRequestMapping(value = LevelConstants.LEVEL_1)')
+        == "LEVEL_1"
+    )
+    # A string literal still wins outright — no fallback needed.
+    assert adapter._route_value('@RequestMapping("/api")') == "/api"
+    # Nothing plausible to extract.
+    assert adapter._route_value('@VulnerableAppRequestMapping(value = 1)') == ""
