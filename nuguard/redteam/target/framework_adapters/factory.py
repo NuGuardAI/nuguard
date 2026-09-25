@@ -71,25 +71,46 @@ def _extract_agent_source_dirs(sbom: "AiSbomDocument") -> list[str]:
 def make_framework_adapter(
     sbom: "AiSbomDocument | None",
     adk_config: Any | None = None,
+    target_url: str = "",
 ) -> GoogleADKAdapter | GoogleCESAdapter | None:
     """Return the appropriate framework adapter for the given AI-SBOM, or ``None``.
 
-    Currently the only supported framework is **Google ADK**.  Detection is
-    based on the ``summary.frameworks`` field of the SBOM — when it contains
-    ``"google-adk"`` or ``"google_adk"`` a :class:`GoogleADKAdapter` is
-    returned, configured from ``adk_config`` (a
-    :class:`~nuguard.config.GoogleADKConfig` instance or any object with
-    ``app_name``, ``user_id``, ``session_per_scenario``, and ``run_path``
-    attributes).
+    SBOM framework metadata alone is never sufficient to select a direct
+    adapter — see issue #552 (Blissful Store proxies CES internally but
+    exposes its own ``/api/chat``; selecting CES from SBOM metadata alone
+    hijacked traffic to ``ces.googleapis.com`` instead of the supplied
+    target). *target_url* is required so each adapter can also confirm the
+    supplied target actually is (or the caller explicitly wants) that
+    framework's own service, not just that the SBOM mentions it somewhere.
+
+    * **Google CES** — selected only when *target_url* itself is a
+      ``ces.googleapis.com`` URL. SBOM ``"google-ces"`` evidence alone
+      (e.g. a proxy app that calls CES internally) is informational only
+      and never redirects transport away from *target_url*.
+    * **Google ADK** — selected when ``summary.frameworks`` contains
+      ``"google-adk"``/``"google_adk"`` **and** either (a) ``adk_config``
+      explicitly sets ``enabled=true`` (trusted immediately), or (b) no
+      explicit opt-in/opt-out was configured, in which case the returned
+      adapter defers committing to the ADK protocol until
+      :meth:`~.google_adk.GoogleADKAdapter.ensure_session` has live-verified
+      the target actually serves an ADK-shaped ``/list-apps`` — see
+      :class:`~.google_adk.GoogleADKAdapter`'s ``requires_verification``.
+      ``adk_config.enabled=false`` still disables ADK entirely, unchanged.
 
     Args:
         sbom: Parsed AI-SBOM document.  When ``None`` no adapter is returned.
-        adk_config: Optional ADK-specific config object.  May be ``None`` to
-            use defaults (e.g. ``user_id="nuguard"``).
+        adk_config: Optional ADK-specific config object (a
+            :class:`~nuguard.config.GoogleADKConfig` instance or any object
+            with ``model_fields_set``, ``enabled``, ``app_name``, ``user_id``,
+            ``session_per_scenario``, and ``run_path`` attributes). May be
+            ``None`` to use defaults.
+        target_url: The base URL NuGuard was told to test. Required for both
+            CES's URL-match gate and to distinguish "explicit ADK opt-in"
+            from "SBOM mentioned ADK" (which now only earns a *deferred,
+            live-verified* adapter rather than an immediately-trusted one).
 
     Returns:
-        A configured :class:`GoogleADKAdapter` when Google ADK is detected,
-        otherwise ``None``.
+        A configured adapter, or ``None`` to use generic HTTP transport.
     """
     if sbom is None:
         return None
@@ -104,17 +125,18 @@ def make_framework_adapter(
 
     detected_frameworks = {f for f in frameworks if f}
 
-    # CES takes priority over ADK: a serve.py that proxies a CES agent will expose
-    # ADK-compatible endpoints locally, but the real target is ces.googleapis.com.
-    # Check for CES first; only fall back to ADK when CES is absent.
-    ces_adapter = _make_ces_adapter(sbom)
+    # CES is gated on target_url alone (issue #552) — SBOM evidence of an
+    # internally-proxied CES agent must never redirect NuGuard's own traffic
+    # away from the target the caller supplied.
+    ces_adapter = _make_ces_adapter(sbom, target_url)
     if ces_adapter is not None:
         return ces_adapter
 
     if not (detected_frameworks & ADK_FRAMEWORK_NAMES):
         return None
 
-    # Allow explicit opt-out when the target wraps ADK with a custom REST API.
+    # Explicit opt-out (unchanged): the target wraps ADK with a custom REST API.
+    adk_fields_set: frozenset[str] = getattr(adk_config, "model_fields_set", frozenset())
     if adk_config is not None and not getattr(adk_config, "enabled", True):
         _log.info(
             "make_framework_adapter: ADK adapter disabled via adk.enabled=false — "
@@ -122,9 +144,26 @@ def make_framework_adapter(
         )
         return None
 
+    # Issue #552: SBOM evidence alone is no longer sufficient to *trust* ADK
+    # immediately — only an explicit adk.enabled=true opt-in earns that.
+    # "Explicit" is judged via model_fields_set (populated by pydantic at
+    # construction from parsed yaml) rather than the boolean value alone,
+    # since the default is also True — a config object that never mentions
+    # `enabled` must not be mistaken for one that set it to true on purpose.
+    # All other cases (adk_config is None, or enabled was never explicitly
+    # set) get a deferred adapter that must live-verify an ADK-shaped
+    # /list-apps response before its first real session/run call; see
+    # GoogleADKAdapter.
+    explicit_opt_in = (
+        adk_config is not None and "enabled" in adk_fields_set and adk_config.enabled
+    )
+    requires_verification = not explicit_opt_in
+
     _log.info(
-        "make_framework_adapter: detected Google ADK (frameworks=%s) — creating GoogleADKAdapter",
+        "make_framework_adapter: detected Google ADK (frameworks=%s) — creating "
+        "GoogleADKAdapter (requires_verification=%s)",
         detected_frameworks & ADK_FRAMEWORK_NAMES,
+        requires_verification,
     )
 
     # Extract config values, falling back to defaults
@@ -175,24 +214,50 @@ def make_framework_adapter(
         session_per_scenario=session_per_scenario,
         run_path=run_path,
         sbom_app_candidates=sbom_app_candidates,
+        requires_verification=requires_verification,
     )
 
 
-def _make_ces_adapter(sbom: "AiSbomDocument") -> "GoogleCESAdapter | None":
-    """Return a :class:`GoogleCESAdapter` when the SBOM reports a CES app, or ``None``.
+def _is_ces_target_url(target_url: str) -> bool:
+    """True when *target_url* itself points at the CES API host.
 
-    Searches ``summary.frameworks`` and then scans individual nodes for the
-    ``"google-ces"`` framework marker.  When found, builds a
-    :class:`~nuguard.common.ces_client.CESDeploymentConfig` from the first
-    matching ``API_ENDPOINT`` node's endpoint URL.
+    This is the entire gate for selecting CES transport (issue #552) — SBOM
+    evidence that an app proxies to CES internally is not, by itself,
+    grounds to redirect NuGuard's own traffic there.
+    """
+    if not target_url:
+        return False
+    try:
+        from urllib.parse import urlsplit  # noqa: PLC0415
+
+        host = urlsplit(target_url).hostname or ""
+    except ValueError:
+        return False
+    return host.lower() == "ces.googleapis.com"
+
+
+def _make_ces_adapter(sbom: "AiSbomDocument", target_url: str) -> "GoogleCESAdapter | None":
+    """Return a :class:`GoogleCESAdapter` only when *target_url* is itself a
+    CES API URL, or ``None``.
+
+    SBOM ``"google-ces"`` evidence (``summary.frameworks`` or a matching
+    ``API_ENDPOINT`` node) is used only to build the
+    :class:`~nuguard.common.ces_client.CESDeploymentConfig` once CES has
+    already been selected on *target_url* grounds — it is never, by itself,
+    sufficient to select CES (issue #552: a proxy app whose SBOM reports
+    CES usage must still be tested at its own supplied target URL).
 
     Args:
         sbom: Parsed AI-SBOM document.
+        target_url: The base URL NuGuard was told to test.
 
     Returns:
         A configured :class:`GoogleCESAdapter` or ``None``.
     """
     from nuguard.common.ces_client import CESDeploymentConfig  # noqa: PLC0415
+
+    if not _is_ces_target_url(target_url):
+        return None
 
     # Check summary.frameworks
     summary = getattr(sbom, "summary", None)
@@ -215,11 +280,11 @@ def _make_ces_adapter(sbom: "AiSbomDocument") -> "GoogleCESAdapter | None":
             ces_endpoint_node = node
             break
 
-    if not has_ces_framework and ces_endpoint_node is None:
-        return None
-
     _log.info(
-        "make_framework_adapter: detected Google CES — creating GoogleCESAdapter"
+        "make_framework_adapter: target_url %r is a CES API URL — creating "
+        "GoogleCESAdapter (sbom_ces_evidence=%s)",
+        target_url,
+        has_ces_framework or ces_endpoint_node is not None,
     )
 
     # Build config from endpoint node if available

@@ -930,6 +930,37 @@ def _looks_like_chat_response(data: object, response_key: str | None = None) -> 
     return False
 
 
+async def _verify_adk_list_apps(
+    target_url: str,
+    auth_headers: dict[str, str] | None,
+    timeout: float,
+) -> bool:
+    """Positively verify *target_url* speaks ADK's ``/list-apps`` contract.
+
+    Mirrors :meth:`~nuguard.redteam.target.framework_adapters.google_adk.
+    GoogleADKAdapter._verify_contract` — a bare 200 response with a JSON list
+    body (even empty) is the accepted signal; anything else (404, non-list
+    body, connection failure) means "not ADK". Never raises.
+    """
+    from nuguard.redteam.target.framework_adapters.google_adk import _LIST_APPS_PATH
+
+    base = target_url.rstrip("/")
+    headers = dict(auth_headers or {})
+    try:
+        async with httpx.AsyncClient(base_url=base, headers=headers, timeout=timeout) as client:
+            resp = await client.get(_LIST_APPS_PATH)
+    except Exception as exc:
+        _log.debug("endpoint_detection: ADK /list-apps verification request failed: %s", exc)
+        return False
+    if resp.status_code != 200:
+        return False
+    try:
+        body = resp.json()
+    except Exception:
+        return False
+    return isinstance(body, list)
+
+
 async def probe_chat_endpoints(
     target_url: str,
     sbom: "AiSbomDocument | None",
@@ -963,8 +994,19 @@ async def probe_chat_endpoints(
 
     # ── ADK fast-path (framework shortcut — skip all detection) ──────────────
     # Google ADK uses a fixed RunAgentRequest protocol; the generic payload
-    # shapes would always 422. Return the well-known '/run' path immediately.
+    # shapes would always 422, so a plain probe loop can never confirm '/run'
+    # on its own. Issue #552: SBOM framework evidence alone is not enough to
+    # commit to this shortcut, though — a proxy app whose SBOM merely reports
+    # ADK usage internally must not have its own traffic redirected to '/run'
+    # with an unconsumed "__adk__" payload key (nothing downstream recognizes
+    # that marker unless a real GoogleADKAdapter is also attached, which is
+    # gated the same way in make_framework_adapter). Before taking the
+    # shortcut, live-verify the target actually exposes an ADK-shaped
+    # /list-apps response — the same positive-verification signal
+    # GoogleADKAdapter itself requires. A failed/absent check falls through
+    # to the normal generic detection loop below instead of guessing.
     from nuguard.redteam.target.framework_adapters.google_adk import (  # noqa: PLC0415
+        _LIST_APPS_PATH,
         ADK_FRAMEWORK_NAMES,
     )
     summary = getattr(sbom, "summary", None)
@@ -974,8 +1016,19 @@ async def probe_chat_endpoints(
         if isinstance(raw_frameworks, (list, tuple)):
             sbom_frameworks = [str(f).lower() for f in raw_frameworks if f]
     if ADK_FRAMEWORK_NAMES & set(sbom_frameworks) and not hint_path:
-        _log.info("endpoint_detection: Google ADK detected in SBOM — skipping detection, using /run")
-        return ProbeResult("/run", "__adk__", False)
+        if await _verify_adk_list_apps(target_url, auth_headers, timeout):
+            _log.info(
+                "endpoint_detection: Google ADK detected in SBOM and live-verified "
+                "via %s — skipping detection, using /run",
+                _LIST_APPS_PATH,
+            )
+            return ProbeResult("/run", "__adk__", False)
+        _log.info(
+            "endpoint_detection: SBOM reports Google ADK, but %s did not "
+            "confirm an ADK-shaped target — falling through to generic "
+            "detection instead of assuming /run",
+            _LIST_APPS_PATH,
+        )
 
     # Always append common fallback paths so detection has candidates even when
     # the SBOM has no API_ENDPOINT nodes.
