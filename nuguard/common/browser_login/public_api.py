@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from nuguard.common.auth import AuthConfig
 from nuguard.common.browser_login.config import BrowserDiscoveryConfig
@@ -47,6 +47,10 @@ class BrowserDiscoveryResult(BaseModel):
     candidate_extra_fields: dict[str, str] = Field(default_factory=dict)
     ambiguous_fields: dict[str, list[str]] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
+    # Bearer token the app attaches to its own API calls after login (read
+    # from web storage or an observed Authorization header). SecretStr so it
+    # is redacted from repr/logs/model_dump_json; use .get_secret_value().
+    bearer_token: SecretStr | None = None
 
 
 def _build_auth_config(request: BrowserDiscoveryRequest) -> AuthConfig:
@@ -109,6 +113,7 @@ async def discover_browser(
         candidate_extra_fields=result.candidate_extra_fields,
         ambiguous_fields=result.ambiguous_fields,
         warnings=result.warnings,
+        bearer_token=SecretStr(result.bearer_token) if result.bearer_token else None,
     )
 
 

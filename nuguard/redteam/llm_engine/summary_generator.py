@@ -22,6 +22,12 @@ _BEHAVIOR_EXEC_SUMMARY_SYSTEM = (
     "Write concise, technical prose. Do NOT use bullet lists or headers."
 )
 
+_PENTEST_EXEC_SUMMARY_SYSTEM = (
+    "You are a security engineer summarising an authorized web-application "
+    "penetration test (DAST) report. Write concise, technical prose. "
+    "Do NOT use bullet lists or headers."
+)
+
 _CODING_BRIEF_SYSTEM = (
     "You are a lead security engineer producing a remediation task list for a coding agent. "
     "The agent has access to the source code but needs precise, unambiguous instructions."
@@ -169,6 +175,51 @@ class LLMSummaryGenerator:
             prompt, _BEHAVIOR_EXEC_SUMMARY_SYSTEM,
             label=f"summary-gen | behavior-executive-summary findings={len(all_findings)}",
             failure_context="Behavior executive summary generation",
+        )
+
+    async def pentest_executive_summary(
+        self,
+        targets: list[str],
+        findings: list[Finding],
+        profile: str,
+        duration_s: float,
+        auth_note: str = "",
+    ) -> str:
+        """Return a 2–4 sentence executive summary for a pentest report.
+
+        *findings* are already secret-redacted by the pentest engine; only
+        titles, affected targets and a short description excerpt are sent.
+        """
+        counts = _sev_counts(findings)
+        finding_lines = [
+            f"- [{f.severity}] {f.title}: {f.affected_component or 'unknown target'} — "
+            f"{(f.description or '')[:200]}"
+            for f in findings[:15]
+        ]
+        prompt = (
+            f"Pentest statistics:\n"
+            f"- Targets: {', '.join(targets) or 'unknown'}\n"
+            f"- Scan profile: {profile}\n"
+            f"- Authentication: {auth_note or 'not stated'}\n"
+            f"- Findings: {len(findings)} "
+            f"({counts.get('critical', 0)} critical, {counts.get('high', 0)} high, "
+            f"{counts.get('medium', 0)} medium, {counts.get('low', 0)} low, "
+            f"{counts.get('info', 0)} info)\n"
+            f"- Scan duration: {duration_s:.0f}s\n"
+        )
+        if finding_lines:
+            prompt += "\nFindings:\n" + "\n".join(finding_lines) + "\n"
+        prompt += (
+            "\nWrite a 2–4 sentence executive summary for a technical audience. "
+            "Focus on: the most serious weaknesses, their likely impact, whether the scan "
+            "was authenticated, and the urgency of remediation. If there are no findings, "
+            "say what that does and does not establish. Do NOT repeat finding titles "
+            "verbatim — synthesise."
+        )
+        return await self._complete_or_empty(
+            prompt, _PENTEST_EXEC_SUMMARY_SYSTEM,
+            label=f"summary-gen | pentest-executive-summary findings={len(findings)}",
+            failure_context="Pentest executive summary generation",
         )
 
     async def coding_agent_brief(
