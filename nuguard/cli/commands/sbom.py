@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from urllib.parse import urlparse, urlunparse
 
 import typer
@@ -17,6 +17,10 @@ from nuguard.common.logging import get_logger
 from nuguard.sbom.extractor.config import AiSbomConfig
 from nuguard.sbom.generator import SbomGenerator
 from nuguard.sbom.validator import validate_sbom
+
+if TYPE_CHECKING:
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
 _console = Console()
@@ -231,6 +235,104 @@ def _inject_token(url: str, token: str) -> str:
     return urlunparse(parsed._replace(netloc=netloc))
 
 
+def _clone_and_extract(
+    *,
+    extractor: "AiSbomExtractor",
+    from_repo: str,
+    clone_url: str,
+    ref: str | None,
+    cfg_source_ref: str | None,
+    config: AiSbomConfig,
+    token: str | None,
+) -> "AiSbomDocument":
+    """Clone *from_repo* and extract an SBOM, transparently handling GitHub subfolders.
+
+    Dispatch:
+      - Not a GitHub subfolder URL (plain repo-root, or a non-GitHub host) →
+        today's unmodified ``extract_from_repo`` call, unchanged.
+      - ``/tree/<ref>/<subpath>`` form → unambiguous, go straight to the
+        subfolder clone path.
+      - Bare shorthand (``org/repo/<subpath>``) → ambiguous: try the direct
+        clone first (identical to today's behavior); only reinterpret the
+        trailing path segments as a subfolder on a definitive "not found"
+        failure. Any other failure propagates unchanged.
+    """
+    from nuguard.common.github_url import try_parse_github_subfolder  # noqa: PLC0415
+    from nuguard.sbom.extractor import is_repository_not_found_error  # noqa: PLC0415
+
+    gh = try_parse_github_subfolder(from_repo)
+    url_ref = gh.url_ref if gh is not None else None
+    effective_ref = ref if ref is not None else (url_ref or cfg_source_ref)
+
+    if gh is None:
+        _console.print(f"[bold]Cloning[/bold] {from_repo} ({effective_ref or 'default branch'}) …")
+        return extractor.extract_from_repo(
+            clone_url, ref=effective_ref, config=config, source_ref=from_repo
+        )
+
+    if ref is not None and gh.url_ref is not None and ref != gh.url_ref:
+        _console.print(
+            f"[yellow]Note:[/yellow] --ref {ref!r} overrides the ref embedded "
+            f"in the URL ({gh.url_ref!r})."
+        )
+
+    if not gh.is_ambiguous_shorthand:
+        assert gh.subpath is not None  # guaranteed by try_parse_github_subfolder
+        _log.info(
+            "Detected GitHub tree-URL form: repo=%s ref=%s subpath=%s",
+            gh.repo_root_url, effective_ref, gh.subpath,
+        )
+        _console.print(
+            f"[bold]Cloning[/bold] {gh.repo_root_url} subfolder {gh.subpath!r} "
+            f"({effective_ref or 'default branch'}) …"
+        )
+        return extractor.extract_from_repo_subfolder(
+            gh.repo_root_url,
+            ref=effective_ref,
+            subpath=gh.subpath,
+            config=config,
+            source_ref=from_repo,
+            token=token,
+        )
+
+    assert gh.subpath is not None  # guaranteed by try_parse_github_subfolder
+    _log.info(
+        "Detected possible GitHub subfolder shorthand: repo=%s candidate_subpath=%s",
+        gh.repo_root_url, gh.subpath,
+    )
+    _console.print(f"[bold]Cloning[/bold] {from_repo} ({effective_ref or 'default branch'}) …")
+    try:
+        doc = extractor.extract_from_repo(
+            clone_url, ref=effective_ref, config=config, source_ref=from_repo
+        )
+    except RuntimeError as exc:
+        if not is_repository_not_found_error(exc):
+            _log.info(
+                "%s clone failed for a reason other than 'not found'; not retrying as a subfolder",
+                from_repo,
+            )
+            raise
+        _log.info(
+            "%s not found directly; retrying as repo=%s subpath=%s",
+            from_repo, gh.repo_root_url, gh.subpath,
+        )
+        _console.print(
+            f"[bold]Retrying[/bold] as subfolder: {gh.repo_root_url} / {gh.subpath!r} "
+            f"({effective_ref or 'default branch'}) …"
+        )
+        return extractor.extract_from_repo_subfolder(
+            gh.repo_root_url,
+            ref=effective_ref,
+            subpath=gh.subpath,
+            config=config,
+            source_ref=from_repo,
+            token=token,
+        )
+    else:
+        _log.info("%s resolved directly — no subfolder detected", from_repo)
+        return doc
+
+
 def _resolve_token(token: str | None) -> str | None:
     """Return the first usable token from flag → GH_TOKEN → GITHUB_TOKEN.
 
@@ -300,8 +402,10 @@ def _do_generate(
         raise typer.Exit(code=1)
 
     # --ref flag takes precedence; fall back to ref: in nuguard.yaml; else None
-    # (git clones the repository's default branch).
-    effective_ref = ref if ref is not None else cfg.source_ref
+    # (git clones the repository's default branch); else a URL-embedded ref
+    # (``/tree/<ref>/<subpath>``) when --from-repo targets a GitHub
+    # subfolder. Precedence is resolved inside _clone_and_extract, which
+    # needs to know whether a URL-embedded ref is present before merging.
 
     # --llm flag takes precedence; fall back to sbom_generation.llm from nuguard.yaml;
     # else auto-enable when llm.api_key is configured
@@ -354,12 +458,17 @@ def _do_generate(
         if from_repo:
             resolved_token = _resolve_token(token)
             clone_url = _inject_token(from_repo, resolved_token) if resolved_token else from_repo
-            _console.print(f"[bold]Cloning[/bold] {from_repo} ({effective_ref or 'default branch'}) …")
             # Pass the original URL as source_ref to avoid leaking the token
             from nuguard.sbom.extractor import AiSbomExtractor  # noqa: PLC0415
             extractor = AiSbomExtractor()
-            doc = extractor.extract_from_repo(
-                clone_url, ref=effective_ref, config=config, source_ref=from_repo
+            doc = _clone_and_extract(
+                extractor=extractor,
+                from_repo=from_repo,
+                clone_url=clone_url,
+                ref=ref,
+                cfg_source_ref=cfg.source_ref,
+                config=config,
+                token=resolved_token,
             )
         else:
             assert source is not None  # guarded by the exit above

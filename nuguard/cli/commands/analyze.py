@@ -56,20 +56,83 @@ def _clone_remote_source_for_analysis(url: str, ref: str | None = None) -> str |
     import tempfile
 
     from nuguard.cli.commands.sbom import _inject_token, _resolve_token  # noqa: PLC0415
-    from nuguard.sbom.extractor import AiSbomExtractor  # noqa: PLC0415
+    from nuguard.common.github_url import try_parse_github_subfolder  # noqa: PLC0415
+    from nuguard.sbom.extractor import (  # noqa: PLC0415
+        AiSbomExtractor,
+        is_repository_not_found_error,
+    )
+    from nuguard.sbom.extractor.github_clone import clone_github_subfolder  # noqa: PLC0415
 
     clone_dir = tempfile.mkdtemp(prefix="nuguard_analyze_clone_")
     try:
         token = _resolve_token(None)
         clone_url = _inject_token(url, token) if token else url
+        gh = try_parse_github_subfolder(url)
+        url_ref = gh.url_ref if gh is not None else None
+        effective_ref = ref if ref is not None else url_ref
+
+        if gh is None:
+            typer.echo(
+                f"Cloning {url} ({effective_ref or 'default branch'}) for local-file "
+                "scans (supply-chain/Checkov/Trivy/Semgrep)…"
+            )
+            repo_dir = Path(clone_dir) / "repo"
+            repo_dir.mkdir(parents=True, exist_ok=True)
+            AiSbomExtractor._clone_repo(url=clone_url, ref=effective_ref, dest=repo_dir)
+            return str(repo_dir)
+
+        if not gh.is_ambiguous_shorthand:
+            assert gh.subpath is not None  # guaranteed by try_parse_github_subfolder
+            _log.info(
+                "Detected GitHub tree-URL form: repo=%s ref=%s subpath=%s",
+                gh.repo_root_url, effective_ref, gh.subpath,
+            )
+            typer.echo(
+                f"Cloning {gh.repo_root_url} subfolder {gh.subpath!r} "
+                f"({effective_ref or 'default branch'}) for local-file scans…"
+            )
+            repo_dir = Path(clone_dir) / "repo"
+            repo_dir.mkdir(parents=True, exist_ok=True)
+            clone_github_subfolder(
+                gh.repo_root_url, effective_ref, gh.subpath, repo_dir, token=token
+            )
+            return str(repo_dir / gh.subpath)
+
+        assert gh.subpath is not None  # guaranteed by try_parse_github_subfolder
+        _log.info(
+            "Detected possible GitHub subfolder shorthand: repo=%s candidate_subpath=%s",
+            gh.repo_root_url, gh.subpath,
+        )
         typer.echo(
-            f"Cloning {url} ({ref or 'default branch'}) for local-file scans "
+            f"Cloning {url} ({effective_ref or 'default branch'}) for local-file scans "
             "(supply-chain/Checkov/Trivy/Semgrep)…"
         )
         repo_dir = Path(clone_dir) / "repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
-        AiSbomExtractor._clone_repo(url=clone_url, ref=ref, dest=repo_dir)
-        return str(repo_dir)
+        try:
+            AiSbomExtractor._clone_repo(url=clone_url, ref=effective_ref, dest=repo_dir)
+        except RuntimeError as exc:
+            if not is_repository_not_found_error(exc):
+                _log.info(
+                    "%s clone failed for a reason other than 'not found'; not "
+                    "retrying as a subfolder", url,
+                )
+                raise
+            _log.info(
+                "%s not found directly; retrying as repo=%s subpath=%s",
+                url, gh.repo_root_url, gh.subpath,
+            )
+            typer.echo(
+                f"Retrying as subfolder: {gh.repo_root_url} / {gh.subpath!r} "
+                f"({effective_ref or 'default branch'}) …"
+            )
+            clone_github_subfolder(
+                gh.repo_root_url, effective_ref, gh.subpath, repo_dir, token=token
+            )
+            return str(repo_dir / gh.subpath)
+        else:
+            _log.info("%s resolved directly — no subfolder detected", url)
+            return str(repo_dir)
     except Exception as exc:
         _log.warning("_clone_remote_source_for_analysis: clone of %s failed: %s", url, exc)
         typer.echo(

@@ -117,6 +117,8 @@ from ..models import (
 )
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
+from .git_safety import SAFE_REF_RE, SAFE_URL_RE, validate_ref, validate_url
+from .github_clone import clone_github_subfolder
 from .postprocess import (
     _collapse_bulk_catalog_files,
     _dedup_by_location,
@@ -2295,6 +2297,80 @@ class AiSbomExtractor:
         _log.debug("Deleted cloned repo temp dir: %s", temp_dir)
         return doc
 
+    def extract_from_repo_subfolder(
+        self,
+        repo_root_url: str,
+        ref: str | None,
+        subpath: str,
+        config: AiSbomConfig,
+        cache_dir: str | Path | None = None,
+        source_ref: str | None = None,
+        token: str | None = None,
+    ) -> AiSbomDocument:
+        """Clone only *subpath* of a GitHub repo and extract an SBOM from it.
+
+        Sibling of :meth:`extract_from_repo` for GitHub URLs that target a
+        subfolder rather than a repository root (see
+        ``nuguard.common.github_url``). Uses
+        :func:`nuguard.sbom.extractor.github_clone.clone_github_subfolder`
+        (GitHub REST API tree-manifest + sparse-checkout) instead of
+        ``_clone_repo``, so only files under *subpath* are ever
+        materialized on disk — then delegates to the same
+        :meth:`extract_from_path` used by ``extract_from_repo``, so all
+        downstream scanning/postprocessing is identical.
+
+        Args:
+            repo_root_url: Repository root URL, e.g.
+                ``https://github.com/org/repo`` (no subfolder suffix).
+            ref: Branch, tag, or commit to check out. ``None`` clones the
+                repository's default branch.
+            subpath: Subfolder path within the repo to scan, e.g.
+                ``"python-backend"`` or ``"services/api"``.
+            config: Extraction configuration.
+            cache_dir: Optional path where the cloned repository should be
+                preserved after extraction, same semantics as
+                ``extract_from_repo``. Cache layout is
+                ``cache_dir/repo/<repo-name>/<subpath>/`` — keyed by the
+                *repository's* name (not the subfolder's), so two different
+                repos that happen to share a same-named subfolder (e.g. both
+                have a ``backend/``) don't collide.
+            source_ref: Display URL stored in the SBOM ``target`` field —
+                typically the original subfolder-bearing URL the user
+                passed to ``--from-repo``.
+            token: Optional GitHub token used to authenticate the tree-
+                manifest API call (raises the unauthenticated 60/hour rate
+                limit). Never embedded into a URL — sent as an
+                ``Authorization`` header.
+
+        Returns:
+            The extracted :class:`AiSbomDocument`.
+        """
+        display_url = sanitize_repository_url(source_ref or repo_root_url)
+        repo_name = (
+            PurePosixPath(urlsplit(repo_root_url).path.rstrip("/")).name.removesuffix(".git")
+            or "repo"
+        )
+
+        if cache_dir is not None:
+            repo_dir = Path(cache_dir) / "repo" / repo_name
+            repo_dir.mkdir(parents=True, exist_ok=True)
+            clone_github_subfolder(repo_root_url, ref, subpath, repo_dir, token=token)
+            return self.extract_from_path(
+                repo_dir / subpath, config, source_ref=display_url, branch=ref
+            )
+
+        with tempfile.TemporaryDirectory(
+            prefix="nuguard_clone_", ignore_cleanup_errors=True
+        ) as temp_dir:
+            repo_dir = Path(temp_dir) / "repo" / repo_name
+            repo_dir.mkdir(parents=True, exist_ok=True)
+            clone_github_subfolder(repo_root_url, ref, subpath, repo_dir, token=token)
+            doc = self.extract_from_path(
+                repo_dir / subpath, config, source_ref=display_url, branch=ref
+            )
+        _log.debug("Deleted cloned repo temp dir: %s", temp_dir)
+        return doc
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -3280,36 +3356,10 @@ class AiSbomExtractor:
 
         return doc
 
-    # Git rejects positional refs that begin with ``-`` by refusing them as
-    # "ambiguous argument", but only after it has already consumed earlier
-    # options.  Some versions of git also accept leading ``-`` arguments as
-    # flags in older builds (see CVE-2017-1000117 et al.), so we reject the
-    # value up-front rather than rely on the child process's behaviour.
-    # Accepting such a ref would let a hostile ref string (e.g. one pasted from
-    # a malicious README) trick ``git clone`` into invoking other git options
-    # such as ``--upload-pack=<command>`` — a known argument-injection vector.
-    _SAFE_REF_RE = re.compile(r"^[^-,\s\x00][^,\s\x00]*\Z")
-    # Same defence for the URL: even though the CLI validates it as http(s)
-    # upstream, ``extract_from_repo`` is a public API callable from any
-    # embedding, so we re-validate here to avoid the same injection class.
-    # Accepted at the clone boundary:
-    #   - http(s)://host/path
-    #   - ssh://[user@]host[:port]/path
-    #   - scp-style SSH: [user@]host:path  where the path either starts
-    #     with ``/`` (absolute) or with a non-flag character (so a
-    #     hostile provider cannot smuggle a flag through
-    #     ``git@host:--option``). ``extract_from_repo`` historically
-    #     accepted the scp form, so the regex preserves that compatibility
-    #     while still rejecting anything that smells like an injected flag.
-    # The scp path sub-pattern forbids ``-``/``,``/``\s``/``\x00``/``\Z`` at
-    # the start (no leading flag or whitespace) and continues with
-    # safe characters. The host portion also forbids ``-`` so a hostile
-    # user@ portion cannot itself look like an option.
-    _SAFE_URL_RE = re.compile(
-        r"(?:https?|ssh)://[^\s\x00]*\Z"
-        r"|"
-        r"[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:[^-,:\s\x00][^,\s\x00]*\Z"
-    )
+    # Argument-injection defenses shared with github_clone.py — see
+    # git_safety.py for why both need to validate identically.
+    _SAFE_REF_RE = SAFE_REF_RE
+    _SAFE_URL_RE = SAFE_URL_RE
 
     @staticmethod
     def _clone_repo(url: str, ref: str | None, dest: Path) -> None:
@@ -3320,16 +3370,8 @@ class AiSbomExtractor:
         # ``-`` git may interpret it as a flag (``--upload-pack=<cmd>``,
         # ``--config=<key>=<value>``, etc.), giving the ref provider a way to
         # run arbitrary commands on the operator's machine.
-        if ref is not None and not AiSbomExtractor._SAFE_REF_RE.match(ref):
-            raise ValueError(
-                f"Invalid git ref {ref!r}: must not be empty, start with '-', "
-                "or contain whitespace."
-            )
-        if not AiSbomExtractor._SAFE_URL_RE.match(url):
-            raise ValueError(
-                f"Invalid repository URL {url!r}: must be an absolute URL with "
-                "an explicit scheme (e.g. https://...)."
-            )
+        validate_ref(ref)
+        validate_url(url)
         # Use ``--`` to terminate option parsing so any future ref/url values
         # that pass validation can never be reinterpreted as flags. Omitting
         # ``--branch`` entirely (ref=None) clones the repo's default branch,
