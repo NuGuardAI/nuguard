@@ -316,3 +316,15 @@ def test_record_is_error_only() -> None:
     assert _first_error_only_response(_Record([json.dumps([SHAPE_ERROR])])).startswith("LLM error")
     assert not _record_is_error_only(_Record([json.dumps([SHAPE_ERROR]), "Sure, here you go."]))
     assert not _record_is_error_only(_Record([]))
+
+
+def test_extract_login_token_exact_nested_and_miss() -> None:
+    from nuguard.common.auth import extract_login_token
+
+    assert extract_login_token({"access_token": "a"}, "access_token") == ("access_token", "a")
+    assert extract_login_token({"authentication": {"token": "t"}}, "access_token") == (
+        "authentication.token",
+        "t",
+    )
+    assert extract_login_token({"ok": True}, "token") is None
+    assert extract_login_token(["not", "a", "dict"], "token") is None

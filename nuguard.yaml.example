@@ -533,8 +533,18 @@ redteam:
 #   # and reserved addresses always stay blocked regardless of this setting.
 #   allow_private: false
 #
-#   # Same-origin NuGuard POST login flow, driven by target.auth above.
+#   # Same-origin NuGuard POST login flow, driven by target.auth above. Also
+#   # enables live login discovery: basic username/password (target.auth) is
+#   # tried against SBOM/common login routes (email|username/password) over
+#   # the pinned target connection and upgraded to a login_flow when a token
+#   # comes back — the same discovery redteam/behavior use.
 #   allow_dynamic_auth: false
+#
+#   # Before scanning, fetch identity endpoints (SBOM whoami/me/profile routes,
+#   # then /me, /api/me, ...) with and without the credential and warn when it
+#   # changes nothing — i.e. the target ignores it and the scan would be
+#   # effectively unauthenticated. The report always states the auth used.
+#   verify_auth: true
 #
 #   # Enables Nuclei's DAST/fuzzing templates and stops excluding the
 #   # fuzz/intrusive tags. Sends materially more, more intrusive requests.

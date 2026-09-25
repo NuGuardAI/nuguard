@@ -6200,6 +6200,12 @@
         "title": "Use Live Openapi",
         "type": "boolean"
       },
+      "verify_auth": {
+        "default": true,
+        "description": "Before scanning, compare identity-endpoint responses with and without the configured credential and warn when it changes nothing, i.e. the scan would effectively run unauthenticated.",
+        "title": "Verify Auth",
+        "type": "boolean"
+      },
       "use_sbom_endpoints": {
         "default": true,
         "description": "Allow DAST's OpenAPI input to fall back to a spec synthesized from the caller-supplied SBOM's API endpoints when no live spec is found.",
