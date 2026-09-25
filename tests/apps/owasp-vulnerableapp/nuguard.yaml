@@ -38,7 +38,10 @@ pentest:
   concurrency: 5
   retries: 1
   request_timeout: 30
-  scan_timeout: 1800
+  # DAST now fuzzes ~190 real operations (query/header parameters resolved
+  # from the SBOM's structured http_request metadata) instead of ~0 before,
+  # so it needs a much larger time budget than the old near-empty surface.
+  scan_timeout: 4500
   fail_on: high
 
 analyze:
