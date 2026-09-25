@@ -695,7 +695,7 @@ nuguard pentest --config nuguard.yaml --acknowledge-authorization \
 | `--openapi-spec` | — | — | OpenAPI 3.x document driving `--allow-active-fuzzing`'s DAST pass. Takes priority over the target's own live spec and the SBOM-synthesized fallback |
 | `--live-openapi` / `--no-live-openapi` | — | on | Probe the target for a live OpenAPI/Swagger document (e.g. `/openapi.json`) to drive DAST when `--openapi-spec` is not given |
 | `--use-sbom-endpoints` / `--no-use-sbom-endpoints` | — | on when `sbom:` is configured | Allow DAST's OpenAPI input to fall back to a document synthesized from `--config`'s SBOM API endpoints when the target serves no live spec |
-| `--bundled` / `--no-bundled` | — | on | Run NuGuard's bundled, app-agnostic templates (open redirect, error-based SQLi) as an extra always-on pass. Auto-signed locally on first use — no setup needed; never fails the overall scan if signing doesn't work |
+| `--bundled` / `--no-bundled` | — | on | Run NuGuard's bundled app-agnostic exposure, misconfiguration, and bounded proof-of-vulnerability checks as an extra pass. Includes active SQLi/NoSQLi auth bypass, command injection, XSS, SSTI, CRLF, and path-traversal probes intended for authorized sandbox/staging targets. Auto-signed locally on first use |
 | `--templates-dir` | — | — | Trusted custom Nuclei templates directory, run as its own pass alongside the standard corpus and the bundled pass. Unsigned templates are rejected — sign with `nuclei -sign -t <dir>` first |
 | `--allow-headless-browser` | — | off | Run Nuclei's headless-browser (JS-executing) templates. Auto-downloads a Chromium build (~120 MB) on first use; refused when running as root |
 | `--allow-private` | — | off | Permit RFC1918/unique-local targets. Loopback, link-local, metadata, multicast, and reserved addresses stay blocked regardless |
@@ -726,7 +726,7 @@ pentest:
 **How coverage is assembled**, all in one `nuguard pentest` invocation:
 
 1. The standard Nuclei template corpus (always runs, unless `--templates-dir` narrows it).
-2. NuGuard's bundled generic templates (`--bundled`, on by default) — auto-signed locally, no setup.
+2. NuGuard's bundled generic templates (`--bundled`, on by default) — auto-signed locally and includes bounded active exploit proofs; use `--no-bundled` if the approved test plan excludes them.
 3. A DAST/fuzzing pass, only with `--allow-active-fuzzing` (a separate pass: Nuclei's `-dast` replaces rather than adds to the normal corpus, so NuGuard runs it as its own invocation and merges findings).
 4. Your own `--templates-dir`, if given, as its own pass too.
 

@@ -278,8 +278,11 @@ nuguard pentest --target https://staging.example.com --acknowledge-authorization
 
 Default safeguards exclude unsigned, intrusive, fuzzing, headless-browser, OAST,
 denial-of-service, and brute-force templates. Active fuzzing and headless-browser
-templates require separate opt-in flags. See cloud-pentesting.md for scope,
-authentication, engine, timeout, and remediation details.
+templates require separate opt-in flags. NuGuard's default bundled pass does include
+bounded proof payloads for authorized sandbox/staging targets (for example auth-bypass
+injection, harmless command output, XSS, SSTI, CRLF, and path traversal); disable it
+with `--no-bundled` if those checks are outside the approved test plan. See
+cloud-pentesting.md for scope, authentication, engine, timeout, and remediation details.
 
 ---
 

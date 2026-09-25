@@ -534,6 +534,13 @@ redteam:
 #   # use_sbom_endpoints below for where that input comes from.
 #   allow_active_fuzzing: false
 #
+#   # Runs NuGuard's app-agnostic bundled templates by default. These include
+#   # bounded active exploit proofs (for example auth-bypass SQLi/NoSQLi,
+#   # harmless command injection, XSS, SSTI, CRLF, and path traversal) intended
+#   # for explicitly authorized sandbox/staging deployments. Set false if the
+#   # approved test plan permits only the standard Nuclei corpus.
+#   use_bundled_templates: true
+#
 #   # Enables Nuclei's headless-browser templates: executes page JavaScript in
 #   # a real Chromium instance. Auto-downloads a ~120MB Chromium build from
 #   # storage.googleapis.com on first use; refused when running as root.
