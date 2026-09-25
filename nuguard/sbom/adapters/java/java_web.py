@@ -51,16 +51,44 @@ class JavaWebAdapter(JavaFrameworkAdapter):
         clean = [part.strip().strip("/") for part in parts if part and part.strip("/")]
         return "/" + "/".join(clean) if clean else "/"
 
+    @staticmethod
+    def _is_request_mapping_annotation(name: str) -> bool:
+        """Match ``RequestMapping`` and Spring *composed* meta-annotations.
+
+        Spring lets a custom annotation alias its own ``value()`` onto
+        ``@RequestMapping`` via ``@AliasFor`` (a standard pattern for
+        domain-specific routing annotations, e.g.
+        ``@VulnerableAppRequestMapping``). Such annotations are, semantically,
+        route mappings, but their literal name is never ``RequestMapping`` —
+        static extraction can't resolve the alias without reading the
+        annotation's own (usually separate) declaration file, so this matches
+        on the ``*RequestMapping`` naming convention instead.
+        """
+        return name == "RequestMapping" or (
+            name.endswith("RequestMapping") and name != "RequestMapping"
+        )
+
     def _route(self, annotations: tuple[str, ...]) -> tuple[str, str] | None:
+        method: str | None = None
+        path: str | None = None
         for annotation in annotations:
             name = self._annotation_name(annotation)
             if name in self._METHOD_ANNOTATIONS:
-                return self._METHOD_ANNOTATIONS[name], self._annotation_value(annotation)
-            if name == "RequestMapping":
+                if method is None:
+                    method = self._METHOD_ANNOTATIONS[name]
+                value = self._annotation_value(annotation)
+                if value and path is None:
+                    path = value
+            elif self._is_request_mapping_annotation(name):
                 method_match = re.search(r"RequestMethod\.([A-Z]+)", annotation)
-                method = method_match.group(1) if method_match else "ANY"
-                return method, self._annotation_value(annotation)
-        return None
+                if method is None:
+                    method = method_match.group(1) if method_match else "ANY"
+                value = self._annotation_value(annotation)
+                if value and path is None:
+                    path = value
+        if method is None:
+            return None
+        return method, path or ""
 
     def extract(self, content: str, file_path: str, parse_result: Any) -> list[ComponentDetection]:
         result = self._parse_result(content, file_path, parse_result)
@@ -89,12 +117,35 @@ class JavaWebAdapter(JavaFrameworkAdapter):
             class_annotations = owner.annotations if owner else ()
             class_path = ""
             for annotation in class_annotations:
-                if self._annotation_name(annotation) in {"RequestMapping", "Path"}:
-                    class_path = self._annotation_value(annotation)
-                    break
+                class_annotation_name = self._annotation_name(annotation)
+                is_class_route_annotation = (
+                    class_annotation_name == "Path"
+                    or self._is_request_mapping_annotation(class_annotation_name)
+                    # Composed controller annotations (e.g.
+                    # ``@VulnerableAppRestController``) commonly alias their
+                    # own ``value()`` onto ``@RequestMapping`` too, so a class
+                    # path can arrive via a ``*Controller`` name as well.
+                    or class_annotation_name.endswith("Controller")
+                )
+                if is_class_route_annotation:
+                    value = self._annotation_value(annotation)
+                    if value:
+                        class_path = value
+                        break
             method_http, method_path = route
             path = self._join_path(class_path, method_path)
-            endpoint_canonical = canonicalize_text(f"java-endpoint:{method_http}:{path}")
+            endpoint_key = path
+            if not method_path:
+                # The method-level route annotation's path couldn't be resolved
+                # statically — commonly because a composed mapping annotation
+                # (see ``_is_request_mapping_annotation``) takes a constant
+                # reference rather than a string literal, e.g.
+                # ``@VulnerableAppRequestMapping(value = LevelConstants.LEVEL_1)``.
+                # Disambiguate by Java method identity so distinct handlers
+                # that share an unresolved class-level path don't collapse
+                # into a single SBOM node.
+                endpoint_key = f"{path}#{method.name}"
+            endpoint_canonical = canonicalize_text(f"java-endpoint:{method_http}:{endpoint_key}")
             owner_name = method.containing_type or PurePosixPath(file_path).stem
             agent_canonical = _agent_canonical(file_path, owner_name)
             all_annotations = class_annotations + method.annotations

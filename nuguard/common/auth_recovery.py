@@ -136,18 +136,29 @@ async def attempt_browser_auth_recovery(
         _log.warning("auth_recovery: unexpected error during browser-login recovery: %s", exc)
         return None
 
+    # SPAs that authenticate API calls with an Authorization header (JWT in
+    # localStorage) ignore cookies — prefer the captured bearer token.
+    bearer = result.bearer_token.get_secret_value() if result.bearer_token else ""
+    recovered_auth = (
+        AuthConfig(type="bearer", header=f"Authorization: Bearer {bearer}")
+        if bearer
+        else AuthConfig(type="cookie_file", cookie_file=result.cookies_written_to)
+    )
     recovered = BrowserAuthRecovery(
-        auth_config=AuthConfig(type="cookie_file", cookie_file=result.cookies_written_to),
+        auth_config=recovered_auth,
         chat_payload_extras=dict(result.candidate_extra_fields),
     )
     _log.warning(
-        "auth_recovery: browser-login recovery succeeded — session captured to %s%s",
-        result.cookies_written_to,
+        "auth_recovery: browser-login recovery succeeded — %s%s",
+        "captured the app's bearer token (used for this run only)"
+        if bearer else f"session captured to {result.cookies_written_to}",
         f", sniffed extra field(s) {list(result.candidate_extra_fields)}"
         if result.candidate_extra_fields else "",
     )
 
-    if config_path is not None:
+    # A bearer token is a short-lived secret — never write it into
+    # nuguard.yaml. Cookie sessions keep the existing persistence behaviour.
+    if config_path is not None and not bearer:
         _persist_recovered_auth(
             config_path,
             cookie_file=result.cookies_written_to,

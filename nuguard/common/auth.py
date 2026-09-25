@@ -314,6 +314,23 @@ def _find_token_recursive(data: Any, max_depth: int = 3) -> tuple[str, str] | No
     return None
 
 
+def extract_login_token(body: Any, token_response_key: str) -> tuple[str, str] | None:
+    """Return ``(resolved_key_path, token)`` from a login response body.
+
+    Tries the configured dotted *token_response_key* first, then falls back to
+    :func:`_find_token_recursive` so a wrong or default key still finds a
+    nested token (e.g. ``authentication.token``). Shared by
+    :class:`AuthSession` and the pentest login flow so the same
+    ``login_flow`` config behaves identically across capabilities.
+    """
+    if not isinstance(body, dict):
+        return None
+    token = _extract_nested(body, token_response_key) if token_response_key else None
+    if token:
+        return token_response_key, token
+    return _find_token_recursive(body)
+
+
 # Fields in a login response that carry static user identity (same across all requests).
 _LOGIN_IDENTITY_FIELDS = frozenset({
     "user_id", "userId", "uid", "sub", "account_id", "accountId",
@@ -481,23 +498,19 @@ class AuthSession:
                 _log.debug("AuthSession: login response body: %s", resp.text[:200])
                 return
 
-            token = _extract_nested(body, lf.token_response_key)
-            resolved_key = lf.token_response_key
-            if not token and isinstance(body, dict):
-                # Configured/default key missed — fall back to a live scan of the
-                # actual response for a token-shaped field (e.g. a nested
-                # "tokens.accessToken" wrapper). This covers apps whose SBOM has
-                # no response_body_schema for the login endpoint, so static
-                # SBOM-based key detection had nothing to go on.
-                found = _find_token_recursive(body)
-                if found is not None:
-                    resolved_key, token = found
-                    _log.warning(
-                        "AuthSession: token key %r not found in login response from %s — "
-                        "auto-discovered token at %r instead. Set "
-                        "auth.login_flow.token_response_key: %s in nuguard.yaml to pin it.",
-                        lf.token_response_key, url, resolved_key, resolved_key,
-                    )
+            # Configured/default key first, then a live scan of the actual
+            # response for a token-shaped field (e.g. a nested
+            # "tokens.accessToken" wrapper) — covers apps whose SBOM has no
+            # response_body_schema for the login endpoint.
+            extracted = extract_login_token(body, lf.token_response_key)
+            resolved_key, token = extracted if extracted is not None else (lf.token_response_key, None)
+            if token and resolved_key != lf.token_response_key:
+                _log.warning(
+                    "AuthSession: token key %r not found in login response from %s — "
+                    "auto-discovered token at %r instead. Set "
+                    "auth.login_flow.token_response_key: %s in nuguard.yaml to pin it.",
+                    lf.token_response_key, url, resolved_key, resolved_key,
+                )
             if not token:
                 response_keys = (
                     list(body.keys()) if isinstance(body, dict) else type(body).__name__

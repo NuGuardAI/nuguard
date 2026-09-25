@@ -347,6 +347,7 @@ async def resolve_target_session(
         indicates_websocket as sbom_indicates_websocket,
     )
     from nuguard.common.target_client_builder import (  # noqa: PLC0415
+        discover_login_flow_live,
         resolve_auth_config_with_sbom_fallback,
         resolve_target_url,
     )
@@ -405,6 +406,15 @@ async def resolve_target_session(
         effective_auth, auth_note = resolve_auth_config_with_sbom_fallback(effective_auth, sbom)
         if auth_note:
             resolution_notes.append(auth_note)
+        elif effective_auth.type == "basic":
+            # The SBOM had no login endpoint with a credential schema — try
+            # login routes live before falling back to HTTP Basic, which many
+            # token-based apps silently ignore.
+            live_auth, live_note = await discover_login_flow_live(target_url, effective_auth, sbom)
+            if live_auth is not None:
+                effective_auth = live_auth
+                if live_note:
+                    resolution_notes.append(live_note)
 
     auth_runtime = resolve_auth_runtime(
         auth_config=effective_auth,
@@ -442,6 +452,8 @@ async def resolve_target_session(
         ws_auth_message=ws_auth_message,
         config_path=config_path,
         timeout=request_timeout,
+        payload_key=chat_payload_key,
+        payload_list=chat_payload_list,
     )
     bootstrap_headers = bootstrapper.session.headers()
     effective_headers = dict(extra_headers)
@@ -553,6 +565,8 @@ async def resolve_target_session(
             ws_auth_message=ws_auth_message,
             config_path=config_path,
             timeout=request_timeout,
+            payload_key=chat_payload_key,
+            payload_list=chat_payload_list,
         )
         _revalidated_headers = bootstrapper.session.headers()
         if _revalidated_headers:

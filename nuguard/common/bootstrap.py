@@ -16,6 +16,7 @@ import httpx
 from nuguard.common.auth import AuthConfig, AuthSession
 from nuguard.common.errors import TargetUnavailableError
 from nuguard.common.logging import get_logger
+from nuguard.common.transport import error_envelope_message, error_only_response
 from nuguard.models.health_report import CredentialCheckResult, TargetHealthReport
 
 if TYPE_CHECKING:
@@ -44,6 +45,24 @@ BOOTSTRAP_STARTUP_RETRIES = 3
 
 # Backoff base (seconds).  Retry delays: 2 s, 4 s, 8 s.
 _BACKOFF_BASE = 2.0
+
+
+# Chat-history field names whose list value is ``[{role, content}]`` rather
+# than ``[text]`` — mirrors endpoint_detection.constants.MESSAGE_HISTORY_KEYS.
+_MESSAGE_HISTORY_KEYS = frozenset({"messages", "history", "conversation", "chat_history"})
+
+
+def _probe_payload_value(key: str, is_list: bool, text: str) -> object:
+    """Shape the probe text the way the scenario client would for *key*."""
+    if not is_list:
+        return text
+    if key.strip().lower() in _MESSAGE_HISTORY_KEYS:
+        return [{"role": "user", "content": text}]
+    return [text]
+
+
+def _is_event_stream(resp: httpx.Response) -> bool:
+    return "text/event-stream" in resp.headers.get("content-type", "").lower()
 
 
 class AuthBootstrapper:
@@ -75,8 +94,17 @@ class AuthBootstrapper:
         is_websocket: bool = False,
         ws_auth_message: dict[str, object] | None = None,
         config_path: "Path | None" = None,
+        payload_key: str = "message",
+        payload_list: bool = False,
     ) -> None:
         self._target_url = target_url.rstrip("/")
+        # Chat payload shape for the health-check probe — the same key/list the
+        # scenario client will send, so bootstrap exercises the real contract.
+        # Sentinel keys (__websocket__, __adk__) are protocol markers, not body
+        # fields — those targets keep the plain "message" probe.
+        use_key = bool(payload_key) and not payload_key.startswith("__")
+        self._payload_key = payload_key if use_key else "message"
+        self._payload_list = payload_list if use_key else False
         self._endpoint = endpoint
         self._default_auth = default_auth or AuthConfig(type="none")
         self._canary = canary_config
@@ -237,9 +265,13 @@ class AuthBootstrapper:
         # None) when the 'browser' extra isn't installed or the login itself
         # fails, so this never blocks a run that would have failed the same
         # way before this existed.
+        # An engagement_error (the app answered with only an error envelope)
+        # never triggers recovery: the request was accepted, so a new browser
+        # session can't fix a wrong payload shape or a down LLM backend.
         recovery_reason = (
             "auth_failed" if result.status == "auth_failed"
-            else "empty_body" if result.status == "ok" and result.body_warning
+            else "empty_body"
+            if result.status == "ok" and result.body_warning and not result.engagement_error
             else None
         )
         if recovery_reason is not None:
@@ -391,7 +423,12 @@ class AuthBootstrapper:
         # can sanity-check below.
         # Extra static fields (chat_payload_extras) are merged in so apps that crash on
         # missing required fields (e.g. vehicleState) don't trip the target_unavailable check.
-        probe_body = {**self._probe_payload_extras, "message": "Hello, how can you help me?"}
+        probe_body = {
+            **self._probe_payload_extras,
+            self._payload_key: _probe_payload_value(
+                self._payload_key, self._payload_list, "Hello, how can you help me?"
+            ),
+        }
         start = time.monotonic()
 
         try:
@@ -419,23 +456,35 @@ class AuthBootstrapper:
                 # breaker on the same failure a few seconds later once real
                 # scenarios start sending the identical payload shape.
                 body_warning = ""
+                engagement_error = ""
                 if not resp.text.strip():
                     body_warning = (
                         "2xx response had an empty body — if scenario requests start "
                         "failing with JSON decode errors, this app may require an "
                         "additional field (check target.chat_payload_extras)"
                     )
+                elif _is_event_stream(resp):
+                    # SSE is not JSON by design — judge its events instead.
+                    engagement_error = error_only_response(resp.text)
                 else:
                     try:
-                        resp.json()
+                        parsed = resp.json()
                     except ValueError:
                         body_warning = (
                             "2xx response body was not valid JSON — if scenario requests "
                             "start failing with JSON decode errors, this app may require "
                             "an additional field (check target.chat_payload_extras)"
                         )
+                    else:
+                        engagement_error = error_envelope_message(parsed)
                 if body_warning:
                     logger.warning("bootstrap: identity=%s %s", identity, body_warning)
+                if engagement_error:
+                    logger.warning(
+                        "bootstrap: identity=%s endpoint answered 2xx with only an error "
+                        "(payload_key=%r list=%s): %s",
+                        identity, self._payload_key, self._payload_list, engagement_error,
+                    )
                 return CredentialCheckResult(
                     identity=identity,
                     auth_type=auth_type,
@@ -445,6 +494,7 @@ class AuthBootstrapper:
                     response_time_ms=elapsed_ms,
                     response_text=resp.text[:500] if resp.text else "",
                     body_warning=body_warning,
+                    engagement_error=engagement_error,
                 )
 
             if resp.status_code in (401, 403):

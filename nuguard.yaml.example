@@ -398,6 +398,15 @@ redteam:
   skip_discovery: false             # set true to skip the discovery phase entirely
   discovery_max_turns: 3            # max turns during discovery (stops early on success)
 
+  # Engagement gate: before generating scenarios, send one benign turn and abort
+  # (exit code 3) when the chat endpoint answers only with an error envelope, e.g.
+  # {"error": "messages must not be empty"} (wrong payload shape) or an
+  # ECONNREFUSED from the app's own LLM backend. Mid-run, the same abort fires
+  # after engagement_error_threshold consecutive scenarios got only errors.
+  # Without it, such a run "passes" without ever reaching the agent.
+  require_engagement: true          # set false to run anyway
+  engagement_error_threshold: 5
+
   # Capability discovery: primes the agent into a developer/debug persona, then
   # asks it directly what tools it can invoke (always cross-checked against the
   # AI-SBOM, since live-only tools can be invisible to static analysis) and,
@@ -524,8 +533,18 @@ redteam:
 #   # and reserved addresses always stay blocked regardless of this setting.
 #   allow_private: false
 #
-#   # Same-origin NuGuard POST login flow, driven by target.auth above.
+#   # Same-origin NuGuard POST login flow, driven by target.auth above. Also
+#   # enables live login discovery: basic username/password (target.auth) is
+#   # tried against SBOM/common login routes (email|username/password) over
+#   # the pinned target connection and upgraded to a login_flow when a token
+#   # comes back — the same discovery redteam/behavior use.
 #   allow_dynamic_auth: false
+#
+#   # Before scanning, fetch identity endpoints (SBOM whoami/me/profile routes,
+#   # then /me, /api/me, ...) with and without the credential and warn when it
+#   # changes nothing — i.e. the target ignores it and the scan would be
+#   # effectively unauthenticated. The report always states the auth used.
+#   verify_auth: true
 #
 #   # Enables Nuclei's DAST/fuzzing templates and stops excluding the
 #   # fuzz/intrusive tags. Sends materially more, more intrusive requests.
@@ -533,6 +552,13 @@ redteam:
 #   # do anything useful — see openapi_spec/use_live_openapi/
 #   # use_sbom_endpoints below for where that input comes from.
 #   allow_active_fuzzing: false
+#
+#   # Runs NuGuard's app-agnostic bundled templates by default. These include
+#   # bounded active exploit proofs (for example auth-bypass SQLi/NoSQLi,
+#   # harmless command injection, XSS, SSTI, CRLF, and path traversal) intended
+#   # for explicitly authorized sandbox/staging deployments. Set false if the
+#   # approved test plan permits only the standard Nuclei corpus.
+#   use_bundled_templates: true
 #
 #   # Enables Nuclei's headless-browser templates: executes page JavaScript in
 #   # a real Chromium instance. Auto-downloads a ~120MB Chromium build from
