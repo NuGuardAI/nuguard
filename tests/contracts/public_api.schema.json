@@ -6355,6 +6355,52 @@
         "title": "Use Sbom Endpoints",
         "type": "boolean"
       },
+      "discover_requests": {
+        "default": false,
+        "description": "Bounded, same-scope, GET-only discovery (sitemap.xml, links, forms, static JS) contributing a 'crawl' source to the request inventory alongside live/SBOM evidence. Opt-in: sends its own extra GET requests.",
+        "title": "Discover Requests",
+        "type": "boolean"
+      },
+      "max_discovery_urls": {
+        "default": 200,
+        "maximum": 2000,
+        "minimum": 1,
+        "title": "Max Discovery Urls",
+        "type": "integer"
+      },
+      "max_crawl_depth": {
+        "default": 2,
+        "maximum": 10,
+        "minimum": 0,
+        "title": "Max Crawl Depth",
+        "type": "integer"
+      },
+      "discovery_timeout_seconds": {
+        "default": 30,
+        "maximum": 600,
+        "minimum": 5,
+        "title": "Discovery Timeout Seconds",
+        "type": "integer"
+      },
+      "max_parameter_candidates": {
+        "default": 10,
+        "description": "Bounded generic query-parameter mining for input-less discovered GET routes; only runs with allow_active_fuzzing.",
+        "maximum": 50,
+        "minimum": 0,
+        "title": "Max Parameter Candidates",
+        "type": "integer"
+      },
+      "fail_on_coverage": {
+        "default": "none",
+        "description": "Exit non-zero when scan coverage doesn't meet this bar, independent of whether any finding was produced \u2014 see nuguard.pentest.coverage.",
+        "enum": [
+          "none",
+          "insufficient",
+          "degraded"
+        ],
+        "title": "Fail On Coverage",
+        "type": "string"
+      },
       "auth_config": {
         "anyOf": [
           {
