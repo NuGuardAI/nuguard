@@ -3541,7 +3541,7 @@ class RedteamOrchestrator:
                 self._chat_payload_list = is_list
                 self._chat_response_key = resp_key or self._chat_response_key
                 if not self._chat_path_explicit:
-                    self._chat_path_source = "sbom"
+                    self._chat_path_source = "enriched_sbom_cache"
                 _log.info(
                     "redteam: using previously-confirmed endpoint %s from enriched SBOM "
                     "(payload_key=%r list=%s)",
