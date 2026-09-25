@@ -13,8 +13,18 @@ sbom: tests/apps/owasp-vulnerableapp/vulnerableapp.sbom.json
 sbom_generation:
   llm: false
 
+# Pentest remediation and executive-summary generation use the shared,
+# top-level LLM configuration. Keep this explicit so the test workflow does
+# not fall back to NuGuard's built-in model default.
+llm:
+  model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+  api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+
 target:
-  url: http://vulnerableapp-demo.eastus2.azurecontainer.io:9090/VulnerableApp
+  # url: http://vulnerableapp-demo.eastus2.azurecontainer.io:9090/VulnerableApp
+  # url: http://127.0.0.1:9090/VulnerableApp
+  url: http://localhost:9090/VulnerableApp
   auth:
     type: none
 

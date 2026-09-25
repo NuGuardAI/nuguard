@@ -77,15 +77,15 @@ echo "Running pentest ..."
 ##  --format markdown \
 ##  --output "$SCRIPT_DIR/reports/juice-shop-pentest.md" || true
 
-  uv run nuguard pentest  \
-  --config "$SCRIPT_DIR/nuguard.yaml" \
-  --acknowledge-authorization \
-  --profile standard \
-  --allow-headless-browser \
-  --allow-dynamic-auth \
-  --allow-active-fuzzing \
-  --format markdown \
-  --output "$SCRIPT_DIR/reports/juice-shop-pentest.md" || true
+#  uv run nuguard pentest  \
+##  --config "$SCRIPT_DIR/nuguard.yaml" \
+##  --acknowledge-authorization \
+##  --profile standard \
+##  --allow-headless-browser \
+##  --allow-dynamic-auth \
+##  --allow-active-fuzzing \
+##  --format markdown \
+##  --output "$SCRIPT_DIR/reports/juice-shop-pentest.md" || true
 
 echo "---"
 echo "Running pentest with custom Juice Shop templates ..."

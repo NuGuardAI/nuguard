@@ -39,15 +39,18 @@ target:
   # The backend (python-backend/api.py) only recognizes Authorization: Bearer <token>
   # obtained via /login — it does not understand HTTP Basic auth.
   auth:
-    type: login_flow
-    login_flow:
-      endpoint: /login
-      payload:
-        username: alice
-        password: alice123
-      token_response_key: token
-      token_header: "Authorization: Bearer"
-      refresh_on_401: true
+  #  type: login_flow
+  #  login_flow:
+  #    endpoint: /login
+  #    payload:
+  #      username: alice
+  #      password: alice123
+  #    token_response_key: token
+  #    token_header: "Authorization: Bearer"
+  #    refresh_on_401: true
+    type: basic
+    username: alice
+    password: alice123
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 # nuguard behavior exercises the AI app's happy path to verify capabilities work
@@ -132,20 +135,6 @@ redteam:
   # cross-tenant scenarios — no extra identity config needed.
   #canary: ./canary.json
 
-  # Request body shape is auto-discovered from the SBOM (chat_endpoint node: message/false).
-  # No override needed.
-  # v2 engine settings (only used when engine: v2)
-  #v2:
-  #  knowledge_base_version: 0.1.0   # pinned technique KB version
-
-  #  phases: []                      # phase names to run; empty = all
-  #   semantic_judge:
-  #     count: 3                      # independent LLM judges for semantic verdicts
-  #     quorum: 2                     # votes required to confirm a violation
-  #   transferability_enabled: true   # score successful objectives for transferability
-  #   max_per_phase: 0                # cap scenarios per phase; 0 = unlimited
-  #   dry_run_only: true              # enforce dry-run-only for destructive actions
-
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)
   #   full — all scenarios regardless of score
@@ -153,7 +142,7 @@ redteam:
   # load on the shared App Service backend and avoid transient HTTP 502 quota spikes.
   concurrency: 3
 
-  profile: ci
+  profile: full
 
   # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
   # Set false to run the legacy SBOM-only generator without catalog scenarios.
