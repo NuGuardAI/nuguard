@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -58,6 +59,10 @@ class ProbeResult:
     # a structured object (e.g. {"role": "user", "content": "..."}) rather than
     # a plain string. None means use a plain string (the default behaviour).
     value_template: "dict[str, object] | None" = field(default=None, compare=False)
+    # False when the probe never saw a chat-like response and returned a
+    # best-effort fallback (every shape 5xx'd or returned an error envelope).
+    # Callers must not persist an unconfirmed result as if it were verified.
+    confirmed: bool = field(default=True, compare=False)
 
     def __iter__(self):  # noqa: ANN204
         # Yield only the 3 positional fields so ``a, b, c = result`` still works.
@@ -516,6 +521,78 @@ def _extract_422_field_names(resp: "httpx.Response") -> list[str]:
         return []
 
 
+# Error-envelope text that means the request *shape* was accepted and the
+# app's own downstream dependency failed (LLM backend down, provider auth,
+# timeouts). A shape that gets this far is a better fallback than one the
+# app rejected outright.
+_BACKEND_ERROR_RE = re.compile(
+    r"econnrefused|econnreset|enotfound|cannot connect|connection (?:refused|reset|error)"
+    r"|retryerror|failed after \d+ attempts|timed? ?out|timeout|rate.?limit|quota"
+    r"|api[ _-]?key|unauthori[sz]ed|service unavailable|bad gateway|upstream|overloaded",
+    re.IGNORECASE,
+)
+# Error-envelope text that means the app rejected the payload shape itself.
+_SHAPE_REJECTED_RE = re.compile(
+    r"must not be empty|cannot be empty|is required|required field|field required|missing"
+    r"|invalid (?:prompt|input|request|body|payload)|must be (?:a|an) |expected (?:a|an) "
+    r"|is not (?:a|an) |undefined|not iterable|cannot read propert",
+    re.IGNORECASE,
+)
+# Field names an app names in its own validation error ("`messages` must not
+# be empty", "missing field: query") — used to try that key next.
+_ERROR_FIELD_RES: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"[`'\"]?([A-Za-z_][A-Za-z0-9_]{1,40})[`'\"]?\s+(?:must not be empty|cannot be empty"
+        r"|is required|is missing|must be provided|field required)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"missing (?:required )?(?:field|parameter|property|key)s?\s*[:=]?\s*[`'\"]?([A-Za-z_][A-Za-z0-9_]{1,40})",
+        re.IGNORECASE,
+    ),
+)
+_ERROR_FIELD_STOPWORDS = frozenset({"prompt", "input", "request", "body", "value", "field", "it", "this"})
+
+
+def _error_envelope_text(data: dict) -> str:
+    """Flatten an error envelope's values into one searchable string."""
+    return " ".join(str(v) for v in data.values() if v is not None)
+
+
+def _classify_error_envelope(data: dict) -> str:
+    """Classify an error envelope as ``backend_error``, ``shape_rejected`` or ``unknown``.
+
+    Backend failures are checked first: an app can only surface a downstream
+    connection/provider error once it has accepted the request shape.
+    """
+    text = _error_envelope_text(data)
+    if _BACKEND_ERROR_RE.search(text):
+        return "backend_error"
+    if _SHAPE_REJECTED_RE.search(text):
+        return "shape_rejected"
+    return "unknown"
+
+
+# Higher is a better fallback candidate when no shape produced a chat response.
+_ERROR_ENVELOPE_RANK = {"backend_error": 2, "unknown": 1, "shape_rejected": 0}
+
+
+def _error_field_hints(data: dict) -> list[str]:
+    """Return request field names an error envelope says are missing or empty."""
+    text = _error_envelope_text(data)
+    hints: list[str] = []
+    for pattern in _ERROR_FIELD_RES:
+        for match in pattern.finditer(text):
+            name = match.group(1)
+            if (
+                name.lower() not in _ERROR_FIELD_STOPWORDS
+                and normalize_payload_key(name) not in RUNTIME_NON_CHAT_KEYS
+                and name not in hints
+            ):
+                hints.append(name)
+    return hints
+
+
 async def _blind_probe(
     client: "httpx.AsyncClient",
     paths: list[str],
@@ -529,12 +606,16 @@ async def _blind_probe(
     """Fallback: try each path with each payload shape until one responds usefully."""
     server_error_fallback: ProbeResult | None = None
     streaming_error_fallback: ProbeResult | None = None
+    streaming_error_rank = -1
     base = str(client.base_url).rstrip("/")
 
     for path in paths:
         _log.info("endpoint_detection: trying %s%s", base, path)
         tried_keys: set[str] = set()  # track all keys tried for this path
-        for pay_key, pay_list in payload_shapes:
+        # Mutable per-path queue: field names an error envelope names as
+        # missing/empty are appended and tried after the configured shapes.
+        shapes = list(payload_shapes)
+        for pay_key, pay_list in shapes:
             tried_keys.add(pay_key)
             if pay_list and pay_key.strip().lower() in MESSAGE_HISTORY_KEYS:
                 value: object = [{"role": "user", "content": TEST_MESSAGE}]
@@ -588,7 +669,7 @@ async def _blind_probe(
             if status >= 500:
                 _log.debug("endpoint_detection: %s — %d server error", path, status)
                 if server_error_fallback is None:
-                    server_error_fallback = ProbeResult(path, pay_key, pay_list)
+                    server_error_fallback = ProbeResult(path, pay_key, pay_list, confirmed=False)
                 continue  # try remaining shapes — correct key may still succeed
 
             if status < 300:
@@ -596,33 +677,49 @@ async def _blind_probe(
                     data = resp.json()
                 except Exception:
                     data = _try_read_first_streaming_json(resp) or {}
+                # A parsed body that is *only* an error envelope (e.g. a streaming
+                # LLM backend's "messages must not be empty"/"invalid prompt" error
+                # for the wrong payload shape) means the app logic rejected or
+                # failed this request even though transport-level status and
+                # content-type look fine. Never accept it as chat — not even via
+                # the LLM confirm, which can mistake an "LLM error: ..." string
+                # for a chat reply.
+                is_error_envelope = (
+                    isinstance(data, dict)
+                    and bool(data)
+                    and set(data.keys()) <= {"error", "detail", "message", "code", "status"}
+                )
                 chat_like = _looks_like_chat_response(data, known_response_key)
-                if llm is not None and isinstance(data, dict) and data:
+                if llm is not None and isinstance(data, dict) and data and not is_error_envelope:
                     # LLM re-checks ambiguous ≥2-key matches and catches non-standard response keys
                     if not chat_like or not _has_known_chat_key(data, known_response_key):
                         chat_like = await _llm_confirms_chat_response(data, llm)
                 if chat_like:
                     _log.info("endpoint_detection: selected %s (key=%r, status=%d)", path, pay_key, status)
                     return ProbeResult(path, pay_key, pay_list)
-                # A parsed body that is *only* an error envelope (e.g. a streaming
-                # LLM backend's "messages must not be empty"/"invalid prompt" error
-                # for the wrong payload shape) means this shape was rejected by the
-                # app logic even though transport-level status/content-type look
-                # fine. Don't accept it — keep trying other shapes, but remember it
-                # as a last-resort fallback in case every shape errors out.
-                is_error_envelope = (
-                    isinstance(data, dict)
-                    and bool(data)
-                    and set(data.keys()) <= {"error", "detail", "message", "code", "status"}
-                )
+                if is_error_envelope and not known_payload_key:
+                    # The app may name the field it wanted ("`messages` must not
+                    # be empty") — queue it so it's tried on this path next.
+                    for hint_key in _error_field_hints(data):
+                        if hint_key not in tried_keys and all(k != hint_key for k, _ in shapes):
+                            shapes.append((hint_key, hint_key.lower() in MESSAGE_HISTORY_KEYS))
                 if _is_streaming_response(resp):
                     if is_error_envelope:
+                        # Keep trying other shapes, but remember the best one as
+                        # a last-resort fallback in case every shape errors out:
+                        # a shape the app accepted before a downstream failure
+                        # (LLM backend unreachable) beats one it rejected.
+                        kind = _classify_error_envelope(data)
                         _log.debug(
-                            "endpoint_detection: %s key=%r → streaming but error envelope %r, trying next shape",
-                            path, pay_key, data,
+                            "endpoint_detection: %s key=%r → streaming error envelope (%s) %r, trying next shape",
+                            path, pay_key, kind, data,
                         )
-                        if streaming_error_fallback is None:
-                            streaming_error_fallback = ProbeResult(path, pay_key, pay_list)
+                        rank = _ERROR_ENVELOPE_RANK[kind]
+                        if rank > streaming_error_rank:
+                            streaming_error_rank = rank
+                            streaming_error_fallback = ProbeResult(
+                                path, pay_key, pay_list, confirmed=False
+                            )
                         continue
                     # Streaming endpoint: accept even when we can't parse the body content
                     _log.info("endpoint_detection: selected %s (streaming, key=%r)", path, pay_key)
@@ -670,13 +767,13 @@ async def _blind_probe(
                                 "endpoint_detection: 422-hint selected %s (key=%r, status=%d)",
                                 path, hint_key, hint_status,
                             )
-                            return ProbeResult(path, hint_key, False)
+                            return ProbeResult(path, hint_key, hint_key.lower() in MESSAGE_HISTORY_KEYS)
                     elif hint_status not in (404, 405) and hint_status < 500:
                         _log.info(
                             "endpoint_detection: 422-hint selected %s (key=%r, status=%d)",
                             path, hint_key, hint_status,
                         )
-                        return ProbeResult(path, hint_key, False)
+                        return ProbeResult(path, hint_key, hint_key.lower() in MESSAGE_HISTORY_KEYS)
 
     _log.warning("endpoint_detection: no chat-capable endpoint found after probing %d paths", len(paths))
     if server_error_fallback:
@@ -687,9 +784,17 @@ async def _blind_probe(
         return server_error_fallback
     if streaming_error_fallback:
         _log.info(
-            "endpoint_detection: selected %s as fallback (streaming error envelope every shape — payload_key=%r)",
-            streaming_error_fallback.path, streaming_error_fallback.key,
+            "endpoint_detection: selected %s as unconfirmed fallback (streaming error envelope every shape — "
+            "payload_key=%r list=%s)",
+            streaming_error_fallback.path, streaming_error_fallback.key, streaming_error_fallback.is_list,
         )
+        if streaming_error_rank == _ERROR_ENVELOPE_RANK["backend_error"]:
+            _log.warning(
+                "endpoint_detection: %s accepted payload_key=%r but the app reported a downstream "
+                "failure (e.g. its LLM backend is unreachable) — the target cannot answer until "
+                "that is fixed",
+                streaming_error_fallback.path, streaming_error_fallback.key,
+            )
         return streaming_error_fallback
     return None
 

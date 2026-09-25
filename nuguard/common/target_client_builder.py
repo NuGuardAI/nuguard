@@ -229,6 +229,141 @@ def _discover_login_endpoint(sbom: "AiSbomDocument") -> "tuple[str, str, str, st
     return (best[1], best[2], best[3], best[4]) if best else None
 
 
+# Generic login routes tried after SBOM candidates when discovering a login
+# flow live. Kept short: each path costs up to len(_LOGIN_FIELD_PAIRS) requests.
+_GENERIC_LOGIN_PATHS: tuple[str, ...] = ("/login", "/api/login", "/auth/login", "/api/auth/login")
+# Credential field-name pairs tried against a schema-less login endpoint.
+_LOGIN_FIELD_PAIRS: tuple[tuple[str, str], ...] = (
+    ("email", "password"),
+    ("username", "password"),
+    ("user", "password"),
+    ("login", "password"),
+)
+_MAX_LIVE_LOGIN_PATHS = 5
+
+
+def _schemaless_login_candidates(sbom: "AiSbomDocument | None") -> list[str]:
+    """Return POST login-looking paths to try live, best candidates first."""
+    from nuguard.sbom.models import NodeType  # noqa: PLC0415
+
+    scored: list[tuple[int, str]] = []
+    if sbom is not None:
+        for node in sbom.nodes:
+            meta = node.metadata
+            if meta is None or node.component_type != NodeType.API_ENDPOINT:
+                continue
+            path = (meta.endpoint or "").strip()
+            if not path.startswith("/") or (meta.method or "POST").upper() != "POST":
+                continue
+            if ":" in path or "{" in path or not _LOGIN_PATH_RE.search(path):
+                continue
+            lowered = path.lower()
+            score = 0 if any(t in lowered for t in ("/login", "/signin", "/sign-in")) else 1
+            scored.append((score, path))
+    ordered = [p for _, p in sorted(scored)]
+    for generic in _GENERIC_LOGIN_PATHS:
+        if generic not in ordered:
+            ordered.append(generic)
+    return ordered[:_MAX_LIVE_LOGIN_PATHS]
+
+
+async def discover_login_flow_live(
+    target_url: str,
+    auth_config: "AuthConfig",
+    sbom: "AiSbomDocument | None",
+    *,
+    timeout: float = 10.0,
+) -> tuple["AuthConfig | None", str | None]:
+    """Find a token-issuing login endpoint for basic credentials by trying it live.
+
+    Complements :func:`resolve_auth_config_with_sbom_fallback`, which needs the
+    SBOM to record the login endpoint's credential fields. Many apps (Express
+    handlers reading ``req.body.email``, for example) leave that schema empty,
+    so this POSTs the configured credentials under common field-name pairs to
+    SBOM login routes and a few generic ones. The first 2xx response carrying
+    a token (found with :func:`nuguard.common.auth._find_token_recursive`,
+    including nested paths like ``authentication.token``) becomes the login
+    flow.
+
+    Returns ``(upgraded_auth_config, note)``, or ``(None, None)`` when nothing
+    issued a token. Never raises.
+    """
+    if auth_config.type != "basic" or not (auth_config.username and auth_config.password):
+        return None, None
+
+    import httpx  # noqa: PLC0415
+
+    from nuguard.common.auth import (  # noqa: PLC0415
+        AuthConfig,
+        LoginFlowConfig,
+        _find_token_recursive,
+    )
+
+    pairs = list(_LOGIN_FIELD_PAIRS)
+    if "@" not in auth_config.username:
+        # A non-email identifier is most likely a "username" field.
+        pairs.sort(key=lambda p: p[0] != "username")
+
+    base = target_url.rstrip("/")
+    try:
+        async with httpx.AsyncClient(
+            base_url=base,
+            timeout=httpx.Timeout(timeout),
+            headers={"Content-Type": "application/json", "User-Agent": "nuguard-login-probe/1.0"},
+            follow_redirects=True,
+        ) as client:
+            for path in _schemaless_login_candidates(sbom):
+                for user_field, pass_field in pairs:
+                    payload = {user_field: auth_config.username, pass_field: auth_config.password}
+                    try:
+                        resp = await client.post(path, json=payload)
+                    except httpx.HTTPError as exc:
+                        _log.debug("discover_login_flow_live: %s — request error: %s", path, exc)
+                        break
+                    if resp.status_code in (404, 405) or resp.status_code >= 500:
+                        break  # route missing or broken — field names won't help
+                    if resp.status_code == 429:
+                        _log.warning("discover_login_flow_live: rate limited at %s — stopping", path)
+                        return None, None
+                    if resp.status_code >= 300:
+                        continue
+                    try:
+                        data = resp.json()
+                    except ValueError:
+                        continue
+                    found = _find_token_recursive(data)
+                    if found is None:
+                        continue
+                    token_key, _token = found
+                    upgraded = AuthConfig(
+                        type="login_flow",
+                        login_flow=LoginFlowConfig(
+                            endpoint=path,
+                            method="POST",
+                            payload=payload,
+                            token_response_key=token_key,
+                            token_header="Authorization: Bearer",
+                            refresh_on_401=True,
+                        ),
+                        username=auth_config.username,
+                        password=auth_config.password,
+                    )
+                    note = (
+                        f"auth.type='basic' was upgraded to 'login_flow': POST {path} with "
+                        f"fields {user_field!r}/{pass_field!r} returned a token at "
+                        f"'{token_key}'. To skip this discovery next run, set in nuguard.yaml:\n"
+                        f"  auth:\n    type: login_flow\n    login_flow:\n"
+                        f"      endpoint: {path}\n      payload:\n"
+                        f"        {user_field}: <username>\n        {pass_field}: <password>\n"
+                        f"      token_response_key: {token_key}"
+                    )
+                    _log.warning("discover_login_flow_live: %s", note.splitlines()[0])
+                    return upgraded, note
+    except Exception as exc:  # noqa: BLE001 — discovery must never break bootstrap
+        _log.debug("discover_login_flow_live: unexpected error: %s", exc)
+    return None, None
+
+
 def resolve_auth_config_with_sbom_fallback(
     auth_config: "AuthConfig | None",
     sbom: "AiSbomDocument | None",

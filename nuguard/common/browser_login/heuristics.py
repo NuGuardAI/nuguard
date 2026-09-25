@@ -11,6 +11,9 @@ the config-override-then-generic-fallback layering already used by
 """
 from __future__ import annotations
 
+import json
+import re
+
 DEFAULT_LOGIN_TRIGGER_TEXTS: list[str] = [
     "log in",
     "log-in",
@@ -21,12 +24,57 @@ DEFAULT_LOGIN_TRIGGER_TEXTS: list[str] = [
     "continue",
 ]
 
+# Modal/banner buttons that block clicks on the page underneath (welcome
+# dialogs, cookie-consent banners). Matched as exact, case-insensitive button
+# names — never substrings, so "Close account" is not clicked.
+DEFAULT_OVERLAY_DISMISS_TEXTS: list[str] = [
+    "dismiss",
+    "close",
+    "close dialog",
+    "accept",
+    "accept all",
+    "accept cookies",
+    "allow all",
+    "got it",
+    "ok",
+    "i agree",
+    "agree",
+    "no thanks",
+    "not now",
+    "skip",
+    "me want it!",
+]
+
+# Menus that hide the login entry on SPAs (e.g. an "Account" dropdown whose
+# first item is "Login"). Opened when no login trigger is directly visible.
+DEFAULT_ACCOUNT_MENU_TEXTS: list[str] = [
+    "account",
+    "my account",
+    "show/hide account menu",
+    "user menu",
+    "profile",
+    "sign in / register",
+]
+
+# Login routes tried directly (relative to the target URL) when neither a
+# visible trigger nor an account menu leads to a login form. Includes the
+# hash-router form used by Angular/Vue SPAs.
+DEFAULT_LOGIN_ROUTES: list[str] = [
+    "/login",
+    "/#/login",
+    "/signin",
+    "/#/signin",
+    "/auth/login",
+    "/users/sign_in",
+]
+
 DEFAULT_USERNAME_SELECTORS: list[str] = [
     "input[name='username']",
     "input[name='email']",
+    "input#email",
+    "input[aria-label*='email' i]",
     "input[type='email']",
     "input#username",
-    "input#email",
     "input[autocomplete='username']",
 ]
 
@@ -119,3 +167,60 @@ def build_text_candidates(configured: list[str], defaults: list[str]) -> list[st
             seen.add(key)
             merged.append(text.strip())
     return merged
+
+
+# A compact JWS/JWT: three base64url segments, header starting "eyJ" ('{"').
+_JWT_RE = re.compile(r"^eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*$")
+# Storage keys whose value is a bearer token even when it isn't a JWT.
+_TOKEN_STORAGE_KEY_RE = re.compile(r"(?:^|[_.-])(?:access[_-]?)?token$|^jwt$|^id[_-]?token$", re.IGNORECASE)
+
+
+def _token_from_value(key: str, value: object, depth: int = 0) -> str | None:
+    if isinstance(value, str):
+        candidate = value.strip().strip('"')
+        if candidate.lower().startswith("bearer "):
+            candidate = candidate[7:].strip()
+        if _JWT_RE.match(candidate):
+            return candidate
+        if depth == 0 and candidate[:1] in ("{", "["):
+            try:
+                return _token_from_value(key, json.loads(candidate), depth + 1)
+            except ValueError:
+                return None
+        if _TOKEN_STORAGE_KEY_RE.search(key) and 16 <= len(candidate) <= 4096 and " " not in candidate:
+            return candidate
+        return None
+    if isinstance(value, dict) and depth < 3:
+        for sub_key, sub_value in value.items():
+            found = _token_from_value(str(sub_key), sub_value, depth + 1)
+            if found:
+                return found
+    return None
+
+
+def extract_storage_token(storage: dict[str, object]) -> str | None:
+    """Find a bearer token in a browser ``localStorage``/``sessionStorage`` dump.
+
+    SPAs commonly keep the post-login JWT in web storage and send it as an
+    ``Authorization: Bearer`` header rather than a cookie, so a cookie-only
+    session capture misses it. Prefers JWT-shaped values, including ones
+    nested in a JSON-encoded storage entry (``{"accessToken": "eyJ..."}``);
+    otherwise accepts an opaque value stored under a token-named key.
+    """
+    fallback: str | None = None
+    for key, value in storage.items():
+        found = _token_from_value(str(key), value)
+        if not found:
+            continue
+        if _JWT_RE.match(found):
+            return found
+        fallback = fallback or found
+    return fallback
+
+
+def bearer_from_authorization_header(value: str) -> str | None:
+    """Return the token from an ``Authorization: Bearer <token>`` header value."""
+    parts = (value or "").strip().split(None, 1)
+    if len(parts) == 2 and parts[0].lower() == "bearer" and parts[1].strip():
+        return parts[1].strip()
+    return None

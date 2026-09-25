@@ -6703,6 +6703,11 @@
             "title": "Payload Hint",
             "type": "string"
           },
+          "engagement_error": {
+            "default": "",
+            "title": "Engagement Error",
+            "type": "string"
+          },
           "checked_at": {
             "format": "date-time",
             "title": "Checked At",
@@ -7511,6 +7516,7 @@
           "aborted_target_unavailable",
           "aborted_auth_failure",
           "aborted_endpoint_unreachable",
+          "aborted_target_not_engaged",
           "inconclusive_target_errors",
           "no_findings",
           "partial"
@@ -8124,6 +8130,16 @@
         "title": "Discovery Max Turns",
         "type": "integer"
       },
+      "require_engagement": {
+        "default": true,
+        "title": "Require Engagement",
+        "type": "boolean"
+      },
+      "engagement_error_threshold": {
+        "default": 5,
+        "title": "Engagement Error Threshold",
+        "type": "integer"
+      },
       "capability_discovery": {
         "default": true,
         "title": "Capability Discovery",
@@ -8289,6 +8305,11 @@
           "payload_hint": {
             "default": "",
             "title": "Payload Hint",
+            "type": "string"
+          },
+          "engagement_error": {
+            "default": "",
+            "title": "Engagement Error",
             "type": "string"
           },
           "checked_at": {
@@ -9099,6 +9120,7 @@
           "aborted_target_unavailable",
           "aborted_auth_failure",
           "aborted_endpoint_unreachable",
+          "aborted_target_not_engaged",
           "inconclusive_target_errors",
           "no_findings",
           "partial"

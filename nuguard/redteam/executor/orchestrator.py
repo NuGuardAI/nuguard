@@ -432,6 +432,30 @@ def _maybe_mark_endpoint_not_found(
     return chain_status
 
 
+def _record_is_error_only(record: object) -> bool:
+    """True when a scenario got responses and every one was only an error envelope."""
+    from nuguard.common.transport import error_only_response  # noqa: PLC0415
+
+    responses = [
+        str(step.get("response") or "")
+        for step in getattr(record, "steps", None) or []
+        if isinstance(step, dict) and step.get("response")
+    ]
+    return bool(responses) and all(error_only_response(r) for r in responses)
+
+
+def _first_error_only_response(record: object) -> str:
+    """Return the first error-envelope text from a scenario record's steps."""
+    from nuguard.common.transport import error_only_response  # noqa: PLC0415
+
+    for step in getattr(record, "steps", None) or []:
+        if isinstance(step, dict):
+            text = error_only_response(str(step.get("response") or ""))
+            if text:
+                return text
+    return ""
+
+
 def _compute_scan_outcome(
     findings: list,
     records: list[ScenarioRecord],
@@ -778,6 +802,8 @@ class RedteamOrchestrator:
         similar_miss_threshold: int = 4,
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
+        require_engagement: bool = True,
+        engagement_error_threshold: int = 5,
         capability_discovery: bool = True,
         liveness_cache_ttl_seconds: float = 3600.0,
         llm_capability_dedup: bool = False,
@@ -866,6 +892,12 @@ class RedteamOrchestrator:
         self._similar_miss_threshold = max(1, similar_miss_threshold)
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
+        # Engagement gate: fail fast when the chat endpoint only ever answers
+        # with error envelopes, instead of "passing" a scan that never reached
+        # the agent. See _verify_target_engagement / _run_scenarios.
+        self._require_engagement = require_engagement
+        self._engagement_error_threshold = max(1, engagement_error_threshold)
+        self._not_engaged_detail: str | None = None
         self._capability_discovery = capability_discovery
         self._liveness_cache_ttl_seconds = max(0.0, liveness_cache_ttl_seconds)
         self._llm_capability_dedup = llm_capability_dedup
@@ -1171,6 +1203,69 @@ class RedteamOrchestrator:
                 self._checkpoint.delete(self._checkpoint_path)
             return findings
 
+    async def _verify_target_engagement(self) -> None:
+        """Send one benign turn and abort when the reply is only an error envelope.
+
+        A 2xx whose body is ``{"error": ...}`` (or an SSE stream of them) means
+        the agent never ran: wrong payload shape, or the app's LLM backend is
+        down. Scenarios sent through that channel can't produce findings, so
+        the run would "pass" without testing anything.
+
+        Raises:
+            TargetNotEngagedError: the probe got only an error envelope.
+        """
+        from nuguard.common.errors import TargetNotEngagedError  # noqa: PLC0415
+        from nuguard.common.target_client_builder import (  # noqa: PLC0415
+            build_target_app_client_from_session,
+        )
+        from nuguard.common.transport import error_only_response  # noqa: PLC0415
+        from nuguard.redteam.target.session import AttackSession  # noqa: PLC0415
+
+        if self._chat_payload_key.startswith("__"):
+            return  # websocket / framework-adapter protocols have their own checks
+        client = build_target_app_client_from_session(
+            self._target_session_config, timeout=self._request_timeout,
+        )
+        session = AttackSession(
+            session_id="engagement-check",
+            target_url=self._target_url,
+            chain_id="engagement-check",
+        )
+        try:
+            async with client:
+                response, _ = await client.send(
+                    "Hello, what can you help me with?", session, retry_transient=True,
+                )
+        except TargetUnavailableError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — the scenario loop has its own breakers
+            _log.warning("engagement check could not complete (continuing): %s", exc)
+            return
+        error_text = error_only_response(response or "")
+        if not error_text:
+            _log.info("engagement check: target answered — %s", (response or "")[:120])
+            return
+        url = f"{self._target_url}{self._chat_path or '/chat'}"
+        shape = (
+            f"{{{self._chat_payload_key!r}: [...]}}" if self._chat_payload_list
+            else f"{{{self._chat_payload_key!r}: \"...\"}}"
+        )
+        raise TargetNotEngagedError(
+            f"The chat endpoint {url} is reachable but answered only with an error, so "
+            f"no scenario could reach the agent.\n"
+            f"  App error: {error_text}\n"
+            f"  Sent body shape: {shape}\n"
+            "Likely causes: (1) the app expects a different payload — set "
+            "target.chat_payload_key / target.chat_payload_list in nuguard.yaml "
+            "(e.g. 'messages' + true for OpenAI/Vercel-style apps); (2) the app's own "
+            "LLM backend is down (errors like ECONNREFUSED / RetryError). "
+            "Set redteam.require_engagement: false to run anyway.",
+            url=url,
+            detail=error_text,
+            payload_key=self._chat_payload_key,
+            payload_list=self._chat_payload_list,
+        )
+
     async def _run_impl(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
         self._emitted_finding_keys.clear()
@@ -1261,6 +1356,9 @@ class RedteamOrchestrator:
             self._chat_payload_list,
             self._chat_path_source,
         )
+
+        if self._require_engagement:
+            await self._verify_target_engagement()
 
         # 0. Pre-scan discovery: connect to the live agent as the authenticated
         # user and extract their real name + account/booking IDs.  Runs before
@@ -1941,6 +2039,8 @@ class RedteamOrchestrator:
             records=self.scenario_records,
             strict=self._strict_outcome,
         )
+        if self._not_engaged_detail is not None and not findings:
+            self.scan_outcome = "aborted_target_not_engaged"
         _log.info("Scan outcome: %s", self.scan_outcome)
 
         # LLM evaluation + summary (opt-in — only when eval_llm is configured)
@@ -2015,6 +2115,9 @@ class RedteamOrchestrator:
         # Kept independent of consecutive_unavailable so an unreachable
         # SBOM-derived REST path cannot trip the general chat breaker.
         consecutive_endpoint_unavailable = 0
+        # Consecutive scenarios whose every response was only an error
+        # envelope (the agent never engaged) — see _record_is_error_only.
+        consecutive_error_envelopes = 0
         # If a prior pass already tripped the circuit (the escalation pass runs
         # after the main pass), skip every scenario — the target is dead and
         # there is no point hammering it again with a fresh abort event.
@@ -2053,7 +2156,7 @@ class RedteamOrchestrator:
             scenario: AttackScenario,
             scenario_idx: int = 0,
         ) -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
-            nonlocal consecutive_unavailable, consecutive_endpoint_unavailable
+            nonlocal consecutive_unavailable, consecutive_endpoint_unavailable, consecutive_error_envelopes
             affected = ", ".join(
                 self._node_name.get(nid, nid) for nid in scenario.target_node_ids[:2]
             )
@@ -2297,6 +2400,18 @@ class RedteamOrchestrator:
                             )
                     else:
                         consecutive_unavailable = 0
+                    if self._require_engagement and _record_is_error_only(_record):
+                        consecutive_error_envelopes += 1
+                        if consecutive_error_envelopes >= self._engagement_error_threshold:
+                            self._not_engaged_detail = _first_error_only_response(_record)
+                            _log.error(
+                                "Target answered only with error envelopes for %d consecutive "
+                                "scenarios — aborting remaining scenarios as not engaged: %s",
+                                consecutive_error_envelopes, self._not_engaged_detail,
+                            )
+                            abort_event.set()
+                    else:
+                        consecutive_error_envelopes = 0
                     # Record executed nodes in coverage tracker.
                     if self._coverage_tracker is not None:
                         for _nid in scenario.target_node_ids:

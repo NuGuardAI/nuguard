@@ -39,12 +39,16 @@ target:
   #url: http://127.0.0.1:3000   # local dev backend — loopback, blocked by nuguard pentest's SSRF scope
   url: http://juice-shop-demo.eastus2.azurecontainer.io:3000
 
-  # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
-  # Juice Shop's backend only recognizes Authorization: Bearer <token> obtained via
-  # /rest/user/login — it does not understand HTTP Basic auth, and the SBOM's
-  # request_body_schema for that endpoint is empty, so nuguard can't auto-upgrade a
-  # basic-auth config into a login_flow the way it can for apps with a fuller schema.
-  # The token is nested at authentication.token in the login response, not top-level.
+  # Authentication — Juice Shop only recognizes Authorization: Bearer <token> from
+  # POST /rest/user/login (token nested at authentication.token). Its SBOM login
+  # endpoint has no request schema, so nuguard discovers the login flow live:
+  # basic credentials are POSTed to SBOM login routes under common field names
+  # (email/password first) and upgraded to login_flow when a token comes back.
+  # The explicit login_flow block below is the equivalent pinned config.
+  #
+  # Chat: /rest/chat takes a Vercel AI SDK {"messages": [{role, content}]} body.
+  # nuguard infers this from the streamText({ messages }) call (SBOM enrichment)
+  # or the probe; to pin it, set chat_payload_key: messages + chat_payload_list: true.
   auth:
   #  type: login_flow
   #  login_flow:

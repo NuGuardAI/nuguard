@@ -322,6 +322,8 @@ def redteam(
         stall_abort_threshold=cfg.redteam_stall_abort_threshold,
         skip_discovery=cfg.redteam_skip_discovery,
         discovery_max_turns=cfg.redteam_discovery_max_turns,
+        require_engagement=cfg.redteam_require_engagement,
+        engagement_error_threshold=cfg.redteam_engagement_error_threshold,
         capability_discovery=cfg.redteam_capability_discovery,
         liveness_cache_ttl_seconds=cfg.redteam_liveness_cache_ttl_seconds,
         llm_capability_dedup=cfg.redteam_llm_capability_dedup,
@@ -379,8 +381,14 @@ def redteam(
         from nuguard.common.errors import (  # noqa: PLC0415
             AuthError,
             TargetEndpointNotFoundError,
+            TargetNotEngagedError,
             TargetUnavailableError,
         )
+        if isinstance(exc, TargetNotEngagedError):
+            typer.echo(f"Error: {exc}", err=True)
+            # Distinct setup-failure exit code (2 = findings, 1 = run error) so
+            # CI can tell "the target never answered" from "the scan found nothing".
+            raise typer.Exit(code=3) from exc
         if isinstance(exc, TargetUnavailableError):
             typer.echo(
                 f"Error: target is unreachable at {exc.url!r}.\n"
@@ -531,6 +539,13 @@ def redteam(
             _log.warning("Failed to emit pytest regression tests: %s", exc)
 
     # Exit code
+    if scan_outcome == "aborted_target_not_engaged" and not findings:
+        typer.echo(
+            "Error: the target stopped engaging mid-run (responses were only error "
+            "envelopes) — see the report note.",
+            err=True,
+        )
+        raise typer.Exit(code=3)
     _fail_on_severity(findings, effective_fail_on)
     if _partial_run:
         raise typer.Exit(code=1)
@@ -600,6 +615,8 @@ async def _run_redteam(
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
+    require_engagement: bool = True,
+    engagement_error_threshold: int = 5,
     capability_discovery: bool = True,
     liveness_cache_ttl_seconds: float = 3600.0,
     llm_capability_dedup: bool = False,
@@ -748,6 +765,8 @@ async def _run_redteam(
                 stall_abort_threshold=stall_abort_threshold,
                 skip_discovery=skip_discovery,
                 discovery_max_turns=discovery_max_turns,
+                require_engagement=require_engagement,
+                engagement_error_threshold=engagement_error_threshold,
                 capability_discovery=capability_discovery,
                 liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
                 llm_capability_dedup=llm_capability_dedup,
@@ -810,6 +829,8 @@ async def _run_redteam(
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
+        require_engagement=require_engagement,
+        engagement_error_threshold=engagement_error_threshold,
         capability_discovery=capability_discovery,
         liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
         llm_capability_dedup=llm_capability_dedup,
@@ -870,6 +891,8 @@ async def _run_orchestrator(  # noqa: C901
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
+    require_engagement: bool = True,
+    engagement_error_threshold: int = 5,
     capability_discovery: bool = True,
     liveness_cache_ttl_seconds: float = 3600.0,
     llm_capability_dedup: bool = False,
@@ -950,6 +973,8 @@ async def _run_orchestrator(  # noqa: C901
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
+        require_engagement=require_engagement,
+        engagement_error_threshold=engagement_error_threshold,
         capability_discovery=capability_discovery,
         liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
         llm_capability_dedup=llm_capability_dedup,

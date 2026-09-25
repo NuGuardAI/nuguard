@@ -849,6 +849,33 @@ def _existing_enrichment_cache_key(out_path: Path) -> str | None:
     return key if isinstance(key, str) else None
 
 
+def _clear_unconfirmed_probe_marker(path: str, sbom: AiSbomDocument, sbom_path: Path) -> Path:
+    """Drop a stale ``runtime_probe`` confirmation for *path*; never raises."""
+    out_path = _enriched_output_path(sbom_path)
+    cleared = False
+    for node in sbom.nodes:
+        if (
+            node.component_type != ComponentType.API_ENDPOINT
+            or node.metadata is None
+            or node.metadata.endpoint != path
+        ):
+            continue
+        extras = dict(node.metadata.extras or {})
+        if extras.get("source") == PROBE_SOURCE_RUNTIME_PROBE:
+            for stale_key in ("source", "confirmed_at", "probe_value_template"):
+                extras.pop(stale_key, None)
+            node.metadata.extras = extras
+            cleared = True
+    _log.info("probe_result_not_persisted: path=%s (unconfirmed fallback)", path)
+    if cleared:
+        try:
+            _write_enriched(sbom, out_path, cache_key=_existing_enrichment_cache_key(out_path))
+            _log.info("probe_result_cleared: stale runtime_probe marker removed for %s", path)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("probe_result_clear_failed: %s", exc)
+    return out_path
+
+
 def persist_probe_result_to_sbom(
     result: "ProbeResult",
     sbom: AiSbomDocument,
@@ -870,8 +897,17 @@ def persist_probe_result_to_sbom(
     capability discovery) re-serializes this confirmation too, instead of
     silently overwriting it with a stale pre-probe copy.
     Never raises — failures are logged and the original SBOM is unchanged.
+
+    An unconfirmed result (``result.confirmed is False`` — a best-effort
+    fallback after every probed shape errored) is never persisted as a
+    confirmation. Instead any stale ``runtime_probe`` marker on that path is
+    cleared, so a key saved by an earlier bad run can't keep poisoning
+    later ones.
     """
     from datetime import datetime, timezone  # noqa: PLC0415
+
+    if not getattr(result, "confirmed", True):
+        return _clear_unconfirmed_probe_marker(result.path, sbom, sbom_path)
 
     target_node: Node | None = None
     for node in sbom.nodes:
