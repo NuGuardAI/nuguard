@@ -144,6 +144,29 @@ def test_to_markdown_coverage_line():
     assert "1/2" in md
 
 
+def test_to_markdown_coverage_line_scoped_populations_do_not_mismatch():
+    """Issue #562: the top-of-report Coverage line previously paired an
+    AGENT/TOOL-only percentage with a raw count spanning ALL node types
+    (agent/tool + endpoint + guardrail), which could never arithmetically
+    agree once endpoint/guardrail coverage differed from agent/tool coverage.
+    Each of the three percentages here must be paired with a raw count from
+    that same, correctly-scoped population."""
+    cov = [
+        BehaviorCoverage(component_name="agent1", node_type="AGENT", exercised=True),
+        BehaviorCoverage(component_name="tool1", node_type="TOOL", exercised=False),
+        BehaviorCoverage(component_name="/api/a", node_type="API_ENDPOINT", exercised=True),
+        BehaviorCoverage(component_name="/api/b", node_type="API_ENDPOINT", exercised=True),
+        BehaviorCoverage(component_name="/api/c", node_type="API_ENDPOINT", exercised=False),
+        BehaviorCoverage(component_name="guard1", node_type="GUARDRAIL", exercised=False),
+    ]
+    result = _make_result(coverage=cov)
+    md = to_markdown(result)
+    # Agent/tool: 1/2 = 50%. Endpoint: 2/3 = 67%. Guardrail: 0/1 = 0%.
+    assert "Agent/Tool 50% (1/2)" in md
+    assert "Endpoint 67% (2/3)" in md
+    assert "Guardrail 0% (0/1)" in md
+
+
 def test_to_markdown_not_exercised_in_summary():
     cov = [
         BehaviorCoverage(component_name="agent1", node_type="AGENT", exercised=True),
