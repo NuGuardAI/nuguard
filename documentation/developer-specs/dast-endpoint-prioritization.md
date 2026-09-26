@@ -140,6 +140,10 @@ retry, request-timeout, and scan-timeout limits.
 
 After baseline validation and mining, rerank the exploration pool using confirmed
 reachability and named inputs. Select under both the operation and input-point budgets.
+Unresolved-input hints qualify routes for parameter mining, but routes still without a named
+input after mining do not enter the final Nuclei DAST document unless explicitly included.
+Only literal GET operations receive a read-only reachability probe; a GET response does not
+establish that a POST, PUT, or PATCH operation is reachable.
 
 An operation is atomic in version 1: NuGuard does not remove individual fields from its
 request shape to make it fit. A non-mandatory operation that would cross either remaining
