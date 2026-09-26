@@ -319,6 +319,129 @@ async def test_run_reconciles_nonmention_gap_with_final_successful_coverage() ->
     assert result.gap_aggregation_stats["buckets_suppressed_by_coverage"] == 1
 
 
+@pytest.mark.asyncio
+async def test_run_end_to_end_endpoint_coverage_report_does_not_overstate_verification() -> None:
+    """Issue #562, full pipeline: BehaviorRunner.run() -> result.coverage ->
+    to_markdown()/to_json(). One endpoint is SBOM-declared live (operational=True)
+    and gets a real PASS response; the other is SBOM-declared dead
+    (operational=False) and every request to it transport-fails (http_error) —
+    reproducing the exact scenario the issue was filed against. The rendered
+    report must show the dead endpoint as unexercised/not verified, never as
+    "exercised, within policy", and the live one with a real PASS outcome and
+    Live liveness label. Also proves the new BehaviorCoverage fields survive a
+    real model_dump(mode="json") round-trip.
+    """
+    from nuguard.behavior.models import BehaviorAnalysisResult
+    from nuguard.behavior.report import to_json, to_markdown
+
+    live_node = _endpoint_node("/api/orders")
+    live_node.metadata.operational = True
+    dead_node = _endpoint_node("/api/checkout")
+    dead_node.metadata.operational = False
+
+    runner = BehaviorRunner(
+        config=_make_config(),
+        sbom=AiSbomDocument(target="./app", nodes=[live_node, dead_node], edges=[]),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    scenarios = [
+        BehaviorScenario(
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE,
+            name="endpoint_coverage_api_orders",
+            messages=["What orders do I have?"],
+            target_component="/api/orders",
+            target_component_type="API_ENDPOINT",
+        ),
+        BehaviorScenario(
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE,
+            name="endpoint_coverage_api_checkout",
+            messages=["Check out my cart."],
+            target_component="/api/checkout",
+            target_component_type="API_ENDPOINT",
+        ),
+    ]
+
+    async def _canned_result(scenario, _client, _evaluator):
+        if scenario.name == "endpoint_coverage_api_orders":
+            return ScenarioResult(
+                scenario_id=scenario.scenario_id,
+                scenario_name=scenario.name,
+                scenario_type=scenario.scenario_type.value,
+                overall_score=4.5,
+                verdicts=[{
+                    "turn": 1,
+                    "verdict": "PASS",
+                    "target_component": "/api/orders",
+                    "effective_endpoint": "/api/orders",
+                    "user_message": "What orders do I have?",
+                    "agent_response": "You have 3 orders.",
+                    "deviations": [],
+                }],
+                total_turns=1,
+            )
+        return ScenarioResult(
+            scenario_id=scenario.scenario_id,
+            scenario_name=scenario.name,
+            scenario_type=scenario.scenario_type.value,
+            overall_score=1.0,
+            verdicts=[{
+                "turn": 1,
+                "verdict": "FAIL",
+                "target_component": "/api/checkout",
+                "effective_endpoint": "/api/checkout",
+                "deviations": [{"deviation_type": "http_error", "description": "connection refused"}],
+            }],
+            total_turns=1,
+        )
+
+    # The real per-run liveness sweep (ensure_endpoint_liveness, issue #555) would
+    # try to actually ping these nodes through the mock client and reset/overwrite
+    # the operational values this test sets up — that sweep has its own dedicated
+    # tests. Here we're proving pipeline *wiring* (node.metadata.operational ->
+    # BehaviorCoverage.endpoint_operational, end to end through run()), so it's
+    # neutralized as a no-op to isolate that from the (separately-tested) sweep.
+    mock_client = AsyncMock()
+    with (
+        patch.object(runner, "_build_client", new=AsyncMock(return_value=mock_client)),
+        patch.object(runner, "_build_policy_evaluator", return_value=None),
+        patch.object(runner, "_run_scenario", side_effect=_canned_result),
+        patch("nuguard.common.endpoint_liveness.ensure_endpoint_liveness", new=AsyncMock()),
+    ):
+        run_result = await runner.run(scenarios=scenarios, pre_scan_profile=DiscoveredProfile())
+
+    live_cov = next(c for c in run_result.coverage if c.component_name == "/api/orders")
+    dead_cov = next(c for c in run_result.coverage if c.component_name == "/api/checkout")
+
+    # Live endpoint: real PASS outcome, independently-verified liveness, cited evidence.
+    assert live_cov.exercised is True
+    assert live_cov.scenario_outcome == "PASS"
+    assert live_cov.endpoint_operational is True
+    assert live_cov.first_exercised_scenario == "endpoint_coverage_api_orders"
+
+    # Dead endpoint: the exact bug — a transport failure must NOT read as exercised.
+    assert dead_cov.exercised is False
+    assert dead_cov.exercised_within_policy is False
+    assert dead_cov.scenario_outcome is None
+    assert dead_cov.endpoint_operational is False
+
+    analysis_result = BehaviorAnalysisResult(intent=_make_intent(), coverage=run_result.coverage)
+
+    # JSON round-trip (pydantic-interface skill requirement for public models).
+    dumped = analysis_result.model_dump(mode="json")
+    reloaded = BehaviorAnalysisResult.model_validate(dumped)
+    reloaded_live = next(c for c in reloaded.coverage if c.component_name == "/api/orders")
+    assert reloaded_live.scenario_outcome == "PASS"
+    assert reloaded_live.endpoint_operational is True
+
+    md = to_markdown(analysis_result)
+    # The dead endpoint must appear as not exercised, never as falsely compliant.
+    assert "`/api/checkout`" in md  # listed in "Not Exercised"
+    assert "Endpoint 50% (1/2)" in md
+    to_json(analysis_result)  # must not raise
+
+
 async def _run_component_gap_scenarios(
     *,
     gap_text: str,
