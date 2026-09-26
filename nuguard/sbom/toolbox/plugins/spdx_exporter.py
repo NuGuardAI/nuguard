@@ -452,6 +452,11 @@ def _add_package_extensions(element: dict[str, Any], node: Node) -> None:
             element["nuguard:transport"] = meta.transport
         if meta.method:
             element["nuguard:method"] = meta.method
+        if meta.http_request is not None:
+            element["nuguard:httpMethods"] = list(meta.http_request.methods)
+            element["nuguard:httpParameters"] = [
+                f"{param.location}:{param.name}" for param in meta.http_request.parameters
+            ]
     elif node.component_type == ComponentType.DEPLOYMENT:
         if meta.deployment_target:
             element["nuguard:deploymentTarget"] = meta.deployment_target

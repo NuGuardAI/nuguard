@@ -446,6 +446,84 @@
       "title": "Evidence",
       "type": "object"
     },
+    "HttpParameterMetadata": {
+      "description": "One named input point of an HTTP API_ENDPOINT, independent of language/framework.",
+      "properties": {
+        "name": {
+          "description": "Parameter name as sent on the wire (not the handler variable)",
+          "title": "Name",
+          "type": "string"
+        },
+        "location": {
+          "description": "Where the value is carried in the request",
+          "enum": [
+            "path",
+            "query",
+            "header",
+            "cookie",
+            "json",
+            "form",
+            "multipart"
+          ],
+          "title": "Location",
+          "type": "string"
+        },
+        "type_hint": {
+          "default": "string",
+          "description": "Best-effort source type, e.g. 'int'",
+          "title": "Type Hint",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "description": "True when the handler requires the input",
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "location"
+      ],
+      "title": "HttpParameterMetadata",
+      "type": "object"
+    },
+    "HttpRequestMetadata": {
+      "description": "Structured request shape for an HTTP API_ENDPOINT, populated by framework adapters.\n\nSource adapters own parsing of their language's handler signatures; consumers\nsuch as ``nuguard pentest`` read only this structure.",
+      "properties": {
+        "methods": {
+          "description": "Every HTTP method the route accepts; 'UNKNOWN' when not statically known",
+          "items": {
+            "type": "string"
+          },
+          "title": "Methods",
+          "type": "array"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/HttpParameterMetadata"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "content_types": {
+          "description": "Request content types the handler accepts",
+          "items": {
+            "type": "string"
+          },
+          "title": "Content Types",
+          "type": "array"
+        },
+        "has_unresolved_inputs": {
+          "default": false,
+          "description": "True when the handler accepts inputs whose names could not be resolved statically (e.g. a map of all query parameters)",
+          "title": "Has Unresolved Inputs",
+          "type": "boolean"
+        }
+      },
+      "title": "HttpRequestMetadata",
+      "type": "object"
+    },
     "InstrumentationDetail": {
       "description": "Observability and monitoring tooling configured for a component or application.",
       "properties": {
@@ -1453,6 +1531,18 @@
           "default": null,
           "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
           "title": "Path Param Sources"
+        },
+        "http_request": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HttpRequestMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Structured HTTP request shape (methods, named inputs, content types)"
         },
         "request_body_schema": {
           "additionalProperties": {

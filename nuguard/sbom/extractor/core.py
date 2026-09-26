@@ -109,6 +109,7 @@ from ..models import (
     Edge,
     EncryptionDetail,
     Evidence,
+    HttpRequestMetadata,
     Node,
     NodeMetadata,
     RateLimitDetail,
@@ -1729,6 +1730,7 @@ class AiSbomExtractor:
                         "classified_tables",
                         "classified_fields",
                         "_generic_endpoint_fallback",
+                        "http_request",
                     )
                 }
             )
@@ -1872,6 +1874,12 @@ class AiSbomExtractor:
                 _rtk = acc.metadata.get("response_text_key")
                 if _rtk:
                     node.metadata.response_text_key = str(_rtk)
+                _http = acc.metadata.get("http_request")
+                if isinstance(_http, dict) and _http:
+                    try:
+                        node.metadata.http_request = HttpRequestMetadata.model_validate(_http)
+                    except ValueError:
+                        _log.debug("Ignoring malformed http_request metadata on %s", node.name)
                 _rbs = acc.metadata.get("request_body_schema")
                 if isinstance(_rbs, dict) and _rbs:
                     node.metadata.request_body_schema = {str(k): str(v) for k, v in _rbs.items()}
