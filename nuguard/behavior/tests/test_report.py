@@ -167,6 +167,33 @@ def test_to_markdown_coverage_line_scoped_populations_do_not_mismatch():
     assert "Guardrail 0% (0/1)" in md
 
 
+def test_to_markdown_coverage_map_table_shows_outcome_and_live_columns():
+    """Issue #562: the "Coverage Map" table must show the real scenario_outcome
+    and independently-verified endpoint_operational for each exercised
+    component, not just a bare Yes/No exercised flag."""
+    cov = [
+        BehaviorCoverage(
+            component_name="/api/orders", node_type="API_ENDPOINT", exercised=True,
+            exercised_within_policy=True, scenario_outcome="PASS", endpoint_operational=True,
+        ),
+        BehaviorCoverage(
+            component_name="/api/checkout", node_type="API_ENDPOINT", exercised=True,
+            exercised_within_policy=True, scenario_outcome="FAIL", endpoint_operational=None,
+        ),
+        BehaviorCoverage(
+            component_name="Booking Agent", node_type="AGENT", exercised=True,
+            exercised_within_policy=True, scenario_outcome=None,
+        ),
+    ]
+    result = _make_result(coverage=cov)
+    md = to_markdown(result)
+    assert "| Component | Type | Exercised | Outcome | Live | Within Policy | Deviations | Aliases Seen |" in md
+    assert "| /api/orders | API_ENDPOINT | Yes | PASS | Live | Yes | 0 | - |" in md
+    assert "| /api/checkout | API_ENDPOINT | Yes | FAIL | not verified | Yes | 0 | - |" in md
+    # AGENT rows have no liveness concept — must render "-", never a bare guess.
+    assert "| Booking Agent | AGENT | Yes | - | - | Yes | 0 | - |" in md
+
+
 def test_to_markdown_not_exercised_in_summary():
     cov = [
         BehaviorCoverage(component_name="agent1", node_type="AGENT", exercised=True),

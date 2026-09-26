@@ -260,6 +260,15 @@ class ScenarioResult(BaseModel):
     coverage_turns: int = 0
     deviations: list[dict] = Field(default_factory=list)
     matched_topic: str | None = None
+    scoped_tools: list[str] = Field(default_factory=list)
+    scoped_agents: list[str] = Field(default_factory=list)
+    """Copied from BehaviorScenario.scoped_tools/scoped_agents at scenario-result
+    construction time. A coverage-dedicated scenario (AGENT_COVERAGE, COMPONENT_
+    COVERAGE, GUIDED_COVERAGE) can be responsible for exercising more than one
+    component in a single run (e.g. a tool chain, or a guided multi-tool probe) —
+    target_component alone only ever names one of them. _build_coverage_map uses
+    these lists, not target_component, to decide which mentioned components may
+    receive this scenario's own outcome."""
 
 
 class Recommendation(BaseModel):

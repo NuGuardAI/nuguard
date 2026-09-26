@@ -2226,6 +2226,8 @@ class BehaviorRunner:
             coverage_turns=coverage_turns_used,
             deviations=scenario_deviations,
             matched_topic=getattr(scenario, "matched_topic", None),
+            scoped_tools=list(getattr(scenario, "scoped_tools", None) or []),
+            scoped_agents=list(getattr(scenario, "scoped_agents", None) or []),
         )
 
     def _cached_discovery_profile(self) -> "DiscoveredProfile | None":
@@ -3559,6 +3561,15 @@ class BehaviorRunner:
                 if _is_coverage_scenario
                 else None
             )
+            # A coverage-dedicated scenario can be responsible for more than one
+            # component (a COMPONENT_COVERAGE tool chain, or a GUIDED_COVERAGE
+            # multi-tool probe) — scoped_tools/scoped_agents is the scenario's own
+            # full membership set. target_component only ever names one of them
+            # (e.g. tool_names[0] of a chain), so it under-covers a multi-component
+            # scenario if used alone; it remains the fallback for the (currently
+            # unobserved) case where a coverage scenario sets neither scoped list.
+            _sr_scoped_agents = frozenset(getattr(sr, "scoped_agents", None) or [])
+            _sr_scoped_tools = frozenset(getattr(sr, "scoped_tools", None) or [])
             for verdict_dict in sr.verdicts:
                 agents = verdict_dict.get("agents_mentioned") or []
                 tools = verdict_dict.get("tools_mentioned") or []
@@ -3568,9 +3579,10 @@ class BehaviorRunner:
                     for d in deviations
                     if isinstance(d, dict)
                 )
-                # Only this scenario's own stated target may receive its outcome —
-                # a different component incidentally mentioned in the same coverage
-                # scenario's response is still "named", not "judged".
+                # Only a component within this scenario's own declared scope may
+                # receive its outcome — a different component incidentally
+                # mentioned in the same coverage scenario's response is still
+                # "named", not "judged".
                 _verdict_target = verdict_dict.get("target_component") or ""
 
                 def _record_first_exercise(cov: BehaviorCoverage, first_exercise: bool) -> None:
@@ -3591,7 +3603,8 @@ class BehaviorRunner:
                         cov = component_map[key]
                         first_exercise = not cov.exercised
                         cov.exercised = True
-                        if _is_coverage_scenario and _verdict_target == key:
+                        _agent_in_scope = key in _sr_scoped_agents if _sr_scoped_agents else _verdict_target == key
+                        if _is_coverage_scenario and _agent_in_scope:
                             cov.scenario_outcome = _sr_outcome
                         _record_first_exercise(cov, first_exercise)
                         cov.mapping_confidence = cov.mapping_confidence or confidence
@@ -3625,7 +3638,8 @@ class BehaviorRunner:
                         cov = component_map[key]
                         first_exercise = not cov.exercised
                         cov.exercised = True
-                        if _is_coverage_scenario and _verdict_target == key:
+                        _tool_in_scope = key in _sr_scoped_tools if _sr_scoped_tools else _verdict_target == key
+                        if _is_coverage_scenario and _tool_in_scope:
                             cov.scenario_outcome = _sr_outcome
                         _record_first_exercise(cov, first_exercise)
                         cov.mapping_confidence = cov.mapping_confidence or confidence

@@ -2295,6 +2295,20 @@
             ],
             "default": null,
             "title": "Matched Topic"
+          },
+          "scoped_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Tools",
+            "type": "array"
+          },
+          "scoped_agents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Agents",
+            "type": "array"
           }
         },
         "required": [
@@ -3908,6 +3922,20 @@
             ],
             "default": null,
             "title": "Matched Topic"
+          },
+          "scoped_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Tools",
+            "type": "array"
+          },
+          "scoped_agents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Agents",
+            "type": "array"
           }
         },
         "required": [

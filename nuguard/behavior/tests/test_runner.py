@@ -426,7 +426,13 @@ async def test_run_end_to_end_endpoint_coverage_report_does_not_overstate_verifi
     assert dead_cov.scenario_outcome is None
     assert dead_cov.endpoint_operational is False
 
-    analysis_result = BehaviorAnalysisResult(intent=_make_intent(), coverage=run_result.coverage)
+    # scenario_results must be passed through — render_behavior_coverage_evidence
+    # (the "## Coverage Evidence" section) is gated on `if result.scenario_results:`
+    # (report.py). Omitting it here would silently skip exercising Item E's fix
+    # entirely, passing this test without ever rendering that section.
+    analysis_result = BehaviorAnalysisResult(
+        intent=_make_intent(), coverage=run_result.coverage, scenario_results=run_result.scenario_results,
+    )
 
     # JSON round-trip (pydantic-interface skill requirement for public models).
     dumped = analysis_result.model_dump(mode="json")
@@ -439,6 +445,16 @@ async def test_run_end_to_end_endpoint_coverage_report_does_not_overstate_verifi
     # The dead endpoint must appear as not exercised, never as falsely compliant.
     assert "`/api/checkout`" in md  # listed in "Not Exercised"
     assert "Endpoint 50% (1/2)" in md
+    # Coverage Evidence section (Item E): the live endpoint must cite its real
+    # scenario/turn, not the old literal-string "exercised" fallback.
+    assert "## Coverage Evidence" in md
+    assert '| /api/orders | API_ENDPOINT | Within policy | PASS | Live |' in md
+    assert 'Scenario: "endpoint_coverage_api_orders" → turn 1' in md
+    assert "#### Evidence: /api/orders" in md
+    assert "You have 3 orders." in md
+    # The dead endpoint was never exercised, so it must not appear in Coverage
+    # Evidence at all (that section only lists matched/exercised components).
+    assert "/api/checkout" not in md.split("## Coverage Evidence")[1]
     to_json(analysis_result)  # must not raise
 
 
@@ -1017,6 +1033,54 @@ def test_build_coverage_map_endpoint_http_error_not_marked_exercised() -> None:
     assert endpoint_cov.mapping_confidence == "direct_match"
 
 
+def test_build_coverage_map_endpoint_mixed_turns_http_error_then_real_response() -> None:
+    """A scenario where the first turn transport-fails (skipped via `continue`)
+    and the second turn gets a real response: exercised/scenario_outcome must
+    come from the real turn, and first_exercised_* must point at turn 2 (the
+    first turn that was actually exercised), never at the skipped turn 1."""
+    sbom = AiSbomDocument(target="./app", nodes=[_endpoint_node("/api/agent/chat")], edges=[])
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="endpoint_s1",
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE.value,
+            overall_score=4.0,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "/api/agent/chat",
+                    "effective_endpoint": "/api/agent/chat",
+                    "verdict": "FAIL",
+                    "deviations": [{"deviation_type": "http_error", "description": "timeout"}],
+                    "user_message": "first attempt",
+                    "agent_response": "",
+                },
+                {
+                    "turn": 2,
+                    "target_component": "/api/agent/chat",
+                    "effective_endpoint": "/api/agent/chat",
+                    "verdict": "PASS",
+                    "deviations": [],
+                    "user_message": "retry",
+                    "agent_response": "Here is your order status.",
+                },
+            ],
+            total_turns=2,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    endpoint_cov = next(c for c in coverage if c.component_name == "/api/agent/chat")
+    assert endpoint_cov.exercised is True
+    assert endpoint_cov.scenario_outcome == "PASS"
+    assert endpoint_cov.exercised_within_policy is True
+    assert endpoint_cov.first_exercised_turn == 2
+    assert endpoint_cov.first_exercised_request == "retry"
+    assert endpoint_cov.first_exercised_response == "Here is your order status."
+
+
 def test_build_coverage_map_endpoint_real_response_gets_scenario_outcome() -> None:
     """A real (non-transport-failure) verdict reuses the same PASS/PARTIAL/FAIL
     threshold as extract_behavior_scenario_details, from the scenario's own
@@ -1195,6 +1259,53 @@ def test_build_coverage_map_agent_mention_from_dedicated_coverage_scenario_gets_
     assert cov.scenario_outcome == "PASS"
 
 
+def test_build_coverage_map_agent_tool_first_exercised_evidence_recorded() -> None:
+    """The AGENT/TOOL mention loop populates first_exercised_* the same way the
+    ENDPOINT_COVERAGE branch does (previously only unit-tested for endpoints) —
+    on the first turn that resolves the mention, not on later repeat mentions."""
+    sbom = AiSbomDocument(
+        target="./app", nodes=[_agent_or_tool_node("Booking Agent", ComponentType.AGENT)], edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="agent_coverage_booking",
+            scenario_type=BehaviorScenarioType.AGENT_COVERAGE.value,
+            overall_score=4.0,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "Booking Agent",
+                    "agents_mentioned": ["Booking Agent"],
+                    "tools_mentioned": [],
+                    "deviations": [],
+                    "user_message": "Can you help me book a flight?",
+                    "agent_response": "Sure, Booking Agent can help with that.",
+                },
+                {
+                    "turn": 2,
+                    "target_component": "Booking Agent",
+                    "agents_mentioned": ["Booking Agent"],
+                    "tools_mentioned": [],
+                    "deviations": [],
+                    "user_message": "second turn",
+                    "agent_response": "second response, Booking Agent again",
+                },
+            ],
+            total_turns=2,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    cov = next(c for c in coverage if c.component_name == "Booking Agent")
+    assert cov.first_exercised_scenario == "agent_coverage_booking"
+    assert cov.first_exercised_turn == 1
+    assert cov.first_exercised_request == "Can you help me book a flight?"
+    assert cov.first_exercised_response == "Sure, Booking Agent can help with that."
+
+
 def test_build_coverage_map_agent_mention_from_noncoverage_scenario_has_no_outcome() -> None:
     """A guardrail-probe (or any non-coverage-dedicated) scenario that happens
     to name an agent in its response must not attribute its own overall_score
@@ -1266,6 +1377,134 @@ def test_build_coverage_map_agent_mention_incidental_in_coverage_scenario_not_at
     assert cov_a.scenario_outcome == "PASS"
     assert cov_b.exercised is True
     assert cov_b.scenario_outcome is None
+
+
+def test_build_coverage_map_component_coverage_tool_chain_all_scoped_tools_get_outcome() -> None:
+    """Fix for a gap found during test-planning review: a COMPONENT_COVERAGE tool
+    chain (scenarios.py's chain builder) sets target_component=tool_names[0] but
+    scoped_tools=tool_names (the full chain). Using target_component alone would
+    only ever credit the first tool in the chain with the scenario's outcome —
+    scoped_tools membership must be used so every tool in the chain, not just the
+    first, gets the real outcome its own scenario actually judged."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            _agent_or_tool_node("Lookup Tool", ComponentType.TOOL),
+            _agent_or_tool_node("Book Tool", ComponentType.TOOL),
+            _agent_or_tool_node("Confirm Tool", ComponentType.TOOL),
+        ],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="tool_chain_booking_0_0",
+            scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE.value,
+            overall_score=4.0,
+            scoped_tools=["Lookup Tool", "Book Tool", "Confirm Tool"],
+            scoped_agents=["Booking Agent"],
+            verdicts=[{
+                "turn": 1,
+                "target_component": "Lookup Tool",  # only the chain's first tool
+                "agents_mentioned": [],
+                "tools_mentioned": ["Lookup Tool", "Book Tool", "Confirm Tool"],
+                "deviations": [],
+            }],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    by_name = {c.component_name: c for c in coverage}
+    # Before the fix, only "Lookup Tool" (target_component) would get PASS;
+    # "Book Tool"/"Confirm Tool" would incorrectly stay at scenario_outcome=None.
+    assert by_name["Lookup Tool"].scenario_outcome == "PASS"
+    assert by_name["Book Tool"].scenario_outcome == "PASS"
+    assert by_name["Confirm Tool"].scenario_outcome == "PASS"
+
+
+def test_build_coverage_map_guided_coverage_scoped_tools_get_outcome_without_target_component() -> None:
+    """Fix: GUIDED_COVERAGE scenarios (scenarios.py's guided builder) never set
+    target_component at all — only scoped_tools/scoped_agents. Before the fix,
+    the target_component-only match could never fire for this scenario type, so
+    every GUIDED_COVERAGE-covered tool silently stayed at scenario_outcome=None
+    forever, despite GUIDED_COVERAGE being explicitly listed as one of the three
+    coverage-dedicated types that should receive a real outcome."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            _agent_or_tool_node("Search Tool", ComponentType.TOOL),
+            _agent_or_tool_node("Filter Tool", ComponentType.TOOL),
+        ],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="guided_assistant_0",
+            scenario_type=BehaviorScenarioType.GUIDED_COVERAGE.value,
+            overall_score=2.5,
+            scoped_tools=["Search Tool", "Filter Tool"],
+            scoped_agents=[],
+            verdicts=[{
+                "turn": 1,
+                "target_component": "",  # GUIDED_COVERAGE never sets this
+                "agents_mentioned": [],
+                "tools_mentioned": ["Search Tool", "Filter Tool"],
+                "deviations": [],
+            }],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    by_name = {c.component_name: c for c in coverage}
+    assert by_name["Search Tool"].scenario_outcome == "PARTIAL"
+    assert by_name["Filter Tool"].scenario_outcome == "PARTIAL"
+
+
+def test_build_coverage_map_scoped_tools_still_excludes_truly_unscoped_mention() -> None:
+    """A mention of a tool that is genuinely outside this scenario's own
+    scoped_tools (e.g. a stray/hallucinated mention) must still not receive the
+    scenario's outcome, even with the scoped_tools-membership fix in place."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            _agent_or_tool_node("Search Tool", ComponentType.TOOL),
+            _agent_or_tool_node("Unrelated Tool", ComponentType.TOOL),
+        ],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="guided_assistant_0",
+            scenario_type=BehaviorScenarioType.GUIDED_COVERAGE.value,
+            overall_score=4.5,
+            scoped_tools=["Search Tool"],
+            scoped_agents=[],
+            verdicts=[{
+                "turn": 1,
+                "target_component": "",
+                "agents_mentioned": [],
+                "tools_mentioned": ["Search Tool", "Unrelated Tool"],
+                "deviations": [],
+            }],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    by_name = {c.component_name: c for c in coverage}
+    assert by_name["Search Tool"].scenario_outcome == "PASS"
+    assert by_name["Unrelated Tool"].exercised is True
+    assert by_name["Unrelated Tool"].scenario_outcome is None
 
 
 def test_build_coverage_map_descriptive_name_match():
@@ -1689,6 +1928,45 @@ async def test_guided_coverage_scenario_uses_coverage_director_not_batch_gen():
     assert mock_client.send.await_count == 2
     fake_director.next_message.assert_awaited()
     batch_gen.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_copies_scoped_tools_and_agents_into_result() -> None:
+    """Wiring half of the scoped_tools/scoped_agents fix: _run_scenario's own
+    ScenarioResult construction (runner.py) must copy scenario.scoped_tools/
+    scoped_agents through, not just default to empty lists — this is what
+    _build_coverage_map's scoped-membership check (issue #562) actually reads
+    at report time."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=_make_sbom_with_tool("transfer_funds"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(return_value=("Sure, I can help with that.", []))
+
+    fake_director = MagicMock()
+    fake_director.next_message = AsyncMock(side_effect=[None])
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_1",
+        messages=["I need help with banking. Can you help me get started?"],
+        scoped_tools=["transfer_funds", "check_balance"],
+        scoped_agents=["assistant"],
+        primary_agent="assistant",
+    )
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director):
+        result = await runner._run_scenario(scenario, mock_client, None)
+
+    assert result.scoped_tools == ["transfer_funds", "check_balance"]
+    assert result.scoped_agents == ["assistant"]
 
 
 # ---------------------------------------------------------------------------
