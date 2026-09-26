@@ -244,7 +244,12 @@ async def test_run_behavior_scenarios_populates_remediation_plan():
 @pytest.mark.asyncio
 async def test_run_behavior_scenarios_remediation_synthesis_failure_propagates():
     """A broken remediation LLM client must fail the run loudly, not
-    silently produce a report with an empty remediation plan."""
+    silently produce a report with an empty remediation plan — and since
+    every scenario already completed, the failure surfaces as a
+    PartialRunError (checkpoint-backed, resumable) rather than a bare
+    RuntimeError, exactly like a mid-scan abort (see issue #508)."""
+    from nuguard.common.run_checkpoint import PartialRunError
+
     sentinel_result = BehaviorRunResult(
         run_id="run1",
         findings=[{"finding_id": "f1", "title": "t", "description": "d", "affected_component": "c", "severity": "low"}],
@@ -260,10 +265,18 @@ async def test_run_behavior_scenarios_remediation_synthesis_failure_propagates()
             side_effect=RuntimeError("boom"),
         ),
     ):
-        mock_runner_cls.return_value.run = AsyncMock(return_value=sentinel_result)
+        mock_runner = mock_runner_cls.return_value
+        mock_runner.run = AsyncMock(return_value=sentinel_result)
+        mock_runner.build_partial_run_error = MagicMock(
+            side_effect=lambda exc: PartialRunError(
+                exc, partial_payload={"scenario_results": []}, checkpoint_path=None,
+            )
+        )
         request = BehaviorRunRequest(config=config, scenarios=[_scenario("a")])
-        with pytest.raises(RuntimeError, match="boom"):
+        with pytest.raises(PartialRunError, match="boom") as exc_info:
             await run_behavior_scenarios(request, sbom=SimpleNamespace(nodes=[], edges=[]))
+        assert isinstance(exc_info.value.cause, RuntimeError)
+        mock_runner.build_partial_run_error.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
