@@ -87,3 +87,12 @@ def test_legacy_engine_classification_fallback_when_normalized_fields_empty() ->
         base_path="/VulnerableApp",
     )
     assert findings == [{"url": "/ErrorBasedSQLInjectionVulnerability/LEVEL_1", "cwe": "CWE-89"}]
+
+
+def test_baseline_control_rejected_finding_is_not_exported() -> None:
+    findings, summary = build_findings(
+        {"findings": [_finding(verification_status="rejected")]},
+        base_path="/VulnerableApp",
+    )
+    assert findings == []
+    assert summary.rejected_baseline_control == 1

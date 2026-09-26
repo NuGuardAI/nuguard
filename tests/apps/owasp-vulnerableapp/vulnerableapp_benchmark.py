@@ -64,6 +64,7 @@ class ConversionSummary:
         self.findings_exported = 0
         self.rejected_unresolved_operation = 0
         self.rejected_unclassified = 0
+        self.rejected_baseline_control = 0
         self.deduplicated = 0
 
     def print_to_stderr(self) -> None:
@@ -72,6 +73,7 @@ class ConversionSummary:
             "findings_exported",
             "rejected_unresolved_operation",
             "rejected_unclassified",
+            "rejected_baseline_control",
             "deduplicated",
         ):
             print(f"{name}={getattr(self, name)}", file=sys.stderr)
@@ -95,6 +97,12 @@ def build_findings(report: dict, *, base_path: str) -> tuple[list[dict], Convers
 
     for finding in report.get("findings", []):
         summary.findings_read += 1
+
+        # NuGuard's baseline control found the matched signature in the
+        # unmodified response too — a likely false positive, not a detection.
+        if finding.get("verification_status") == "rejected":
+            summary.rejected_baseline_control += 1
+            continue
 
         correlation_status = finding.get("correlation_status") or "unresolved"
         canonical_path = finding.get("canonical_path")

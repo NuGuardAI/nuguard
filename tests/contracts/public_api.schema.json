@@ -5876,6 +5876,11 @@
             "title": "Families Selected",
             "type": "integer"
           },
+          "families_omitted": {
+            "default": 0,
+            "title": "Families Omitted",
+            "type": "integer"
+          },
           "include_overrun": {
             "default": false,
             "title": "Include Overrun",
@@ -6018,6 +6023,11 @@
       "families_selected": {
         "default": 0,
         "title": "Families Selected",
+        "type": "integer"
+      },
+      "families_omitted": {
+        "default": 0,
+        "title": "Families Omitted",
         "type": "integer"
       },
       "include_overrun": {
@@ -6166,6 +6176,11 @@
             "title": "Families Selected",
             "type": "integer"
           },
+          "families_omitted": {
+            "default": 0,
+            "title": "Families Omitted",
+            "type": "integer"
+          },
           "include_overrun": {
             "default": false,
             "title": "Include Overrun",
@@ -6277,6 +6292,11 @@
         "minimum": 0.0,
         "title": "Risk Score",
         "type": "number"
+      },
+      "scan_id": {
+        "default": "",
+        "title": "Scan Id",
+        "type": "string"
       }
     },
     "required": [
@@ -6682,6 +6702,51 @@
         "title": "Max Dast Operations Per Family",
         "type": "integer"
       },
+      "max_host_errors": {
+        "default": 30,
+        "description": "Connection-level errors after which Nuclei skips a host for the rest of a pass (Nuclei -max-host-error).",
+        "maximum": 100,
+        "minimum": 1,
+        "title": "Max Host Errors",
+        "type": "integer"
+      },
+      "skip_unresponsive_hosts": {
+        "default": true,
+        "description": "False disables Nuclei's error-based host skipping (-no-mhe).",
+        "title": "Skip Unresponsive Hosts",
+        "type": "boolean"
+      },
+      "fuzz_param_frequency": {
+        "default": 10,
+        "description": "Uninteresting responses per parameter before Nuclei's DAST engine stops fuzzing it (-fuzz-param-frequency).",
+        "maximum": 100,
+        "minimum": 1,
+        "title": "Fuzz Param Frequency",
+        "type": "integer"
+      },
+      "fuzz_aggression": {
+        "default": "low",
+        "description": "Nuclei DAST payload volume (-fuzz-aggression).",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "title": "Fuzz Aggression",
+        "type": "string"
+      },
+      "verify_findings": {
+        "default": false,
+        "description": "Baseline-control replay: one payload-free GET per signature-only finding; matches already present without a payload are downgraded to info. Needs allow_active_fuzzing.",
+        "title": "Verify Findings",
+        "type": "boolean"
+      },
+      "adaptive_throttle": {
+        "default": false,
+        "description": "Probe each target with a few plain GETs before scanning and lower rate/concurrency (raising the request timeout) when it is slow or failing.",
+        "title": "Adaptive Throttle",
+        "type": "boolean"
+      },
       "dast_include_paths": {
         "description": "Same-scope path globs explicitly included in DAST selection.",
         "items": {
@@ -6865,6 +6930,11 @@
             "title": "Families Selected",
             "type": "integer"
           },
+          "families_omitted": {
+            "default": 0,
+            "title": "Families Omitted",
+            "type": "integer"
+          },
           "include_overrun": {
             "default": false,
             "title": "Include Overrun",
@@ -6976,6 +7046,11 @@
         "minimum": 0.0,
         "title": "Risk Score",
         "type": "number"
+      },
+      "scan_id": {
+        "default": "",
+        "title": "Scan Id",
+        "type": "string"
       }
     },
     "required": [

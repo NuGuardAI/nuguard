@@ -42,6 +42,14 @@ pentest:
   # from the SBOM's structured http_request metadata) instead of ~0 before,
   # so it needs a much larger time budget than the old near-empty surface.
   scan_timeout: 4500
+  # ~40 route families (one per vulnerability class) with up to ~10 levels
+  # each: give DAST enough budget to reach every family more than once.
+  max_dast_operations: 120
+  max_dast_input_points: 200
+  max_dast_operations_per_family: 4
+  # The demo container is slow under load; don't let a burst of timeouts
+  # make Nuclei skip the host for the rest of the standard corpus.
+  max_host_errors: 50
   fail_on: high
 
 analyze:
