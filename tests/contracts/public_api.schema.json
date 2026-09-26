@@ -5814,6 +5814,81 @@
     "type": "object"
   },
   "pentest.PentestCoverageResult": {
+    "$defs": {
+      "PentestDastSelectionResult": {
+        "description": "Public, typed mirror of the internal DAST endpoint-prioritization outcome.\n\nAggregate selection counts only \u2014 never request values, bodies, headers,\ncookies, or credentials. See\n:mod:`nuguard.pentest.inventory.selector` and\n``documentation/developer-specs/dast-endpoint-prioritization.md``.",
+        "properties": {
+          "strategy": {
+            "enum": [
+              "prioritized",
+              "all"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
+          "score_version": {
+            "default": "v1",
+            "title": "Score Version",
+            "type": "string"
+          },
+          "operations_considered": {
+            "default": 0,
+            "title": "Operations Considered",
+            "type": "integer"
+          },
+          "operations_eligible": {
+            "default": 0,
+            "title": "Operations Eligible",
+            "type": "integer"
+          },
+          "operations_selected": {
+            "default": 0,
+            "title": "Operations Selected",
+            "type": "integer"
+          },
+          "operations_omitted_by_budget": {
+            "default": 0,
+            "title": "Operations Omitted By Budget",
+            "type": "integer"
+          },
+          "operations_excluded_no_inputs": {
+            "default": 0,
+            "title": "Operations Excluded No Inputs",
+            "type": "integer"
+          },
+          "input_points_considered": {
+            "default": 0,
+            "title": "Input Points Considered",
+            "type": "integer"
+          },
+          "input_points_selected": {
+            "default": 0,
+            "title": "Input Points Selected",
+            "type": "integer"
+          },
+          "families_considered": {
+            "default": 0,
+            "title": "Families Considered",
+            "type": "integer"
+          },
+          "families_selected": {
+            "default": 0,
+            "title": "Families Selected",
+            "type": "integer"
+          },
+          "include_overrun": {
+            "default": false,
+            "title": "Include Overrun",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "strategy"
+        ],
+        "title": "PentestDastSelectionResult",
+        "type": "object"
+      }
+    },
     "description": "Public, typed mirror of :class:`nuguard.pentest.coverage.PentestCoverageResult`.\n\nDescribes structural/runtime scan coverage \u2014 whether NuGuard discovered\ninput-bearing operations, and whether every configured pass actually\ncompleted \u2014 so a zero-finding result can be told apart from a scan that\nnever had enough real request surface to be meaningful. See\n:mod:`nuguard.pentest.coverage` for the status thresholds.",
     "properties": {
       "status": {
@@ -5865,12 +5940,96 @@
         },
         "title": "Reasons",
         "type": "array"
+      },
+      "dast_selection": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PentestDastSelectionResult"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       }
     },
     "required": [
       "status"
     ],
     "title": "PentestCoverageResult",
+    "type": "object"
+  },
+  "pentest.PentestDastSelectionResult": {
+    "description": "Public, typed mirror of the internal DAST endpoint-prioritization outcome.\n\nAggregate selection counts only \u2014 never request values, bodies, headers,\ncookies, or credentials. See\n:mod:`nuguard.pentest.inventory.selector` and\n``documentation/developer-specs/dast-endpoint-prioritization.md``.",
+    "properties": {
+      "strategy": {
+        "enum": [
+          "prioritized",
+          "all"
+        ],
+        "title": "Strategy",
+        "type": "string"
+      },
+      "score_version": {
+        "default": "v1",
+        "title": "Score Version",
+        "type": "string"
+      },
+      "operations_considered": {
+        "default": 0,
+        "title": "Operations Considered",
+        "type": "integer"
+      },
+      "operations_eligible": {
+        "default": 0,
+        "title": "Operations Eligible",
+        "type": "integer"
+      },
+      "operations_selected": {
+        "default": 0,
+        "title": "Operations Selected",
+        "type": "integer"
+      },
+      "operations_omitted_by_budget": {
+        "default": 0,
+        "title": "Operations Omitted By Budget",
+        "type": "integer"
+      },
+      "operations_excluded_no_inputs": {
+        "default": 0,
+        "title": "Operations Excluded No Inputs",
+        "type": "integer"
+      },
+      "input_points_considered": {
+        "default": 0,
+        "title": "Input Points Considered",
+        "type": "integer"
+      },
+      "input_points_selected": {
+        "default": 0,
+        "title": "Input Points Selected",
+        "type": "integer"
+      },
+      "families_considered": {
+        "default": 0,
+        "title": "Families Considered",
+        "type": "integer"
+      },
+      "families_selected": {
+        "default": 0,
+        "title": "Families Selected",
+        "type": "integer"
+      },
+      "include_overrun": {
+        "default": false,
+        "title": "Include Overrun",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "strategy"
+    ],
+    "title": "PentestDastSelectionResult",
     "type": "object"
   },
   "pentest.PentestExecutionResult": {
@@ -5927,12 +6086,96 @@
             },
             "title": "Reasons",
             "type": "array"
+          },
+          "dast_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PentestDastSelectionResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
           "status"
         ],
         "title": "PentestCoverageResult",
+        "type": "object"
+      },
+      "PentestDastSelectionResult": {
+        "description": "Public, typed mirror of the internal DAST endpoint-prioritization outcome.\n\nAggregate selection counts only \u2014 never request values, bodies, headers,\ncookies, or credentials. See\n:mod:`nuguard.pentest.inventory.selector` and\n``documentation/developer-specs/dast-endpoint-prioritization.md``.",
+        "properties": {
+          "strategy": {
+            "enum": [
+              "prioritized",
+              "all"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
+          "score_version": {
+            "default": "v1",
+            "title": "Score Version",
+            "type": "string"
+          },
+          "operations_considered": {
+            "default": 0,
+            "title": "Operations Considered",
+            "type": "integer"
+          },
+          "operations_eligible": {
+            "default": 0,
+            "title": "Operations Eligible",
+            "type": "integer"
+          },
+          "operations_selected": {
+            "default": 0,
+            "title": "Operations Selected",
+            "type": "integer"
+          },
+          "operations_omitted_by_budget": {
+            "default": 0,
+            "title": "Operations Omitted By Budget",
+            "type": "integer"
+          },
+          "operations_excluded_no_inputs": {
+            "default": 0,
+            "title": "Operations Excluded No Inputs",
+            "type": "integer"
+          },
+          "input_points_considered": {
+            "default": 0,
+            "title": "Input Points Considered",
+            "type": "integer"
+          },
+          "input_points_selected": {
+            "default": 0,
+            "title": "Input Points Selected",
+            "type": "integer"
+          },
+          "families_considered": {
+            "default": 0,
+            "title": "Families Considered",
+            "type": "integer"
+          },
+          "families_selected": {
+            "default": 0,
+            "title": "Families Selected",
+            "type": "integer"
+          },
+          "include_overrun": {
+            "default": false,
+            "title": "Include Overrun",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "strategy"
+        ],
+        "title": "PentestDastSelectionResult",
         "type": "object"
       }
     },
@@ -6027,6 +6270,13 @@
         ],
         "title": "Outcome",
         "type": "string"
+      },
+      "risk_score": {
+        "default": 0.0,
+        "maximum": 100.0,
+        "minimum": 0.0,
+        "title": "Risk Score",
+        "type": "number"
       }
     },
     "required": [
@@ -6401,6 +6651,55 @@
         "title": "Fail On Coverage",
         "type": "string"
       },
+      "dast_selection": {
+        "default": "prioritized",
+        "description": "'prioritized' sends a bounded, family-diverse subset of the request inventory to active DAST; 'all' bypasses scoring but keeps every hard operation/input cap and existing scope/rate/timeout control \u2014 see nuguard.pentest.inventory.selector.",
+        "enum": [
+          "prioritized",
+          "all"
+        ],
+        "title": "Dast Selection",
+        "type": "string"
+      },
+      "max_dast_operations": {
+        "default": 50,
+        "maximum": 200,
+        "minimum": 1,
+        "title": "Max Dast Operations",
+        "type": "integer"
+      },
+      "max_dast_input_points": {
+        "default": 80,
+        "maximum": 400,
+        "minimum": 1,
+        "title": "Max Dast Input Points",
+        "type": "integer"
+      },
+      "max_dast_operations_per_family": {
+        "default": 3,
+        "maximum": 20,
+        "minimum": 1,
+        "title": "Max Dast Operations Per Family",
+        "type": "integer"
+      },
+      "dast_include_paths": {
+        "description": "Same-scope path globs explicitly included in DAST selection.",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 50,
+        "title": "Dast Include Paths",
+        "type": "array"
+      },
+      "dast_exclude_paths": {
+        "description": "Same-scope path globs excluded from DAST selection before scoring.",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 50,
+        "title": "Dast Exclude Paths",
+        "type": "array"
+      },
       "auth_config": {
         "anyOf": [
           {
@@ -6486,12 +6785,96 @@
             },
             "title": "Reasons",
             "type": "array"
+          },
+          "dast_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PentestDastSelectionResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [
           "status"
         ],
         "title": "PentestCoverageResult",
+        "type": "object"
+      },
+      "PentestDastSelectionResult": {
+        "description": "Public, typed mirror of the internal DAST endpoint-prioritization outcome.\n\nAggregate selection counts only \u2014 never request values, bodies, headers,\ncookies, or credentials. See\n:mod:`nuguard.pentest.inventory.selector` and\n``documentation/developer-specs/dast-endpoint-prioritization.md``.",
+        "properties": {
+          "strategy": {
+            "enum": [
+              "prioritized",
+              "all"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
+          "score_version": {
+            "default": "v1",
+            "title": "Score Version",
+            "type": "string"
+          },
+          "operations_considered": {
+            "default": 0,
+            "title": "Operations Considered",
+            "type": "integer"
+          },
+          "operations_eligible": {
+            "default": 0,
+            "title": "Operations Eligible",
+            "type": "integer"
+          },
+          "operations_selected": {
+            "default": 0,
+            "title": "Operations Selected",
+            "type": "integer"
+          },
+          "operations_omitted_by_budget": {
+            "default": 0,
+            "title": "Operations Omitted By Budget",
+            "type": "integer"
+          },
+          "operations_excluded_no_inputs": {
+            "default": 0,
+            "title": "Operations Excluded No Inputs",
+            "type": "integer"
+          },
+          "input_points_considered": {
+            "default": 0,
+            "title": "Input Points Considered",
+            "type": "integer"
+          },
+          "input_points_selected": {
+            "default": 0,
+            "title": "Input Points Selected",
+            "type": "integer"
+          },
+          "families_considered": {
+            "default": 0,
+            "title": "Families Considered",
+            "type": "integer"
+          },
+          "families_selected": {
+            "default": 0,
+            "title": "Families Selected",
+            "type": "integer"
+          },
+          "include_overrun": {
+            "default": false,
+            "title": "Include Overrun",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "strategy"
+        ],
+        "title": "PentestDastSelectionResult",
         "type": "object"
       }
     },
@@ -6586,6 +6969,13 @@
         ],
         "title": "Outcome",
         "type": "string"
+      },
+      "risk_score": {
+        "default": 0.0,
+        "maximum": 100.0,
+        "minimum": 0.0,
+        "title": "Risk Score",
+        "type": "number"
       }
     },
     "required": [

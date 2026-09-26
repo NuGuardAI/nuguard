@@ -580,6 +580,20 @@ redteam:
 #   openapi_spec: ./openapi.json
 #   use_live_openapi: true
 #   use_sbom_endpoints: true
+#
+#   # Bounds how much of the discovered request inventory active DAST
+#   # (allow_active_fuzzing) actually fuzzes. prioritized (default) sends a
+#   # deterministic, family-diverse subset under the budgets below; all
+#   # bypasses scoring but keeps every hard operation/input cap and existing
+#   # scope/rate/timeout control. The complete inventory is always preserved
+#   # for coverage reporting regardless of this setting. See
+#   # documentation/developer-specs/dast-endpoint-prioritization.md.
+#   dast_selection: prioritized      # prioritized | all (default: prioritized)
+#   max_dast_operations: 50          # 1-200 (default: 50)
+#   max_dast_input_points: 80        # 1-400 (default: 80)
+#   max_dast_operations_per_family: 3  # 1-20 (default: 3)
+#   dast_include_paths: []           # same-scope path globs always selected, e.g. "/admin/*"
+#   dast_exclude_paths: []           # same-scope path globs dropped before scoring
 
 # ─── Static analysis ──────────────────────────────────────────────────────────
 analyze:
