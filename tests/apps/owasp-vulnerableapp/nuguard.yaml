@@ -37,16 +37,17 @@ pentest:
   rate_limit: 10
   concurrency: 5
   retries: 1
-  request_timeout: 30
-  # DAST now fuzzes ~190 real operations (query/header parameters resolved
-  # from the SBOM's structured http_request metadata) instead of ~0 before,
-  # so it needs a much larger time budget than the old near-empty surface.
-  scan_timeout: 4500
-  # ~40 route families (one per vulnerability class) with up to ~10 levels
-  # each: give DAST enough budget to reach every family more than once.
-  max_dast_operations: 120
-  max_dast_input_points: 200
-  max_dast_operations_per_family: 4
+  # Nuclei's time-based DAST payloads delay responses by only a few
+  # seconds; a longer timeout just makes every hung payload expensive.
+  request_timeout: 15
+  # Whole-scan budget shared by every pass (bundled → dast → standard); a
+  # pass still running at the deadline keeps its partial results.
+  scan_timeout: 3600
+  # ~30 route families with a fuzzable input (one per vulnerability class):
+  # enough budget for every family twice, without fuzzing all ~190 levels.
+  max_dast_operations: 70
+  max_dast_input_points: 120
+  max_dast_operations_per_family: 3
   # The demo container is slow under load; don't let a burst of timeouts
   # make Nuclei skip the host for the rest of the standard corpus.
   max_host_errors: 50
