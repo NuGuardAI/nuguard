@@ -2226,6 +2226,8 @@ class BehaviorRunner:
             coverage_turns=coverage_turns_used,
             deviations=scenario_deviations,
             matched_topic=getattr(scenario, "matched_topic", None),
+            scoped_tools=list(getattr(scenario, "scoped_tools", None) or []),
+            scoped_agents=list(getattr(scenario, "scoped_agents", None) or []),
         )
 
     def _cached_discovery_profile(self) -> "DiscoveredProfile | None":
@@ -3299,6 +3301,7 @@ class BehaviorRunner:
         types that target those components).
         """
         from nuguard.behavior.models import BehaviorScenarioType
+        from nuguard.output.validation_report import scenario_status_from_score
 
         component_map: dict[str, BehaviorCoverage] = {}
         normalized_component_name: dict[str, str] = {}
@@ -3372,6 +3375,10 @@ class BehaviorRunner:
                         nroute = _endpoint_path_from_component_name(nname)
                         if nroute:
                             endpoint_norm_map[nroute] = nname
+                        # Independently-verified liveness (issue #555's sweep) — a
+                        # separate claim from scenario_outcome below; never merged.
+                        node_meta = getattr(node, "metadata", None)
+                        component_map[nname].endpoint_operational = getattr(node_meta, "operational", None)
 
         # Register config-provided aliases now that component_map is initialized.
         if isinstance(cfg_aliases, dict):
@@ -3410,6 +3417,12 @@ class BehaviorRunner:
             stype = sr.scenario_type
             # Endpoint coverage: mark endpoint node exercised when scenario ran
             if stype == ep_coverage_type:
+                # One ENDPOINT_COVERAGE scenario always targets exactly one endpoint
+                # (see scenarios.py's endpoint-coverage builder), so the scenario's
+                # own overall_score is a correctly-scoped outcome for that endpoint —
+                # reuses the same threshold as the report's Scenario Details section
+                # instead of inventing a new signal.
+                _ep_outcome = scenario_status_from_score(getattr(sr, "overall_score", 0.0) or 0.0)
                 for verdict_dict in sr.verdicts:
                     target = str(verdict_dict.get("target_component") or sr.scenario_name or "")
                     runtime_endpoint = str(verdict_dict.get("effective_endpoint") or "")
@@ -3436,11 +3449,37 @@ class BehaviorRunner:
                         resolved_name = fallback_name
                         confidence = "runtime_only_unmapped"
 
+                    # Route-mapping bookkeeping runs regardless of outcome — mapping
+                    # accuracy and "did we get a real response" are different questions.
                     cov = component_map[resolved_name]
-                    cov.exercised = True
                     cov.mapping_confidence = confidence
                     if resolved_route:
                         cov.mapped_from_endpoint = resolved_route
+
+                    # A transport-level failure (no response ever received) proves
+                    # nothing about the endpoint's own behavior — never claim it as
+                    # exercised for this verdict. Issue #562: this previously fell
+                    # through to exercised=True + exercised_within_policy=True.
+                    is_transport_failure = any(
+                        d.get("deviation_type") == "http_error"
+                        for d in (verdict_dict.get("deviations") or [])
+                        if isinstance(d, dict)
+                    )
+                    if is_transport_failure:
+                        continue
+
+                    first_exercise = not cov.exercised
+                    cov.exercised = True
+                    cov.scenario_outcome = _ep_outcome
+                    if first_exercise:
+                        cov.first_exercised_scenario = sr.scenario_name
+                        cov.first_exercised_turn = verdict_dict.get("turn")
+                        cov.first_exercised_request = str(
+                            verdict_dict.get("user_message") or verdict_dict.get("prompt") or ""
+                        )
+                        cov.first_exercised_response = str(
+                            verdict_dict.get("agent_response") or verdict_dict.get("response") or ""
+                        )
                     has_violation = any(
                         d.get("deviation_type") in ("policy_violation", "data_leak")
                         for d in (verdict_dict.get("deviations") or [])
@@ -3511,8 +3550,36 @@ class BehaviorRunner:
             norm = normalise_name(mention)
             return normalized_component_name.get(norm) or descriptive_alias_norm_map.get(norm)
 
+        # Coverage-dedicated scenario types whose job is to exercise one specific
+        # component — sr.overall_score is meaningful *for that component* only
+        # here. INTENT_HAPPY_PATH/GUARDRAIL_PROBE/DATA_DISCOVERY_PROBE/
+        # ENDPOINT_COVERAGE scenarios can also incidentally name an agent/tool in
+        # their response text, but their score measures something else entirely
+        # (e.g. did a guardrail hold) — attaching it to an incidental mention
+        # would be a new false claim, not a fix (issue #562 review).
+        _agent_tool_coverage_types = frozenset({
+            BehaviorScenarioType.AGENT_COVERAGE.value,
+            BehaviorScenarioType.COMPONENT_COVERAGE.value,
+            BehaviorScenarioType.GUIDED_COVERAGE.value,
+        })
+
         # Update from scenario results (agents/tools via mention detection)
         for sr in scenario_results:
+            _is_coverage_scenario = sr.scenario_type in _agent_tool_coverage_types
+            _sr_outcome = (
+                scenario_status_from_score(getattr(sr, "overall_score", 0.0) or 0.0)
+                if _is_coverage_scenario
+                else None
+            )
+            # A coverage-dedicated scenario can be responsible for more than one
+            # component (a COMPONENT_COVERAGE tool chain, or a GUIDED_COVERAGE
+            # multi-tool probe) — scoped_tools/scoped_agents is the scenario's own
+            # full membership set. target_component only ever names one of them
+            # (e.g. tool_names[0] of a chain), so it under-covers a multi-component
+            # scenario if used alone; it remains the fallback for the (currently
+            # unobserved) case where a coverage scenario sets neither scoped list.
+            _sr_scoped_agents = frozenset(getattr(sr, "scoped_agents", None) or [])
+            _sr_scoped_tools = frozenset(getattr(sr, "scoped_tools", None) or [])
             for verdict_dict in sr.verdicts:
                 agents = verdict_dict.get("agents_mentioned") or []
                 tools = verdict_dict.get("tools_mentioned") or []
@@ -3522,12 +3589,34 @@ class BehaviorRunner:
                     for d in deviations
                     if isinstance(d, dict)
                 )
+                # Only a component within this scenario's own declared scope may
+                # receive its outcome — a different component incidentally
+                # mentioned in the same coverage scenario's response is still
+                # "named", not "judged".
+                _verdict_target = verdict_dict.get("target_component") or ""
+
+                def _record_first_exercise(cov: BehaviorCoverage, first_exercise: bool) -> None:
+                    if not first_exercise:
+                        return
+                    cov.first_exercised_scenario = sr.scenario_name
+                    cov.first_exercised_turn = verdict_dict.get("turn")
+                    cov.first_exercised_request = str(
+                        verdict_dict.get("user_message") or verdict_dict.get("prompt") or ""
+                    )
+                    cov.first_exercised_response = str(
+                        verdict_dict.get("agent_response") or verdict_dict.get("response") or ""
+                    )
 
                 for a in agents:
                     key, confidence = _resolve_agent_or_tool_mention(a, "AGENT")
                     if key:
                         cov = component_map[key]
+                        first_exercise = not cov.exercised
                         cov.exercised = True
+                        _agent_in_scope = key in _sr_scoped_agents if _sr_scoped_agents else _verdict_target == key
+                        if _is_coverage_scenario and _agent_in_scope:
+                            cov.scenario_outcome = _sr_outcome
+                        _record_first_exercise(cov, first_exercise)
                         cov.mapping_confidence = cov.mapping_confidence or confidence
                         mapped_component_mentions.add(f"AGENT:{a}->{key}:{confidence}")
                         if a not in cov.evidence_mentions:
@@ -3557,7 +3646,12 @@ class BehaviorRunner:
                     key, confidence = _resolve_agent_or_tool_mention(t, "TOOL")
                     if key:
                         cov = component_map[key]
+                        first_exercise = not cov.exercised
                         cov.exercised = True
+                        _tool_in_scope = key in _sr_scoped_tools if _sr_scoped_tools else _verdict_target == key
+                        if _is_coverage_scenario and _tool_in_scope:
+                            cov.scenario_outcome = _sr_outcome
+                        _record_first_exercise(cov, first_exercise)
                         cov.mapping_confidence = cov.mapping_confidence or confidence
                         mapped_component_mentions.add(f"TOOL:{t}->{key}:{confidence}")
                         if t not in cov.evidence_mentions:

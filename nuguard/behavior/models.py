@@ -176,6 +176,30 @@ class BehaviorCoverage(BaseModel):
     Only populated when behavior.escalate_on_refusal is enabled; None otherwise
     (including when the component genuinely wasn't a coverage target)."""
 
+    scenario_outcome: str | None = None
+    """PASS/PARTIAL/FAIL from the judge's own ScenarioResult.overall_score threshold
+    (nuguard.output.validation_report.scenario_status_from_score), attached only when
+    the scenario actually judged this specific component (an ENDPOINT_COVERAGE scenario
+    for its one target endpoint, or an AGENT_COVERAGE/COMPONENT_COVERAGE/GUIDED_COVERAGE
+    scenario for its own target). None when the component was merely named in an
+    unrelated scenario's response, or when exercised is False."""
+
+    endpoint_operational: bool | None = None
+    """Independently-verified reachability from the per-run endpoint liveness sweep
+    (node.metadata.operational — a safe GET/HEAD/OPTIONS probe), API_ENDPOINT nodes only.
+    True/False only when genuinely probed this run; None when unverified (mutating
+    endpoint by design, or not yet probed). Never merged with scenario_outcome or
+    exercised — a separate, independently-labeled claim."""
+
+    first_exercised_scenario: str | None = None
+    first_exercised_turn: int | None = None
+    first_exercised_request: str | None = None
+    first_exercised_response: str | None = None
+    """The scenario name, turn number, and request/response text that first set
+    exercised=True for this component — recorded once, at the point of resolution,
+    so report evidence sections cite real transcript data instead of re-deriving
+    a (potentially weaker) match independently."""
+
 
 class BehaviorCounts(BaseModel):
     """Reconciled counts for findings and evidence rows."""
@@ -236,6 +260,15 @@ class ScenarioResult(BaseModel):
     coverage_turns: int = 0
     deviations: list[dict] = Field(default_factory=list)
     matched_topic: str | None = None
+    scoped_tools: list[str] = Field(default_factory=list)
+    scoped_agents: list[str] = Field(default_factory=list)
+    """Copied from BehaviorScenario.scoped_tools/scoped_agents at scenario-result
+    construction time. A coverage-dedicated scenario (AGENT_COVERAGE, COMPONENT_
+    COVERAGE, GUIDED_COVERAGE) can be responsible for exercising more than one
+    component in a single run (e.g. a tool chain, or a guided multi-tool probe) —
+    target_component alone only ever names one of them. _build_coverage_map uses
+    these lists, not target_component, to decide which mentioned components may
+    receive this scenario's own outcome."""
 
 
 class Recommendation(BaseModel):

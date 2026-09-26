@@ -1526,6 +1526,78 @@
             ],
             "default": null,
             "title": "Refusal Reason"
+          },
+          "scenario_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scenario Outcome"
+          },
+          "endpoint_operational": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Endpoint Operational"
+          },
+          "first_exercised_scenario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Scenario"
+          },
+          "first_exercised_turn": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Turn"
+          },
+          "first_exercised_request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Request"
+          },
+          "first_exercised_response": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Response"
           }
         },
         "required": [
@@ -2223,6 +2295,20 @@
             ],
             "default": null,
             "title": "Matched Topic"
+          },
+          "scoped_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Tools",
+            "type": "array"
+          },
+          "scoped_agents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Agents",
+            "type": "array"
           }
         },
         "required": [
@@ -3266,6 +3352,78 @@
             ],
             "default": null,
             "title": "Refusal Reason"
+          },
+          "scenario_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scenario Outcome"
+          },
+          "endpoint_operational": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Endpoint Operational"
+          },
+          "first_exercised_scenario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Scenario"
+          },
+          "first_exercised_turn": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Turn"
+          },
+          "first_exercised_request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Request"
+          },
+          "first_exercised_response": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Response"
           }
         },
         "required": [
@@ -3764,6 +3922,20 @@
             ],
             "default": null,
             "title": "Matched Topic"
+          },
+          "scoped_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Tools",
+            "type": "array"
+          },
+          "scoped_agents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Agents",
+            "type": "array"
           }
         },
         "required": [
