@@ -1075,6 +1075,14 @@
             "title": "Liveness Cache Ttl Seconds",
             "type": "number"
           },
+          "preflight_candidates": {
+            "default": 3,
+            "description": "How many alternative SBOM chat-endpoint candidates the pre-flight check compares (yaml: behavior.preflight_candidates) when the auto-discovered endpoint's reply to a test message is an error or a structured artefact rather than a conversational reply. 0 disables candidate comparison. Ignored when target_endpoint is set explicitly.",
+            "maximum": 10,
+            "minimum": 0,
+            "title": "Preflight Candidates",
+            "type": "integer"
+          },
           "browser_discover_endpoints": {
             "default": false,
             "description": "After browser login, crawl caller-declared browser_discovery_nav_targets and sniff network requests via Playwright to find REST endpoints the static SBOM extractor missed, merging them into the SBOM as new API_ENDPOINT nodes (yaml: behavior.browser_discover_endpoints). Off by default \u2014 requires the 'browser' extra (Playwright/Chromium) and browser login already configured (target.browser_login / target.auth).",
@@ -2680,6 +2688,14 @@
             "description": "How long a per-endpoint liveness result (yaml: behavior.liveness_cache_ttl_seconds) cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached result \u2014 including one written by a prior redteam run against the same enriched SBOM \u2014 is used as-is, skipping the live ping entirely.",
             "title": "Liveness Cache Ttl Seconds",
             "type": "number"
+          },
+          "preflight_candidates": {
+            "default": 3,
+            "description": "How many alternative SBOM chat-endpoint candidates the pre-flight check compares (yaml: behavior.preflight_candidates) when the auto-discovered endpoint's reply to a test message is an error or a structured artefact rather than a conversational reply. 0 disables candidate comparison. Ignored when target_endpoint is set explicitly.",
+            "maximum": 10,
+            "minimum": 0,
+            "title": "Preflight Candidates",
+            "type": "integer"
           },
           "browser_discover_endpoints": {
             "default": false,
@@ -9064,6 +9080,13 @@
         "default": 3600.0,
         "title": "Liveness Cache Ttl Seconds",
         "type": "number"
+      },
+      "preflight_candidates": {
+        "default": 3,
+        "maximum": 10,
+        "minimum": 0,
+        "title": "Preflight Candidates",
+        "type": "integer"
       },
       "llm_capability_dedup": {
         "default": false,
