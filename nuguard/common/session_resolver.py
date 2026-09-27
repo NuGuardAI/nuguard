@@ -349,7 +349,6 @@ async def resolve_target_session(
     from nuguard.common.target_client_builder import (  # noqa: PLC0415
         discover_login_flow_live,
         resolve_auth_config_with_sbom_fallback,
-        resolve_target_url,
     )
 
     resolution_notes: list[str] = []
@@ -357,20 +356,16 @@ async def resolve_target_session(
     configured_chat_path = chat_path
 
     # ── 1. URL resolution ────────────────────────────────────────────────────
-    resolved_url, url_notes = resolve_target_url(target_url, sbom)
-    if url_notes:
-        resolution_notes.extend(url_notes)
-    if resolved_url:
-        target_url = resolved_url
-
-    from nuguard.common.endpoint_detection.frontend_origin import (  # noqa: PLC0415
-        discover_api_origin_from_frontend_bundle,
+    # Static-hosting fallback + SPA bundle API-origin scan (memoised — the
+    # analyzer and runner resolve the same URL).
+    from nuguard.common.endpoint_detection.context import (  # noqa: PLC0415
+        resolve_api_origin,
     )
 
-    bundle_origin, bundle_notes = await discover_api_origin_from_frontend_bundle(target_url)
-    if bundle_origin:
-        target_url = bundle_origin
-        resolution_notes.extend(bundle_notes)
+    resolved_url, url_notes = await resolve_api_origin(target_url, sbom)
+    resolution_notes.extend(url_notes)
+    if resolved_url:
+        target_url = resolved_url
 
     # ── 2. Static endpoint selection ─────────────────────────────────────────
     # Resolve static SBOM information before bootstrap so the bootstrap request

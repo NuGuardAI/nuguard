@@ -873,10 +873,17 @@ async def run_capability_discovery(
     if any(g.needs_system_prompt for g in gaps):
         probes.append(("system_prompt", _SYSTEM_PROMPT_PROBE))
 
+    from nuguard.common.errors import TargetUnavailableError  # noqa: PLC0415
+
     for name, message in probes:
         _log.info("capability discovery probe [%s]: %s", name, message[:200])
         try:
             response, _ = await client.send(message, session=session)
+        except TargetUnavailableError as exc:
+            # Circuit breaker tripped — stop instead of hammering a broken
+            # endpoint with the remaining probes and the closing turn.
+            _log.info("capability discovery probe [%s] failed: %s — stopping", name, exc)
+            return result
         except Exception as exc:
             _log.info("capability discovery probe [%s] failed: %s", name, exc)
             continue

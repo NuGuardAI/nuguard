@@ -162,20 +162,37 @@ class BehaviorAnalyzer:
 
                 configured_fields = self._config.model_fields_set
                 probe_auth_headers: dict[str, str] = {}
+                # Live probing needs the real API origin (not an SPA frontend)
+                # and credentials the target accepts. When auth needs a login
+                # step, defer probing to the runner's authenticated pre-flight
+                # instead of probing with raw credentials.
+                from nuguard.common.endpoint_detection.context import (
+                    auth_requires_login,
+                    resolve_api_origin,
+                )
+
+                probe_target_url, _ = await resolve_api_origin(target_url, self._sbom)
+                allow_live_probe = True
                 try:
                     from nuguard.common.auth import AuthConfig
                     from nuguard.common.auth_runtime import resolve_auth_runtime
 
                     behavior_auth = getattr(self._config, "auth", None)
-                    if behavior_auth and getattr(behavior_auth, "type", "none") != "none":
-                        probe_auth_headers = resolve_auth_runtime(
-                            auth_config=AuthConfig(
-                                type=behavior_auth.type,
-                                header=getattr(behavior_auth, "header", ""),
-                                username=getattr(behavior_auth, "username", ""),
-                                password=getattr(behavior_auth, "password", ""),
-                            )
-                        ).initial_headers
+                    if behavior_auth and getattr(behavior_auth, "type", "none") == "login_flow":
+                        allow_live_probe = False
+                    elif behavior_auth and getattr(behavior_auth, "type", "none") != "none":
+                        probe_auth_config = AuthConfig(
+                            type=behavior_auth.type,
+                            header=getattr(behavior_auth, "header", ""),
+                            username=getattr(behavior_auth, "username", ""),
+                            password=getattr(behavior_auth, "password", ""),
+                        )
+                        if auth_requires_login(probe_auth_config, self._sbom):
+                            allow_live_probe = False
+                        else:
+                            probe_auth_headers = resolve_auth_runtime(
+                                auth_config=probe_auth_config
+                            ).initial_headers
                 except Exception as exc:  # noqa: BLE001 - probe auth is best effort
                     _log.debug("BehaviorAnalyzer: could not resolve probe auth headers: %s", exc)
 
@@ -226,7 +243,7 @@ class BehaviorAnalyzer:
                         resolved_updates["chat_response_key"] = _c_resp
                 else:
                     resolved_endpoint = await resolve_chat_endpoint(
-                        target_url=target_url,
+                        target_url=probe_target_url,
                         sbom=self._sbom,
                         endpoint=(
                             getattr(self._config, "target_endpoint", "")
@@ -252,6 +269,7 @@ class BehaviorAnalyzer:
                         timeout=15.0,
                         llm=self._llm if getattr(self._config, "probe_llm", False) else None,
                         probe_result_callback=_persist_probe_result,
+                        allow_live_probe=allow_live_probe,
                     )
                     if resolved_endpoint.path:
                         resolved_updates["target_endpoint"] = resolved_endpoint.path

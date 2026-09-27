@@ -195,6 +195,11 @@ behavior:
   # above: probe the live agent for tools/sub-agents/system prompt only when the
   # AI-SBOM is missing them, and merge findings back before scenario generation.
   capability_discovery: true
+  # Chat-endpoint pre-flight: when the auto-discovered endpoint answers a test
+  # message with an error or a structured artefact (e.g. a one-shot generator
+  # route) instead of a chat reply, compare up to this many other SBOM
+  # candidates and use the most conversational one. 0 disables the comparison.
+  # preflight_candidates: 3
 
   # Inter-turn pause in seconds to avoid 429 rate-limit errors (default: 0.0)
   # turn_delay_seconds: 0.5
@@ -418,6 +423,7 @@ redteam:
   # used by SBOM auto-enrichment, de-duped against tools/sub-agents already in
   # the SBOM.
   capability_discovery: true        # set false to disable the extra probes
+  # preflight_candidates: 3          # SBOM chat-endpoint candidates compared by the pre-flight check
 
   # Guided adversarial conversations using ConversationDirector
   # build_guided_tool_redteam() derives the goal description from each TOOL node's

@@ -129,6 +129,28 @@ RUNTIME_NON_CHAT_KEYS: frozenset[str] = frozenset({
     "tool_name", "tool_call", "tool_id", "action", "action_name", "action_type",
 })
 
+# Payload keys that strongly indicate a free-text conversational turn (as
+# opposed to a domain noun like "topic" or "explanation" that one-shot
+# generator endpoints use). Compared after normalize_payload_key().
+CONVERSATIONAL_PAYLOAD_KEYS: frozenset[str] = frozenset({
+    "message", "messages", "content", "prompt", "query", "input", "text",
+    "question", "msg", "user_input", "user_message", "chat_input",
+})
+
+# Path segments that indicate a multi-turn conversational resource.
+CONVERSATIONAL_PATH_SEGMENTS: frozenset[str] = frozenset({
+    "chat", "chats", "conversation", "conversations", "converse", "thread", "threads",
+})
+
+# Request-body fields that routinely accompany a chat message (session/identity
+# correlation, model knobs, streaming flags) and so do not suggest a
+# non-conversational, form-like endpoint.
+CHAT_CONTEXT_FIELD_TOKENS: tuple[str, ...] = (
+    "session", "conversation", "thread", "chat", "user", "customer", "tenant",
+    "model", "temperature", "stream", "history", "context", "metadata", "language",
+    "locale", "attachment", "file",
+)
+
 CAMEL_CASE_RE = re.compile(r"(?<!^)(?=[A-Z])")
 
 # Sentinel placed in the value_template dict for the field that carries the
@@ -184,6 +206,33 @@ def has_required_structured_field(
             continue
         return True
     return False
+
+
+def count_form_fields(
+    request_body_schema: "dict[str, str] | None", payload_key: str
+) -> int:
+    """Count request-body fields that make an endpoint look form-like.
+
+    Excludes the chat payload key itself, boolean flags, and fields whose name
+    matches :data:`CHAT_CONTEXT_FIELD_TOKENS` (session/identity/model knobs
+    that chat endpoints routinely accept). A one-shot generator such as
+    ``{topic, availableHoursPerWeek, studySetIds}`` returns 2, while a chat
+    endpoint such as ``{content, stream}`` or ``{message, session_id}`` returns 0.
+    """
+    if not request_body_schema:
+        return 0
+    count = 0
+    for field_name, type_hint in request_body_schema.items():
+        if field_name == payload_key:
+            continue
+        normalized_type = str(type_hint).replace(" ", "").lower()
+        if normalized_type in ("bool", "boolean"):
+            continue
+        name_l = normalize_payload_key(field_name)
+        if any(tok in name_l for tok in CHAT_CONTEXT_FIELD_TOKENS):
+            continue
+        count += 1
+    return count
 
 
 def normalize_payload_key(key: str) -> str:

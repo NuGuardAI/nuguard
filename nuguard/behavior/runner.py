@@ -805,6 +805,11 @@ class BehaviorRunner:
         self._completed_signatures: set[str] = set()
         self.scenario_results: list[ScenarioResult] = []
         self._auth_session: Any = None
+        # Chat-endpoint pre-flight state, shared by discover() and run() — see
+        # _ensure_endpoint_preflight(). None = not yet run.
+        self._preflight_cache: bool | None = None
+        self._rotated_chat_endpoint: "tuple[str, str, bool, str | None] | None" = None
+        self._bootstrapped_path_params: dict[str, str] = {}
         self._target_session_config: Any = None
         self._target_session_resolution_attempted = False
         # Health report from the shared resolver (see _resolve_target_session_once),
@@ -993,7 +998,6 @@ class BehaviorRunner:
         from nuguard.common.target_client_builder import (
             build_target_app_client,
             resolve_auth_config_with_sbom_fallback,
-            resolve_target_url,
         )
 
         # Build auth config from the behavior config's auth section
@@ -1030,23 +1034,15 @@ class BehaviorRunner:
         # (Static-hosting URLs like azurestaticapps.net have no server routes and
         # would cause bootstrap to fail with 404/405 even when credentials are valid.)
         _config_url = getattr(self._config, "target", None) or ""
-        target_url, _url_notes = resolve_target_url(_config_url, self._sbom)
+        # Static-hosting fallback, plus a scan of a served SPA bundle for a
+        # baked-in separate-origin API base URL (SBOM/live-probe discovery
+        # can't find that origin because every path under target_url is
+        # served by the frontend's catch-all route). Memoised across stages.
+        from nuguard.common.endpoint_detection.context import resolve_api_origin
+
+        target_url, _url_notes = await resolve_api_origin(_config_url, self._sbom)
         if not target_url:
             target_url = _config_url
-
-        # Some SPAs call a separate-origin backend directly from client-side JS
-        # instead of proxying /api through their own server — SBOM/live-probe
-        # discovery can't find that origin because every path under target_url
-        # is served by the frontend's catch-all route. Best-effort: scan the
-        # served bundle for a baked-in API base URL before auth bootstrap runs.
-        from nuguard.common.endpoint_detection.frontend_origin import (
-            discover_api_origin_from_frontend_bundle,
-        )
-
-        _bundle_origin, _bundle_notes = await discover_api_origin_from_frontend_bundle(target_url)
-        if _bundle_origin:
-            target_url = _bundle_origin
-            _url_notes = _url_notes + _bundle_notes
 
         # Store resolved URL so _run_scenario can display it correctly.
         self._resolved_target_url = target_url
@@ -2287,6 +2283,81 @@ class BehaviorRunner:
         except Exception as exc:
             _log.warning("behavior capability discovery: could not persist SBOM artifact: %s", exc)
 
+    async def _ensure_endpoint_preflight(self, client: Any) -> bool:
+        """Validate/rotate the chat endpoint once per runner and apply it to *client*.
+
+        Sends a test message to the configured chat endpoint, binding any
+        path params it declares (e.g. a bootstrapped conversation ``:id``),
+        and rotates to a more conversational SBOM candidate when the reply is
+        an error or a structured artefact (see
+        :func:`~nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint`).
+        This must run before pre-scan/capability discovery: those probes use
+        the same endpoint, and an unvalidated one (a one-shot generator route,
+        or an unresolved path param) makes every one of them fail.
+
+        The first call does the live check; later calls (``discover()`` builds
+        its own client before ``run()`` builds another) replay the cached
+        rotation and path-param bindings onto *client* without re-testing.
+
+        Returns:
+            ``False`` when no working chat endpoint was found.
+        """
+        cached = getattr(self, "_preflight_cache", None)
+        if cached is not None:
+            if self._rotated_chat_endpoint and hasattr(client, "set_chat_endpoint"):
+                client.set_chat_endpoint(*self._rotated_chat_endpoint)
+            if self._bootstrapped_path_params and hasattr(client, "set_path_param"):
+                for _pp_name, _pp_value in self._bootstrapped_path_params.items():
+                    client.set_path_param(_pp_name, _pp_value)
+            return bool(cached)
+
+        self._rotated_chat_endpoint = None
+        self._bootstrapped_path_params = {}
+        _has_explicit_endpoint = self._endpoint_is_explicit()
+        self._target_endpoint_source = "config" if _has_explicit_endpoint else "default"
+        preflight_ok = True
+        try:
+            from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
+                validate_and_rotate_chat_endpoint,
+            )
+
+            _bootstrap_hdrs: dict[str, str] = (
+                getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
+            )
+            _target_url = (
+                getattr(self, "_resolved_target_url", None)
+                or getattr(self._config, "target", None)
+                or ""
+            )
+            _pf = await validate_and_rotate_chat_endpoint(
+                client,
+                self._sbom,
+                has_explicit_endpoint=_has_explicit_endpoint,
+                target_url=_target_url,
+                auth_headers=_bootstrap_hdrs or None,
+                max_candidates=int(getattr(self._config, "preflight_candidates", 3)),
+            )
+            for _pf_note in _pf.notes:
+                _console.print(
+                    f"[bold red]⚠ {_pf_note}[/bold red]" if not _pf.ok else f"  [cyan]{_pf_note}[/cyan]"
+                )
+            if _pf.rotated_endpoint is not None:
+                self._rotated_chat_endpoint = _pf.rotated_endpoint
+                self._target_endpoint_source = _pf.endpoint_source or self._target_endpoint_source
+            if not _pf.ok:
+                preflight_ok = False
+            # Path params (e.g. a bootstrapped conversation ":id") are bound on
+            # this client only — isolated scenario clients get a fresh
+            # TargetAppClient each with no such binding, so capture them here
+            # to replay on every scenario client and later runner clients.
+            _client_path_params = getattr(client, "path_param_values", None)
+            if isinstance(_client_path_params, dict):
+                self._bootstrapped_path_params = dict(_client_path_params)
+        except Exception as _pf_exc:
+            _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
+        self._preflight_cache = preflight_ok
+        return preflight_ok
+
     async def discover(self) -> "DiscoveredProfile | None":
         """Run pre-scan discovery against the live agent and return the profile.
 
@@ -2306,6 +2377,10 @@ class BehaviorRunner:
         _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
         try:
             client = await self._build_client()
+            # Validate the chat endpoint before any discovery turn is sent.
+            if not await self._ensure_endpoint_preflight(client):
+                _log.info("behavior pre-scan discovery: skipped — no working chat endpoint")
+                return None
 
             # Surface identity-field warnings so users see them without digging into logs.
             for _note in client.resolution_notes:
@@ -2593,53 +2668,11 @@ class BehaviorRunner:
             _log.error("BehaviorRunner.run: could not build client: %s", exc)
             raise
 
-        # Reset endpoint rotation state for this run.
-        self._rotated_chat_endpoint: "tuple[str, str, bool, str | None] | None" = None
-        self._bootstrapped_path_params: dict[str, str] = {}
-
-        # Pre-flight endpoint validation: send a single test request to verify the
-        # configured chat endpoint is reachable, and bind any path params it
-        # declares (e.g. a bootstrapped conversation ":id"), before pre-scan/
-        # capability discovery runs below — those also send probes through this
-        # same client, and an unresolved path param makes every one of them fail
-        # with "[CONFIG_ERROR: unresolved path param ...]" instead of a real
-        # response (degrading pre-scan discovery and polluting capability
-        # discovery with a bogus tool/sub-agent literally named "[CONFIG_ERROR").
-        # On 405/404, rotate through ranked SBOM candidates then fall back to
-        # live probing. Abort the run cleanly if no working endpoint is found.
-        _preflight_ok = True
+        # Pre-flight endpoint validation (shared with discover(); runs once per
+        # runner and is replayed onto this client when discover() already ran it).
+        _preflight_ok = await self._ensure_endpoint_preflight(client)
         _configured_endpoint = getattr(self._config, "target_endpoint", "") or ""
         _has_explicit_endpoint = self._endpoint_is_explicit()
-        self._target_endpoint_source = "config" if _has_explicit_endpoint else "default"
-        try:
-            from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
-                validate_and_rotate_chat_endpoint,
-            )
-            _bootstrap_hdrs: dict[str, str] = getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
-            _pf = await validate_and_rotate_chat_endpoint(
-                client,
-                self._sbom,
-                has_explicit_endpoint=_has_explicit_endpoint,
-                target_url=target_url or "",
-                auth_headers=_bootstrap_hdrs or None,
-            )
-            for _pf_note in _pf.notes:
-                _console.print(f"[bold red]⚠ {_pf_note}[/bold red]" if not _pf.ok else f"  [cyan]{_pf_note}[/cyan]")
-            if _pf.rotated_endpoint is not None:
-                self._rotated_chat_endpoint = _pf.rotated_endpoint
-                self._target_endpoint_source = _pf.endpoint_source or self._target_endpoint_source
-            if not _pf.ok:
-                _preflight_ok = False
-            # Path params (e.g. a bootstrapped conversation ":id") are bound on
-            # the shared preflight client only — isolated scenario clients get a
-            # fresh TargetAppClient each with no such binding, so capture them
-            # here to replay on every scenario client below, and on the
-            # pre-scan/capability discovery probes that use this same client.
-            _client_path_params = getattr(client, "path_param_values", None)
-            if isinstance(_client_path_params, dict):
-                self._bootstrapped_path_params = _client_path_params
-        except Exception as _pf_exc:
-            _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
 
         # Per-endpoint liveness: mark every other SBOM-discovered API_ENDPOINT
         # node operational/non-operational via a live ping, so scenario
@@ -3372,12 +3405,14 @@ class BehaviorRunner:
                             node_type=ntype,
                         )
                     if ntype == "API_ENDPOINT":
-                        nroute = _endpoint_path_from_component_name(nname)
+                        node_meta = getattr(node, "metadata", None)
+                        nroute = _normalise_endpoint_route(
+                            getattr(node_meta, "endpoint", None) or ""
+                        ) or _endpoint_path_from_component_name(nname)
                         if nroute:
                             endpoint_norm_map[nroute] = nname
                         # Independently-verified liveness (issue #555's sweep) — a
                         # separate claim from scenario_outcome below; never merged.
-                        node_meta = getattr(node, "metadata", None)
                         component_map[nname].endpoint_operational = getattr(node_meta, "operational", None)
 
         # Register config-provided aliases now that component_map is initialized.

@@ -431,6 +431,11 @@ class TargetAppClient:
         # include it in subsequent request bodies so multi-turn conversations
         # are correlated on the server side.
         self._session_context: dict[str, Any] = {}
+        # Parsed JSON body of the most recent successful send() — lets the
+        # endpoint pre-flight judge whether a reply is conversational text or
+        # a structured artefact even after text extraction (see
+        # nuguard.common.response_extraction.chat_fitness).
+        self.last_raw_response: Any = None
         # Two-step chat bootstrap: values bound via set_path_param() to
         # substitute :name/{name} placeholders in _chat_path before each
         # request (e.g. a conversation id created by a prerequisite POST) —
@@ -1220,6 +1225,7 @@ class TargetAppClient:
 
         # Extract response text and tool calls.
         # When a framework adapter is present, delegate to its specialised parsers.
+        self.last_raw_response = data
         tool_calls: list[dict] = []
         text = ""
         if self._framework_adapter is not None:
