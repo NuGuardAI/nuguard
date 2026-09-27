@@ -383,8 +383,12 @@ def redteam(
             AuthError,
             TargetEndpointNotFoundError,
             TargetNotEngagedError,
+            TargetQuotaExhaustedError,
             TargetUnavailableError,
         )
+        if isinstance(exc, TargetQuotaExhaustedError):
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
         if isinstance(exc, TargetNotEngagedError):
             typer.echo(f"Error: {exc}", err=True)
             # Distinct setup-failure exit code (2 = findings, 1 = run error) so

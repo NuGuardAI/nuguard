@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     # Deferred to avoid re-entering nuguard.common.__init__ mid-import — see
     # the matching comment in nuguard/common/bootstrap.py.
     from nuguard.redteam.target.canary import CanaryConfig
+    from nuguard.sbom.models import AiSbomDocument
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,7 @@ async def bootstrap_auth_runtime(
     config_path: "Path | None" = None,
     payload_key: str = "message",
     payload_list: bool = False,
+    sbom: "AiSbomDocument | None" = None,
 ) -> tuple[AuthBootstrapper, TargetHealthReport]:
     """Run shared auth bootstrap and return both bootstrapper and report.
 
@@ -91,7 +93,9 @@ async def bootstrap_auth_runtime(
     through so a browser-login auth-recovery fallback (see
     ``AuthBootstrapper._maybe_recover_via_browser``) can persist a recovered
     cookie_file session back into the file for future runs. Omitting it does
-    not disable recovery, only the persistence step.
+    not disable recovery, only the persistence step. ``sbom``, when given,
+    lets the health check resolve a templated chat endpoint's path params
+    (two-step chat) instead of probing the literal placeholder.
     """
     bootstrapper = AuthBootstrapper(
         target_url=target_url,
@@ -107,6 +111,7 @@ async def bootstrap_auth_runtime(
         config_path=config_path,
         payload_key=payload_key,
         payload_list=payload_list,
+        sbom=sbom,
     )
     report = await bootstrapper.run()
     return bootstrapper, report

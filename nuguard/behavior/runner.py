@@ -808,6 +808,8 @@ class BehaviorRunner:
         # Chat-endpoint pre-flight state, shared by discover() and run() — see
         # _ensure_endpoint_preflight(). None = not yet run.
         self._preflight_cache: bool | None = None
+        # Set when the target reports an exhausted usage quota mid-run.
+        self._quota_exhausted_detail: str = ""
         self._rotated_chat_endpoint: "tuple[str, str, bool, str | None] | None" = None
         self._bootstrapped_path_params: dict[str, str] = {}
         self._target_session_config: Any = None
@@ -1057,6 +1059,7 @@ class BehaviorRunner:
         try:
             bootstrapper, health_report = await bootstrap_auth_runtime(
                 target_url=target_url,
+                sbom=self._sbom,
                 endpoint=endpoint or ("/ws" if _is_websocket else "/chat"),
                 auth_config=runtime.auth_config,
                 run_id=str(_uuid.uuid4()),
@@ -1090,9 +1093,12 @@ class BehaviorRunner:
         except AuthError:
             raise
         except Exception as exc:
-            from nuguard.common.errors import TargetEndpointNotFoundError
+            from nuguard.common.errors import (
+                TargetEndpointNotFoundError,
+                TargetQuotaExhaustedError,
+            )
 
-            if isinstance(exc, TargetEndpointNotFoundError):
+            if isinstance(exc, (TargetEndpointNotFoundError, TargetQuotaExhaustedError)):
                 raise
             _log.debug("_build_client: bootstrap skipped: %s", exc)
             bootstrap_headers = getattr(runtime, "initial_headers", {}) or {}
@@ -1724,6 +1730,11 @@ class BehaviorRunner:
                     _rate_limit_retries = 0   # reset on successful reply
                     _transient_retry_idx = 0  # reset on a genuine response
             except Exception as exc:
+                from nuguard.common.errors import TargetQuotaExhaustedError  # noqa: PLC0415
+
+                if isinstance(exc, TargetQuotaExhaustedError):
+                    # Won't clear on retry — abort the whole run (see _run_one).
+                    raise
                 send_error = str(exc)
                 _log.warning("_run_scenario turn %d: send failed: %s", turn_idx + 1, exc)
                 response = ""
@@ -2354,6 +2365,10 @@ class BehaviorRunner:
             if isinstance(_client_path_params, dict):
                 self._bootstrapped_path_params = dict(_client_path_params)
         except Exception as _pf_exc:
+            from nuguard.common.errors import TargetQuotaExhaustedError  # noqa: PLC0415
+
+            if isinstance(_pf_exc, TargetQuotaExhaustedError):
+                raise
             _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
         self._preflight_cache = preflight_ok
         return preflight_ok
@@ -2966,6 +2981,16 @@ class BehaviorRunner:
                             _first_turn_405_count = 0
                     return result
                 except Exception as exc:
+                    from nuguard.common.errors import TargetQuotaExhaustedError  # noqa: PLC0415
+
+                    if isinstance(exc, TargetQuotaExhaustedError):
+                        async with _abort_lock:
+                            if not _abort_run.is_set():
+                                _abort_run.set()
+                                self._quota_exhausted_detail = str(exc)
+                                _log.error("BehaviorRunner.run: aborting — %s", exc)
+                                _console.print(f"[bold red]⚠ Aborting run: {exc}[/bold red]")
+                        return None
                     if isinstance(exc, asyncio.TimeoutError):
                         _log.error(
                             "BehaviorRunner.run: scenario %s timed out after %ss "
@@ -3262,6 +3287,9 @@ class BehaviorRunner:
             scan_outcome = "high_findings"
         elif all_findings:
             scan_outcome = "findings"
+        elif getattr(self, "_quota_exhausted_detail", ""):
+            # No findings and the target's usage quota ran out mid-run.
+            scan_outcome = "aborted_target_unavailable"
         else:
             # No findings — check if the target was unreachable during dynamic phase
             _HTTP_ERROR = "http_error"

@@ -1,9 +1,9 @@
 ---
 name: ai-security-review
 description: >
-  Activate when the user asks to audit, review, scan, or assess the security of an AI
-  application, agent, chatbot, or LLM-powered system. Also activate when the user mentions prompt injection, data exfiltration, guardrail bypass, red-teaming, AI SBOM, cognitive policy, OWASP LLM Top 10, NIST AI RMF, or EU AI Act compliance.
-version: 0.5.3
+  Activate when the user asks to audit, review, scan, pentest, or assess the security of an AI
+  application, agent, chatbot, or LLM-powered system. Also activate when the user mentions prompt injection, data exfiltration, guardrail bypass, red-teaming, penetration testing, AI SBOM, cognitive policy, OWASP LLM Top 10, NIST AI RMF, or EU AI Act compliance.
+version: 0.5.4
 ---
 
 You are conducting an AI application security review using NuGuard's pipeline.
@@ -82,6 +82,13 @@ Explain gaps in plain language — what the policy declares vs. what the SBOM sh
 If the user provides a target URL:
 - Run `nuguard behavior --config nuguard.yaml --mode static+dynamic` via Bash first (faster, no attack payloads)
 - If behavior finds intent drift or policy violations, escalate to `nuguard redteam --config nuguard.yaml` to confirm exploitability
+- Both commands auto-discover the chat endpoint from the SBOM (including two-step
+  create-conversation-then-post-message APIs) before probing live — no manual `chat_endpoint`
+  needed unless discovery fails. Tune candidate breadth with `preflight_candidates` in
+  `nuguard.yaml` (default 3) if the target exposes several plausible chat-like routes.
+- If the run stops early reporting the target's usage quota or plan limit was exhausted, this
+  is not an auth or config problem — tell the user to raise the target's quota/plan and re-run;
+  do not suggest changing credentials.
 
 ## Reporting Style
 
