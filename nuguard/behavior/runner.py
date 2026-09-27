@@ -3372,12 +3372,14 @@ class BehaviorRunner:
                             node_type=ntype,
                         )
                     if ntype == "API_ENDPOINT":
-                        nroute = _endpoint_path_from_component_name(nname)
+                        node_meta = getattr(node, "metadata", None)
+                        nroute = _normalise_endpoint_route(
+                            getattr(node_meta, "endpoint", None) or ""
+                        ) or _endpoint_path_from_component_name(nname)
                         if nroute:
                             endpoint_norm_map[nroute] = nname
                         # Independently-verified liveness (issue #555's sweep) — a
                         # separate claim from scenario_outcome below; never merged.
-                        node_meta = getattr(node, "metadata", None)
                         component_map[nname].endpoint_operational = getattr(node_meta, "operational", None)
 
         # Register config-provided aliases now that component_map is initialized.

@@ -958,6 +958,40 @@ def test_build_coverage_map_endpoint_normalized_match_confidence() -> None:
     assert endpoint_cov.mapped_from_endpoint == "/api/agent/chat"
 
 
+def test_build_coverage_map_uses_route_metadata_for_short_endpoint_name() -> None:
+    endpoint = _endpoint_node("Delete Notes")
+    endpoint.metadata.method = "DELETE"
+    endpoint.metadata.endpoint = "/api/notes"
+    sbom = AiSbomDocument(target="./app", nodes=[endpoint], edges=[])
+    runner = BehaviorRunner(
+        config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None
+    )
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="endpoint_s1",
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE.value,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "DELETE /api/notes",
+                    "effective_endpoint": "/api/notes",
+                    "deviations": [],
+                    "passed": True,
+                }
+            ],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    endpoint_cov = next(c for c in coverage if c.component_name == "Delete Notes")
+    assert endpoint_cov.exercised is True
+    assert endpoint_cov.mapping_confidence == "normalized_match"
+    assert endpoint_cov.mapped_from_endpoint == "/api/notes"
+
+
 def test_build_coverage_map_runtime_only_endpoint_fallback() -> None:
     sbom = AiSbomDocument(target="./app", nodes=[_endpoint_node("/api/agent/chat")], edges=[])
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)

@@ -118,6 +118,7 @@ from ..models import (
 )
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
+from .endpoint_names import disambiguate_endpoint_names
 from .postprocess import (
     _collapse_bulk_catalog_files,
     _dedup_by_location,
@@ -2071,6 +2072,7 @@ class AiSbomExtractor:
             node.evidence = sorted(acc.evidence, key=lambda e: e.confidence, reverse=True)
             doc.nodes.append(node)
 
+        disambiguate_endpoint_names(doc.nodes)
         self._resolve_edges(doc, node_map, imported_assets=_imported_assets)
 
         # Deduplicate DEPLOYMENT nodes: merge github-actions workflow nodes into
@@ -2274,6 +2276,9 @@ class AiSbomExtractor:
             except Exception as exc:  # noqa: BLE001
                 _log.warning("LLM enrichment failed, continuing with deterministic output: %s", exc)
 
+        # Later passes may discover additional endpoints after the initial
+        # graph assembly. Keep their UI labels distinct in the final document.
+        disambiguate_endpoint_names(doc.nodes)
         # Keep summary counts consistent with the final retained node set.
         _refresh_summary_node_counts(doc)
         return doc

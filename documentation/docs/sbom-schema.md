@@ -170,6 +170,8 @@ A `PROMPT` node is connected to its owning `AGENT` or `GUARDRAIL` through a `USE
 
 ### API_ENDPOINT fields
 
+The `name` shown in the AIBOM uses the detected handler name when it is unique. If several endpoints have the same handler name, the extractor adds a short resource label from the route, such as `Delete Notes` and `Delete Documents`. The exact HTTP method and route remain in `metadata.method` and `metadata.endpoint`.
+
 | Field | Type | Description |
 |---|---|---|
 | `endpoint` | string | Endpoint address, e.g. `"/chat"` or `"0.0.0.0:8080 (sse)"` |
