@@ -23,6 +23,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ...models import HttpParameterLocation
 from ...types import ComponentType
 from .._schema_utils import bare_type_name, flatten_one_level
 from ..base import ComponentDetection
@@ -84,6 +85,21 @@ _METHOD_DEF_RE = re.compile(r"^\s*(?:public\s+|private\s+|protected\s+)?(?:async
 _USEGUARDS_RE = re.compile(r"@UseGuards\(")
 _PUBLIC_RE = re.compile(r"@Public\(\)")
 _BODY_PARAM_RE = re.compile(r"@Body\(\)\s*\w+\s*:\s*([\w][\w.<>\[\]]*)")
+# ``@Param('id') id: string`` / ``@Query('q') q?: string`` /
+# ``@Headers('x-trace') trace: string`` — a named single-field binding.
+# The captured group order is (decorator, wire-name-or-empty, identifier,
+# optional-marker, type-or-empty).
+_NAMED_PARAM_DECORATOR_RE = re.compile(
+    r"@(Param|Query|Headers)\(\s*(?:['\"]([^'\"]*)['\"])?\s*\)\s*(\w+)\s*(\??)\s*:?\s*([\w.<>\[\] ]*)"
+)
+_UPLOADED_FILE_RE = re.compile(r"@(UploadedFile|UploadedFiles)\(\)\s*(\w+)")
+_ROUTE_PATH_PARAM_RE = re.compile(r":(\w+)")
+
+_NESTJS_LOCATIONS: dict[str, HttpParameterLocation] = {
+    "Param": "path",
+    "Query": "query",
+    "Headers": "header",
+}
 # Captures a same-line TypeScript return-type annotation, e.g.
 # `async login(dto: LoginDto): Promise<LoginResponseDto> {`. Non-greedy and
 # excludes "(" from the captured type so a nested call in a same-line default
@@ -257,6 +273,76 @@ def _extract_global_prefix(content: str) -> tuple[str, list[str]] | None:
                     break
         exclude = _QUOTED_STRING_RE.findall(tail[start:end])
     return prefix, exclude
+
+
+def _nestjs_type_hint(type_str: str) -> str:
+    base = type_str.split("<", 1)[0].strip().rstrip("[]")
+    if base == "number":
+        return "int" if not type_str.endswith("[]") else "list"
+    if base == "boolean":
+        return "bool"
+    if type_str.endswith("[]") or base in ("Array", "string[]"):
+        return "list"
+    return "string"
+
+
+def _nestjs_http_request(
+    http_method: str,
+    composed_path: str | None,
+    window: list[str],
+    schema: dict[str, str],
+) -> dict[str, Any]:
+    """Describe a NestJS handler's request shape from its own decorated parameters.
+
+    A named ``@Param('id')``/``@Query('q')``/``@Headers('x-trace')``
+    decorator is authoritative for that one field. A bare ``@Query()``/
+    ``@Param()`` (the whole query string or every route param as one object)
+    can't be named statically beyond the route template's own ``:name``
+    segments, so it's reported as an unresolved input rather than guessed.
+    """
+    path_param_names = set(_ROUTE_PATH_PARAM_RE.findall(composed_path or ""))
+    parameters: dict[tuple[str, str], dict[str, Any]] = {}
+    unresolved = False
+
+    def add(name: str, location: HttpParameterLocation, type_hint: str, required: bool) -> None:
+        key = (name, location)
+        if name and key not in parameters:
+            parameters[key] = {
+                "name": name,
+                "location": location,
+                "type_hint": type_hint,
+                "required": required,
+            }
+
+    text = "\n".join(window)
+    for match in _NAMED_PARAM_DECORATOR_RE.finditer(text):
+        decorator, wire_name, _identifier, optional, type_str = match.groups()
+        location = _NESTJS_LOCATIONS[decorator]
+        if wire_name:
+            add(wire_name, location, _nestjs_type_hint(type_str), not optional)
+        elif location == "path":
+            for name in path_param_names:
+                add(name, "path", "string", True)
+        else:
+            unresolved = True
+
+    for match in _UPLOADED_FILE_RE.finditer(text):
+        _decorator, identifier = match.groups()
+        add(identifier, "multipart", "string", True)
+
+    locations = {parameter["location"] for parameter in parameters.values()}
+    content_types: list[str] = []
+    if "multipart" in locations:
+        content_types.append("multipart/form-data")
+    if schema:
+        content_types.append("application/json")
+
+    return {
+        "methods": [http_method.upper()],
+        "parameters": list(parameters.values()),
+        "content_types": content_types,
+        "has_unresolved_inputs": unresolved,
+    }
 
 
 class NestJSAdapter(TSFrameworkAdapter):
@@ -439,6 +525,9 @@ class NestJSAdapter(TSFrameworkAdapter):
                 if chat_key and chat_key not in _NON_CHAT_PAYLOAD_KEYS:
                     metadata["chat_payload_key"] = chat_key
                     metadata["chat_payload_list"] = chat_list
+                metadata["http_request"] = _nestjs_http_request(
+                    http_method, composed_path, window + back_window, schema
+                )
                 if ctx_fields:
                     metadata["context_payload_fields"] = ctx_fields
 

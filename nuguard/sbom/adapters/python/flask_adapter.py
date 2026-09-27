@@ -13,8 +13,10 @@ Registers as a ``FrameworkAdapter`` for Python source files that import
 from __future__ import annotations
 
 import ast
+import re
 from typing import Any
 
+from ...models import HttpParameterLocation, HttpParameterMetadata, HttpRequestMetadata
 from ...types import ComponentType
 from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
 
@@ -175,6 +177,85 @@ def _collect_body_keys(
         if receiver_name in _REQUEST_ACCESSORS:
             candidates.append(key)
     return candidates
+
+
+_REQUEST_INPUT_LOCATIONS: dict[str, HttpParameterLocation] = {
+    "args": "query",
+    "values": "query",
+    "form": "form",
+    "files": "multipart",
+    "headers": "header",
+    "cookies": "cookie",
+    "json": "json",
+}
+_BODY_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+_FLASK_PATH_PARAM_RE = re.compile(r"<(?:(\w+):)?(\w+)>")
+
+
+def _request_input_key(node: ast.AST) -> tuple[str, str] | None:
+    """``request.<accessor>.get("k")`` / ``request.<accessor>["k"]`` -> (accessor, key)."""
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        if node.func.attr not in {"get", "getlist"} or not node.args:
+            return None
+        container, key_node = node.func.value, node.args[0]
+    elif isinstance(node, ast.Subscript):
+        container, key_node = node.value, node.slice
+    else:
+        return None
+    if not (isinstance(key_node, ast.Constant) and isinstance(key_node.value, str)):
+        return None
+    if (
+        isinstance(container, ast.Attribute)
+        and isinstance(container.value, ast.Name)
+        and container.value.id == "request"
+        and container.attr in _REQUEST_INPUT_LOCATIONS
+    ):
+        return container.attr, key_node.value
+    return None
+
+
+def _http_request(
+    func_def: ast.FunctionDef | ast.AsyncFunctionDef,
+    path: str,
+    methods: list[str],
+) -> dict[str, Any]:
+    """Request shape of a Flask view: every declared method plus statically visible inputs."""
+    declared = [method.upper() for method in methods] or ["GET"]
+    parameters: dict[tuple[str, str], HttpParameterMetadata] = {}
+
+    def add(name: str, location: HttpParameterLocation, type_hint: str, required: bool) -> None:
+        if name and (name, location) not in parameters:
+            parameters[(name, location)] = HttpParameterMetadata(
+                name=name, location=location, type_hint=type_hint, required=required
+            )
+
+    for converter, name in _FLASK_PATH_PARAM_RE.findall(path or ""):
+        add(name, "path", "int" if converter == "int" else "string", True)
+    for node in ast.walk(func_def):
+        found = _request_input_key(node)
+        if found is not None:
+            add(found[1], _REQUEST_INPUT_LOCATIONS[found[0]], "string", False)
+    if _BODY_METHODS.intersection(declared):
+        known = {name for name, _location in parameters}
+        for key in _collect_body_keys(func_def):
+            if key not in known:
+                add(key, "json", "string", False)
+
+    locations = {parameter.location for parameter in parameters.values()}
+    content_types = [
+        content_type
+        for location, content_type in (
+            ("json", "application/json"),
+            ("form", "application/x-www-form-urlencoded"),
+            ("multipart", "multipart/form-data"),
+        )
+        if location in locations
+    ]
+    return HttpRequestMetadata(
+        methods=list(dict.fromkeys(declared)),
+        parameters=list(parameters.values()),
+        content_types=content_types,
+    ).model_dump(mode="json")
 
 
 def _infer_chat_payload_key(
@@ -371,6 +452,8 @@ class FlaskAdapter(FrameworkAdapter):
                         metadata["chat_payload_list"] = True
                 if ctx_fields:
                     metadata["context_payload_fields"] = ctx_fields
+                if not is_websocket:
+                    metadata["http_request"] = _http_request(node, path_str, methods)
 
                 ep_detection = ComponentDetection(
                     component_type=ComponentType.API_ENDPOINT,

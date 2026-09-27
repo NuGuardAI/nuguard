@@ -9,6 +9,7 @@ from typing import Any
 from ...normalization import canonicalize_text
 from ...types import ComponentType
 from ..base import ComponentDetection, RelationshipHint
+from ._http_params import build_http_request
 from ._java_base import JavaFrameworkAdapter
 from .java_ai import _agent_canonical, _method_contains_ai
 
@@ -51,6 +52,28 @@ class JavaWebAdapter(JavaFrameworkAdapter):
         clean = [part.strip().strip("/") for part in parts if part and part.strip("/")]
         return "/" + "/".join(clean) if clean else "/"
 
+    # ``value = LevelConstants.LEVEL_1`` — a bare constant reference rather
+    # than a string literal. We can't resolve the constant's real value
+    # without reading its (usually separate) declaring file, but Java code
+    # conventionally names such route/step constants after their own string
+    # value (``LEVEL_1 = "LEVEL_1"``), so the identifier itself is a
+    # reasonable best-effort path segment — far better than silently
+    # dropping the endpoint. Deliberately scoped to route resolution only,
+    # not ``_annotation_value()`` itself, since that helper is shared by
+    # adapters (e.g. model-name extraction) where this guess would be wrong.
+    _BARE_CONSTANT_VALUE_RE = re.compile(
+        r"(?:value|path)\s*=\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?)\b"
+    )
+
+    def _route_value(self, annotation: str) -> str:
+        value = self._annotation_value(annotation)
+        if value:
+            return value
+        match = self._BARE_CONSTANT_VALUE_RE.search(annotation)
+        if not match:
+            return ""
+        return match.group(1).rsplit(".", 1)[-1]
+
     @staticmethod
     def _is_request_mapping_annotation(name: str) -> bool:
         """Match ``RequestMapping`` and Spring *composed* meta-annotations.
@@ -76,14 +99,20 @@ class JavaWebAdapter(JavaFrameworkAdapter):
             if name in self._METHOD_ANNOTATIONS:
                 if method is None:
                     method = self._METHOD_ANNOTATIONS[name]
-                value = self._annotation_value(annotation)
+                value = self._route_value(annotation)
+                if value and path is None:
+                    path = value
+            elif name == "Path":
+                # JAX-RS sub-resource path on the method; the verb comes from
+                # a separate @GET/@POST annotation.
+                value = self._route_value(annotation)
                 if value and path is None:
                     path = value
             elif self._is_request_mapping_annotation(name):
                 method_match = re.search(r"RequestMethod\.([A-Z]+)", annotation)
                 if method is None:
                     method = method_match.group(1) if method_match else "ANY"
-                value = self._annotation_value(annotation)
+                value = self._route_value(annotation)
                 if value and path is None:
                     path = value
         if method is None:
@@ -128,7 +157,7 @@ class JavaWebAdapter(JavaFrameworkAdapter):
                     or class_annotation_name.endswith("Controller")
                 )
                 if is_class_route_annotation:
-                    value = self._annotation_value(annotation)
+                    value = self._route_value(annotation)
                     if value:
                         class_path = value
                         break
@@ -154,6 +183,13 @@ class JavaWebAdapter(JavaFrameworkAdapter):
             auth_required = bool(annotation_names & self._AUTH_ANNOTATIONS) and not permit_all
             accepts_user_input = bool(method.parameters) or any(
                 name in annotation_names for name in {"RequestBody", "RequestParam", "PathVariable"}
+            )
+            http_request = build_http_request(
+                method,
+                result,
+                framework=framework,
+                annotation_name=self._annotation_name,
+                annotation_value=self._annotation_value,
             )
             relationships = [
                 RelationshipHint(
@@ -183,6 +219,7 @@ class JavaWebAdapter(JavaFrameworkAdapter):
                         "no_auth_required": permit_all,
                         "accepts_user_input": accepts_user_input,
                         "parameters": list(method.parameters),
+                        "http_request": http_request.model_dump(mode="json"),
                     },
                     file_path=file_path,
                     line=method.line,

@@ -523,6 +523,8 @@ redteam:
 #   stats_interval: 5                # seconds between progress-stats log lines
 #   fail_on: high                    # none|info|low|medium|high|critical (default: high)
 #   format: text                     # text | json | markdown | sarif (default: text)
+#                                    # or a list, e.g. [markdown, json]: every format from one
+#                                    # scan, with output as the path stem
 #   nuclei_binary: nuclei            # executable name or path (default: nuclei)
 #   templates_dir: ./nuclei-templates    # trusted custom-template dir (see below)
 #   nuclei_secret_file: ./secrets.yaml   # native Nuclei Secret File (alt. to target.auth)
@@ -580,6 +582,38 @@ redteam:
 #   openapi_spec: ./openapi.json
 #   use_live_openapi: true
 #   use_sbom_endpoints: true
+#
+#   # Bounds how much of the discovered request inventory active DAST
+#   # (allow_active_fuzzing) actually fuzzes. prioritized (default) sends a
+#   # deterministic, family-diverse subset under the budgets below; all
+#   # bypasses scoring but keeps every hard operation/input cap and existing
+#   # scope/rate/timeout control. The complete inventory is always preserved
+#   # for coverage reporting regardless of this setting. See
+#   # documentation/developer-specs/dast-endpoint-prioritization.md.
+#   dast_selection: prioritized      # prioritized | all (default: prioritized)
+#   max_dast_operations: 50          # 1-200 (default: 50)
+#   max_dast_input_points: 80        # 1-400 (default: 80)
+#   max_dast_operations_per_family: 3  # 1-20 (default: 3)
+#   dast_include_paths: []           # same-scope path globs always selected, e.g. "/admin/*"
+#   dast_exclude_paths: []           # same-scope path globs dropped before scoring
+#
+#   # Scan resilience. Nuclei skips a host for the rest of a pass after
+#   # max_host_errors connection errors; a slow target that bursts timeouts
+#   # would otherwise lose most of the template corpus silently (reported as
+#   # an incomplete pass). skip_unresponsive_hosts: false disables skipping.
+#   max_host_errors: 30              # 1-100 (default: 30)
+#   skip_unresponsive_hosts: true
+#   # Probe each target with a few GETs first and halve rate/concurrency
+#   # (raising request_timeout) when it is slow or failing. CLI default: true.
+#   adaptive_throttle: true
+#   # Nuclei DAST tuning: responses per parameter before an uninteresting
+#   # parameter is skipped, and payload volume.
+#   fuzz_param_frequency: 10         # 1-100 (default: 10)
+#   fuzz_aggression: low             # low | medium | high
+#   # Baseline control: one payload-free GET per signature-only finding;
+#   # signatures already present without a payload are downgraded to info.
+#   # Needs allow_active_fuzzing. CLI default: true.
+#   verify_findings: true
 
 # ─── Static analysis ──────────────────────────────────────────────────────────
 analyze:

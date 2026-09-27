@@ -18,6 +18,7 @@ import ast
 import re
 from typing import Any
 
+from ...models import HttpParameterLocation
 from ...types import ComponentType
 from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
 
@@ -411,6 +412,185 @@ def _extract_security_auth_type(
     return None
 
 
+_PATH_PARAM_RE = re.compile(r"\{(\w+)\}")
+
+_FASTAPI_LOCATION_CALLS: dict[str, HttpParameterLocation] = {
+    "Path": "path",
+    "Query": "query",
+    "Header": "header",
+    "Cookie": "cookie",
+    "Body": "json",
+    "Form": "form",
+    "File": "multipart",
+}
+_SIMPLE_ANNOTATION_NAMES = {
+    "str",
+    "int",
+    "float",
+    "bool",
+    "UUID",
+    "datetime",
+    "date",
+    "time",
+    "Decimal",
+    "bytes",
+}
+_FASTAPI_INFRA_ANNOTATIONS = {
+    "Request",
+    "Response",
+    "BackgroundTasks",
+    "WebSocket",
+    "HTTPConnection",
+    "Session",
+}
+_DI_CALL_NAMES = {"Depends", "Security"}
+
+
+def _fastapi_type_hint(annotation: str) -> str:
+    base = annotation.split("[", 1)[0].strip()
+    if base in ("int",):
+        return "int"
+    if base in ("float", "Decimal"):
+        return "float"
+    if base == "bool":
+        return "bool"
+    if base in ("list", "List", "set", "Set", "tuple", "Tuple"):
+        return "list"
+    return "string"
+
+
+def _default_call(default: ast.expr | None) -> ast.Call | None:
+    return default if isinstance(default, ast.Call) else None
+
+
+def _alias_from_call(call: ast.Call) -> str | None:
+    for kw in call.keywords:
+        if kw.arg == "alias" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+            return kw.value.value
+    return None
+
+
+def _call_is_required(call: ast.Call) -> bool:
+    """``Query(...)``/``Body(...)`` (Ellipsis default) means required."""
+    if call.args:
+        first = call.args[0]
+        return isinstance(first, ast.Constant) and first.value is Ellipsis
+    for kw in call.keywords:
+        if kw.arg == "default":
+            return isinstance(kw.value, ast.Constant) and kw.value.value is Ellipsis
+    return False
+
+
+def _fastapi_http_request(
+    func_def: ast.FunctionDef | ast.AsyncFunctionDef,
+    method: str,
+    path: str | None,
+    req_schema: dict[str, str],
+    model_schemas: dict[str, dict[str, str]],
+    external_models: dict[str, dict[str, str]],
+) -> dict[str, Any]:
+    """Describe a FastAPI handler's request shape from its own signature.
+
+    FastAPI infers each parameter's wire location from its type and default:
+    a name matching a ``{path}`` template segment binds to the path; an
+    explicit ``Query()``/``Header()``/``Cookie()``/``Form()``/``File()``
+    default is authoritative; a Pydantic ``BaseModel`` parameter is the JSON
+    body (already captured via *req_schema*, not duplicated here); anything
+    else statically unclassifiable (a collection, an unannotated complex
+    type) is reported as an unresolved input rather than guessed.
+    """
+    path_param_names = set(_PATH_PARAM_RE.findall(path or ""))
+    parameters: dict[tuple[str, str], dict[str, Any]] = {}
+    unresolved = False
+
+    args = func_def.args
+    positional = [*args.posonlyargs, *args.args]
+    default_by_name: dict[str, ast.expr] = dict(
+        zip((arg.arg for arg in reversed(positional)), reversed(args.defaults))
+    )
+    default_by_name.update(
+        {
+            kwarg.arg: default
+            for kwarg, default in zip(args.kwonlyargs, args.kw_defaults)
+            if default is not None
+        }
+    )
+
+    def add(name: str, location: HttpParameterLocation, type_hint: str, required: bool) -> None:
+        key = (name, location)
+        if name and key not in parameters:
+            parameters[key] = {
+                "name": name,
+                "location": location,
+                "type_hint": type_hint,
+                "required": required,
+            }
+
+    for arg in (*positional, *args.kwonlyargs):
+        name = arg.arg
+        if name in ("self", "cls"):
+            continue
+        annotation = _annotation_str(arg.annotation) if arg.annotation else ""
+        base = annotation.split("[", 1)[0].strip()
+        if base in _FASTAPI_INFRA_ANNOTATIONS:
+            continue
+        if base in model_schemas or base in external_models:
+            continue  # covered via req_schema (JSON body), not duplicated here
+
+        default = default_by_name.get(name)
+        call = _default_call(default)
+        call_name = _get_call_name(call) if call else None
+
+        if call_name in _FASTAPI_LOCATION_CALLS:
+            location: HttpParameterLocation = _FASTAPI_LOCATION_CALLS[call_name]
+            if "UploadFile" in annotation:
+                location = "multipart"
+            wire_name = (call and _alias_from_call(call)) or name
+            add(
+                wire_name,
+                location,
+                _fastapi_type_hint(annotation),
+                call is not None and _call_is_required(call),
+            )
+            continue
+
+        if call_name in _DI_CALL_NAMES:
+            continue  # dependency injection, not a request input
+
+        if "UploadFile" in annotation:
+            add(name, "multipart", "string", default is None)
+            continue
+
+        if name in path_param_names:
+            add(name, "path", _fastapi_type_hint(annotation), True)
+            continue
+
+        if base in _SIMPLE_ANNOTATION_NAMES or not annotation:
+            # FastAPI's own default binding: an unannotated or primitive-typed
+            # parameter not in the path template becomes a query parameter.
+            add(name, "query", _fastapi_type_hint(annotation), default is None)
+            continue
+
+        unresolved = True
+
+    locations = {parameter["location"] for parameter in parameters.values()}
+    content_types: list[str] = []
+    if "multipart" in locations:
+        content_types.append("multipart/form-data")
+    if "form" in locations:
+        content_types.append("application/x-www-form-urlencoded")
+    if req_schema or "json" in locations:
+        content_types.append("application/json")
+
+    method_upper = method.upper()
+    return {
+        "methods": [method_upper] if method_upper not in ("WS", "WEBSOCKET") else ["UNKNOWN"],
+        "parameters": list(parameters.values()),
+        "content_types": content_types,
+        "has_unresolved_inputs": unresolved,
+    }
+
+
 # ---------------------------------------------------------------------------
 # FrameworkAdapter subclass
 # ---------------------------------------------------------------------------
@@ -634,6 +814,10 @@ class FastAPIAdapter(FrameworkAdapter):
                     metadata["response_text_key"] = resp_key
                 if ctx_fields:
                     metadata["context_payload_fields"] = ctx_fields
+                if not is_websocket:
+                    metadata["http_request"] = _fastapi_http_request(
+                        node, method, composed_path, schema or {}, model_schemas, _effective_external
+                    )
 
                 # Convert snake_case function name to human-readable display name
                 _ep_display = func_name.replace("_", " ").title()
