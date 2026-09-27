@@ -1169,6 +1169,25 @@ class RedteamOrchestrator:
             self._checkpoint_payload(status=status, abort_reason=abort_reason, records=records, findings=findings),
         )
 
+    def build_partial_run_error(
+        self, exc: BaseException, *, findings: "list[Finding] | None" = None,
+    ) -> PartialRunError:
+        """Save a checkpoint from current progress and wrap ``exc`` as ``PartialRunError``.
+
+        Used both when the scan itself aborts mid-run (see :meth:`run`) and when a
+        post-scan step (e.g. remediation synthesis) fails after every scenario has
+        already completed — either way there's completed work worth a fast-resume
+        checkpoint instead of a bare crash (see issue #508).
+        """
+        self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__, findings=findings)
+        return PartialRunError(
+            exc,
+            partial_payload=self._checkpoint_payload(
+                status="aborted", abort_reason=type(exc).__name__, findings=findings,
+            ),
+            checkpoint_path=self._checkpoint_path,
+        )
+
     async def run(self) -> list[Finding]:
         """Run the full scan, salvaging partial progress into a checkpoint on failure.
 
@@ -1191,12 +1210,7 @@ class RedteamOrchestrator:
                 # Only worth a checkpoint (and a PartialRunError) when at least
                 # one scenario actually completed — an abort before that point
                 # (e.g. auth bootstrap failing) has nothing to resume from.
-                self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__)
-                raise PartialRunError(
-                    exc,
-                    partial_payload=self._checkpoint_payload(status="aborted", abort_reason=type(exc).__name__),
-                    checkpoint_path=self._checkpoint_path,
-                ) from exc
+                raise self.build_partial_run_error(exc) from exc
             raise
         else:
             if self._checkpoint is not None and self._checkpoint_path is not None:

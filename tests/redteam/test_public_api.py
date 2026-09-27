@@ -628,9 +628,19 @@ async def test_run_redteam_remediation_plan_empty_without_findings():
 @pytest.mark.asyncio
 async def test_run_redteam_remediation_synthesis_failure_propagates():
     """A broken remediation LLM client must fail the run loudly, not
-    silently produce a report with an empty remediation plan."""
+    silently produce a report with an empty remediation plan — and since
+    every scenario already completed, the failure surfaces as a
+    PartialRunError (checkpoint-backed, resumable) rather than a bare
+    RuntimeError, exactly like a mid-scan abort (see issue #508)."""
+    from nuguard.common.run_checkpoint import PartialRunError
+
     findings = [_finding("data_exfiltration")]
     mock_instance = _make_mock_orchestrator(findings)
+    mock_instance.build_partial_run_error = MagicMock(
+        side_effect=lambda exc, **kw: PartialRunError(
+            exc, partial_payload={"scenario_records": [], "findings": []}, checkpoint_path=None,
+        )
+    )
 
     with (
         patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls,
@@ -643,5 +653,7 @@ async def test_run_redteam_remediation_synthesis_failure_propagates():
         request = RedteamRunRequest(target_url="http://target")
         from types import SimpleNamespace
 
-        with pytest.raises(RuntimeError, match="boom"):
+        with pytest.raises(PartialRunError, match="boom") as exc_info:
             await run_redteam(request, sbom=SimpleNamespace(nodes=[], edges=[]))
+        assert isinstance(exc_info.value.cause, RuntimeError)
+        mock_instance.build_partial_run_error.assert_called_once()

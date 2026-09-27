@@ -142,6 +142,7 @@ class BehaviorAnalyzer:
         deprioritized_scenario_names: list[str] = []
         _dynamic_run_result = None  # captured for abort/inconclusive propagation
         _dynamic_scan_outcome = None
+        runner: "BehaviorRunner | None" = None  # checkpoint source for remediation-failure salvage
 
         if "dynamic" in mode or mode == "minimal":
             target_url = getattr(self._config, "target", None) or ""
@@ -512,12 +513,36 @@ class BehaviorAnalyzer:
 
         self._emit_progress({"kind": "phase", "phase": "remediation"})
         all_findings = static_findings + dynamic_findings
-        result.remediation_plan = await RemediationSynthesizer(
-            sbom=self._sbom,
-            policy=self._policy,
-            llm_client=self._remediation_llm,
-            intent_purpose=intent.app_purpose,
-        ).synthesize_findings_async(all_findings)
+        try:
+            result.remediation_plan = await RemediationSynthesizer(
+                sbom=self._sbom,
+                policy=self._policy,
+                llm_client=self._remediation_llm,
+                intent_purpose=intent.app_purpose,
+            ).synthesize_findings_async(all_findings)
+        except Exception as exc:
+            if runner is None:
+                raise  # no dynamic scenarios ran — nothing to checkpoint/resume from
+            # All scenarios already completed at this point — a failure in the
+            # post-hoc remediation-synthesis LLM call shouldn't throw away that
+            # work. Checkpoint it the same way a mid-scan abort would (see
+            # BehaviorRunner.run) so `--resume` can skip straight to
+            # remediation instead of rerunning every scenario (issue #508).
+            partial_exc = runner.build_partial_run_error(exc)
+            try:
+                partial_exc.partial_result = BehaviorAnalysisResult(
+                    intent=intent,
+                    static_findings=static_findings,
+                    dynamic_findings=dynamic_findings,
+                    coverage=coverage,
+                    scenario_results=scenario_results,
+                    scan_outcome="partial",
+                )
+            except Exception:
+                _log.exception(
+                    "Failed to build partial BehaviorAnalysisResult after remediation-synthesis failure"
+                )
+            raise partial_exc from exc
         backfill_finding_remediation(result.static_findings, result.remediation_plan)
         backfill_finding_remediation(result.dynamic_findings, result.remediation_plan)
 
