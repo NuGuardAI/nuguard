@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -58,6 +59,10 @@ class ProbeResult:
     # a structured object (e.g. {"role": "user", "content": "..."}) rather than
     # a plain string. None means use a plain string (the default behaviour).
     value_template: "dict[str, object] | None" = field(default=None, compare=False)
+    # False when the probe never saw a chat-like response and returned a
+    # best-effort fallback (every shape 5xx'd or returned an error envelope).
+    # Callers must not persist an unconfirmed result as if it were verified.
+    confirmed: bool = field(default=True, compare=False)
 
     def __iter__(self):  # noqa: ANN204
         # Yield only the 3 positional fields so ``a, b, c = result`` still works.
@@ -516,6 +521,78 @@ def _extract_422_field_names(resp: "httpx.Response") -> list[str]:
         return []
 
 
+# Error-envelope text that means the request *shape* was accepted and the
+# app's own downstream dependency failed (LLM backend down, provider auth,
+# timeouts). A shape that gets this far is a better fallback than one the
+# app rejected outright.
+_BACKEND_ERROR_RE = re.compile(
+    r"econnrefused|econnreset|enotfound|cannot connect|connection (?:refused|reset|error)"
+    r"|retryerror|failed after \d+ attempts|timed? ?out|timeout|rate.?limit|quota"
+    r"|api[ _-]?key|unauthori[sz]ed|service unavailable|bad gateway|upstream|overloaded",
+    re.IGNORECASE,
+)
+# Error-envelope text that means the app rejected the payload shape itself.
+_SHAPE_REJECTED_RE = re.compile(
+    r"must not be empty|cannot be empty|is required|required field|field required|missing"
+    r"|invalid (?:prompt|input|request|body|payload)|must be (?:a|an) |expected (?:a|an) "
+    r"|is not (?:a|an) |undefined|not iterable|cannot read propert",
+    re.IGNORECASE,
+)
+# Field names an app names in its own validation error ("`messages` must not
+# be empty", "missing field: query") — used to try that key next.
+_ERROR_FIELD_RES: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"[`'\"]?([A-Za-z_][A-Za-z0-9_]{1,40})[`'\"]?\s+(?:must not be empty|cannot be empty"
+        r"|is required|is missing|must be provided|field required)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"missing (?:required )?(?:field|parameter|property|key)s?\s*[:=]?\s*[`'\"]?([A-Za-z_][A-Za-z0-9_]{1,40})",
+        re.IGNORECASE,
+    ),
+)
+_ERROR_FIELD_STOPWORDS = frozenset({"prompt", "input", "request", "body", "value", "field", "it", "this"})
+
+
+def _error_envelope_text(data: dict) -> str:
+    """Flatten an error envelope's values into one searchable string."""
+    return " ".join(str(v) for v in data.values() if v is not None)
+
+
+def _classify_error_envelope(data: dict) -> str:
+    """Classify an error envelope as ``backend_error``, ``shape_rejected`` or ``unknown``.
+
+    Backend failures are checked first: an app can only surface a downstream
+    connection/provider error once it has accepted the request shape.
+    """
+    text = _error_envelope_text(data)
+    if _BACKEND_ERROR_RE.search(text):
+        return "backend_error"
+    if _SHAPE_REJECTED_RE.search(text):
+        return "shape_rejected"
+    return "unknown"
+
+
+# Higher is a better fallback candidate when no shape produced a chat response.
+_ERROR_ENVELOPE_RANK = {"backend_error": 2, "unknown": 1, "shape_rejected": 0}
+
+
+def _error_field_hints(data: dict) -> list[str]:
+    """Return request field names an error envelope says are missing or empty."""
+    text = _error_envelope_text(data)
+    hints: list[str] = []
+    for pattern in _ERROR_FIELD_RES:
+        for match in pattern.finditer(text):
+            name = match.group(1)
+            if (
+                name.lower() not in _ERROR_FIELD_STOPWORDS
+                and normalize_payload_key(name) not in RUNTIME_NON_CHAT_KEYS
+                and name not in hints
+            ):
+                hints.append(name)
+    return hints
+
+
 async def _blind_probe(
     client: "httpx.AsyncClient",
     paths: list[str],
@@ -529,12 +606,16 @@ async def _blind_probe(
     """Fallback: try each path with each payload shape until one responds usefully."""
     server_error_fallback: ProbeResult | None = None
     streaming_error_fallback: ProbeResult | None = None
+    streaming_error_rank = -1
     base = str(client.base_url).rstrip("/")
 
     for path in paths:
         _log.info("endpoint_detection: trying %s%s", base, path)
         tried_keys: set[str] = set()  # track all keys tried for this path
-        for pay_key, pay_list in payload_shapes:
+        # Mutable per-path queue: field names an error envelope names as
+        # missing/empty are appended and tried after the configured shapes.
+        shapes = list(payload_shapes)
+        for pay_key, pay_list in shapes:
             tried_keys.add(pay_key)
             if pay_list and pay_key.strip().lower() in MESSAGE_HISTORY_KEYS:
                 value: object = [{"role": "user", "content": TEST_MESSAGE}]
@@ -557,10 +638,38 @@ async def _blind_probe(
                 _log.debug("endpoint_detection: %s — %d (not found/method not allowed)", path, status)
                 break  # try next path
 
+            if status in (401, 403):
+                # An auth rejection doesn't depend on the payload key — trying
+                # the remaining shapes on this path can't fix it. Move to the
+                # next candidate path instead of burning the rest of the sweep.
+                _log.debug("endpoint_detection: %s — %d (auth rejected)", path, status)
+                break
+
+            if status == 429:
+                # Target-wide condition, not a per-candidate one: getting
+                # rate-limited on one path means the rest are likely to hit
+                # the same quota. Stop probing entirely instead of continuing
+                # to hammer the target (issue #532).
+                from nuguard.common.errors import TargetRateLimitedError  # noqa: PLC0415
+
+                retry_after_raw = resp.headers.get("Retry-After")
+                retry_after: float | None = None
+                if retry_after_raw is not None:
+                    try:
+                        retry_after = float(retry_after_raw)
+                    except ValueError:
+                        retry_after = None
+                _log.warning("endpoint_detection: %s — 429 rate limited, aborting probe", path)
+                raise TargetRateLimitedError(
+                    f"Rate limited while probing {base}{path} (HTTP 429)",
+                    url=f"{base}{path}",
+                    retry_after=retry_after,
+                )
+
             if status >= 500:
                 _log.debug("endpoint_detection: %s — %d server error", path, status)
                 if server_error_fallback is None:
-                    server_error_fallback = ProbeResult(path, pay_key, pay_list)
+                    server_error_fallback = ProbeResult(path, pay_key, pay_list, confirmed=False)
                 continue  # try remaining shapes — correct key may still succeed
 
             if status < 300:
@@ -568,33 +677,49 @@ async def _blind_probe(
                     data = resp.json()
                 except Exception:
                     data = _try_read_first_streaming_json(resp) or {}
+                # A parsed body that is *only* an error envelope (e.g. a streaming
+                # LLM backend's "messages must not be empty"/"invalid prompt" error
+                # for the wrong payload shape) means the app logic rejected or
+                # failed this request even though transport-level status and
+                # content-type look fine. Never accept it as chat — not even via
+                # the LLM confirm, which can mistake an "LLM error: ..." string
+                # for a chat reply.
+                is_error_envelope = (
+                    isinstance(data, dict)
+                    and bool(data)
+                    and set(data.keys()) <= {"error", "detail", "message", "code", "status"}
+                )
                 chat_like = _looks_like_chat_response(data, known_response_key)
-                if llm is not None and isinstance(data, dict) and data:
+                if llm is not None and isinstance(data, dict) and data and not is_error_envelope:
                     # LLM re-checks ambiguous ≥2-key matches and catches non-standard response keys
                     if not chat_like or not _has_known_chat_key(data, known_response_key):
                         chat_like = await _llm_confirms_chat_response(data, llm)
                 if chat_like:
                     _log.info("endpoint_detection: selected %s (key=%r, status=%d)", path, pay_key, status)
                     return ProbeResult(path, pay_key, pay_list)
-                # A parsed body that is *only* an error envelope (e.g. a streaming
-                # LLM backend's "messages must not be empty"/"invalid prompt" error
-                # for the wrong payload shape) means this shape was rejected by the
-                # app logic even though transport-level status/content-type look
-                # fine. Don't accept it — keep trying other shapes, but remember it
-                # as a last-resort fallback in case every shape errors out.
-                is_error_envelope = (
-                    isinstance(data, dict)
-                    and bool(data)
-                    and set(data.keys()) <= {"error", "detail", "message", "code", "status"}
-                )
+                if is_error_envelope and not known_payload_key:
+                    # The app may name the field it wanted ("`messages` must not
+                    # be empty") — queue it so it's tried on this path next.
+                    for hint_key in _error_field_hints(data):
+                        if hint_key not in tried_keys and all(k != hint_key for k, _ in shapes):
+                            shapes.append((hint_key, hint_key.lower() in MESSAGE_HISTORY_KEYS))
                 if _is_streaming_response(resp):
                     if is_error_envelope:
+                        # Keep trying other shapes, but remember the best one as
+                        # a last-resort fallback in case every shape errors out:
+                        # a shape the app accepted before a downstream failure
+                        # (LLM backend unreachable) beats one it rejected.
+                        kind = _classify_error_envelope(data)
                         _log.debug(
-                            "endpoint_detection: %s key=%r → streaming but error envelope %r, trying next shape",
-                            path, pay_key, data,
+                            "endpoint_detection: %s key=%r → streaming error envelope (%s) %r, trying next shape",
+                            path, pay_key, kind, data,
                         )
-                        if streaming_error_fallback is None:
-                            streaming_error_fallback = ProbeResult(path, pay_key, pay_list)
+                        rank = _ERROR_ENVELOPE_RANK[kind]
+                        if rank > streaming_error_rank:
+                            streaming_error_rank = rank
+                            streaming_error_fallback = ProbeResult(
+                                path, pay_key, pay_list, confirmed=False
+                            )
                         continue
                     # Streaming endpoint: accept even when we can't parse the body content
                     _log.info("endpoint_detection: selected %s (streaming, key=%r)", path, pay_key)
@@ -642,13 +767,13 @@ async def _blind_probe(
                                 "endpoint_detection: 422-hint selected %s (key=%r, status=%d)",
                                 path, hint_key, hint_status,
                             )
-                            return ProbeResult(path, hint_key, False)
+                            return ProbeResult(path, hint_key, hint_key.lower() in MESSAGE_HISTORY_KEYS)
                     elif hint_status not in (404, 405) and hint_status < 500:
                         _log.info(
                             "endpoint_detection: 422-hint selected %s (key=%r, status=%d)",
                             path, hint_key, hint_status,
                         )
-                        return ProbeResult(path, hint_key, False)
+                        return ProbeResult(path, hint_key, hint_key.lower() in MESSAGE_HISTORY_KEYS)
 
     _log.warning("endpoint_detection: no chat-capable endpoint found after probing %d paths", len(paths))
     if server_error_fallback:
@@ -659,9 +784,17 @@ async def _blind_probe(
         return server_error_fallback
     if streaming_error_fallback:
         _log.info(
-            "endpoint_detection: selected %s as fallback (streaming error envelope every shape — payload_key=%r)",
-            streaming_error_fallback.path, streaming_error_fallback.key,
+            "endpoint_detection: selected %s as unconfirmed fallback (streaming error envelope every shape — "
+            "payload_key=%r list=%s)",
+            streaming_error_fallback.path, streaming_error_fallback.key, streaming_error_fallback.is_list,
         )
+        if streaming_error_rank == _ERROR_ENVELOPE_RANK["backend_error"]:
+            _log.warning(
+                "endpoint_detection: %s accepted payload_key=%r but the app reported a downstream "
+                "failure (e.g. its LLM backend is unreachable) — the target cannot answer until "
+                "that is fixed",
+                streaming_error_fallback.path, streaming_error_fallback.key,
+            )
         return streaming_error_fallback
     return None
 
@@ -797,9 +930,40 @@ def _looks_like_chat_response(data: object, response_key: str | None = None) -> 
     return False
 
 
+async def _verify_adk_list_apps(
+    target_url: str,
+    auth_headers: dict[str, str] | None,
+    timeout: float,
+) -> bool:
+    """Positively verify *target_url* speaks ADK's ``/list-apps`` contract.
+
+    Mirrors :meth:`~nuguard.redteam.target.framework_adapters.google_adk.
+    GoogleADKAdapter._verify_contract` — a bare 200 response with a JSON list
+    body (even empty) is the accepted signal; anything else (404, non-list
+    body, connection failure) means "not ADK". Never raises.
+    """
+    from nuguard.redteam.target.framework_adapters.google_adk import _LIST_APPS_PATH
+
+    base = target_url.rstrip("/")
+    headers = dict(auth_headers or {})
+    try:
+        async with httpx.AsyncClient(base_url=base, headers=headers, timeout=timeout) as client:
+            resp = await client.get(_LIST_APPS_PATH)
+    except Exception as exc:
+        _log.debug("endpoint_detection: ADK /list-apps verification request failed: %s", exc)
+        return False
+    if resp.status_code != 200:
+        return False
+    try:
+        body = resp.json()
+    except Exception:
+        return False
+    return isinstance(body, list)
+
+
 async def probe_chat_endpoints(
     target_url: str,
-    sbom: "AiSbomDocument",
+    sbom: "AiSbomDocument | None",
     auth_headers: dict[str, str] | None = None,
     timeout: float = 15.0,
     known_payload_key: str | None = None,
@@ -820,15 +984,29 @@ async def probe_chat_endpoints(
     When ``hint_path`` is provided (Option B), only that specific path is probed
     — detection discovers the payload key/list for a user-specified endpoint.
     When ``known_payload_key`` is supplied the detection pipeline is skipped and
-    the probe verifies paths with that key only.
+    the probe verifies paths with that key only. ``sbom=None`` skips all
+    SBOM-derived candidates and the ADK fast-path, probing only the generic
+    ``HTTP_ENDPOINT_FALLBACK_PATHS``/``WEBSOCKET_ENDPOINT_FALLBACK_PATHS`` list
+    (issue #532 — endpoint discovery must work without an SBOM).
     """
     paths = _sbom_post_paths(sbom)
     ws_paths = _sbom_websocket_paths(sbom)
 
     # ── ADK fast-path (framework shortcut — skip all detection) ──────────────
     # Google ADK uses a fixed RunAgentRequest protocol; the generic payload
-    # shapes would always 422. Return the well-known '/run' path immediately.
+    # shapes would always 422, so a plain probe loop can never confirm '/run'
+    # on its own. Issue #552: SBOM framework evidence alone is not enough to
+    # commit to this shortcut, though — a proxy app whose SBOM merely reports
+    # ADK usage internally must not have its own traffic redirected to '/run'
+    # with an unconsumed "__adk__" payload key (nothing downstream recognizes
+    # that marker unless a real GoogleADKAdapter is also attached, which is
+    # gated the same way in make_framework_adapter). Before taking the
+    # shortcut, live-verify the target actually exposes an ADK-shaped
+    # /list-apps response — the same positive-verification signal
+    # GoogleADKAdapter itself requires. A failed/absent check falls through
+    # to the normal generic detection loop below instead of guessing.
     from nuguard.redteam.target.framework_adapters.google_adk import (  # noqa: PLC0415
+        _LIST_APPS_PATH,
         ADK_FRAMEWORK_NAMES,
     )
     summary = getattr(sbom, "summary", None)
@@ -838,8 +1016,19 @@ async def probe_chat_endpoints(
         if isinstance(raw_frameworks, (list, tuple)):
             sbom_frameworks = [str(f).lower() for f in raw_frameworks if f]
     if ADK_FRAMEWORK_NAMES & set(sbom_frameworks) and not hint_path:
-        _log.info("endpoint_detection: Google ADK detected in SBOM — skipping detection, using /run")
-        return ProbeResult("/run", "__adk__", False)
+        if await _verify_adk_list_apps(target_url, auth_headers, timeout):
+            _log.info(
+                "endpoint_detection: Google ADK detected in SBOM and live-verified "
+                "via %s — skipping detection, using /run",
+                _LIST_APPS_PATH,
+            )
+            return ProbeResult("/run", "__adk__", False)
+        _log.info(
+            "endpoint_detection: SBOM reports Google ADK, but %s did not "
+            "confirm an ADK-shaped target — falling through to generic "
+            "detection instead of assuming /run",
+            _LIST_APPS_PATH,
+        )
 
     # Always append common fallback paths so detection has candidates even when
     # the SBOM has no API_ENDPOINT nodes.

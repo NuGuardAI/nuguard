@@ -807,6 +807,12 @@ class BehaviorRunner:
         self._auth_session: Any = None
         self._target_session_config: Any = None
         self._target_session_resolution_attempted = False
+        # Health report from the shared resolver (see _resolve_target_session_once),
+        # checked on every _build_client() call — not just the first — so a bad
+        # default-credential status is caught regardless of which public method
+        # (discover(), probe_tool_families(), run(), a standalone public_api call)
+        # happens to trigger resolution first. See _raise_if_default_credential_unusable.
+        self.health_report: Any = None
         self._coverage_mapping_diagnostics: dict[str, Any] = {}
         # Escalation-ladder state (behavior.escalate_on_refusal): component name
         # -> classified RefusalReason value (or "systemic_deflection"), populated
@@ -903,7 +909,7 @@ class BehaviorRunner:
                 cookie_file=getattr(auth, "cookie_file", ""),
             )
         try:
-            session_cfg, _health = await resolve_target_session(
+            session_cfg, health_report = await resolve_target_session(
                 target_url=getattr(self._config, "target", "") or "",
                 sbom=self._sbom,
                 auth_config=auth_config,
@@ -926,11 +932,52 @@ class BehaviorRunner:
         self._target_session_config = session_cfg
         self._auth_session = session_cfg.auth_session
         self._resolved_target_url = session_cfg.base_url
+        self.health_report = health_report
+
+    def _raise_if_default_credential_unusable(self) -> None:
+        """Raise if the shared resolver's health check found the default credential unusable.
+
+        Called on every ``_build_client()`` invocation, not gated by
+        ``_resolve_target_session_once``'s one-shot resolution flag. Resolution
+        itself only ever runs once (see that method), but the check here must
+        re-run every call: ``discover()`` and ``probe_tool_families()``
+        deliberately swallow a ``_build_client()`` failure as non-fatal, so if
+        this check only ran on the first call, whichever of those methods
+        happens to run first would silently absorb it and — because of the
+        one-shot flag — it would never be re-evaluated when ``run()`` later
+        calls ``_build_client()`` itself, the one caller that must not proceed
+        against a target it already knows can't authenticate or doesn't have
+        the configured route.
+        """
+        if self.health_report is None or not self.health_report.checks:
+            return
+        default_check = self.health_report.checks[0]
+        if default_check.status == "auth_failed":
+            from nuguard.common.errors import AuthError
+
+            raise AuthError(
+                f"Auth failed for identity '{default_check.identity}' "
+                f"(HTTP {default_check.http_status_code}): {default_check.error_detail}",
+                status_code=default_check.http_status_code or 0,
+                identity=default_check.identity,
+                detail=default_check.error_detail,
+            )
+        if default_check.status == "endpoint_not_found":
+            from nuguard.common.errors import TargetEndpointNotFoundError
+
+            raise TargetEndpointNotFoundError(
+                f"Endpoint not found for identity '{default_check.identity}' "
+                f"(HTTP {default_check.http_status_code}): {default_check.error_detail}",
+                url=default_check.endpoint,
+                http_status_code=default_check.http_status_code or 0,
+                detail=default_check.error_detail,
+            )
 
     async def _build_client(self) -> Any:
         """Build the TargetAppClient from config, with auth bootstrap and health check."""
         await self._resolve_target_session_once()
         if self._target_session_config is not None:
+            self._raise_if_default_credential_unusable()
             from nuguard.common.target_client_builder import build_target_app_client_from_session
 
             return build_target_app_client_from_session(
@@ -1032,11 +1079,25 @@ class BehaviorRunner:
                     identity=default_check.identity,
                     detail=default_check.error_detail,
                 )
+            if default_check and default_check.status == "endpoint_not_found":
+                from nuguard.common.errors import TargetEndpointNotFoundError
+
+                raise TargetEndpointNotFoundError(
+                    f"Endpoint not found for identity '{default_check.identity}' "
+                    f"(HTTP {default_check.http_status_code}): {default_check.error_detail}",
+                    url=default_check.endpoint,
+                    http_status_code=default_check.http_status_code or 0,
+                    detail=default_check.error_detail,
+                )
             bootstrap_headers = bootstrapper.session.headers()
             self._auth_session = bootstrapper.session
         except AuthError:
             raise
         except Exception as exc:
+            from nuguard.common.errors import TargetEndpointNotFoundError
+
+            if isinstance(exc, TargetEndpointNotFoundError):
+                raise
             _log.debug("_build_client: bootstrap skipped: %s", exc)
             bootstrap_headers = getattr(runtime, "initial_headers", {}) or {}
 
@@ -2165,6 +2226,8 @@ class BehaviorRunner:
             coverage_turns=coverage_turns_used,
             deviations=scenario_deviations,
             matched_topic=getattr(scenario, "matched_topic", None),
+            scoped_tools=list(getattr(scenario, "scoped_tools", None) or []),
+            scoped_agents=list(getattr(scenario, "scoped_agents", None) or []),
         )
 
     def _cached_discovery_profile(self) -> "DiscoveredProfile | None":
@@ -2415,6 +2478,21 @@ class BehaviorRunner:
             return
         self._checkpoint.save(self._checkpoint_path, self._checkpoint_payload(status=status, abort_reason=abort_reason))
 
+    def build_partial_run_error(self, exc: BaseException) -> PartialRunError:
+        """Save a checkpoint from current progress and wrap ``exc`` as ``PartialRunError``.
+
+        Used both when the run itself aborts mid-scan (see :meth:`run`) and when a
+        post-scan step (e.g. remediation synthesis) fails after every scenario has
+        already completed — either way there's completed work worth a fast-resume
+        checkpoint instead of a bare crash (see issue #508).
+        """
+        self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__)
+        return PartialRunError(
+            exc,
+            partial_payload=self._checkpoint_payload(status="aborted", abort_reason=type(exc).__name__),
+            checkpoint_path=self._checkpoint_path,
+        )
+
     async def run(
         self,
         scenarios: list[BehaviorScenario],
@@ -2438,12 +2516,7 @@ class BehaviorRunner:
                 # Only worth a checkpoint (and a PartialRunError) when at least
                 # one scenario actually completed — an abort before that point
                 # (e.g. client/auth bootstrap failing) has nothing to resume from.
-                self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__)
-                raise PartialRunError(
-                    exc,
-                    partial_payload=self._checkpoint_payload(status="aborted", abort_reason=type(exc).__name__),
-                    checkpoint_path=self._checkpoint_path,
-                ) from exc
+                raise self.build_partial_run_error(exc) from exc
             raise
         else:
             if self._checkpoint is not None and self._checkpoint_path is not None:
@@ -3228,6 +3301,7 @@ class BehaviorRunner:
         types that target those components).
         """
         from nuguard.behavior.models import BehaviorScenarioType
+        from nuguard.output.validation_report import scenario_status_from_score
 
         component_map: dict[str, BehaviorCoverage] = {}
         normalized_component_name: dict[str, str] = {}
@@ -3301,6 +3375,10 @@ class BehaviorRunner:
                         nroute = _endpoint_path_from_component_name(nname)
                         if nroute:
                             endpoint_norm_map[nroute] = nname
+                        # Independently-verified liveness (issue #555's sweep) — a
+                        # separate claim from scenario_outcome below; never merged.
+                        node_meta = getattr(node, "metadata", None)
+                        component_map[nname].endpoint_operational = getattr(node_meta, "operational", None)
 
         # Register config-provided aliases now that component_map is initialized.
         if isinstance(cfg_aliases, dict):
@@ -3339,6 +3417,12 @@ class BehaviorRunner:
             stype = sr.scenario_type
             # Endpoint coverage: mark endpoint node exercised when scenario ran
             if stype == ep_coverage_type:
+                # One ENDPOINT_COVERAGE scenario always targets exactly one endpoint
+                # (see scenarios.py's endpoint-coverage builder), so the scenario's
+                # own overall_score is a correctly-scoped outcome for that endpoint —
+                # reuses the same threshold as the report's Scenario Details section
+                # instead of inventing a new signal.
+                _ep_outcome = scenario_status_from_score(getattr(sr, "overall_score", 0.0) or 0.0)
                 for verdict_dict in sr.verdicts:
                     target = str(verdict_dict.get("target_component") or sr.scenario_name or "")
                     runtime_endpoint = str(verdict_dict.get("effective_endpoint") or "")
@@ -3365,11 +3449,37 @@ class BehaviorRunner:
                         resolved_name = fallback_name
                         confidence = "runtime_only_unmapped"
 
+                    # Route-mapping bookkeeping runs regardless of outcome — mapping
+                    # accuracy and "did we get a real response" are different questions.
                     cov = component_map[resolved_name]
-                    cov.exercised = True
                     cov.mapping_confidence = confidence
                     if resolved_route:
                         cov.mapped_from_endpoint = resolved_route
+
+                    # A transport-level failure (no response ever received) proves
+                    # nothing about the endpoint's own behavior — never claim it as
+                    # exercised for this verdict. Issue #562: this previously fell
+                    # through to exercised=True + exercised_within_policy=True.
+                    is_transport_failure = any(
+                        d.get("deviation_type") == "http_error"
+                        for d in (verdict_dict.get("deviations") or [])
+                        if isinstance(d, dict)
+                    )
+                    if is_transport_failure:
+                        continue
+
+                    first_exercise = not cov.exercised
+                    cov.exercised = True
+                    cov.scenario_outcome = _ep_outcome
+                    if first_exercise:
+                        cov.first_exercised_scenario = sr.scenario_name
+                        cov.first_exercised_turn = verdict_dict.get("turn")
+                        cov.first_exercised_request = str(
+                            verdict_dict.get("user_message") or verdict_dict.get("prompt") or ""
+                        )
+                        cov.first_exercised_response = str(
+                            verdict_dict.get("agent_response") or verdict_dict.get("response") or ""
+                        )
                     has_violation = any(
                         d.get("deviation_type") in ("policy_violation", "data_leak")
                         for d in (verdict_dict.get("deviations") or [])
@@ -3440,8 +3550,36 @@ class BehaviorRunner:
             norm = normalise_name(mention)
             return normalized_component_name.get(norm) or descriptive_alias_norm_map.get(norm)
 
+        # Coverage-dedicated scenario types whose job is to exercise one specific
+        # component — sr.overall_score is meaningful *for that component* only
+        # here. INTENT_HAPPY_PATH/GUARDRAIL_PROBE/DATA_DISCOVERY_PROBE/
+        # ENDPOINT_COVERAGE scenarios can also incidentally name an agent/tool in
+        # their response text, but their score measures something else entirely
+        # (e.g. did a guardrail hold) — attaching it to an incidental mention
+        # would be a new false claim, not a fix (issue #562 review).
+        _agent_tool_coverage_types = frozenset({
+            BehaviorScenarioType.AGENT_COVERAGE.value,
+            BehaviorScenarioType.COMPONENT_COVERAGE.value,
+            BehaviorScenarioType.GUIDED_COVERAGE.value,
+        })
+
         # Update from scenario results (agents/tools via mention detection)
         for sr in scenario_results:
+            _is_coverage_scenario = sr.scenario_type in _agent_tool_coverage_types
+            _sr_outcome = (
+                scenario_status_from_score(getattr(sr, "overall_score", 0.0) or 0.0)
+                if _is_coverage_scenario
+                else None
+            )
+            # A coverage-dedicated scenario can be responsible for more than one
+            # component (a COMPONENT_COVERAGE tool chain, or a GUIDED_COVERAGE
+            # multi-tool probe) — scoped_tools/scoped_agents is the scenario's own
+            # full membership set. target_component only ever names one of them
+            # (e.g. tool_names[0] of a chain), so it under-covers a multi-component
+            # scenario if used alone; it remains the fallback for the (currently
+            # unobserved) case where a coverage scenario sets neither scoped list.
+            _sr_scoped_agents = frozenset(getattr(sr, "scoped_agents", None) or [])
+            _sr_scoped_tools = frozenset(getattr(sr, "scoped_tools", None) or [])
             for verdict_dict in sr.verdicts:
                 agents = verdict_dict.get("agents_mentioned") or []
                 tools = verdict_dict.get("tools_mentioned") or []
@@ -3451,12 +3589,34 @@ class BehaviorRunner:
                     for d in deviations
                     if isinstance(d, dict)
                 )
+                # Only a component within this scenario's own declared scope may
+                # receive its outcome — a different component incidentally
+                # mentioned in the same coverage scenario's response is still
+                # "named", not "judged".
+                _verdict_target = verdict_dict.get("target_component") or ""
+
+                def _record_first_exercise(cov: BehaviorCoverage, first_exercise: bool) -> None:
+                    if not first_exercise:
+                        return
+                    cov.first_exercised_scenario = sr.scenario_name
+                    cov.first_exercised_turn = verdict_dict.get("turn")
+                    cov.first_exercised_request = str(
+                        verdict_dict.get("user_message") or verdict_dict.get("prompt") or ""
+                    )
+                    cov.first_exercised_response = str(
+                        verdict_dict.get("agent_response") or verdict_dict.get("response") or ""
+                    )
 
                 for a in agents:
                     key, confidence = _resolve_agent_or_tool_mention(a, "AGENT")
                     if key:
                         cov = component_map[key]
+                        first_exercise = not cov.exercised
                         cov.exercised = True
+                        _agent_in_scope = key in _sr_scoped_agents if _sr_scoped_agents else _verdict_target == key
+                        if _is_coverage_scenario and _agent_in_scope:
+                            cov.scenario_outcome = _sr_outcome
+                        _record_first_exercise(cov, first_exercise)
                         cov.mapping_confidence = cov.mapping_confidence or confidence
                         mapped_component_mentions.add(f"AGENT:{a}->{key}:{confidence}")
                         if a not in cov.evidence_mentions:
@@ -3486,7 +3646,12 @@ class BehaviorRunner:
                     key, confidence = _resolve_agent_or_tool_mention(t, "TOOL")
                     if key:
                         cov = component_map[key]
+                        first_exercise = not cov.exercised
                         cov.exercised = True
+                        _tool_in_scope = key in _sr_scoped_tools if _sr_scoped_tools else _verdict_target == key
+                        if _is_coverage_scenario and _tool_in_scope:
+                            cov.scenario_outcome = _sr_outcome
+                        _record_first_exercise(cov, first_exercise)
                         cov.mapping_confidence = cov.mapping_confidence or confidence
                         mapped_component_mentions.add(f"TOOL:{t}->{key}:{confidence}")
                         if t not in cov.evidence_mentions:

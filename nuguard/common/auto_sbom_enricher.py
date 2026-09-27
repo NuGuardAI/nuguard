@@ -849,6 +849,33 @@ def _existing_enrichment_cache_key(out_path: Path) -> str | None:
     return key if isinstance(key, str) else None
 
 
+def _clear_unconfirmed_probe_marker(path: str, sbom: AiSbomDocument, sbom_path: Path) -> Path:
+    """Drop a stale ``runtime_probe`` confirmation for *path*; never raises."""
+    out_path = _enriched_output_path(sbom_path)
+    cleared = False
+    for node in sbom.nodes:
+        if (
+            node.component_type != ComponentType.API_ENDPOINT
+            or node.metadata is None
+            or node.metadata.endpoint != path
+        ):
+            continue
+        extras = dict(node.metadata.extras or {})
+        if extras.get("source") == PROBE_SOURCE_RUNTIME_PROBE:
+            for stale_key in ("source", "confirmed_at", "probe_value_template"):
+                extras.pop(stale_key, None)
+            node.metadata.extras = extras
+            cleared = True
+    _log.info("probe_result_not_persisted: path=%s (unconfirmed fallback)", path)
+    if cleared:
+        try:
+            _write_enriched(sbom, out_path, cache_key=_existing_enrichment_cache_key(out_path))
+            _log.info("probe_result_cleared: stale runtime_probe marker removed for %s", path)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("probe_result_clear_failed: %s", exc)
+    return out_path
+
+
 def persist_probe_result_to_sbom(
     result: "ProbeResult",
     sbom: AiSbomDocument,
@@ -858,12 +885,32 @@ def persist_probe_result_to_sbom(
 
     Finds or creates a runtime_probe API_ENDPOINT node for result.path, sets
     chat_payload_key/list/value_template, then writes to the enriched artifact.
+    Only one node is ever marked as the confirmed chat endpoint at a time:
+    any *other* API_ENDPOINT node previously carrying the ``runtime_probe``
+    marker has it cleared, so a later run's confirmed-endpoint lookup (see
+    ``nuguard.common.endpoint_detection.sbom.find_confirmed_chat_endpoint``)
+    can never find two live candidates after the real endpoint moves.
+
+    Mutates *sbom* in place (does not copy) — callers keep using the same
+    live object (e.g. ``self._sbom``) for the rest of the run, so a later
+    persistence call for a different concern (liveness, discovery profile,
+    capability discovery) re-serializes this confirmation too, instead of
+    silently overwriting it with a stale pre-probe copy.
     Never raises — failures are logged and the original SBOM is unchanged.
+
+    An unconfirmed result (``result.confirmed is False`` — a best-effort
+    fallback after every probed shape errored) is never persisted as a
+    confirmation. Instead any stale ``runtime_probe`` marker on that path is
+    cleared, so a key saved by an earlier bad run can't keep poisoning
+    later ones.
     """
-    updated = sbom.model_copy(deep=True)
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    if not getattr(result, "confirmed", True):
+        return _clear_unconfirmed_probe_marker(result.path, sbom, sbom_path)
 
     target_node: Node | None = None
-    for node in updated.nodes:
+    for node in sbom.nodes:
         if (
             node.component_type == ComponentType.API_ENDPOINT
             and node.metadata is not None
@@ -885,12 +932,26 @@ def persist_probe_result_to_sbom(
             ),
             evidence=[],
         )
-        updated.nodes.append(target_node)
+        sbom.nodes.append(target_node)
+
+    # Clear any stale confirmation on other nodes first, so at most one node
+    # ever carries source=runtime_probe (see docstring above).
+    for node in sbom.nodes:
+        if node is target_node or node.metadata is None:
+            continue
+        other_extras = node.metadata.extras or {}
+        if other_extras.get("source") == PROBE_SOURCE_RUNTIME_PROBE:
+            stale_extras = dict(other_extras)
+            stale_extras.pop("source", None)
+            stale_extras.pop("confirmed_at", None)
+            stale_extras.pop("probe_value_template", None)
+            node.metadata.extras = stale_extras
 
     target_node.metadata.chat_payload_key = result.key
     target_node.metadata.chat_payload_list = result.is_list
     extras: ProbeExtras = cast(ProbeExtras, dict(target_node.metadata.extras or {}))
     extras["source"] = PROBE_SOURCE_RUNTIME_PROBE
+    extras["confirmed_at"] = datetime.now(timezone.utc).isoformat()
     if result.value_template is not None:
         extras["probe_value_template"] = result.value_template
     else:
@@ -899,7 +960,7 @@ def persist_probe_result_to_sbom(
 
     out_path = _enriched_output_path(sbom_path)
     try:
-        _write_enriched(updated, out_path, cache_key=_existing_enrichment_cache_key(out_path))
+        _write_enriched(sbom, out_path, cache_key=_existing_enrichment_cache_key(out_path))
         _log.info("probe_result_persisted: path=%s artifact=%s", result.path, out_path)
     except Exception as exc:  # noqa: BLE001
         _log.warning("probe_result_persist_failed: %s", exc)

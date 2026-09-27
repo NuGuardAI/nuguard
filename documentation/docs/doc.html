@@ -407,6 +407,7 @@
                 <div class="sidebar-nav">
                     <ul>
                         <li><a href="doc.html?page=quick-start" data-page="quick-start">Getting Started</a></li>
+                        <li><a href="doc.html?page=supported-technologies" data-page="supported-technologies">Supported Technologies</a></li>
                         <li><a href="doc.html?page=sbom-schema" data-page="sbom-schema">AI SBOM Schema</a></li>
                         <li><a href="doc.html?page=cli-reference" data-page="cli-reference">CLI Reference</a></li>
                         <li><a href="doc.html?page=library-reference" data-page="library-reference">Python Library Reference</a></li>
@@ -416,10 +417,13 @@
                         <li><a href="doc.html?page=behavior-scenario-catalog" data-page="behavior-scenario-catalog">Behavior Scenario Catalog</a></li>
                         <li><a href="doc.html?page=redteam-guide" data-page="redteam-guide">Red Team Guide</a></li>
                         <li><a href="doc.html?page=redteam-scenario-catalog" data-page="redteam-scenario-catalog">Red-Team Scenario Catalog</a></li>
-                        <li><a href="doc.html?page=plugin-guide" data-page="plugin-guide">Plugin Guide (Claude)</a></li>
+                        <li><a href="doc.html?page=cloud-pentesting" data-page="cloud-pentesting">Cloud Pentesting</a></li>
+                        <li><a href="doc.html?page=workflow-export-scanning" data-page="workflow-export-scanning">Workflow Export Scanning</a></li>
+                        <li><a href="doc.html?page=plugin-guide" data-page="plugin-guide">Plugin &amp; MCP Guide</a></li>
                         <li><a href="doc.html?page=example-openai-cs-agents"
                                 data-page="example-openai-cs-agents">Example: OpenAI CS Agents</a></li>
                         <li><a href="doc.html?page=troubleshooting" data-page="troubleshooting">Troubleshooting</a></li>
+                        <li><a href="doc.html?page=CHANGELOG" data-page="CHANGELOG">Changelog</a></li>
                     </ul>
                 </div>
             </div>
@@ -459,6 +463,8 @@
             // Page name → title map
             const PAGE_TITLES = {
                 'quick-start': 'Getting Started',
+                'ai-developer-guide': 'AI Developer Guide',
+                'supported-technologies': 'Supported Technologies',
                 'sbom-schema': 'AI SBOM Schema',
                 'cli-reference': 'CLI Reference',
                 'library-reference': 'Python Library Reference',
@@ -468,9 +474,12 @@
                 'behavior-scenario-catalog': 'Behavior Scenario Catalog',
                 'redteam-guide': 'Red Team Guide',
                 'redteam-scenario-catalog': 'Red-Team Scenario Catalog',
-                'plugin-guide': 'Plugin Guide (Claude)',
+                'cloud-pentesting': 'Cloud Pentesting',
+                'workflow-export-scanning': 'Workflow Export Scanning',
+                'plugin-guide': 'Plugin & MCP Guide',
                 'example-openai-cs-agents': 'Example: OpenAI CS Agents',
                 'troubleshooting': 'Troubleshooting',
+                'CHANGELOG': 'Documentation Changelog',
             };
 
             // Resolve page from ?page= param, default to quick-start

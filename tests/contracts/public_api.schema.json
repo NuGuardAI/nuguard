@@ -1526,6 +1526,78 @@
             ],
             "default": null,
             "title": "Refusal Reason"
+          },
+          "scenario_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scenario Outcome"
+          },
+          "endpoint_operational": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Endpoint Operational"
+          },
+          "first_exercised_scenario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Scenario"
+          },
+          "first_exercised_turn": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Turn"
+          },
+          "first_exercised_request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Request"
+          },
+          "first_exercised_response": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Response"
           }
         },
         "required": [
@@ -2223,6 +2295,20 @@
             ],
             "default": null,
             "title": "Matched Topic"
+          },
+          "scoped_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Tools",
+            "type": "array"
+          },
+          "scoped_agents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Agents",
+            "type": "array"
           }
         },
         "required": [
@@ -3266,6 +3352,78 @@
             ],
             "default": null,
             "title": "Refusal Reason"
+          },
+          "scenario_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scenario Outcome"
+          },
+          "endpoint_operational": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Endpoint Operational"
+          },
+          "first_exercised_scenario": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Scenario"
+          },
+          "first_exercised_turn": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Turn"
+          },
+          "first_exercised_request": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Request"
+          },
+          "first_exercised_response": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "First Exercised Response"
           }
         },
         "required": [
@@ -3764,6 +3922,20 @@
             ],
             "default": null,
             "title": "Matched Topic"
+          },
+          "scoped_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Tools",
+            "type": "array"
+          },
+          "scoped_agents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Agents",
+            "type": "array"
           }
         },
         "required": [
@@ -4805,6 +4977,7 @@
           "ok",
           "auth_failed",
           "target_unavailable",
+          "endpoint_not_found",
           "skipped"
         ],
         "title": "Status",
@@ -4849,6 +5022,18 @@
         ],
         "default": null,
         "title": "Error Detail"
+      },
+      "payload_hint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Payload Hint"
       }
     },
     "required": [
@@ -5115,6 +5300,7 @@
               "ok",
               "auth_failed",
               "target_unavailable",
+              "endpoint_not_found",
               "skipped"
             ],
             "title": "Status",
@@ -5159,6 +5345,18 @@
             ],
             "default": null,
             "title": "Error Detail"
+          },
+          "payload_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Payload Hint"
           }
         },
         "required": [
@@ -5787,7 +5985,387 @@
     "title": "PentestAuthConfig",
     "type": "object"
   },
+  "pentest.PentestCoverageResult": {
+    "$defs": {
+      "PentestDastSelectionResult": {
+        "description": "Public, typed mirror of the internal DAST endpoint-prioritization outcome.\n\nAggregate selection counts only \u2014 never request values, bodies, headers,\ncookies, or credentials. See\n:mod:`nuguard.pentest.inventory.selector` and\n``documentation/developer-specs/dast-endpoint-prioritization.md``.",
+        "properties": {
+          "strategy": {
+            "enum": [
+              "prioritized",
+              "all"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
+          "score_version": {
+            "default": "v1",
+            "title": "Score Version",
+            "type": "string"
+          },
+          "operations_considered": {
+            "default": 0,
+            "title": "Operations Considered",
+            "type": "integer"
+          },
+          "operations_eligible": {
+            "default": 0,
+            "title": "Operations Eligible",
+            "type": "integer"
+          },
+          "operations_selected": {
+            "default": 0,
+            "title": "Operations Selected",
+            "type": "integer"
+          },
+          "operations_omitted_by_budget": {
+            "default": 0,
+            "title": "Operations Omitted By Budget",
+            "type": "integer"
+          },
+          "operations_excluded_no_inputs": {
+            "default": 0,
+            "title": "Operations Excluded No Inputs",
+            "type": "integer"
+          },
+          "input_points_considered": {
+            "default": 0,
+            "title": "Input Points Considered",
+            "type": "integer"
+          },
+          "input_points_selected": {
+            "default": 0,
+            "title": "Input Points Selected",
+            "type": "integer"
+          },
+          "families_considered": {
+            "default": 0,
+            "title": "Families Considered",
+            "type": "integer"
+          },
+          "families_selected": {
+            "default": 0,
+            "title": "Families Selected",
+            "type": "integer"
+          },
+          "families_omitted": {
+            "default": 0,
+            "title": "Families Omitted",
+            "type": "integer"
+          },
+          "include_overrun": {
+            "default": false,
+            "title": "Include Overrun",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "strategy"
+        ],
+        "title": "PentestDastSelectionResult",
+        "type": "object"
+      }
+    },
+    "description": "Public, typed mirror of :class:`nuguard.pentest.coverage.PentestCoverageResult`.\n\nDescribes structural/runtime scan coverage \u2014 whether NuGuard discovered\ninput-bearing operations, and whether every configured pass actually\ncompleted \u2014 so a zero-finding result can be told apart from a scan that\nnever had enough real request surface to be meaningful. See\n:mod:`nuguard.pentest.coverage` for the status thresholds.",
+    "properties": {
+      "status": {
+        "enum": [
+          "sufficient",
+          "degraded",
+          "insufficient"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "operations_discovered": {
+        "default": 0,
+        "title": "Operations Discovered",
+        "type": "integer"
+      },
+      "operations_with_inputs": {
+        "default": 0,
+        "title": "Operations With Inputs",
+        "type": "integer"
+      },
+      "dast_targets_total": {
+        "default": 0,
+        "title": "Dast Targets Total",
+        "type": "integer"
+      },
+      "dast_targets_with_document": {
+        "default": 0,
+        "title": "Dast Targets With Document",
+        "type": "integer"
+      },
+      "passes_seen": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Passes Seen",
+        "type": "array"
+      },
+      "passes_with_errors": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Passes With Errors",
+        "type": "array"
+      },
+      "reasons": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Reasons",
+        "type": "array"
+      },
+      "dast_selection": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PentestDastSelectionResult"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "title": "PentestCoverageResult",
+    "type": "object"
+  },
+  "pentest.PentestDastSelectionResult": {
+    "description": "Public, typed mirror of the internal DAST endpoint-prioritization outcome.\n\nAggregate selection counts only \u2014 never request values, bodies, headers,\ncookies, or credentials. See\n:mod:`nuguard.pentest.inventory.selector` and\n``documentation/developer-specs/dast-endpoint-prioritization.md``.",
+    "properties": {
+      "strategy": {
+        "enum": [
+          "prioritized",
+          "all"
+        ],
+        "title": "Strategy",
+        "type": "string"
+      },
+      "score_version": {
+        "default": "v1",
+        "title": "Score Version",
+        "type": "string"
+      },
+      "operations_considered": {
+        "default": 0,
+        "title": "Operations Considered",
+        "type": "integer"
+      },
+      "operations_eligible": {
+        "default": 0,
+        "title": "Operations Eligible",
+        "type": "integer"
+      },
+      "operations_selected": {
+        "default": 0,
+        "title": "Operations Selected",
+        "type": "integer"
+      },
+      "operations_omitted_by_budget": {
+        "default": 0,
+        "title": "Operations Omitted By Budget",
+        "type": "integer"
+      },
+      "operations_excluded_no_inputs": {
+        "default": 0,
+        "title": "Operations Excluded No Inputs",
+        "type": "integer"
+      },
+      "input_points_considered": {
+        "default": 0,
+        "title": "Input Points Considered",
+        "type": "integer"
+      },
+      "input_points_selected": {
+        "default": 0,
+        "title": "Input Points Selected",
+        "type": "integer"
+      },
+      "families_considered": {
+        "default": 0,
+        "title": "Families Considered",
+        "type": "integer"
+      },
+      "families_selected": {
+        "default": 0,
+        "title": "Families Selected",
+        "type": "integer"
+      },
+      "families_omitted": {
+        "default": 0,
+        "title": "Families Omitted",
+        "type": "integer"
+      },
+      "include_overrun": {
+        "default": false,
+        "title": "Include Overrun",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "strategy"
+    ],
+    "title": "PentestDastSelectionResult",
+    "type": "object"
+  },
   "pentest.PentestExecutionResult": {
+    "$defs": {
+      "PentestCoverageResult": {
+        "description": "Public, typed mirror of :class:`nuguard.pentest.coverage.PentestCoverageResult`.\n\nDescribes structural/runtime scan coverage \u2014 whether NuGuard discovered\ninput-bearing operations, and whether every configured pass actually\ncompleted \u2014 so a zero-finding result can be told apart from a scan that\nnever had enough real request surface to be meaningful. See\n:mod:`nuguard.pentest.coverage` for the status thresholds.",
+        "properties": {
+          "status": {
+            "enum": [
+              "sufficient",
+              "degraded",
+              "insufficient"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "operations_discovered": {
+            "default": 0,
+            "title": "Operations Discovered",
+            "type": "integer"
+          },
+          "operations_with_inputs": {
+            "default": 0,
+            "title": "Operations With Inputs",
+            "type": "integer"
+          },
+          "dast_targets_total": {
+            "default": 0,
+            "title": "Dast Targets Total",
+            "type": "integer"
+          },
+          "dast_targets_with_document": {
+            "default": 0,
+            "title": "Dast Targets With Document",
+            "type": "integer"
+          },
+          "passes_seen": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Passes Seen",
+            "type": "array"
+          },
+          "passes_with_errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Passes With Errors",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "dast_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PentestDastSelectionResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "PentestCoverageResult",
+        "type": "object"
+      },
+      "PentestDastSelectionResult": {
+        "description": "Public, typed mirror of the internal DAST endpoint-prioritization outcome.\n\nAggregate selection counts only \u2014 never request values, bodies, headers,\ncookies, or credentials. See\n:mod:`nuguard.pentest.inventory.selector` and\n``documentation/developer-specs/dast-endpoint-prioritization.md``.",
+        "properties": {
+          "strategy": {
+            "enum": [
+              "prioritized",
+              "all"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
+          "score_version": {
+            "default": "v1",
+            "title": "Score Version",
+            "type": "string"
+          },
+          "operations_considered": {
+            "default": 0,
+            "title": "Operations Considered",
+            "type": "integer"
+          },
+          "operations_eligible": {
+            "default": 0,
+            "title": "Operations Eligible",
+            "type": "integer"
+          },
+          "operations_selected": {
+            "default": 0,
+            "title": "Operations Selected",
+            "type": "integer"
+          },
+          "operations_omitted_by_budget": {
+            "default": 0,
+            "title": "Operations Omitted By Budget",
+            "type": "integer"
+          },
+          "operations_excluded_no_inputs": {
+            "default": 0,
+            "title": "Operations Excluded No Inputs",
+            "type": "integer"
+          },
+          "input_points_considered": {
+            "default": 0,
+            "title": "Input Points Considered",
+            "type": "integer"
+          },
+          "input_points_selected": {
+            "default": 0,
+            "title": "Input Points Selected",
+            "type": "integer"
+          },
+          "families_considered": {
+            "default": 0,
+            "title": "Families Considered",
+            "type": "integer"
+          },
+          "families_selected": {
+            "default": 0,
+            "title": "Families Selected",
+            "type": "integer"
+          },
+          "families_omitted": {
+            "default": 0,
+            "title": "Families Omitted",
+            "type": "integer"
+          },
+          "include_overrun": {
+            "default": false,
+            "title": "Include Overrun",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "strategy"
+        ],
+        "title": "PentestDastSelectionResult",
+        "type": "object"
+      }
+    },
     "description": "Final result model returned by the streaming pentest API.",
     "properties": {
       "engine": {
@@ -5858,6 +6436,39 @@
         },
         "title": "Severity Counts",
         "type": "object"
+      },
+      "coverage": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PentestCoverageResult"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "outcome": {
+        "default": "completed",
+        "enum": [
+          "completed",
+          "completed_with_coverage_gaps",
+          "failed"
+        ],
+        "title": "Outcome",
+        "type": "string"
+      },
+      "risk_score": {
+        "default": 0.0,
+        "maximum": 100.0,
+        "minimum": 0.0,
+        "title": "Risk Score",
+        "type": "number"
+      },
+      "scan_id": {
+        "default": "",
+        "title": "Scan Id",
+        "type": "string"
       }
     },
     "required": [
@@ -6123,7 +6734,7 @@
       },
       "scan_timeout_seconds": {
         "default": 2700,
-        "maximum": 3600,
+        "maximum": 86400,
         "minimum": 10,
         "title": "Scan Timeout Seconds",
         "type": "integer"
@@ -6154,6 +6765,177 @@
         "default": true,
         "title": "Use Bundled Templates",
         "type": "boolean"
+      },
+      "openapi_spec": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Path to an OpenAPI 3.x document to drive the active-fuzzing DAST pass with real request shapes instead of bare target URLs. Takes priority over the target's own live spec and the SBOM-synthesized fallback.",
+        "title": "Openapi Spec"
+      },
+      "use_live_openapi": {
+        "default": true,
+        "description": "Probe the target itself for a live OpenAPI/Swagger document to drive DAST when openapi_spec is not given.",
+        "title": "Use Live Openapi",
+        "type": "boolean"
+      },
+      "verify_auth": {
+        "default": true,
+        "description": "Before scanning, compare identity-endpoint responses with and without the configured credential and warn when it changes nothing, i.e. the scan would effectively run unauthenticated.",
+        "title": "Verify Auth",
+        "type": "boolean"
+      },
+      "use_sbom_endpoints": {
+        "default": true,
+        "description": "Allow DAST's OpenAPI input to fall back to a spec synthesized from the caller-supplied SBOM's API endpoints when no live spec is found.",
+        "title": "Use Sbom Endpoints",
+        "type": "boolean"
+      },
+      "discover_requests": {
+        "default": false,
+        "description": "Bounded, same-scope, GET-only discovery (sitemap.xml, links, forms, static JS) contributing a 'crawl' source to the request inventory alongside live/SBOM evidence. Opt-in: sends its own extra GET requests.",
+        "title": "Discover Requests",
+        "type": "boolean"
+      },
+      "max_discovery_urls": {
+        "default": 200,
+        "maximum": 2000,
+        "minimum": 1,
+        "title": "Max Discovery Urls",
+        "type": "integer"
+      },
+      "max_crawl_depth": {
+        "default": 2,
+        "maximum": 10,
+        "minimum": 0,
+        "title": "Max Crawl Depth",
+        "type": "integer"
+      },
+      "discovery_timeout_seconds": {
+        "default": 30,
+        "maximum": 600,
+        "minimum": 5,
+        "title": "Discovery Timeout Seconds",
+        "type": "integer"
+      },
+      "max_parameter_candidates": {
+        "default": 10,
+        "description": "Bounded generic query-parameter mining for input-less discovered GET routes; only runs with allow_active_fuzzing.",
+        "maximum": 50,
+        "minimum": 0,
+        "title": "Max Parameter Candidates",
+        "type": "integer"
+      },
+      "fail_on_coverage": {
+        "default": "none",
+        "description": "Exit non-zero when scan coverage doesn't meet this bar, independent of whether any finding was produced \u2014 see nuguard.pentest.coverage.",
+        "enum": [
+          "none",
+          "insufficient",
+          "degraded"
+        ],
+        "title": "Fail On Coverage",
+        "type": "string"
+      },
+      "dast_selection": {
+        "default": "prioritized",
+        "description": "'prioritized' sends a bounded, family-diverse subset of the request inventory to active DAST; 'all' bypasses scoring but keeps every hard operation/input cap and existing scope/rate/timeout control \u2014 see nuguard.pentest.inventory.selector.",
+        "enum": [
+          "prioritized",
+          "all"
+        ],
+        "title": "Dast Selection",
+        "type": "string"
+      },
+      "max_dast_operations": {
+        "default": 50,
+        "maximum": 200,
+        "minimum": 1,
+        "title": "Max Dast Operations",
+        "type": "integer"
+      },
+      "max_dast_input_points": {
+        "default": 80,
+        "maximum": 400,
+        "minimum": 1,
+        "title": "Max Dast Input Points",
+        "type": "integer"
+      },
+      "max_dast_operations_per_family": {
+        "default": 3,
+        "maximum": 20,
+        "minimum": 1,
+        "title": "Max Dast Operations Per Family",
+        "type": "integer"
+      },
+      "max_host_errors": {
+        "default": 30,
+        "description": "Connection-level errors after which Nuclei skips a host for the rest of a pass (Nuclei -max-host-error).",
+        "maximum": 100,
+        "minimum": 1,
+        "title": "Max Host Errors",
+        "type": "integer"
+      },
+      "skip_unresponsive_hosts": {
+        "default": true,
+        "description": "False disables Nuclei's error-based host skipping (-no-mhe).",
+        "title": "Skip Unresponsive Hosts",
+        "type": "boolean"
+      },
+      "fuzz_param_frequency": {
+        "default": 10,
+        "description": "Uninteresting responses per parameter before Nuclei's DAST engine stops fuzzing it (-fuzz-param-frequency).",
+        "maximum": 100,
+        "minimum": 1,
+        "title": "Fuzz Param Frequency",
+        "type": "integer"
+      },
+      "fuzz_aggression": {
+        "default": "low",
+        "description": "Nuclei DAST payload volume (-fuzz-aggression).",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "title": "Fuzz Aggression",
+        "type": "string"
+      },
+      "verify_findings": {
+        "default": false,
+        "description": "Baseline-control replay: one payload-free GET per signature-only finding; matches already present without a payload are downgraded to info. Needs allow_active_fuzzing.",
+        "title": "Verify Findings",
+        "type": "boolean"
+      },
+      "adaptive_throttle": {
+        "default": false,
+        "description": "Probe each target with a few plain GETs before scanning and lower rate/concurrency (raising the request timeout) when it is slow or failing.",
+        "title": "Adaptive Throttle",
+        "type": "boolean"
+      },
+      "dast_include_paths": {
+        "description": "Same-scope path globs explicitly included in DAST selection.",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 50,
+        "title": "Dast Include Paths",
+        "type": "array"
+      },
+      "dast_exclude_paths": {
+        "description": "Same-scope path globs excluded from DAST selection before scoring.",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 50,
+        "title": "Dast Exclude Paths",
+        "type": "array"
       },
       "auth_config": {
         "anyOf": [
@@ -6187,6 +6969,157 @@
     "type": "object"
   },
   "pentest.PentestRunResult": {
+    "$defs": {
+      "PentestCoverageResult": {
+        "description": "Public, typed mirror of :class:`nuguard.pentest.coverage.PentestCoverageResult`.\n\nDescribes structural/runtime scan coverage \u2014 whether NuGuard discovered\ninput-bearing operations, and whether every configured pass actually\ncompleted \u2014 so a zero-finding result can be told apart from a scan that\nnever had enough real request surface to be meaningful. See\n:mod:`nuguard.pentest.coverage` for the status thresholds.",
+        "properties": {
+          "status": {
+            "enum": [
+              "sufficient",
+              "degraded",
+              "insufficient"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "operations_discovered": {
+            "default": 0,
+            "title": "Operations Discovered",
+            "type": "integer"
+          },
+          "operations_with_inputs": {
+            "default": 0,
+            "title": "Operations With Inputs",
+            "type": "integer"
+          },
+          "dast_targets_total": {
+            "default": 0,
+            "title": "Dast Targets Total",
+            "type": "integer"
+          },
+          "dast_targets_with_document": {
+            "default": 0,
+            "title": "Dast Targets With Document",
+            "type": "integer"
+          },
+          "passes_seen": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Passes Seen",
+            "type": "array"
+          },
+          "passes_with_errors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Passes With Errors",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "dast_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/PentestDastSelectionResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "PentestCoverageResult",
+        "type": "object"
+      },
+      "PentestDastSelectionResult": {
+        "description": "Public, typed mirror of the internal DAST endpoint-prioritization outcome.\n\nAggregate selection counts only \u2014 never request values, bodies, headers,\ncookies, or credentials. See\n:mod:`nuguard.pentest.inventory.selector` and\n``documentation/developer-specs/dast-endpoint-prioritization.md``.",
+        "properties": {
+          "strategy": {
+            "enum": [
+              "prioritized",
+              "all"
+            ],
+            "title": "Strategy",
+            "type": "string"
+          },
+          "score_version": {
+            "default": "v1",
+            "title": "Score Version",
+            "type": "string"
+          },
+          "operations_considered": {
+            "default": 0,
+            "title": "Operations Considered",
+            "type": "integer"
+          },
+          "operations_eligible": {
+            "default": 0,
+            "title": "Operations Eligible",
+            "type": "integer"
+          },
+          "operations_selected": {
+            "default": 0,
+            "title": "Operations Selected",
+            "type": "integer"
+          },
+          "operations_omitted_by_budget": {
+            "default": 0,
+            "title": "Operations Omitted By Budget",
+            "type": "integer"
+          },
+          "operations_excluded_no_inputs": {
+            "default": 0,
+            "title": "Operations Excluded No Inputs",
+            "type": "integer"
+          },
+          "input_points_considered": {
+            "default": 0,
+            "title": "Input Points Considered",
+            "type": "integer"
+          },
+          "input_points_selected": {
+            "default": 0,
+            "title": "Input Points Selected",
+            "type": "integer"
+          },
+          "families_considered": {
+            "default": 0,
+            "title": "Families Considered",
+            "type": "integer"
+          },
+          "families_selected": {
+            "default": 0,
+            "title": "Families Selected",
+            "type": "integer"
+          },
+          "families_omitted": {
+            "default": 0,
+            "title": "Families Omitted",
+            "type": "integer"
+          },
+          "include_overrun": {
+            "default": false,
+            "title": "Include Overrun",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "strategy"
+        ],
+        "title": "PentestDastSelectionResult",
+        "type": "object"
+      }
+    },
     "description": "Public, JSON-serializable result of a completed pentest run.",
     "properties": {
       "engine": {
@@ -6257,6 +7190,39 @@
         },
         "title": "Severity Counts",
         "type": "object"
+      },
+      "coverage": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/PentestCoverageResult"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "outcome": {
+        "default": "completed",
+        "enum": [
+          "completed",
+          "completed_with_coverage_gaps",
+          "failed"
+        ],
+        "title": "Outcome",
+        "type": "string"
+      },
+      "risk_score": {
+        "default": 0.0,
+        "maximum": 100.0,
+        "minimum": 0.0,
+        "title": "Risk Score",
+        "type": "number"
+      },
+      "scan_id": {
+        "default": "",
+        "title": "Scan Id",
+        "type": "string"
       }
     },
     "required": [
@@ -6602,6 +7568,7 @@
               "ok",
               "auth_failed",
               "target_unavailable",
+              "endpoint_not_found",
               "skipped"
             ],
             "title": "Status",
@@ -6644,6 +7611,16 @@
           "body_warning": {
             "default": "",
             "title": "Body Warning",
+            "type": "string"
+          },
+          "payload_hint": {
+            "default": "",
+            "title": "Payload Hint",
+            "type": "string"
+          },
+          "engagement_error": {
+            "default": "",
+            "title": "Engagement Error",
             "type": "string"
           },
           "checked_at": {
@@ -7454,6 +8431,7 @@
           "aborted_target_unavailable",
           "aborted_auth_failure",
           "aborted_endpoint_unreachable",
+          "aborted_target_not_engaged",
           "inconclusive_target_errors",
           "no_findings",
           "partial"
@@ -8067,6 +9045,16 @@
         "title": "Discovery Max Turns",
         "type": "integer"
       },
+      "require_engagement": {
+        "default": true,
+        "title": "Require Engagement",
+        "type": "boolean"
+      },
+      "engagement_error_threshold": {
+        "default": 5,
+        "title": "Engagement Error Threshold",
+        "type": "integer"
+      },
       "capability_discovery": {
         "default": true,
         "title": "Capability Discovery",
@@ -8184,6 +9172,7 @@
               "ok",
               "auth_failed",
               "target_unavailable",
+              "endpoint_not_found",
               "skipped"
             ],
             "title": "Status",
@@ -8226,6 +9215,16 @@
           "body_warning": {
             "default": "",
             "title": "Body Warning",
+            "type": "string"
+          },
+          "payload_hint": {
+            "default": "",
+            "title": "Payload Hint",
+            "type": "string"
+          },
+          "engagement_error": {
+            "default": "",
+            "title": "Engagement Error",
             "type": "string"
           },
           "checked_at": {
@@ -9036,6 +10035,7 @@
           "aborted_target_unavailable",
           "aborted_auth_failure",
           "aborted_endpoint_unreachable",
+          "aborted_target_not_engaged",
           "inconclusive_target_errors",
           "no_findings",
           "partial"
@@ -10347,6 +11347,84 @@
         "title": "Evidence",
         "type": "object"
       },
+      "HttpParameterMetadata": {
+        "description": "One named input point of an HTTP API_ENDPOINT, independent of language/framework.",
+        "properties": {
+          "name": {
+            "description": "Parameter name as sent on the wire (not the handler variable)",
+            "title": "Name",
+            "type": "string"
+          },
+          "location": {
+            "description": "Where the value is carried in the request",
+            "enum": [
+              "path",
+              "query",
+              "header",
+              "cookie",
+              "json",
+              "form",
+              "multipart"
+            ],
+            "title": "Location",
+            "type": "string"
+          },
+          "type_hint": {
+            "default": "string",
+            "description": "Best-effort source type, e.g. 'int'",
+            "title": "Type Hint",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "description": "True when the handler requires the input",
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "location"
+        ],
+        "title": "HttpParameterMetadata",
+        "type": "object"
+      },
+      "HttpRequestMetadata": {
+        "description": "Structured request shape for an HTTP API_ENDPOINT, populated by framework adapters.\n\nSource adapters own parsing of their language's handler signatures; consumers\nsuch as ``nuguard pentest`` read only this structure.",
+        "properties": {
+          "methods": {
+            "description": "Every HTTP method the route accepts; 'UNKNOWN' when not statically known",
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/$defs/HttpParameterMetadata"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "content_types": {
+            "description": "Request content types the handler accepts",
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Types",
+            "type": "array"
+          },
+          "has_unresolved_inputs": {
+            "default": false,
+            "description": "True when the handler accepts inputs whose names could not be resolved statically (e.g. a map of all query parameters)",
+            "title": "Has Unresolved Inputs",
+            "type": "boolean"
+          }
+        },
+        "title": "HttpRequestMetadata",
+        "type": "object"
+      },
       "InstrumentationDetail": {
         "description": "Observability and monitoring tooling configured for a component or application.",
         "properties": {
@@ -11354,6 +12432,18 @@
             "default": null,
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
+          },
+          "http_request": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HttpRequestMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Structured HTTP request shape (methods, named inputs, content types)"
           },
           "request_body_schema": {
             "additionalProperties": {
@@ -13446,6 +14536,84 @@
         "title": "Evidence",
         "type": "object"
       },
+      "HttpParameterMetadata": {
+        "description": "One named input point of an HTTP API_ENDPOINT, independent of language/framework.",
+        "properties": {
+          "name": {
+            "description": "Parameter name as sent on the wire (not the handler variable)",
+            "title": "Name",
+            "type": "string"
+          },
+          "location": {
+            "description": "Where the value is carried in the request",
+            "enum": [
+              "path",
+              "query",
+              "header",
+              "cookie",
+              "json",
+              "form",
+              "multipart"
+            ],
+            "title": "Location",
+            "type": "string"
+          },
+          "type_hint": {
+            "default": "string",
+            "description": "Best-effort source type, e.g. 'int'",
+            "title": "Type Hint",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "description": "True when the handler requires the input",
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "location"
+        ],
+        "title": "HttpParameterMetadata",
+        "type": "object"
+      },
+      "HttpRequestMetadata": {
+        "description": "Structured request shape for an HTTP API_ENDPOINT, populated by framework adapters.\n\nSource adapters own parsing of their language's handler signatures; consumers\nsuch as ``nuguard pentest`` read only this structure.",
+        "properties": {
+          "methods": {
+            "description": "Every HTTP method the route accepts; 'UNKNOWN' when not statically known",
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/$defs/HttpParameterMetadata"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "content_types": {
+            "description": "Request content types the handler accepts",
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Types",
+            "type": "array"
+          },
+          "has_unresolved_inputs": {
+            "default": false,
+            "description": "True when the handler accepts inputs whose names could not be resolved statically (e.g. a map of all query parameters)",
+            "title": "Has Unresolved Inputs",
+            "type": "boolean"
+          }
+        },
+        "title": "HttpRequestMetadata",
+        "type": "object"
+      },
       "InstrumentationDetail": {
         "description": "Observability and monitoring tooling configured for a component or application.",
         "properties": {
@@ -14453,6 +15621,18 @@
             "default": null,
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
+          },
+          "http_request": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HttpRequestMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Structured HTTP request shape (methods, named inputs, content types)"
           },
           "request_body_schema": {
             "additionalProperties": {
@@ -16760,6 +17940,84 @@
         "title": "Evidence",
         "type": "object"
       },
+      "HttpParameterMetadata": {
+        "description": "One named input point of an HTTP API_ENDPOINT, independent of language/framework.",
+        "properties": {
+          "name": {
+            "description": "Parameter name as sent on the wire (not the handler variable)",
+            "title": "Name",
+            "type": "string"
+          },
+          "location": {
+            "description": "Where the value is carried in the request",
+            "enum": [
+              "path",
+              "query",
+              "header",
+              "cookie",
+              "json",
+              "form",
+              "multipart"
+            ],
+            "title": "Location",
+            "type": "string"
+          },
+          "type_hint": {
+            "default": "string",
+            "description": "Best-effort source type, e.g. 'int'",
+            "title": "Type Hint",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "description": "True when the handler requires the input",
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "location"
+        ],
+        "title": "HttpParameterMetadata",
+        "type": "object"
+      },
+      "HttpRequestMetadata": {
+        "description": "Structured request shape for an HTTP API_ENDPOINT, populated by framework adapters.\n\nSource adapters own parsing of their language's handler signatures; consumers\nsuch as ``nuguard pentest`` read only this structure.",
+        "properties": {
+          "methods": {
+            "description": "Every HTTP method the route accepts; 'UNKNOWN' when not statically known",
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/$defs/HttpParameterMetadata"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "content_types": {
+            "description": "Request content types the handler accepts",
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Types",
+            "type": "array"
+          },
+          "has_unresolved_inputs": {
+            "default": false,
+            "description": "True when the handler accepts inputs whose names could not be resolved statically (e.g. a map of all query parameters)",
+            "title": "Has Unresolved Inputs",
+            "type": "boolean"
+          }
+        },
+        "title": "HttpRequestMetadata",
+        "type": "object"
+      },
       "InstrumentationDetail": {
         "description": "Observability and monitoring tooling configured for a component or application.",
         "properties": {
@@ -17767,6 +19025,18 @@
             "default": null,
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
+          },
+          "http_request": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HttpRequestMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Structured HTTP request shape (methods, named inputs, content types)"
           },
           "request_body_schema": {
             "additionalProperties": {
@@ -19767,6 +21037,84 @@
         "title": "Evidence",
         "type": "object"
       },
+      "HttpParameterMetadata": {
+        "description": "One named input point of an HTTP API_ENDPOINT, independent of language/framework.",
+        "properties": {
+          "name": {
+            "description": "Parameter name as sent on the wire (not the handler variable)",
+            "title": "Name",
+            "type": "string"
+          },
+          "location": {
+            "description": "Where the value is carried in the request",
+            "enum": [
+              "path",
+              "query",
+              "header",
+              "cookie",
+              "json",
+              "form",
+              "multipart"
+            ],
+            "title": "Location",
+            "type": "string"
+          },
+          "type_hint": {
+            "default": "string",
+            "description": "Best-effort source type, e.g. 'int'",
+            "title": "Type Hint",
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "description": "True when the handler requires the input",
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "location"
+        ],
+        "title": "HttpParameterMetadata",
+        "type": "object"
+      },
+      "HttpRequestMetadata": {
+        "description": "Structured request shape for an HTTP API_ENDPOINT, populated by framework adapters.\n\nSource adapters own parsing of their language's handler signatures; consumers\nsuch as ``nuguard pentest`` read only this structure.",
+        "properties": {
+          "methods": {
+            "description": "Every HTTP method the route accepts; 'UNKNOWN' when not statically known",
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/$defs/HttpParameterMetadata"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "content_types": {
+            "description": "Request content types the handler accepts",
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Types",
+            "type": "array"
+          },
+          "has_unresolved_inputs": {
+            "default": false,
+            "description": "True when the handler accepts inputs whose names could not be resolved statically (e.g. a map of all query parameters)",
+            "title": "Has Unresolved Inputs",
+            "type": "boolean"
+          }
+        },
+        "title": "HttpRequestMetadata",
+        "type": "object"
+      },
       "InstrumentationDetail": {
         "description": "Observability and monitoring tooling configured for a component or application.",
         "properties": {
@@ -20774,6 +22122,18 @@
             "default": null,
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
+          },
+          "http_request": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HttpRequestMetadata"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Structured HTTP request shape (methods, named inputs, content types)"
           },
           "request_body_schema": {
             "additionalProperties": {

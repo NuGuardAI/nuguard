@@ -82,6 +82,8 @@ async def bootstrap_auth_runtime(
     is_websocket: bool = False,
     ws_auth_message: dict[str, object] | None = None,
     config_path: "Path | None" = None,
+    payload_key: str = "message",
+    payload_list: bool = False,
 ) -> tuple[AuthBootstrapper, TargetHealthReport]:
     """Run shared auth bootstrap and return both bootstrapper and report.
 
@@ -103,6 +105,8 @@ async def bootstrap_auth_runtime(
         is_websocket=is_websocket,
         ws_auth_message=ws_auth_message,
         config_path=config_path,
+        payload_key=payload_key,
+        payload_list=payload_list,
     )
     report = await bootstrapper.run()
     return bootstrapper, report

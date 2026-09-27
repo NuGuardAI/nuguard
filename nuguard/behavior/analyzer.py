@@ -82,26 +82,17 @@ class BehaviorAnalyzer:
         already carries a runtime-probe-confirmed payload shape for *path* (from
         a prior behavior/redteam run persisted into the enriched SBOM).
 
-        Mirrors ``RedteamOrchestrator._chat_endpoint_confirmed`` so a
+        Thin wrapper around the shared
+        ``nuguard.common.endpoint_detection.sbom.find_confirmed_chat_endpoint``
+        (also used by ``RedteamOrchestrator`` and ``ValidateRunner``) so a
         previously-confirmed endpoint isn't re-probed by ``resolve_chat_endpoint``
         on every run.
         """
         if self._sbom is None:
             return None
-        from nuguard.common.endpoint_detection.constants import PROBE_SOURCE_RUNTIME_PROBE
-        from nuguard.sbom.types import ComponentType
+        from nuguard.common.endpoint_detection.sbom import find_confirmed_chat_endpoint
 
-        for node in self._sbom.nodes:
-            meta = node.metadata
-            if (
-                node.component_type == ComponentType.API_ENDPOINT
-                and meta is not None
-                and meta.endpoint == path
-                and meta.chat_payload_key is not None
-                and (meta.extras or {}).get("source") == PROBE_SOURCE_RUNTIME_PROBE
-            ):
-                return path, meta.chat_payload_key, bool(meta.chat_payload_list), meta.response_text_key
-        return None
+        return find_confirmed_chat_endpoint(self._sbom, expected_path=path)
 
     async def analyze(
         self,
@@ -151,6 +142,7 @@ class BehaviorAnalyzer:
         deprioritized_scenario_names: list[str] = []
         _dynamic_run_result = None  # captured for abort/inconclusive propagation
         _dynamic_scan_outcome = None
+        runner: "BehaviorRunner | None" = None  # checkpoint source for remediation-failure salvage
 
         if "dynamic" in mode or mode == "minimal":
             target_url = getattr(self._config, "target", None) or ""
@@ -203,23 +195,27 @@ class BehaviorAnalyzer:
                 _response_explicit = "chat_response_key" in configured_fields
 
                 # Skip resolve_chat_endpoint (and any live probing) entirely when
-                # the SBOM already has a runtime-probe-confirmed payload shape for
-                # the candidate endpoint and none of the payload fields were
-                # explicitly pinned by the user (an explicit value must still win
-                # over a stale SBOM record, same as resolve_chat_endpoint itself).
+                # the SBOM already has a runtime-probe-confirmed payload shape and
+                # none of the payload fields were explicitly pinned by the user
+                # (an explicit value must still win over a stale SBOM record,
+                # same as resolve_chat_endpoint itself). Scans every SBOM node —
+                # not just whatever keyword-ranking currently proposes — so a
+                # confirmed endpoint is found even when its path doesn't look
+                # chat-like (e.g. "/extract").
                 _confirmed = None
-                if not (_key_explicit or _list_explicit or _response_explicit):
-                    _candidate_path = (
+                if not (_key_explicit or _list_explicit or _response_explicit) and self._sbom is not None:
+                    _configured_path = (
                         getattr(self._config, "target_endpoint", "")
                         if "target_endpoint" in configured_fields
                         else ""
                     )
-                    if not _candidate_path and self._sbom is not None:
-                        from nuguard.common.endpoint_detection.sbom import discover_chat_config
+                    from nuguard.common.endpoint_detection.sbom import find_confirmed_chat_endpoint
 
-                        _candidate_path = discover_chat_config(self._sbom, chat_path=None)[0] or ""
-                    if _candidate_path:
-                        _confirmed = self._confirmed_endpoint_from_sbom(_candidate_path)
+                    _confirmed = find_confirmed_chat_endpoint(
+                        self._sbom,
+                        expected_path=_configured_path or None,
+                        ttl_seconds=getattr(self._config, "liveness_cache_ttl_seconds", None),
+                    )
 
                 if _confirmed is not None:
                     _c_path, _c_key, _c_list, _c_resp = _confirmed
@@ -383,17 +379,27 @@ class BehaviorAnalyzer:
                     # dynamic_findings is left empty here — a `--resume` run
                     # to completion recomputes the fully correct combined
                     # findings, this is only the crash-time snapshot.
-                    _partial_exc.partial_result = BehaviorAnalysisResult(
-                        intent=intent,
-                        static_findings=static_findings,
-                        dynamic_findings=[],
-                        coverage=[],
-                        scenario_results=[
-                            ScenarioResult(**r)
-                            for r in _partial_exc.partial_payload.get("scenario_results", [])
-                        ],
-                        scan_outcome="partial",
-                    )
+                    try:
+                        _partial_exc.partial_result = BehaviorAnalysisResult(
+                            intent=intent,
+                            static_findings=static_findings,
+                            dynamic_findings=[],
+                            coverage=[],
+                            scenario_results=[
+                                ScenarioResult(**r)
+                                for r in _partial_exc.partial_payload.get("scenario_results", [])
+                            ],
+                            scan_outcome="partial",
+                        )
+                    except Exception:
+                        # A secondary failure while assembling the salvage result
+                        # must not erase the PartialRunError itself — callers
+                        # still get exc.cause/checkpoint_path and can resume,
+                        # just without a ready-made partial_result (stays None,
+                        # its __init__ default).
+                        _log.exception(
+                            "Failed to build partial BehaviorAnalysisResult after PartialRunError"
+                        )
                     raise
                 _dynamic_run_result = run_result
                 _dynamic_scan_outcome = run_result.scan_outcome
@@ -507,12 +513,36 @@ class BehaviorAnalyzer:
 
         self._emit_progress({"kind": "phase", "phase": "remediation"})
         all_findings = static_findings + dynamic_findings
-        result.remediation_plan = await RemediationSynthesizer(
-            sbom=self._sbom,
-            policy=self._policy,
-            llm_client=self._remediation_llm,
-            intent_purpose=intent.app_purpose,
-        ).synthesize_findings_async(all_findings)
+        try:
+            result.remediation_plan = await RemediationSynthesizer(
+                sbom=self._sbom,
+                policy=self._policy,
+                llm_client=self._remediation_llm,
+                intent_purpose=intent.app_purpose,
+            ).synthesize_findings_async(all_findings)
+        except Exception as exc:
+            if runner is None:
+                raise  # no dynamic scenarios ran — nothing to checkpoint/resume from
+            # All scenarios already completed at this point — a failure in the
+            # post-hoc remediation-synthesis LLM call shouldn't throw away that
+            # work. Checkpoint it the same way a mid-scan abort would (see
+            # BehaviorRunner.run) so `--resume` can skip straight to
+            # remediation instead of rerunning every scenario (issue #508).
+            partial_exc = runner.build_partial_run_error(exc)
+            try:
+                partial_exc.partial_result = BehaviorAnalysisResult(
+                    intent=intent,
+                    static_findings=static_findings,
+                    dynamic_findings=dynamic_findings,
+                    coverage=coverage,
+                    scenario_results=scenario_results,
+                    scan_outcome="partial",
+                )
+            except Exception:
+                _log.exception(
+                    "Failed to build partial BehaviorAnalysisResult after remediation-synthesis failure"
+                )
+            raise partial_exc from exc
         backfill_finding_remediation(result.static_findings, result.remediation_plan)
         backfill_finding_remediation(result.dynamic_findings, result.remediation_plan)
 

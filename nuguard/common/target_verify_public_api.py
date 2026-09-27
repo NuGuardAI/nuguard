@@ -13,7 +13,6 @@ from nuguard.common.discovery import (
     TargetDiscoveryResult,
     run_discovery,
 )
-from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
 from nuguard.common.endpoint_detection.sbom import (
     discover_chat_candidates_from_sbom,
 )
@@ -31,6 +30,7 @@ TargetVerifyStatus = Literal[
     "ok",
     "auth_failed",
     "target_unavailable",
+    "endpoint_not_found",
     "skipped",
 ]
 
@@ -72,6 +72,10 @@ class TargetVerifyCheck(BaseModel):
     response_time_ms: float | None = None
     endpoint: str
     error_detail: str | None = None
+    # Set only for a 400/422 "ok" result — the endpoint is real but rejected
+    # the probe's minimal payload; may need chat_payload_extras or a
+    # different payload key. See CredentialCheckResult.payload_hint.
+    payload_hint: str | None = None
 
 
 class TargetVerifyResult(BaseModel):
@@ -175,7 +179,7 @@ def _merge_headers(
 
 def _check_from_health(check: CredentialCheckResult) -> TargetVerifyCheck:
     status = check.status
-    if status not in {"ok", "auth_failed", "target_unavailable", "skipped"}:
+    if status not in {"ok", "auth_failed", "target_unavailable", "endpoint_not_found", "skipped"}:
         status = "target_unavailable"
     return TargetVerifyCheck(
         identity=check.identity,
@@ -184,48 +188,7 @@ def _check_from_health(check: CredentialCheckResult) -> TargetVerifyCheck:
         response_time_ms=check.response_time_ms,
         endpoint=check.endpoint,
         error_detail=check.error_detail or None,
-    )
-
-
-async def _resolve_endpoint_plan(
-    *,
-    target_url: str,
-    sbom: "AiSbomDocument | None",
-    auth_headers: dict[str, str] | None,
-    chat_path: str | None,
-    chat_payload_key: str,
-    chat_payload_list: bool,
-    chat_response_key: str | None,
-    chat_payload_extras: dict[str, Any] | None,
-    chat_path_explicit: bool = False,
-    chat_payload_key_explicit: bool = False,
-    chat_payload_list_explicit: bool = False,
-    chat_response_key_explicit: bool = False,
-) -> tuple[str, str, bool, str | None, EndpointSource]:
-    if sbom is None:
-        if chat_path:
-            return chat_path, chat_payload_key, chat_payload_list, chat_response_key, "config"
-        return "/chat", chat_payload_key, chat_payload_list, chat_response_key, "default"
-
-    resolved = await resolve_chat_endpoint(
-        target_url=target_url,
-        sbom=sbom,
-        endpoint=chat_path if chat_path_explicit and chat_path else UNSET,
-        payload_key=chat_payload_key if chat_payload_key_explicit else UNSET,
-        payload_list=chat_payload_list if chat_payload_list_explicit else UNSET,
-        response_key=chat_response_key if chat_response_key_explicit else UNSET,
-        auth_headers=auth_headers,
-        probe_payload_extras=chat_payload_extras,
-    )
-    source = resolved.path_source.value
-    if source not in {"config", "sbom", "probe", "default"}:
-        source = "default"
-    return (
-        resolved.path or "/chat",
-        resolved.payload_key or chat_payload_key,
-        resolved.payload_list,
-        resolved.response_key,
-        source,  # type: ignore[return-value]
+        payload_hint=check.payload_hint or None,
     )
 
 

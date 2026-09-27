@@ -116,6 +116,42 @@ class ToolParameter(BaseModel):
     )
 
 
+HttpParameterLocation = Literal["path", "query", "header", "cookie", "json", "form", "multipart"]
+
+
+class HttpParameterMetadata(BaseModel):
+    """One named input point of an HTTP API_ENDPOINT, independent of language/framework."""
+
+    name: str = Field(description="Parameter name as sent on the wire (not the handler variable)")
+    location: HttpParameterLocation = Field(description="Where the value is carried in the request")
+    type_hint: str = Field(default="string", description="Best-effort source type, e.g. 'int'")
+    required: bool = Field(default=False, description="True when the handler requires the input")
+
+
+class HttpRequestMetadata(BaseModel):
+    """Structured request shape for an HTTP API_ENDPOINT, populated by framework adapters.
+
+    Source adapters own parsing of their language's handler signatures; consumers
+    such as ``nuguard pentest`` read only this structure.
+    """
+
+    methods: list[str] = Field(
+        default_factory=list,
+        description="Every HTTP method the route accepts; 'UNKNOWN' when not statically known",
+    )
+    parameters: list[HttpParameterMetadata] = Field(default_factory=list)
+    content_types: list[str] = Field(
+        default_factory=list, description="Request content types the handler accepts"
+    )
+    has_unresolved_inputs: bool = Field(
+        default=False,
+        description=(
+            "True when the handler accepts inputs whose names could not be resolved "
+            "statically (e.g. a map of all query parameters)"
+        ),
+    )
+
+
 class RateLimitDetail(BaseModel):
     """Structured rate limit configuration extracted from code or IaC."""
 
@@ -623,6 +659,10 @@ class NodeMetadata(BaseModel):
         ),
     )
     # Discovered request/response schema (populated by framework adapters)
+    http_request: HttpRequestMetadata | None = Field(
+        default=None,
+        description="Structured HTTP request shape (methods, named inputs, content types)",
+    )
     request_body_schema: dict[str, str] = Field(
         default_factory=dict,
         description="Pydantic/dataclass field map for the request body: {field_name: type_string}",

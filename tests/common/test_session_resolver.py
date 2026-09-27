@@ -4,7 +4,9 @@ from __future__ import annotations
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+import respx
 
 from nuguard.common.session_resolver import (
     _merge_login_response_extras,
@@ -14,6 +16,7 @@ from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
 
 _NS = uuid.NAMESPACE_URL
+TARGET = "http://app.test"
 
 
 def test_merge_login_response_extras_handles_no_session() -> None:
@@ -68,6 +71,65 @@ async def test_resolve_target_session_detects_websocket_from_sbom_before_bootstr
     _, kwargs = mock_bootstrap.call_args
     assert kwargs["is_websocket"] is True
     assert kwargs["endpoint"] == "/ws"
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_health_report_reflects_discovered_endpoint_not_stale_default() -> None:
+    # Issue #532: with no SBOM and no configured endpoint, step 4's bootstrap
+    # health check runs against the hardcoded "/chat" default before live
+    # probing (step 7) has a chance to discover the real, working endpoint.
+    # The returned health_report must reflect the endpoint that will actually
+    # be used — not a stale pre-discovery "/chat" 404 — or a working target
+    # would still be reported as failed verification.
+    respx.get(url__regex=r".*").mock(return_value=httpx.Response(404))
+    respx.post(f"{TARGET}/api/agent/chat").mock(
+        return_value=httpx.Response(200, json={"response": "hi"})
+    )
+    respx.post(url__regex=r".*").mock(return_value=httpx.Response(404))
+
+    session_cfg, health_report = await resolve_target_session(
+        target_url=TARGET,
+        sbom=None,
+        auth_config=None,
+        extra_headers={},
+        chat_path="",
+        chat_payload_key="message",
+        chat_payload_list=False,
+        chat_payload_extras={},
+        chat_response_key=None,
+    )
+
+    assert session_cfg.chat_path == "/api/agent/chat"
+    assert health_report.endpoint == "/api/agent/chat"
+    assert health_report.checks[0].status == "ok"
+    assert health_report.all_ok is True
+
+
+@pytest.mark.asyncio
+async def test_websocket_placeholder_endpoint_is_not_re_validated() -> None:
+    # Regression guard: the WS-handshake placeholder "/ws" (used deliberately
+    # for step 4's bootstrap regardless of the real SBOM-discovered WS path)
+    # must not trigger the step-7b re-validation added for the "/chat"
+    # default-fallback case above — bootstrap_auth_runtime must be called
+    # exactly once.
+    bootstrapper, health_report = _mock_bootstrapper()
+    with patch(
+        "nuguard.common.auth_runtime.bootstrap_auth_runtime",
+        new=AsyncMock(return_value=(bootstrapper, health_report)),
+    ) as mock_bootstrap:
+        await resolve_target_session(
+            target_url="http://app.test",
+            sbom=_ws_sbom(),
+            auth_config=None,
+            extra_headers={},
+            chat_path="",
+            chat_payload_key="message",
+            chat_payload_list=False,
+            chat_payload_extras={},
+            chat_response_key=None,
+        )
+    assert mock_bootstrap.call_count == 1
 
 
 @pytest.mark.asyncio

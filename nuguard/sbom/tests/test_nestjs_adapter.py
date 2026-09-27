@@ -368,3 +368,99 @@ export interface LoginResponseDto {
         by_path = {d.metadata["endpoint"]: d for d in dets}
         resp = by_path["/auth/login"].metadata["response_body_schema"]
         assert resp["tokens.accessToken"] == "string"
+
+
+class TestHttpRequestMetadata:
+    def test_maps_named_param_query_header_and_body(self) -> None:
+        source = """
+import { Controller, Get, Post, Param, Query, Headers, Body } from '@nestjs/common';
+
+class ChatDto {
+  message: string;
+}
+
+@Controller('items')
+export class ItemsController {
+  @Get(':id')
+  async item(@Param('id') id: string, @Query('page') page?: number, @Headers('x-trace') trace: string) {
+    return id;
+  }
+
+  @Post('chat')
+  async chat(@Body() dto: ChatDto) {
+    return dto.message;
+  }
+}
+"""
+        adapter = NestJSAdapter()
+        adapter.set_global_model_schemas({"ChatDto": {"message": "string"}})
+        detections = adapter.extract(source, "items.controller.ts", None)
+        endpoints = {
+            d.metadata["endpoint"]: d.metadata["http_request"]
+            for d in detections
+            if d.component_type == ComponentType.API_ENDPOINT
+        }
+
+        item_request = endpoints["/items/:id"]
+        params = {(p["name"], p["location"]): p for p in item_request["parameters"]}
+        assert params[("id", "path")]["required"] is True
+        assert params[("page", "query")] == {
+            "name": "page",
+            "location": "query",
+            "type_hint": "int",
+            "required": False,
+        }
+        assert params[("x-trace", "header")]["required"] is True
+        assert item_request["methods"] == ["GET"]
+
+        chat_request = endpoints["/items/chat"]
+        assert chat_request["parameters"] == []
+        assert chat_request["content_types"] == ["application/json"]
+
+    def test_uploaded_file_is_multipart(self) -> None:
+        source = """
+import { Controller, Post, UploadedFile } from '@nestjs/common';
+
+@Controller('items')
+export class ItemsController {
+  @Post('upload')
+  async upload(@UploadedFile() file) {
+    return file;
+  }
+}
+"""
+        adapter = NestJSAdapter()
+        endpoint = next(
+            d
+            for d in adapter.extract(source, "items.controller.ts", None)
+            if d.component_type == ComponentType.API_ENDPOINT
+        )
+        http_request = endpoint.metadata["http_request"]
+
+        assert http_request["parameters"] == [
+            {"name": "file", "location": "multipart", "type_hint": "string", "required": True}
+        ]
+        assert http_request["content_types"] == ["multipart/form-data"]
+
+    def test_bare_query_decorator_is_unresolved_not_guessed(self) -> None:
+        source = """
+import { Controller, Get, Query } from '@nestjs/common';
+
+@Controller('items')
+export class ItemsController {
+  @Get('search')
+  async search(@Query() filters) {
+    return filters;
+  }
+}
+"""
+        adapter = NestJSAdapter()
+        endpoint = next(
+            d
+            for d in adapter.extract(source, "items.controller.ts", None)
+            if d.component_type == ComponentType.API_ENDPOINT
+        )
+        http_request = endpoint.metadata["http_request"]
+
+        assert http_request["parameters"] == []
+        assert http_request["has_unresolved_inputs"] is True

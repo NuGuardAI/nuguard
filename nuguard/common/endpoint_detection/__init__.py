@@ -59,6 +59,10 @@ def __getattr__(name: str):
         from nuguard.common.endpoint_detection.resolver import resolve_chat_endpoint
 
         return resolve_chat_endpoint
+    if name == "find_confirmed_chat_endpoint":
+        from nuguard.common.endpoint_detection.sbom import find_confirmed_chat_endpoint
+
+        return find_confirmed_chat_endpoint
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -79,4 +83,5 @@ __all__ = [
     "validate_and_rotate",
     "detect_with_browser",
     "resolve_chat_endpoint",
+    "find_confirmed_chat_endpoint",
 ]

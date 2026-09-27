@@ -14,6 +14,13 @@ Scope: `validate`, `behavior`, and `redteam` endpoint resolution for target chat
 > are unchanged and still enforced by the new package. See
 > `imp_docs/endpoint_refactoring.md` for the full migration.
 
+> **Update (2026-09-21):** Endpoint resolution is now consistent across all four
+> commands (`validate`, `behavior`, `redteam`, `target verify`): when no endpoint
+> is explicitly configured, each command runs full SBOM ranking plus a live probe
+> across all candidate paths and selects the first one that responds as a real
+> chat endpoint. An explicitly configured endpoint (via `target.endpoint` /
+> `--target-endpoint` / CLI flag) is always used as-is and never overridden.
+
 ## Objective
 
 Ensure an explicit endpoint set by config or CLI always wins over SBOM-derived candidates.

@@ -4,12 +4,17 @@ client every other NuGuard command uses — not a redteam-specific fallback
 chain."""
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from nuguard.remediation.llm import resolve_remediation_llm_client
+
+_VULNERABLEAPP_CONFIG = (
+    Path(__file__).parents[1] / "apps" / "owasp-vulnerableapp" / "nuguard.yaml"
+)
 
 
 def _cfg(**overrides) -> SimpleNamespace:
@@ -29,6 +34,22 @@ def test_uses_standard_llm_config():
     mock_cls.assert_called_once_with(
         model="gemini/gemini-2.0-flash", api_key="general-key", api_base=None
     )
+
+
+def test_vulnerableapp_config_uses_its_explicit_model(monkeypatch: pytest.MonkeyPatch):
+    """The pentest workflow must not regress to NuGuard's built-in model."""
+    from nuguard.config import load_config
+
+    monkeypatch.setenv("AZURE_DEEPSEEK_MODEL_NAME", "fixture-deepseek")
+    monkeypatch.setenv("AZURE_DEEPSEEK_KEY", "fixture-key")
+    monkeypatch.setenv("AZURE_DEEPSEEK_ENDPOINT", "https://fixture.example")
+    cfg = load_config(_VULNERABLEAPP_CONFIG)
+
+    with patch("nuguard.common.llm_client.LLMClient") as mock_cls:
+        resolve_remediation_llm_client(cfg)
+
+    mock_cls.assert_called_once()
+    assert mock_cls.call_args.kwargs["model"] == "azure/fixture-deepseek"
 
 
 def test_ignores_redteam_specific_config_even_if_present():

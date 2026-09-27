@@ -196,6 +196,7 @@ def enrich(doc: AiSbomDocument) -> None:
     _enrich_tools(doc, tool_frameworks, framework_auth, privilege_node_ids, targets)
     _enrich_agents(doc, targets, sources_of_type, node_by_id)
     _enrich_login_token_key(doc)
+    _enrich_chat_payload_from_llm_calls(doc)
     _backfill_descriptions(doc)
     _enrich_instrumentation(doc)
     _enrich_testing(doc)
@@ -232,6 +233,71 @@ def _enrich_login_token_key(doc: AiSbomDocument) -> None:
             meta.login_token_response_key = token_key
             meta.extras["login_token_response_key_source"] = "static_dto"
         break
+
+
+# LLM SDK calls that take a chat-history array (Vercel AI SDK, OpenAI,
+# Anthropic). When the call site passes ``messages`` straight through, the
+# HTTP handler in front of it almost always receives the same array.
+_MESSAGES_LLM_CALL_RE = re.compile(
+    r"\b(?:streamText|generateText|streamObject|generateObject|streamUI"
+    r"|completions\.create|messages\.create|messages\.stream)\s*\(",
+)
+_MESSAGES_ARG_RE = re.compile(r"\bmessages\b")
+_CHAT_ENDPOINT_PATH_RE = re.compile(
+    r"(?:^|[/_-])(?:chat|chats|message|messages|conversation|conversations|completions?"
+    r"|assistant|agent|ask|converse)(?:$|[/_-])",
+    re.IGNORECASE,
+)
+
+
+def _enrich_chat_payload_from_llm_calls(doc: AiSbomDocument) -> None:
+    """Infer ``chat_payload_key="messages"`` for chat endpoints fronting a messages-array LLM call.
+
+    Route handlers often forward the request body straight into an LLM SDK
+    call (``streamText({ messages })`` reading ``req.body.messages``) while the
+    route registration lives in another file, so the endpoint adapter never
+    sees a body schema. Without this the runtime probe starts from the
+    generic ``message`` string key, which such apps reject.
+
+    Only fills endpoints whose ``chat_payload_key`` is still unset; adapter-
+    or config-provided values always win.
+    """
+    call_files: set[str] = set()
+    for node in doc.nodes:
+        for ev in node.evidence or []:
+            detail = getattr(ev, "detail", "") or ""
+            if _MESSAGES_LLM_CALL_RE.search(detail) and _MESSAGES_ARG_RE.search(detail):
+                location = getattr(ev, "location", None)
+                path = getattr(location, "path", "") if location is not None else ""
+                call_files.add(path or "")
+    if not call_files:
+        return
+
+    candidates: list[Node] = []
+    for node in doc.nodes:
+        if node.component_type != ComponentType.API_ENDPOINT or node.metadata is None:
+            continue
+        meta = node.metadata
+        if meta.chat_payload_key or (meta.method or "POST").upper() != "POST":
+            continue
+        if _CHAT_ENDPOINT_PATH_RE.search(meta.endpoint or ""):
+            candidates.append(node)
+    if len(candidates) > 1:
+        # Several chat-looking routes: keep only those whose path names the
+        # file holding the LLM call (routes/chat.ts ↔ /rest/chat).
+        stems = {
+            re.sub(r"\.[^.]+$", "", f.rsplit("/", 1)[-1]).lower() for f in call_files if f
+        }
+        candidates = [
+            n for n in candidates
+            if any(stem and stem in (n.metadata.endpoint or "").lower() for stem in stems)
+        ]
+    if len(candidates) != 1:
+        return
+    meta = candidates[0].metadata
+    meta.chat_payload_key = "messages"
+    meta.chat_payload_list = True
+    meta.extras["chat_payload_key_source"] = "llm_call_messages_inference"
 
 
 # ---------------------------------------------------------------------------

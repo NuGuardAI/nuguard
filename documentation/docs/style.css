@@ -458,6 +458,19 @@ p {
     margin-bottom: 2rem;
 }
 
+.hero-visual {
+    width: 100%;
+    max-width: 1000px;
+}
+
+.hero-visual img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+}
+
 /* ── Scan demo section ───────────────────────────────────────────────── */
 .scan-demo {
     padding: 4rem 0 5rem;

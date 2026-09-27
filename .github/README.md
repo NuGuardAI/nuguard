@@ -11,13 +11,18 @@
   <a href="https://pypi.org/project/nuguard/"><img src="https://img.shields.io/pypi/pyversions/nuguard.svg" alt="Python versions"></a>
   <a href="https://github.com/NuGuardAI/nuguard/stargazers"><img src="https://img.shields.io/github/stars/NuGuardAI/nuguard.svg?style=social" alt="GitHub Stars"></a>
 </p>
-
+<h2 align="center">Try NuGuard for free</h2>
+<p align="center">
+  Explore the hosted platform. No credit card required.<br><br>
+  <a href="https://nuguard.ai/experience-platform"><img src="https://img.shields.io/badge/Start_Your_Free_Trial_→-15803d?style=for-the-badge" alt="Start your free trial"></a>
+</p>
 <p align="center">
   <a href="#what-it-does">What it does</a> ·
   <a href="#see-it-in-action">See it in action</a> ·
   <a href="#framework-coverage">Framework coverage</a> ·
   <a href="#comparison">Comparison</a> ·
   <a href="#getting-started">Getting started</a> ·
+  <a href="https://nuguardai.github.io/nuguard/">Documentation</a> ·
   <a href="#faq">FAQ</a>
 </p>
 
@@ -48,24 +53,17 @@ A real scan of a live fintech agent — Pinnacle Bank Assistant — walking thro
 
 ## Framework Coverage
 
-NuGuard's AI-SBOM extractor understands framework-specific code, not just generic regex — it recognizes agent/tool/model declarations natively across:
+NuGuard uses framework-aware adapters and structured configuration parsers to map the AI application stack into one evidence-backed AI-SBOM.
 
-| Language | Frameworks |
+| Area | High-level coverage |
 |---|---|
-| **Python** | LangChain, LangGraph, OpenAI Agents SDK, CrewAI (code + YAML), AutoGen (code + YAML), Google ADK, LlamaIndex, Agno, AWS BedrockAgentCore, Azure AI Agent Service, Azure Semantic Kernel, Guardrails AI, MCP Server (FastMCP + low-level) |
-| **TypeScript / JavaScript** | LangChain.js, LangGraph.js, OpenAI Agents (TS), Azure AI Agents (TS), Agno (TS), MCP Server (TS) |
-| **Go** | LangChainGo, Eino, Genkit, Anthropic SDK, OpenAI SDK, Google GenAI, MCP Server, net/http, Gorilla Mux, gqlgen |
-| **C#** | Azure Semantic Kernel, ASP.NET Core, ML.NET |
+| **Languages** | Python, TypeScript/JavaScript, Go, C#, and Java, plus structured configuration and infrastructure formats |
+| **AI and agentic stack** | Major agent frameworks, model-provider SDKs, MCP servers/clients, prompts, tools, guardrails, auth, and API endpoints |
+| **Low-code / no-code** | n8n, Langflow, Flowise, Microsoft Copilot Studio, and Sparkflows exports |
+| **Cloud and delivery** | AWS, Azure, Google Cloud, Kubernetes, Helm, Docker, Terraform, CloudFormation, Bicep, Deployment Manager, and GitHub Actions |
+| **Data layer** | Relational, document, key-value, vector, search, warehouse, and object-storage technologies |
 
-Beyond the AI stack itself, the supply-chain/infrastructure analysis covers:
-
-| Category | Coverage |
-|---|---|
-| **Infrastructure & Configuration** | Terraform, CloudFormation, Azure Bicep, Kubernetes manifests, GCP Deployment Manager, GitHub Actions, Dockerfiles, Nginx configs |
-| **Data & Storage** | SQL schemas (PHI/PII classification), SQLAlchemy models, Django models, Pydantic models, prompt files (`.txt`/`.md`/`.jinja`) |
-| **Output formats** | SARIF, CycloneDX, SPDX, Markdown |
-
-See the [full framework matrix](../documentation/docs/index.html#frameworks) for details.
+See the [Supported Technologies documentation](https://nuguardai.github.io/nuguard/doc.html?page=supported-technologies) for the detailed language, framework, SDK, platform, Kubernetes, and datastore matrix.
 
 ## Comparison
 
@@ -102,6 +100,13 @@ Install the NuGuard plugin and run SBOM, analysis, behavior, and red-team scans 
 
 [![Read the Plugin Guide](https://img.shields.io/badge/→_Read_the_Plugin_Guide-111111?style=for-the-badge)](../documentation/docs/plugin-guide.md)
 
+
+### 🎯 Need to pentest a live target?
+
+Nuclei-backed, bounded conventional pentest — explicit authorization required.
+
+[![Read the Cloud Pentesting Guide](https://img.shields.io/badge/→_Read_the_Cloud_Pentesting_Guide-111111?style=for-the-badge)](../documentation/docs/cloud-pentesting.md)
+
 ## Hosted Version
 
 > **Running NuGuard at organizational scale?** The managed SaaS adds what a CISO or VP Engineering needs on top of everything in this repo — no infra to stand up or maintain.
@@ -123,7 +128,7 @@ Install the NuGuard plugin and run SBOM, analysis, behavior, and red-team scans 
 
 **Free trial available — no credit card required.**
 
-[![Start Free Trial →](https://img.shields.io/badge/Start_Free_Trial_→-111111?style=for-the-badge)](http://nuguard.ai)
+[![Start Free Trial →](https://img.shields.io/badge/Start_Free_Trial_→-15803d?style=for-the-badge)](https://nuguard.ai/experience-platform)
 
 </td>
 </tr>
@@ -171,11 +176,14 @@ Filter by profile (CI, Standard, Full), and configure destructive or non-destruc
 
 <sub>
 <strong>Docs:</strong>
+<a href="https://nuguardai.github.io/nuguard/">Published documentation</a> ·
 <a href="../documentation/docs/quick-start.md">Getting started / Quick start</a> ·
+<a href="../documentation/docs/supported-technologies.md">Supported technologies</a> ·
 <a href="../documentation/docs/cli-reference.md">CLI reference</a> ·
 <a href="../documentation/docs/policy-engine-guide.md">Policy engine</a> ·
 <a href="../documentation/docs/static-analysis-guide.md">Static analysis</a> ·
 <a href="../documentation/docs/redteam-guide.md">Red-team Guide</a> ·
+<a href="../documentation/docs/cloud-pentesting.md">Cloud Pentesting</a> ·
 <a href="../documentation/docs/plugin-guide.md">Claude plugin</a> ·
 <a href="../documentation/docs/troubleshooting.md">Troubleshooting</a> ·
 <a href="SECURITY.md">Security</a> ·

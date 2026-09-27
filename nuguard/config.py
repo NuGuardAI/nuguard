@@ -373,6 +373,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_skip_discovery"] = bool(redteam["skip_discovery"])
     if "discovery_max_turns" in redteam:
         flat["redteam_discovery_max_turns"] = int(redteam["discovery_max_turns"])
+    if "require_engagement" in redteam:
+        flat["redteam_require_engagement"] = bool(redteam["require_engagement"])
+    if "engagement_error_threshold" in redteam:
+        flat["redteam_engagement_error_threshold"] = int(redteam["engagement_error_threshold"])
     if "capability_discovery" in redteam:
         flat["redteam_capability_discovery"] = bool(redteam["capability_discovery"])
     if "liveness_cache_ttl_seconds" in redteam:
@@ -1405,6 +1409,22 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Maximum turns to send during pre-scan discovery (yaml: redteam.discovery_max_turns). "
             "Discovery stops early when a name or ID is extracted."
+        ),
+    )
+    redteam_require_engagement: bool = Field(
+        default=True,
+        description=(
+            "Abort before scenarios run when the chat endpoint answers only with error "
+            "envelopes (wrong payload shape, or the app's LLM backend is down), and abort "
+            "mid-run after redteam.engagement_error_threshold such scenarios in a row "
+            "(yaml: redteam.require_engagement)."
+        ),
+    )
+    redteam_engagement_error_threshold: int = Field(
+        default=5,
+        description=(
+            "Consecutive scenarios whose every response is an error envelope before the "
+            "run aborts as not engaged (yaml: redteam.engagement_error_threshold)."
         ),
     )
     redteam_capability_discovery: bool = Field(

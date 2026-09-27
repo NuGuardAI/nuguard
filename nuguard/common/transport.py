@@ -191,3 +191,74 @@ def _is_json_transient(data: dict) -> bool:
     if code_val in _JSON_TRANSIENT_CODES:
         return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Error-envelope detection (engagement)
+# ---------------------------------------------------------------------------
+
+# Keys a body may carry and still be nothing but an error report.
+_ERROR_ENVELOPE_KEYS = frozenset({"error", "detail", "message", "code", "status"})
+
+
+def error_envelope_message(data: object) -> str:
+    """Return the error text when *data* is only an error envelope, else ``""``.
+
+    ``{"message": "..."}`` alone counts as a reply, not an error: plenty of
+    chat apps answer with exactly that shape. An envelope needs an ``error``
+    or ``detail`` field.
+    """
+    if not isinstance(data, dict) or not data or not set(data) <= _ERROR_ENVELOPE_KEYS:
+        return ""
+    if "error" not in data and "detail" not in data:
+        return ""
+    err = data.get("error", data.get("detail"))
+    if isinstance(err, dict):
+        err = err.get("message") or err
+    return str(err)[:300]
+
+
+def error_only_response(response: str) -> str:
+    """Return the error text when a whole chat response is only error envelopes.
+
+    Handles a single JSON object, a JSON list of events (how
+    :class:`~nuguard.redteam.target.client.TargetAppClient` surfaces an SSE
+    stream it couldn't extract text from), and raw ``data: {...}`` SSE lines.
+    Returns ``""`` when any part of the response is real content.
+    """
+    text = (response or "").strip()
+    if text.startswith("```"):
+        # Report-rendered responses wrap JSON in a fenced code block.
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text.rstrip().removesuffix("```").strip()
+    if not text:
+        return ""
+    if text.startswith(("{", "[")):
+        try:
+            data = json.loads(text)
+        except ValueError:
+            return ""
+        events = data if isinstance(data, list) else [data]
+        messages = [error_envelope_message(e) for e in events]
+        return messages[0] if messages and all(messages) else ""
+    first_error = ""
+    saw_event = False
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            if line and not line.startswith(("event:", "id:", "retry:", ":")):
+                return ""
+            continue
+        payload = line[5:].strip()
+        if not payload or payload == "[DONE]":
+            continue
+        try:
+            event = json.loads(payload)
+        except ValueError:
+            return ""  # plain-text token stream — the app is talking
+        saw_event = True
+        message = error_envelope_message(event)
+        if not message:
+            return ""
+        first_error = first_error or message
+    return first_error if saw_event else ""

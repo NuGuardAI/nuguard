@@ -96,6 +96,7 @@ _ABORT_SCAN_OUTCOMES = {
     "aborted_target_unavailable",
     "aborted_auth_failure",
     "aborted_endpoint_unreachable",
+    "aborted_target_not_engaged",
     "inconclusive_target_errors",
 }
 
@@ -125,6 +126,14 @@ def _abort_outcome_note(scan_outcome: str) -> str:
             "> **Note:** This scan was aborted before any scenario ran — the configured "
             "chat endpoint returned HTTP 404/405. Fix `target_endpoint` in nuguard.yaml, "
             "or remove it to allow automatic endpoint discovery."
+        )
+    if scan_outcome == "aborted_target_not_engaged":
+        return (
+            "> **Note:** This scan was aborted — the chat endpoint kept answering with "
+            "only error messages (for example a wrong request payload shape, or the "
+            "application's own LLM backend being unreachable), so no scenario reached "
+            "the agent. Fix the target setup (see `target.chat_payload_key` / "
+            "`chat_payload_list`) and re-run; absence of findings here means nothing."
         )
     # inconclusive_target_errors
     return (

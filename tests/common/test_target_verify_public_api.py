@@ -243,6 +243,84 @@ async def test_verify_target_maps_statuses_and_omits_plaintext_credentials(monke
 
 
 @pytest.mark.asyncio
+async def test_verify_target_maps_endpoint_not_found_and_payload_hint(monkeypatch):
+    async def _fake_resolve_target_session(**kwargs):
+        _ = kwargs
+        report = TargetHealthReport(
+            target_url="http://target",
+            endpoint="/chat",
+            run_id="r-enf",
+            checks=[
+                CredentialCheckResult(
+                    identity="default",
+                    auth_type="none",
+                    endpoint="http://target/chat",
+                    status="endpoint_not_found",
+                    http_status_code=404,
+                    error_detail="HTTP 404 — endpoint does not exist at this path",
+                ),
+            ],
+        )
+        return _session_config(), report
+
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
+
+    result = await verify_target(TargetVerifyRequest(target_url="http://target"))
+
+    assert result.all_ok is False
+    assert result.checks[0].status == "endpoint_not_found"
+    assert result.checks[0].http_status_code == 404
+    # Discovery must not run against an endpoint that's confirmed not to exist.
+    assert result.discovered_profile is None
+
+
+@pytest.mark.asyncio
+async def test_verify_target_passes_through_payload_hint(monkeypatch):
+    async def _fake_resolve_target_session(**kwargs):
+        _ = kwargs
+        report = TargetHealthReport(
+            target_url="http://target",
+            endpoint="/chat",
+            run_id="r-hint",
+            checks=[
+                CredentialCheckResult(
+                    identity="default",
+                    auth_type="none",
+                    endpoint="http://target/chat",
+                    status="ok",
+                    http_status_code=400,
+                    payload_hint="HTTP 400 — endpoint exists but rejected the probe payload",
+                ),
+            ],
+        )
+        return _session_config(), report
+
+    class _FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            _ = (exc_type, exc, tb)
+            return False
+
+    async def _fake_run_discovery(client, session, request):
+        _ = (client, session, request)
+        return DiscoveryOutcome(profile=DiscoveredProfile(), notes=[])
+
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *args, **kwargs: _FakeClient(),
+    )
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", _fake_run_discovery)
+
+    result = await verify_target(TargetVerifyRequest(target_url="http://target"))
+
+    assert result.all_ok is True
+    assert result.checks[0].payload_hint == "HTTP 400 — endpoint exists but rejected the probe payload"
+
+
+@pytest.mark.asyncio
 async def test_verify_target_runs_optional_discovery_when_checks_ok(monkeypatch):
     class _FakeClient:
         async def __aenter__(self):
@@ -352,7 +430,6 @@ async def test_resolve_target_session_public_resolves_sbom_host_before_planning(
 
 @pytest.mark.asyncio
 async def test_parity_tv_001(monkeypatch):
-    from nuguard.common.endpoint_detection import EndpointSource, PayloadShape, ResolvedEndpoint
     from nuguard.common.session_resolver import TargetSessionConfig
 
     async def _fake_bootstrap_auth_runtime(**kwargs):
@@ -405,17 +482,10 @@ async def test_parity_tv_001(monkeypatch):
     monkeypatch.setattr("nuguard.common.target_verify_public_api.build_target_app_client_from_session", lambda *args, **kwargs: _FakeClient())
     monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", _fake_run_discovery)
     monkeypatch.setattr("nuguard.common.target_verify_public_api.resolve_target_session", _fake_resolve_target_session)
-    async def _fake_resolve_chat_endpoint(**kwargs):
-        return ResolvedEndpoint(
-            path="/chat",
-            payload=PayloadShape(key="message", source=EndpointSource.SBOM),
-            path_source=EndpointSource.SBOM,
-        )
-
-    monkeypatch.setattr(
-        "nuguard.common.target_verify_public_api.resolve_chat_endpoint",
-        _fake_resolve_chat_endpoint,
-    )
+    # resolve_chat_endpoint is no longer called by verify_target/resolve_target_session_public
+    # (both route through resolve_target_session directly, mocked above) — the endpoint/payload
+    # resolution import (EndpointSource, PayloadShape, ResolvedEndpoint) at the top of this test
+    # is kept only because other tests in this file still use it.
 
     verify_result = await verify_target(TargetVerifyRequest(target_url="http://target"))
     resolve_result = await resolve_target_session_public(

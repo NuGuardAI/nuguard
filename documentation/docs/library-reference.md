@@ -342,7 +342,7 @@ Module: `nuguard.common.target_verify_public_api`
 - `TargetVerifyResult`
 - `TargetSessionResolveRequest`
 - `TargetSessionResolveResult`
-- `TargetVerifyStatus` (`ok`, `auth_failed`, `target_unavailable`, `skipped`)
+- `TargetVerifyStatus` (`ok`, `auth_failed`, `target_unavailable`, `endpoint_not_found`, `skipped`)
 - `verify_target(request, *, sbom=None)`
 - `resolve_target_session_public(request, *, sbom=None)`
 

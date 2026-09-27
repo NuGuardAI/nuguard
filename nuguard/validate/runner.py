@@ -164,25 +164,16 @@ class ValidateRunner:
         already carries a runtime-probe-confirmed payload shape for *path* (from
         a prior behavior/redteam/validate run persisted into the enriched SBOM).
 
-        Mirrors ``RedteamOrchestrator._chat_endpoint_confirmed`` /
-        ``BehaviorAnalyzer._confirmed_endpoint_from_sbom`` so a
+        Thin wrapper around the shared
+        ``nuguard.common.endpoint_detection.sbom.find_confirmed_chat_endpoint``
+        (also used by ``RedteamOrchestrator`` and ``BehaviorAnalyzer``) so a
         previously-confirmed endpoint isn't re-probed on every run.
         """
         if self._sbom is None:
             return None
-        from nuguard.common.endpoint_detection.constants import PROBE_SOURCE_RUNTIME_PROBE
+        from nuguard.common.endpoint_detection.sbom import find_confirmed_chat_endpoint
 
-        for node in self._sbom.nodes:
-            meta = node.metadata
-            if (
-                node.component_type == ComponentType.API_ENDPOINT
-                and meta is not None
-                and meta.endpoint == path
-                and meta.chat_payload_key is not None
-                and (meta.extras or {}).get("source") == PROBE_SOURCE_RUNTIME_PROBE
-            ):
-                return path, meta.chat_payload_key, bool(meta.chat_payload_list), meta.response_text_key
-        return None
+        return find_confirmed_chat_endpoint(self._sbom, expected_path=path)
 
     async def run(self) -> ValidateRunResult:
         """Execute all validate scenarios and return a ValidateRunResult."""
@@ -241,21 +232,22 @@ class ValidateRunner:
                 _log.debug("validate: probe result persist failed: %s", exc)
 
         # Skip resolve_chat_endpoint (and any live probing) entirely when the
-        # SBOM already has a runtime-probe-confirmed payload shape for the
-        # candidate endpoint and none of the payload fields were explicitly
-        # pinned by the user (an explicit value must still win over a stale
-        # SBOM record, same as resolve_chat_endpoint itself).
+        # SBOM already has a runtime-probe-confirmed payload shape and none of
+        # the payload fields were explicitly pinned by the user (an explicit
+        # value must still win over a stale SBOM record, same as
+        # resolve_chat_endpoint itself). Scans every SBOM node — not just
+        # whatever keyword-ranking currently proposes — so a confirmed
+        # endpoint is found even when its path doesn't look chat-like.
         _confirmed = None
-        if not (_key_explicit or _list_explicit or _response_explicit):
-            _candidate_path = endpoint if endpoint and "target_endpoint" in configured_fields else ""
-            if not _candidate_path and self._sbom is not None:
-                from nuguard.common.endpoint_detection.sbom import (
-                    discover_chat_config,  # noqa: PLC0415
-                )
+        if not (_key_explicit or _list_explicit or _response_explicit) and self._sbom is not None:
+            _configured_path = endpoint if endpoint and "target_endpoint" in configured_fields else ""
+            from nuguard.common.endpoint_detection.sbom import (
+                find_confirmed_chat_endpoint,  # noqa: PLC0415
+            )
 
-                _candidate_path = discover_chat_config(self._sbom, chat_path=None)[0] or ""
-            if _candidate_path:
-                _confirmed = self._confirmed_endpoint_from_sbom(_candidate_path)
+            _confirmed = find_confirmed_chat_endpoint(
+                self._sbom, expected_path=_configured_path or None
+            )
 
         if _confirmed is not None:
             endpoint, resolved_payload_key, resolved_payload_list, resolved_response_key = _confirmed

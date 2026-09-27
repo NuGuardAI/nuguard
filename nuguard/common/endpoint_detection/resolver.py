@@ -103,8 +103,10 @@ async def resolve_chat_endpoint(
                 resolved_response = sbom_response
 
     # Live probing discovers both path and payload when no path is available.
+    # Works without an SBOM too (issue #532) — probe_endpoint falls back to
+    # the generic HTTP_ENDPOINT_FALLBACK_PATHS candidate list when sbom=None.
     probe_result = None
-    if resolved_path is None and sbom is not None:
+    if resolved_path is None:
         try:
             probe_result = await probe_endpoint(
                 target_url,
@@ -141,8 +143,10 @@ async def resolve_chat_endpoint(
                 resolved_response = probed_payload.response_key
             payload_source = probed_payload.source
 
-    # A configured or SBOM-selected endpoint may still need payload inference.
-    if sbom is not None and resolved_path is not None and (
+    # A configured or SBOM-selected endpoint may still need payload inference —
+    # also without an SBOM (issue #532): detect_payload_shape's own live probe
+    # is already sbom=None-safe.
+    if resolved_path is not None and (
         not key_is_explicit
         or not list_is_explicit
         or not template_is_explicit
