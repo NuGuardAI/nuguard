@@ -166,7 +166,7 @@ A `GUARDRAIL` node is connected to the `AGENT` node(s) it protects via a `PROTEC
 
 For backward compatibility, adapters also mirror these same values into `extras` (`extras.role`, `extras.content`, `extras.char_count`, `extras.is_template`, `extras.template_variables`) — new consumers should prefer the typed fields above.
 
-A `PROMPT` node is connected to the `AGENT` or `GUARDRAIL` node whose instructions it represents via a `USES` edge (`AGENT --USES--> PROMPT` / `GUARDRAIL --USES--> PROMPT`), so it is never left isolated in the graph. When an adapter has no single owning agent in scope for a prompt-template detection (e.g. a `ChatPromptTemplate` defined independently of any `Agent(...)` call), the edge instead fans out from every `AGENT`/`FRAMEWORK` node detected in the same file.
+A `PROMPT` node is connected to its owning `AGENT` or `GUARDRAIL` through a `USES` edge when the adapter identifies that relationship. For independently detected prompts, the extractor infers `AGENT --USES--> PROMPT` when the nodes share a source file with one identifiable agent, the prompt name identifies one agent in a multi-agent file, or that agent's file imports and uses the prompt constant. A guardrail that protects the agent also receives a derived `GUARDRAIL --PROTECTS--> PROMPT` edge when the guardrail binding is explicit or it shares the prompt's source file. Ambiguous prompts remain unlinked rather than being assigned to unrelated agents.
 
 ### API_ENDPOINT fields
 
@@ -488,10 +488,12 @@ A directed relationship between two nodes.
 | `CALLS` | Agent calls a tool or sub-agent |
 | `ACCESSES` | Agent or tool reads from or writes to a datastore |
 | `USES` | Component depends on a framework, model, auth provider, or other component |
-| `PROTECTS` | A `GUARDRAIL` protects an `AGENT`, or an `AUTH` provider protects an `API_ENDPOINT` |
+| `PROTECTS` | A `GUARDRAIL` protects an `AGENT` or its prompt, or an `AUTH` provider protects an `API_ENDPOINT` |
 | `DEPLOYS` | A deployment resource hosts a container or service |
 | `DELEGATES_TO` | An agent hands off a conversation or task to another agent |
 | `CONTAINS` | A parent component contains a child component; used for `DEVELOPER_TOOL_CONFIG → MCP_SERVER` and `DEVELOPER_TOOL_CONFIG → LIFECYCLE_SCRIPT` relationships |
+
+`AGENT --ACCESSES--> DATASTORE` is inferred when an agent calls a tool that accesses the datastore, when a single agent and datastore are detected in the same source file, or when a single agent's Python file imports and uses a detected datastore client. These inferred edges carry `derivation: "fallback_heuristic"` and a confidence score.
 
 ### AccessType values
 

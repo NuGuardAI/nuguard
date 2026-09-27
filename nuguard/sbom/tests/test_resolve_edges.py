@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.models import AiSbomDocument, Evidence, Node, SourceLocation
 from nuguard.sbom.tests.conftest import FIXTURES, extract, nodes
 from nuguard.sbom.types import ComponentType, RelationshipType
 
@@ -32,6 +34,67 @@ def _edges_by_rel(doc, rel: RelationshipType):
 
 def _node_ids(doc, ctype: ComponentType) -> set:
     return {n.id for n in doc.nodes if n.component_type == ctype}
+
+
+def _located_node(name: str, kind: ComponentType, path: str) -> Node:
+    return Node(
+        name=name,
+        component_type=kind,
+        confidence=0.9,
+        evidence=[
+            Evidence(
+                kind="ast",
+                confidence=0.9,
+                detail="fixture",
+                location=SourceLocation(path=path, line=1),
+            )
+        ],
+    )
+
+
+class TestScopedComponentEdges:
+    def test_prompt_datastore_and_guardrail_share_an_agent(self) -> None:
+        agent = _located_node("Review Agent", ComponentType.AGENT, "app/agent.py")
+        prompt = _located_node("Review Instructions", ComponentType.PROMPT, "app/agent.py")
+        datastore = _located_node("Orders DB", ComponentType.DATASTORE, "app/agent.py")
+        guardrail = _located_node("Input Filter", ComponentType.GUARDRAIL, "app/agent.py")
+        doc = AiSbomDocument(target="fixture", nodes=[agent, prompt, datastore, guardrail])
+
+        AiSbomExtractor()._resolve_edges(doc, {})
+
+        actual = {(e.source, e.target, e.relationship_type) for e in doc.edges}
+        assert (agent.id, prompt.id, RelationshipType.USES) in actual
+        assert (agent.id, datastore.id, RelationshipType.ACCESSES) in actual
+        assert (guardrail.id, prompt.id, RelationshipType.PROTECTS) in actual
+        assert all(e.derivation == "fallback_heuristic" for e in doc.edges)
+        assert AiSbomDocument.model_validate(doc.model_dump(mode="json")).edges == doc.edges
+
+    def test_ambiguous_and_unrelated_components_are_not_cross_linked(self) -> None:
+        first = _located_node("Researcher", ComponentType.AGENT, "app/agents.py")
+        second = _located_node("Writer", ComponentType.AGENT, "app/agents.py")
+        named_prompt = _located_node("Writer Instructions", ComponentType.PROMPT, "app/agents.py")
+        shared_datastore = _located_node("Shared DB", ComponentType.DATASTORE, "app/agents.py")
+        other_prompt = _located_node("Other Prompt", ComponentType.PROMPT, "app/prompts.py")
+        other_datastore = _located_node("Other DB", ComponentType.DATASTORE, "app/db.py")
+        doc = AiSbomDocument(
+            target="fixture",
+            nodes=[first, second, named_prompt, shared_datastore, other_prompt, other_datastore],
+        )
+
+        AiSbomExtractor()._resolve_edges(doc, {})
+
+        agent_targets = {
+            (e.source, e.target)
+            for e in doc.edges
+            if e.source in {first.id, second.id}
+            and e.relationship_type in {RelationshipType.USES, RelationshipType.ACCESSES}
+        }
+        assert (second.id, named_prompt.id) in agent_targets
+        assert (first.id, named_prompt.id) not in agent_targets
+        assert not any(
+            target in {shared_datastore.id, other_prompt.id, other_datastore.id}
+            for _, target in agent_targets
+        )
 
 
 # ---------------------------------------------------------------------------
