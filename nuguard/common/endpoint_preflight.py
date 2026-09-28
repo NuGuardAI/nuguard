@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from nuguard.common.logging import get_logger
-from nuguard.common.response_extraction import build_minimal_payload, extract_response_id
 
 if TYPE_CHECKING:
     from nuguard.common.target_client_builder import TargetClient
@@ -85,77 +84,31 @@ async def _bootstrap_path_params(
 ) -> None:
     """Resolve and bind any path params the resolved chat endpoint declares.
 
-    Reads ``path_param_sources`` (populated by ``nuguard/sbom/enricher.py``)
-    off the SBOM node matching *chat_path*. For each param with a known
-    source, POSTs to that source endpoint to create the prerequisite
-    resource, extracts its id from the response, and binds it via
+    Uses :func:`~nuguard.common.path_params.resolve_path_param_values` with
+    *client*'s authenticated ``invoke_endpoint`` and binds each id via
     :meth:`~nuguard.redteam.target.client.TargetAppClient.set_path_param`.
-    Best-effort: any failure just leaves that param unbound (falls through
-    to the existing ``[CONFIG_ERROR]`` per-request guard) rather than
-    raising or forcing ``ok=False`` — this must run *after* rotation has
-    fully settled, since :meth:`TargetAppClient.set_chat_endpoint` clears
-    previously-bound path params on every rotation.
+    Best-effort: unresolved params stay unbound (the client's per-request
+    ``[CONFIG_ERROR]`` guard reports them). Must run *after* rotation has
+    settled, since :meth:`TargetAppClient.set_chat_endpoint` clears bound
+    path params.
     """
-    from nuguard.sbom.types import ComponentType as _CT  # noqa: PLC0415
+    from nuguard.common.path_params import resolve_path_param_values  # noqa: PLC0415
 
-    chat_node = None
+    async def _post(path: str, body: dict) -> "tuple[int, object]":
+        status, _text, data = await client.invoke_endpoint(path, method="POST", body=body)
+        return status, data
+
+    values = await resolve_path_param_values(_post, sbom, chat_path)
+    sources = {}
     for n in sbom.nodes:
-        m = n.metadata
-        if m and (m.endpoint or "") == chat_path:
-            chat_node = n
+        if n.metadata and (n.metadata.endpoint or "") == chat_path:
+            sources = n.metadata.path_param_sources or {}
             break
-    if chat_node is None:
-        return
-    sources = chat_node.metadata.path_param_sources
-    if not sources:
-        return
-
-    endpoints_by_path = {
-        n.metadata.endpoint: n
-        for n in sbom.nodes
-        if n.component_type == _CT.API_ENDPOINT and n.metadata and n.metadata.endpoint
-    }
-
-    # Process in path-param order so an outer resource id is available
-    # before an inner one that might depend on it.
-    ordered_params = [p for p in (chat_node.metadata.path_params or []) if p in sources]
-    for param in ordered_params:
-        source_path = sources[param]
-        try:
-            status, _text, data = await client.invoke_endpoint(source_path, method="POST", body={})
-            if status >= 400:
-                source_node = endpoints_by_path.get(source_path)
-                schema = (source_node.metadata.request_body_schema if source_node else None) or {}
-                if schema:
-                    body = build_minimal_payload(schema)
-                    status, _text, data = await client.invoke_endpoint(
-                        source_path, method="POST", body=body
-                    )
-        except Exception as exc:
-            _log.info(
-                "Pre-flight: path-param bootstrap POST %s raised (non-fatal): %s — leaving %r unbound",
-                source_path, exc, param,
-            )
-            continue
-
-        if status >= 400:
-            _log.info(
-                "Pre-flight: path-param bootstrap POST %s failed (HTTP %d) — leaving %r unbound",
-                source_path, status, param,
-            )
-            continue
-
-        resolved_id = extract_response_id(data, extra_keys=("id",))
-        if not resolved_id:
-            _log.info(
-                "Pre-flight: path-param bootstrap POST %s succeeded but no id found in "
-                "response — leaving %r unbound",
-                source_path, param,
-            )
-            continue
-
+    for param, resolved_id in values.items():
         client.set_path_param(param, resolved_id)
-        notes.append(f"Bootstrapped path param {param!r}={resolved_id!r} via POST {source_path!r}.")
+        notes.append(
+            f"Bootstrapped path param {param!r}={resolved_id!r} via POST {sources.get(param, '?')!r}."
+        )
 
 
 def _path_params_unbound(client: "TargetClient") -> bool:
@@ -243,8 +196,12 @@ async def validate_and_rotate_chat_endpoint(
     session = _PF_AS(session_id="preflight", target_url=target_url, chain_id="preflight")
     excluded = set(exclude_paths or [])
 
+    from nuguard.common.errors import TargetQuotaExhaustedError  # noqa: PLC0415
+
     try:
         response, fitness = await _test_current_endpoint(client, sbom, session, notes)
+    except TargetQuotaExhaustedError:
+        raise  # an exhausted usage quota won't clear by rotating endpoints
     except Exception as exc:
         _log.debug("Pre-flight: test request failed (non-fatal): %s", exc)
         return PreflightOutcome(ok=True, notes=notes)
@@ -289,6 +246,8 @@ async def validate_and_rotate_chat_endpoint(
             cand_notes: list[str] = []
             try:
                 cand_resp, cand_fit = await _test_current_endpoint(client, sbom, session, cand_notes)
+            except TargetQuotaExhaustedError:
+                raise
             except Exception as exc:
                 _log.debug("Pre-flight: candidate %s raised (non-fatal): %s", candidate[0], exc)
                 continue

@@ -14,7 +14,11 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from nuguard.common.errors import TargetUnavailableError  # noqa: F401 — re-exported for callers
+from nuguard.common.errors import (
+    TargetQuotaExhaustedError,
+    TargetUnavailableError,  # noqa: F401 — re-exported for callers
+)
+from nuguard.common.http import quota_exhausted_detail
 from nuguard.common.logging import get_logger
 from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KEYS
 from nuguard.common.transport import strip_known_boilerplate
@@ -27,6 +31,18 @@ if TYPE_CHECKING:
     from .framework_adapters import FrameworkAdapter
 
 _log = get_logger(__name__)
+
+
+def _raise_if_quota_exhausted(response: httpx.Response, url: str) -> None:
+    """Raise :class:`TargetQuotaExhaustedError` when *response* reports an exhausted quota.
+
+    A quota/plan-limit rejection (e.g. 403 "You've reached your free plan
+    limit") will not clear by retrying the next turn or scenario, so it is
+    surfaced immediately instead of being recorded as a per-turn failure.
+    """
+    detail = quota_exhausted_detail(response.status_code, response.text or "")
+    if detail:
+        raise TargetQuotaExhaustedError(detail, url=url, cause=f"HTTP {response.status_code}")
 
 # Dedup set: emit the ADK app_name fallback warning at most once per base URL.
 _adk_fallback_warned: set[str] = set()
@@ -1167,6 +1183,7 @@ class TargetAppClient:
                     "Target HTTP %s  url=%s  body=%r",
                     status, exc.request.url, body_preview,
                 )
+                _raise_if_quota_exhausted(exc.response, str(exc.request.url))
                 if status == 429 and attempt < self._max_429_retries:
                     delay = self._retry_delay_seconds(exc.response.headers, exc.response.text or "", attempt)
                     _log.warning(
@@ -1558,6 +1575,7 @@ class TargetAppClient:
                 "send_stream target HTTP %s  url=%s  body=%r",
                 status, exc.request.url, body_preview,
             )
+            _raise_if_quota_exhausted(exc.response, str(exc.request.url))
             if status >= 500:
                 self._record_chat_error(f"HTTP {status}")
             else:

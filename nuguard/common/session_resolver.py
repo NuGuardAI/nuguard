@@ -435,6 +435,7 @@ async def resolve_target_session(
     _probe_extras = probe_payload_extras if probe_payload_extras is not None else chat_payload_extras
     bootstrapper, health_report = await bootstrap_auth_runtime(
         target_url=target_url,
+        sbom=sbom,
         endpoint=(
             configured_chat_path
             or ("/ws" if is_websocket else chat_path or "/chat")
@@ -551,6 +552,7 @@ async def resolve_target_session(
         _is_websocket_final = chat_payload_key == "__websocket__"
         bootstrapper, health_report = await bootstrap_auth_runtime(
             target_url=target_url,
+            sbom=sbom,
             endpoint=chat_path,
             auth_config=auth_runtime.auth_config,
             canary_config=canary_config,
