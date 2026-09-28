@@ -168,7 +168,7 @@ async def test_confirmed_sbom_endpoint_skips_live_resolver():
         result = await runner.run()
 
     assert result.effective_endpoint == "/api/chat"
-    assert result.target_endpoint_source == "sbom"
+    assert result.target_endpoint_source == "enriched_sbom_cache"
 
 
 # ── Boundary assertion ────────────────────────────────────────────────────────
