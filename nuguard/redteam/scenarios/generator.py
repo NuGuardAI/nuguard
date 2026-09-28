@@ -413,10 +413,11 @@ class ScenarioGenerator:
         if canary_config is not None:
             from nuguard.common.auth import AuthConfig
 
-            for tenant in canary_config.tenants:
-                if tenant.session_token:
+            for tenant in getattr(canary_config, "tenants", []) or []:
+                session_token = getattr(tenant, "session_token", "")
+                if session_token:
                     self._canary_auth_headers = AuthConfig.from_tenant_token(
-                        tenant.session_token
+                        session_token
                     ).to_headers()
                     break
         self._node_by_id = {str(node.id): node for node in self._sbom.nodes}
