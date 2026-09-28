@@ -195,6 +195,7 @@ class RedteamRunRequest(BaseModel):
     engagement_error_threshold: int = 5
     capability_discovery: bool = True
     liveness_cache_ttl_seconds: float = 3600.0
+    preflight_candidates: int = Field(default=3, ge=0, le=10)
     llm_capability_dedup: bool = False
     chat_payload_extras: dict[str, Any] | None = None
     pre_run_warmup: int = 0
@@ -455,6 +456,7 @@ async def run_redteam(
         engagement_error_threshold=request.engagement_error_threshold,
         capability_discovery=request.capability_discovery,
         liveness_cache_ttl_seconds=request.liveness_cache_ttl_seconds,
+        preflight_candidates=request.preflight_candidates,
         llm_capability_dedup=request.llm_capability_dedup,
         chat_payload_extras=request.chat_payload_extras,
         catalog=catalog,

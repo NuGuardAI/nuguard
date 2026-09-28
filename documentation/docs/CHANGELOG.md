@@ -1,24 +1,37 @@
 # Documentation Changelog
 
-Track user-facing documentation updates here, especially changes to CLI behavior, workflows, and troubleshooting guidance.
+Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
+
+## v0.9.9 - 2026-09-26
+
+### Improved
+- **API endpoint detection:** Pentests now combine routes found in source code, live API documentation, and a bounded crawl of the target. This helps find more testable endpoints and request parameters, including routes under application-specific URL paths.
+- **Authentication:** Pentests can discover common login forms, check whether credentials actually change access, and retry temporary login failures. Reports show which authentication was used.
+- **Pentest coverage:** Broader built-in web checks and smarter endpoint selection exercise more of an authorized application's HTTP surface. Reports distinguish verified findings from unverified results and show when scan coverage was incomplete.
+- **Reports:** Pentest Markdown reports now include a clearer risk summary and an optional AI-generated executive summary. Behavior reports more accurately describe which agents and tools were tested.
 
 ## v0.9.8 - 2026-09-23
 
 ### Added
-- A source-first Getting Started workflow covering static scans, sandbox target verification, runtime test selection, CI gates, and coding-agent integration.
-- Light and dark workflow visuals aligned with the NuGuard documentation theme.
-- Documentation for bounded, explicitly authorized cloud pentesting and low-code workflow export scanning in the primary docs navigation.
-- A supported-technologies matrix covering languages, AI and agentic SDKs, low-code exports, cloud platforms, Kubernetes, and datastores.
+- **Authenticated web pentesting:** `nuguard pentest` can use configured target credentials and built-in web checks. Its quick start and [cloud pentesting guide](./cloud-pentesting.md) explain how to run authorized scans.
+- **Broader source scanning:** AI-SBOM generation now covers Java applications and exported n8n, Langflow, Flowise, and Copilot Studio workflows. See [Supported Technologies](./supported-technologies.md).
+- A source-first [Getting Started guide](./quick-start.md) covering static scans, target verification, runtime testing, and CI.
 
 ### Changed
-- The Quick Start and AI Developer Guide are merged into one canonical Getting Started guide; the former AI Developer Guide URL now points readers to it.
-- Quick-start and homepage content now reflect 125 adversarial scenarios, the `pentest` command, Go/C# scanning, and n8n, Langflow, Flowise, and Copilot Studio exports.
-- The AI-SBOM schema guide now documents Java framework extraction, Maven and Gradle dependency manifests, ecosystem-specific PURLs, and login-token response-key metadata.
-- Coding-agent setup now uses the scoped `@nuguardai/nuguard` npm launcher and describes Claude, VS Code, Cursor, Windsurf, Cline, and other MCP clients.
-- Offline language now distinguishes the LLM-optional deterministic core from vulnerability providers and scanner updates that can use the network.
+- The Quick Start and AI Developer Guide are combined into the Getting Started guide. The [AI-SBOM schema guide](./sbom-schema.md) and coding-agent setup now reflect the expanded framework and language support.
 
-### Fixed
-- Corrected stale MCP launcher examples and clarified which registered test-run management commands remain placeholders.
+## v0.8.9–v0.9.7 highlights - 2026-08-10 to 2026-09-12
+
+### Added
+- **Go and C# scanning:** AI-SBOM generation recognizes AI SDKs, web endpoints, authentication, tools, and dependencies in more Go and C# applications.
+- **Cloud web pentesting:** `nuguard pentest` adds bounded checks for conventional HTTP vulnerabilities on explicitly authorized targets.
+- **WebSocket support:** Target discovery and runtime testing can work with WebSocket chat endpoints.
+- **Resumable scans:** Behavior and red-team runs can save progress and resume after a timeout or failure.
+
+### Improved
+- **Endpoint detection:** NuGuard can use API schemas, browser discovery, streaming responses, and application feedback to find working chat endpoints and request formats more reliably.
+- **Authentication setup:** Browser-based login discovery helps configure applications that use interactive sign-in; target verification handles session cookies and custom headers.
+- **Security findings:** Static analysis and red-team testing cover more web and AI security risks, with clearer evidence and fewer duplicate or misleading findings.
 
 ## v0.8.8 - 2026-07-22
 

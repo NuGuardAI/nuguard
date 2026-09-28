@@ -326,6 +326,7 @@ def redteam(
         engagement_error_threshold=cfg.redteam_engagement_error_threshold,
         capability_discovery=cfg.redteam_capability_discovery,
         liveness_cache_ttl_seconds=cfg.redteam_liveness_cache_ttl_seconds,
+        preflight_candidates=cfg.redteam_preflight_candidates,
         llm_capability_dedup=cfg.redteam_llm_capability_dedup,
         catalog=custom_catalog,
         pre_run_warmup=cfg.redteam_pre_run_warmup,
@@ -382,8 +383,12 @@ def redteam(
             AuthError,
             TargetEndpointNotFoundError,
             TargetNotEngagedError,
+            TargetQuotaExhaustedError,
             TargetUnavailableError,
         )
+        if isinstance(exc, TargetQuotaExhaustedError):
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
         if isinstance(exc, TargetNotEngagedError):
             typer.echo(f"Error: {exc}", err=True)
             # Distinct setup-failure exit code (2 = findings, 1 = run error) so
@@ -619,6 +624,7 @@ async def _run_redteam(
     engagement_error_threshold: int = 5,
     capability_discovery: bool = True,
     liveness_cache_ttl_seconds: float = 3600.0,
+    preflight_candidates: int = 3,
     llm_capability_dedup: bool = False,
     chat_payload_extras: dict[str, Any] | None = None,
     catalog: "tuple | None" = None,
@@ -769,6 +775,7 @@ async def _run_redteam(
                 engagement_error_threshold=engagement_error_threshold,
                 capability_discovery=capability_discovery,
                 liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
+                preflight_candidates=preflight_candidates,
                 llm_capability_dedup=llm_capability_dedup,
                 catalog=catalog,
                 pre_run_warmup=pre_run_warmup,
@@ -833,6 +840,7 @@ async def _run_redteam(
         engagement_error_threshold=engagement_error_threshold,
         capability_discovery=capability_discovery,
         liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
+        preflight_candidates=preflight_candidates,
         llm_capability_dedup=llm_capability_dedup,
         catalog=catalog,
         pre_run_warmup=pre_run_warmup,
@@ -895,6 +903,7 @@ async def _run_orchestrator(  # noqa: C901
     engagement_error_threshold: int = 5,
     capability_discovery: bool = True,
     liveness_cache_ttl_seconds: float = 3600.0,
+    preflight_candidates: int = 3,
     llm_capability_dedup: bool = False,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
@@ -977,6 +986,7 @@ async def _run_orchestrator(  # noqa: C901
         engagement_error_threshold=engagement_error_threshold,
         capability_discovery=capability_discovery,
         liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
+        preflight_candidates=preflight_candidates,
         llm_capability_dedup=llm_capability_dedup,
         chat_payload_extras=chat_payload_extras or None,
         pre_run_warmup=pre_run_warmup,

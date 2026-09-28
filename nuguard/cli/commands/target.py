@@ -221,15 +221,15 @@ async def _verify_async(
 
     if sbom_doc is not None:
         from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
+        from nuguard.common.endpoint_detection.context import resolve_api_origin
         from nuguard.common.session_resolver import resolve_target_session
-        from nuguard.common.target_client_builder import resolve_target_url
 
         # Resolve the chat endpoint *before* auth bootstrap — bootstrap must probe
         # the real chat endpoint, not the generic "/chat" default. This mirrors
         # RedteamOrchestrator's constructor (zero-I/O SBOM discovery) + its
         # _maybe_probe_endpoints() (live probe fallback), both of which run before
         # bootstrap in the real scan.
-        resolved_target_url, url_notes = resolve_target_url(target_url, sbom_doc)
+        resolved_target_url, url_notes = await resolve_api_origin(target_url, sbom_doc)
         pre_resolution_notes: list[str] = list(url_notes)
         if resolved_target_url:
             target_url = resolved_target_url

@@ -242,29 +242,63 @@ _CAPABILITY_PROBE = (
 )
 
 
-def _detect_domain_from_text(text: str) -> str:
+_DOMAIN_TEXT_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "airline": (
+        "flight", "flights", "booking", "bookings", "check-in", "check in", "boarding",
+        "reservation", "reservations", "departure", "arrival", "itinerary",
+    ),
+    "banking": (
+        "account", "accounts", "balance", "transaction", "transactions", "payment",
+        "payments", "transfer", "transfers", "card", "cards", "credit", "debit",
+        "deposit", "withdrawal",
+    ),
+    "healthcare": (
+        "appointment", "appointments", "prescription", "prescriptions", "doctor",
+        "patient", "patients", "clinic", "medication", "medications", "medical record",
+    ),
+}
+
+# A domain needs at least this many distinct keyword hits to be inferred.
+_MIN_DOMAIN_KEYWORD_HITS = 2
+
+
+def _domain_keyword_hits(text: str, keywords: tuple[str, ...]) -> set[str]:
+    """Return the *keywords* present in *text* as whole words (case-insensitive)."""
+    lc = text.lower()
+    return {k for k in keywords if re.search(rf"(?<![\w-]){re.escape(k)}(?![\w-])", lc)}
+
+
+def _detect_domain_from_text(text: str, sent_message: str = "") -> str:
     """Infer the app domain from an agent response's natural language.
 
     Returns ``"airline"``, ``"banking"``, ``"healthcare"``, or ``""`` (unknown).
     Used to upgrade the discovery plan when the SBOM use_case tag is generic.
+
+    Deliberately conservative, because a wrong guess sends the rest of
+    discovery off-domain (e.g. banking prompts to a study tutor):
+
+    * keywords match whole words only ("flashcard" is not "card");
+    * keywords the agent merely echoed from *sent_message* are ignored (a
+      refusal like "I can't access your account details" is not evidence of
+      a banking app when we asked about account details);
+    * a domain needs at least two distinct keyword hits and must beat every
+      other domain outright.
     """
-    lc = text.lower()
-    if any(k in lc for k in (
-        "flight", "booking", "check-in", "check in", "boarding",
-        "reservation", "departure", "arrival", "itinerary",
-    )):
-        return "airline"
-    if any(k in lc for k in (
-        "account", "balance", "transaction", "payment", "transfer",
-        "card", "credit", "debit", "deposit", "withdrawal",
-    )):
-        return "banking"
-    if any(k in lc for k in (
-        "appointment", "prescription", "doctor", "patient",
-        "clinic", "medication", "medical record",
-    )):
-        return "healthcare"
-    return ""
+    echoed: set[str] = set()
+    if sent_message:
+        for keywords in _DOMAIN_TEXT_KEYWORDS.values():
+            echoed |= _domain_keyword_hits(sent_message, keywords)
+
+    scores: dict[str, int] = {}
+    for domain, keywords in _DOMAIN_TEXT_KEYWORDS.items():
+        hits = _domain_keyword_hits(text, keywords) - echoed
+        scores[domain] = len(hits)
+    best = max(scores, key=lambda d: scores[d])
+    if scores[best] < _MIN_DOMAIN_KEYWORD_HITS:
+        return ""
+    if sum(1 for v in scores.values() if v == scores[best]) > 1:
+        return ""
+    return best
 
 
 def _domain_messages(use_case: str) -> list[str]:
@@ -384,7 +418,7 @@ async def run_discovery_conversation(
         # After turn 1: detect domain from agent's own words and upgrade the plan
         # when the SBOM use_case was too generic to select domain-specific messages.
         if i == 0 and not switched and _domain_messages(use_case) is _GENERIC_MESSAGES:
-            detected = _detect_domain_from_text(response)
+            detected = _detect_domain_from_text(response, sent_message=message)
             if detected:
                 upgraded_primary = _domain_messages(detected)
                 task = _domain_task_messages(detected)
@@ -873,10 +907,17 @@ async def run_capability_discovery(
     if any(g.needs_system_prompt for g in gaps):
         probes.append(("system_prompt", _SYSTEM_PROMPT_PROBE))
 
+    from nuguard.common.errors import TargetUnavailableError  # noqa: PLC0415
+
     for name, message in probes:
         _log.info("capability discovery probe [%s]: %s", name, message[:200])
         try:
             response, _ = await client.send(message, session=session)
+        except TargetUnavailableError as exc:
+            # Circuit breaker tripped — stop instead of hammering a broken
+            # endpoint with the remaining probes and the closing turn.
+            _log.info("capability discovery probe [%s] failed: %s — stopping", name, exc)
+            return result
         except Exception as exc:
             _log.info("capability discovery probe [%s] failed: %s", name, exc)
             continue
