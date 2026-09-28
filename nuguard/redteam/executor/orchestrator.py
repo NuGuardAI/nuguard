@@ -42,6 +42,12 @@ from nuguard.redteam.risk_engine import (
     compliance_mapper,
     ngrs,
 )
+from nuguard.redteam.scenarios._chain_factory import (
+    WRITE_METHODS as _CREDENTIALED_WRITE_METHODS,
+)
+from nuguard.redteam.scenarios._chain_factory import (
+    is_credentialed_mutation_step as _is_credentialed_mutation_step,
+)
 from nuguard.redteam.scenarios.generator import ScenarioGenerator
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
 from nuguard.redteam.target.action_logger import ActionLogger
@@ -580,13 +586,43 @@ def _is_destructive_scenario(scenario: AttackScenario) -> bool:
     Destructive scenarios are sorted to the end of the run so non-destructive
     scenarios execute against intact account data first, and are excluded by
     the redteam.scenarios "non-destructive" filter value.
+
+    Two independent signals are ORed together: the keyword heuristic over
+    title/description (catches chat-mediated scenarios that ask an agent to
+    cancel/delete/refund/... something), and a structural check over the
+    scenario's static chain — a direct-HTTP step that mutates state under the
+    run's own credentials (see :func:`_is_credentialed_mutation_step`) is
+    destructive regardless of what its title says. The latter is what makes
+    e.g. mass-assignment/price-tampering scenarios (whose title/description
+    never contain a destructive keyword) correctly classified.
     """
-    return _is_destructive_text(scenario.title, scenario.description)
+    if _is_destructive_text(scenario.title, scenario.description):
+        return True
+    if scenario.chain is not None and any(
+        _is_credentialed_mutation_step(step) for step in scenario.chain.steps
+    ):
+        return True
+    return False
 
 
 def _is_destructive_finding(finding: Finding) -> bool:
-    """Post-run counterpart to :func:`_is_destructive_scenario` for Finding objects."""
-    return _is_destructive_text(finding.title, finding.description)
+    """Post-run counterpart to :func:`_is_destructive_scenario` for Finding objects.
+
+    Findings carry no ``AttackScenario``/``ExploitChain``, only the per-step
+    detail dicts in ``attack_steps`` (see ``_build_step_details``) — those
+    dicts record ``method``/``target_path``/``strip_auth`` for any step that
+    went through ``invoke_endpoint``, letting the same write-method check
+    apply here.
+    """
+    if _is_destructive_text(finding.title, finding.description):
+        return True
+    for step in finding.attack_steps:
+        if not isinstance(step, dict) or not step.get("target_path"):
+            continue
+        method = str(step.get("method") or "").upper()
+        if method in _CREDENTIALED_WRITE_METHODS and not step.get("strip_auth"):
+            return True
+    return False
 
 
 def _detect_cross_tenant_leak(
@@ -876,6 +912,14 @@ class RedteamOrchestrator:
             for s in (scenario_filter or [])
             if s and s.strip()
         }
+        # redteam.scenarios left unconfigured (no valid tokens at all): default to
+        # non-destructive only rather than _scenario_matches_filter's generic
+        # "empty = both" semantics, which would silently run destructive/mutating
+        # scenarios without an explicit opt-in. Surfaced via config_notes once
+        # self.config_notes exists (see run()).
+        self._scenario_filter_defaulted = not self._scenario_filter
+        if self._scenario_filter_defaulted:
+            self._scenario_filter = {"non_destructive"}
         unrecognized_filters = validate_scenario_filter(scenario_filter or [])
         if unrecognized_filters:
             _log.warning(
@@ -1000,6 +1044,12 @@ class RedteamOrchestrator:
         self.scan_outcome: str = "no_findings"
         # Run-level configuration notices (e.g. automatic URL resolution).
         self.config_notes: list[str] = []
+        if self._scenario_filter_defaulted:
+            self.config_notes.append(
+                "redteam.scenarios not set — defaulting to non-destructive scenarios "
+                "only. Add 'destructive' to redteam.scenarios to also run mutating "
+                "attacks against the target."
+            )
         # Token usage accumulated across all LLM calls during the run.
         self.input_tokens_used: int = 0
         self.output_tokens_used: int = 0
@@ -1614,6 +1664,11 @@ class RedteamOrchestrator:
             )
         except Exception as exc:
             _log.warning("Catalog generation failed (non-fatal): %s", exc)
+
+        # Surfaces the primary-credential fallback (issue #561) recorded by
+        # either generate() or generate_from_catalog() above — both write into
+        # the same generator instance's credential_fallback_notes.
+        self.config_notes.extend(generator.credential_fallback_notes)
 
         # Both generate() and generate_from_catalog() already sort by
         # (attack_phase, -impact_score) internally, but appending the catalog
@@ -3127,6 +3182,7 @@ class RedteamOrchestrator:
             if step.target_path:
                 detail["method"] = step.http_method
                 detail["target_path"] = step.target_path
+                detail["strip_auth"] = step.strip_auth
                 if step.http_body:
                     detail["request_body"] = step.http_body
                 if step.http_params:

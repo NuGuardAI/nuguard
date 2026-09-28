@@ -39,6 +39,10 @@ class BuilderContext(NamedTuple):
     policy: "object | None"  # CognitivePolicy | None — avoid heavy import
     target_endpoint: "Node | None" = None   # API_ENDPOINT node for direct endpoint attacks
     target_datastore: "Node | None" = None  # DATASTORE node for data-specific attacks
+    # Disposable canary-tenant auth headers (issue #561) — when set, write-capable
+    # direct-HTTP factories (e.g. _build_mass_assignment) route their mutating
+    # steps through this identity instead of the run's own primary credentials.
+    canary_auth_headers: "dict[str, str] | None" = None
 
 
 # Factory signature ────────────────────────────────────────────────────────────
@@ -129,6 +133,7 @@ def _build_hitl_bypass(ctx: BuilderContext) -> list:
 
 
 def _build_mass_assignment(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios._chain_factory import apply_secondary_credential
     from nuguard.redteam.scenarios.api_attacks import build_mass_assignment
     agent = ctx.target_agent
     target = ctx.target_endpoint or ctx.target_tool or agent
@@ -137,7 +142,10 @@ def _build_mass_assignment(ctx: BuilderContext) -> list:
         path = ctx.target_endpoint.metadata.endpoint or "/api/users"
     else:
         path = "/api/users"
-    results = build_mass_assignment(str(target.id), target.name or "endpoint", path=path)
+    results = apply_secondary_credential(
+        build_mass_assignment(str(target.id), target.name or "endpoint", path=path),
+        ctx.canary_auth_headers,
+    )
     return _stamp([results], ctx)
 
 

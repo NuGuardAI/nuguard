@@ -13,6 +13,8 @@ from nuguard.models.policy import CognitivePolicy
 from nuguard.sbom.models import AiSbomDocument, Node
 from nuguard.sbom.types import ComponentType, RelationshipType
 
+from ._chain_factory import apply_secondary_credential, is_credentialed_mutation_step
+
 if TYPE_CHECKING:
     from nuguard.redteam.target.canary import CanaryConfig
 
@@ -402,6 +404,21 @@ class ScenarioGenerator:
         self._real_tenant_id = ""
         if canary_config is not None and len(getattr(canary_config, "tenants", []) or []) >= 2:
             self._real_tenant_id = canary_config.tenants[1].tenant_id
+        # Disposable auth headers for the first canary tenant with a session_token
+        # — used to route write-capable direct-HTTP attacks (mass assignment,
+        # price tampering, ...) through an expendable identity instead of the
+        # run's own primary credentials. See apply_secondary_credential() in
+        # _chain_factory.py and issue #561.
+        self._canary_auth_headers: dict[str, str] | None = None
+        if canary_config is not None:
+            from nuguard.common.auth import AuthConfig
+
+            for tenant in canary_config.tenants:
+                if tenant.session_token:
+                    self._canary_auth_headers = AuthConfig.from_tenant_token(
+                        tenant.session_token
+                    ).to_headers()
+                    break
         self._node_by_id = {str(node.id): node for node in self._sbom.nodes}
 
         # Build edge indexes only from edges whose endpoints are effective.
@@ -436,6 +453,46 @@ class ScenarioGenerator:
         # surfaced so a report reader knows why no direct-HTTP scenarios were
         # generated for that node, instead of silently seeing nothing.
         self.skipped_endpoint_notes: list[str] = []
+        # Recorded once (not per-endpoint) the first time a write-capable
+        # direct-HTTP scenario is generated with no canary credential
+        # configured to route it through — see apply_secondary_credential().
+        self.credential_fallback_notes: list[str] = []
+
+    _CREDENTIAL_FALLBACK_NOTE = (
+        "No redteam.canary tenant with a session_token is configured — "
+        "destructive/write-capable direct-HTTP scenarios (mass assignment, "
+        "price tampering, ...) run under the run's own primary credentials "
+        "instead of a disposable canary identity."
+    )
+
+    def _note_credential_fallback_if_needed(self, scenarios: list[AttackScenario]) -> None:
+        """Record ``_CREDENTIAL_FALLBACK_NOTE`` once when no canary is configured
+        and at least one of *scenarios* has a credentialed-mutation step."""
+        if self._canary_auth_headers is not None or self.credential_fallback_notes:
+            return
+        if any(
+            sc.chain is not None
+            and any(is_credentialed_mutation_step(step) for step in sc.chain.steps)
+            for sc in scenarios
+        ):
+            self.credential_fallback_notes.append(self._CREDENTIAL_FALLBACK_NOTE)
+
+    def _secure_write_scenario(self, scenario: AttackScenario | None) -> AttackScenario | None:
+        """Route *scenario*'s write-capable steps through the canary credential.
+
+        When no canary tenant is configured, the scenario is returned
+        unchanged (today's primary-credential behaviour) and, the first time
+        this actually matters (the scenario has a credentialed-mutation step
+        to swap), a note is recorded in ``credential_fallback_notes`` so the
+        fallback is surfaced in the run's report rather than being a silent
+        gap — see issue #561.
+        """
+        if scenario is None or scenario.chain is None:
+            return scenario
+        if self._canary_auth_headers is None:
+            self._note_credential_fallback_if_needed([scenario])
+            return scenario
+        return apply_secondary_credential(scenario, self._canary_auth_headers)
 
     def generate(
         self, with_guided: bool = False, progressive: bool = False
@@ -629,8 +686,10 @@ class ScenarioGenerator:
             policy=self._policy,
             with_guided=with_guided,
             catalog=catalog,
+            canary_auth_headers=self._canary_auth_headers,
         )
         self.last_coverage = coverage
+        self._note_credential_fallback_if_needed(scenarios)
         for sc in scenarios:
             sc.attack_phase = attack_phase_for(sc.scenario_type.value)
         scenarios.sort(key=lambda s: (s.attack_phase, -s.impact_score))
@@ -1915,7 +1974,7 @@ class ScenarioGenerator:
                     )
 
             if method in ("POST", "PUT", "PATCH"):
-                out.append(
+                mass_scenario = self._secure_write_scenario(
                     build_mass_assignment(
                         endpoint_id=endpoint_id,
                         endpoint_name=node.name,
@@ -1924,13 +1983,17 @@ class ScenarioGenerator:
                         request_body_schema=request_body_schema,
                     )
                 )
+                if mass_scenario is not None:
+                    out.append(mass_scenario)
 
-                price_scenario = build_price_tampering(
-                    endpoint_id=endpoint_id,
-                    endpoint_name=node.name,
-                    path=path,
-                    method=method,
-                    request_body_schema=request_body_schema,
+                price_scenario = self._secure_write_scenario(
+                    build_price_tampering(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        request_body_schema=request_body_schema,
+                    )
                 )
                 if price_scenario is not None:
                     out.append(price_scenario)
@@ -1980,14 +2043,16 @@ class ScenarioGenerator:
             # Injection probe: fuzz path/body params with SQLi/NoSQLi payloads
             # whenever there's at least one candidate to substitute into.
             if inferred_params or request_body_schema:
-                injection_scenario = build_injection_probe(
-                    endpoint_id=endpoint_id,
-                    endpoint_name=node.name,
-                    path=path,
-                    method=method,
-                    path_params=inferred_params,
-                    request_body_schema=request_body_schema,
-                    sensitive_fields=endpoint_sensitive_fields,
+                injection_scenario = self._secure_write_scenario(
+                    build_injection_probe(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        path_params=inferred_params,
+                        request_body_schema=request_body_schema,
+                        sensitive_fields=endpoint_sensitive_fields,
+                    )
                 )
                 if injection_scenario is not None:
                     out.append(injection_scenario)
@@ -1995,13 +2060,15 @@ class ScenarioGenerator:
             # Path traversal probe: only fires when a file/path-like param
             # name is actually present (checked inside the builder).
             if inferred_params or request_body_schema:
-                traversal_scenario = build_path_traversal_probe(
-                    endpoint_id=endpoint_id,
-                    endpoint_name=node.name,
-                    path=path,
-                    method=method,
-                    path_params=inferred_params,
-                    request_body_schema=request_body_schema,
+                traversal_scenario = self._secure_write_scenario(
+                    build_path_traversal_probe(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        path_params=inferred_params,
+                        request_body_schema=request_body_schema,
+                    )
                 )
                 if traversal_scenario is not None:
                     out.append(traversal_scenario)
@@ -2009,13 +2076,15 @@ class ScenarioGenerator:
             # Open redirect probe: only fires when a redirect-target-like
             # param name is actually present (checked inside the builder).
             if inferred_params or request_body_schema:
-                redirect_scenario = build_open_redirect_probe(
-                    endpoint_id=endpoint_id,
-                    endpoint_name=node.name,
-                    path=path,
-                    method=method,
-                    path_params=inferred_params,
-                    request_body_schema=request_body_schema,
+                redirect_scenario = self._secure_write_scenario(
+                    build_open_redirect_probe(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        path_params=inferred_params,
+                        request_body_schema=request_body_schema,
+                    )
                 )
                 if redirect_scenario is not None:
                     out.append(redirect_scenario)
@@ -2025,13 +2094,15 @@ class ScenarioGenerator:
             # unlike path-traversal/redirect, XSS reflection isn't limited
             # to parameters with a suggestive name).
             if inferred_params or request_body_schema:
-                xss_scenario = build_reflected_xss_probe(
-                    endpoint_id=endpoint_id,
-                    endpoint_name=node.name,
-                    path=path,
-                    method=method,
-                    path_params=inferred_params,
-                    request_body_schema=request_body_schema,
+                xss_scenario = self._secure_write_scenario(
+                    build_reflected_xss_probe(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        path_params=inferred_params,
+                        request_body_schema=request_body_schema,
+                    )
                 )
                 if xss_scenario is not None:
                     out.append(xss_scenario)
@@ -2040,7 +2111,7 @@ class ScenarioGenerator:
             auth_scope = getattr(meta, "auth_scope", None)
             auth_detail = getattr(meta, "auth_detail", None)
             if auth_scope or auth_detail:
-                out.append(
+                scope_scenario = self._secure_write_scenario(
                     build_auth_scope_bypass(
                         endpoint_id=endpoint_id,
                         endpoint_name=node.name,
@@ -2051,6 +2122,8 @@ class ScenarioGenerator:
                         request_body_schema=request_body_schema,
                     )
                 )
+                if scope_scenario is not None:
+                    out.append(scope_scenario)
 
             # Rate-limit probe: fire on endpoints WITHOUT a confirmed
             # rate-limit posture — the same population NGA-026 (static) flags
@@ -2063,7 +2136,7 @@ class ScenarioGenerator:
             # Probing the unconfirmed population lets a real 429 upgrade the
             # static finding to a false positive, and a clean burst confirm it.
             if not getattr(meta, "rate_limited", False):
-                out.append(
+                rate_scenario = self._secure_write_scenario(
                     build_rate_limit_probe(
                         endpoint_id=endpoint_id,
                         endpoint_name=node.name,
@@ -2072,6 +2145,8 @@ class ScenarioGenerator:
                         request_body_schema=request_body_schema,
                     )
                 )
+                if rate_scenario is not None:
+                    out.append(rate_scenario)
 
         return out
 
