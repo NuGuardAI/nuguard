@@ -60,8 +60,18 @@ class JavaFrameworkAdapter(FrameworkAdapter, ABC):
 
     @staticmethod
     def _annotation_value(annotation: str) -> str:
-        match = re.search(r'\(\s*(?:value\s*=\s*|path\s*=\s*)?["\']([^"\']+)["\']', annotation)
-        return match.group(1).strip() if match else ""
+        # A named ``value=``/``path=`` attribute wins wherever it appears in the
+        # argument list — annotations commonly list other named attributes
+        # first, e.g. ``@Foo(descriptionLabel = "...", value = "path")``, and a
+        # positional match on the *first* quoted string would silently grab the
+        # wrong attribute in that case.
+        named = re.search(r'(?:value|path)\s*=\s*["\']([^"\']+)["\']', annotation)
+        if named:
+            return named.group(1).strip()
+        # Single-element annotation shorthand, e.g. ``@RequestMapping("/api")``
+        # — the quoted literal must be the first thing after the opening paren.
+        positional = re.match(r'@[\w$]+\(\s*["\']([^"\']+)["\']', annotation.strip())
+        return positional.group(1).strip() if positional else ""
 
     @staticmethod
     def _line_snippet(content: str, line: int, limit: int = 160) -> str:

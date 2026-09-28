@@ -347,8 +347,8 @@ async def resolve_target_session(
         indicates_websocket as sbom_indicates_websocket,
     )
     from nuguard.common.target_client_builder import (  # noqa: PLC0415
+        discover_login_flow_live,
         resolve_auth_config_with_sbom_fallback,
-        resolve_target_url,
     )
 
     resolution_notes: list[str] = []
@@ -356,20 +356,16 @@ async def resolve_target_session(
     configured_chat_path = chat_path
 
     # ── 1. URL resolution ────────────────────────────────────────────────────
-    resolved_url, url_notes = resolve_target_url(target_url, sbom)
-    if url_notes:
-        resolution_notes.extend(url_notes)
-    if resolved_url:
-        target_url = resolved_url
-
-    from nuguard.common.endpoint_detection.frontend_origin import (  # noqa: PLC0415
-        discover_api_origin_from_frontend_bundle,
+    # Static-hosting fallback + SPA bundle API-origin scan (memoised — the
+    # analyzer and runner resolve the same URL).
+    from nuguard.common.endpoint_detection.context import (  # noqa: PLC0415
+        resolve_api_origin,
     )
 
-    bundle_origin, bundle_notes = await discover_api_origin_from_frontend_bundle(target_url)
-    if bundle_origin:
-        target_url = bundle_origin
-        resolution_notes.extend(bundle_notes)
+    resolved_url, url_notes = await resolve_api_origin(target_url, sbom)
+    resolution_notes.extend(url_notes)
+    if resolved_url:
+        target_url = resolved_url
 
     # ── 2. Static endpoint selection ─────────────────────────────────────────
     # Resolve static SBOM information before bootstrap so the bootstrap request
@@ -405,6 +401,15 @@ async def resolve_target_session(
         effective_auth, auth_note = resolve_auth_config_with_sbom_fallback(effective_auth, sbom)
         if auth_note:
             resolution_notes.append(auth_note)
+        elif effective_auth.type == "basic":
+            # The SBOM had no login endpoint with a credential schema — try
+            # login routes live before falling back to HTTP Basic, which many
+            # token-based apps silently ignore.
+            live_auth, live_note = await discover_login_flow_live(target_url, effective_auth, sbom)
+            if live_auth is not None:
+                effective_auth = live_auth
+                if live_note:
+                    resolution_notes.append(live_note)
 
     auth_runtime = resolve_auth_runtime(
         auth_config=effective_auth,
@@ -430,6 +435,7 @@ async def resolve_target_session(
     _probe_extras = probe_payload_extras if probe_payload_extras is not None else chat_payload_extras
     bootstrapper, health_report = await bootstrap_auth_runtime(
         target_url=target_url,
+        sbom=sbom,
         endpoint=(
             configured_chat_path
             or ("/ws" if is_websocket else chat_path or "/chat")
@@ -442,6 +448,8 @@ async def resolve_target_session(
         ws_auth_message=ws_auth_message,
         config_path=config_path,
         timeout=request_timeout,
+        payload_key=chat_payload_key,
+        payload_list=chat_payload_list,
     )
     bootstrap_headers = bootstrapper.session.headers()
     effective_headers = dict(extra_headers)
@@ -544,6 +552,7 @@ async def resolve_target_session(
         _is_websocket_final = chat_payload_key == "__websocket__"
         bootstrapper, health_report = await bootstrap_auth_runtime(
             target_url=target_url,
+            sbom=sbom,
             endpoint=chat_path,
             auth_config=auth_runtime.auth_config,
             canary_config=canary_config,
@@ -553,6 +562,8 @@ async def resolve_target_session(
             ws_auth_message=ws_auth_message,
             config_path=config_path,
             timeout=request_timeout,
+            payload_key=chat_payload_key,
+            payload_list=chat_payload_list,
         )
         _revalidated_headers = bootstrapper.session.headers()
         if _revalidated_headers:

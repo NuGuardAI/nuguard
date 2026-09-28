@@ -104,6 +104,18 @@ class TargetUnavailableError(NuGuardError):
         self.source = source
 
 
+class TargetQuotaExhaustedError(TargetUnavailableError):
+    """Raised when the target rejects requests because a usage quota is exhausted.
+
+    Apps often signal this with 403 (or 402/429) and a message such as
+    "You've reached your free plan limit". The credentials are valid, so this
+    is distinct from :class:`AuthError`: re-authenticating or browser-login
+    recovery cannot help — the test account's plan/quota must be raised.
+    Subclasses :class:`TargetUnavailableError` so existing "target down"
+    handling (abort the run, don't hammer the target) still applies.
+    """
+
+
 class TargetEndpointNotFoundError(NuGuardError):
     """Raised when the configured/resolved chat endpoint returns 404 or 405.
 
@@ -129,6 +141,37 @@ class TargetEndpointNotFoundError(NuGuardError):
         self.url = url
         self.http_status_code = http_status_code
         self.detail = detail
+
+
+class TargetNotEngagedError(NuGuardError):
+    """Raised when the target is reachable but its chat endpoint never engages.
+
+    Every probe got a 2xx whose body was only an error envelope, e.g.
+    ``{"error": "messages must not be empty"}`` (wrong payload shape) or
+    ``{"error": "LLM error: ... ECONNREFUSED"}`` (the app's own LLM backend is
+    down). Distinct from :class:`TargetUnavailableError` (transport failure)
+    and :class:`AuthError` (401/403): the setup, not the network, needs fixing.
+
+    Attributes:
+        url: The chat endpoint URL that was probed.
+        detail: The error text the app returned.
+        payload_key: The request-body key NuGuard sent the message under.
+        payload_list: Whether the message was wrapped in a list.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        url: str = "",
+        detail: str = "",
+        payload_key: str = "",
+        payload_list: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.url = url
+        self.detail = detail
+        self.payload_key = payload_key
+        self.payload_list = payload_list
 
 
 class TargetRateLimitedError(NuGuardError):

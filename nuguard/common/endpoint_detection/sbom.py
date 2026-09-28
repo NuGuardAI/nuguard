@@ -13,12 +13,15 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
 from nuguard.common.endpoint_detection.constants import (
+    CONVERSATIONAL_PATH_SEGMENTS,
+    CONVERSATIONAL_PAYLOAD_KEYS,
     EXCLUDE_PATTERNS,
     HAS_PATH_PARAM_RE,
     PROBE_SOURCE_AUTO_ENRICHMENT,
     PROBE_SOURCE_RUNTIME_PROBE,
     RUNTIME_NON_CHAT_KEYS,
     ProbeExtras,
+    count_form_fields,
     has_required_structured_field,
     normalize_payload_key,
 )
@@ -239,6 +242,17 @@ def discover_chat_candidates_from_sbom(
             sbom_frameworks = {str(f).lower() for f in raw if f}
     has_langgraph = bool(sbom_frameworks & {"langgraph"})
 
+    # Paths that also expose a GET — a POST .../messages with a sibling GET
+    # .../messages is a conversation resource (history + send), a strong
+    # multi-turn chat signal that one-shot generator endpoints lack.
+    get_paths: set[str] = {
+        (n.metadata.endpoint or "").strip()
+        for n in sbom.nodes
+        if n.component_type == NodeType.API_ENDPOINT
+        and n.metadata
+        and (n.metadata.method or "").upper() == "GET"
+    }
+
     candidates: list[tuple[int, str, str, bool, str, str | None]] = []
     for node in sbom.nodes:
         if node.component_type != NodeType.API_ENDPOINT:
@@ -333,15 +347,38 @@ def discover_chat_candidates_from_sbom(
                 for i in range(len(endpoint_segments) - n + 1)
             )
 
+        # Strong conversational path signals score higher than one-shot
+        # generator verbs ("/generate", "/respond", "/query") — the latter also
+        # name non-chat LLM endpoints (e.g. "/learning-paths/generate") that
+        # accept a single domain field and return a structured artefact.
         if _segment_match("/chat/message"):
             score += 2
         elif any(
             _segment_match(token)
-            for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")
+            for token in ("/chat/queue", "/messages", "/message", "/completions")
         ):
             score += 3
+        elif any(_segment_match(token) for token in ("/generate", "/respond", "/query")):
+            score += 1
         elif endpoint_l.endswith("/chat"):
             score += 1
+
+        # Conversational resource segment anywhere in the path
+        # (e.g. /chat/conversations/:id/messages).
+        if any(seg in CONVERSATIONAL_PATH_SEGMENTS for seg in endpoint_segments):
+            score += 2
+
+        # Free-text conversational payload key (message/content/prompt/...)
+        # versus a domain noun (topic/explanation/...).
+        if meta.chat_payload_key and (
+            normalize_payload_key(meta.chat_payload_key) in CONVERSATIONAL_PAYLOAD_KEYS
+        ):
+            score += 2
+
+        # Form-like request bodies (several extra non-context fields) indicate
+        # a one-shot generator/workflow endpoint rather than a chat turn.
+        if count_form_fields(meta.request_body_schema, payload_key) >= 2:
+            score -= 2
 
         # LangGraph run endpoint is always the primary agent interface.
         if "run_langgraph" in endpoint_l or "run_graph" in endpoint_l:
@@ -375,7 +412,10 @@ def discover_chat_candidates_from_sbom(
             params = meta.path_params or []
             sources = meta.path_param_sources or {}
             if params and all(p in sources for p in params):
-                score -= 1
+                # Fully bootstrappable — resolved before use, so no penalty.
+                # A sibling GET on the same path marks a conversation resource.
+                if discovered_path in get_paths:
+                    score += 1
             else:
                 score -= 5
 

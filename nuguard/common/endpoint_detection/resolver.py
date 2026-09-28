@@ -9,6 +9,7 @@ from nuguard.common.endpoint_detection.constants import (
     DEFAULT_PAYLOAD_KEY,
     DEFAULT_PAYLOAD_LIST,
     DEFAULT_PROBE_TIMEOUT_SECONDS,
+    HAS_PATH_PARAM_RE,
     UNSET,
 )
 from nuguard.common.endpoint_detection.live_probe import ProbeResult, probe_endpoint
@@ -39,6 +40,7 @@ async def resolve_chat_endpoint(
     llm: Any = None,
     enable_browser_fallback: bool = False,
     probe_result_callback: Callable[[ProbeResult], None] | None = None,
+    allow_live_probe: bool = True,
 ) -> ResolvedEndpoint:
     """Resolve an endpoint and only the payload fields that are missing.
 
@@ -51,6 +53,12 @@ async def resolve_chat_endpoint(
 
     ``UNSET`` is required for omitted fields because ``"message"`` and
     ``False`` are both valid explicit configuration values.
+
+    ``allow_live_probe=False`` restricts resolution to config + SBOM (zero
+    network I/O). Callers pass it when live probing would be meaningless yet,
+    e.g. the target needs a login step that hasn't run (see
+    :func:`~nuguard.common.endpoint_detection.context.auth_requires_login`);
+    the authenticated pre-flight check validates and rotates the endpoint later.
     """
     notes: list[str] = []
     endpoint_is_explicit = endpoint is not UNSET and bool(endpoint)
@@ -106,7 +114,9 @@ async def resolve_chat_endpoint(
     # Works without an SBOM too (issue #532) — probe_endpoint falls back to
     # the generic HTTP_ENDPOINT_FALLBACK_PATHS candidate list when sbom=None.
     probe_result = None
-    if resolved_path is None:
+    if resolved_path is None and not allow_live_probe:
+        notes.append("Live endpoint probing deferred until after auth bootstrap.")
+    if resolved_path is None and allow_live_probe:
         try:
             probe_result = await probe_endpoint(
                 target_url,
@@ -146,11 +156,31 @@ async def resolve_chat_endpoint(
     # A configured or SBOM-selected endpoint may still need payload inference —
     # also without an SBOM (issue #532): detect_payload_shape's own live probe
     # is already sbom=None-safe.
-    if resolved_path is not None and (
-        not key_is_explicit
-        or not list_is_explicit
-        or not template_is_explicit
-        or not response_is_explicit
+    # A templated SBOM path (e.g. /conversations/:id/messages) cannot be
+    # probed literally — the placeholder always 404s and would wrongly send
+    # resolution into a blind fallback scan. When the SBOM already supplies
+    # the payload key, trust it; the pre-flight check bootstraps the path
+    # params and validates the endpoint with a real request.
+    templated_sbom_path = bool(
+        sbom_path_unvalidated
+        and HAS_PATH_PARAM_RE.search(sbom_path_unvalidated)
+        and payload_source is EndpointSource.SBOM
+    )
+    if templated_sbom_path:
+        notes.append(
+            f"SBOM endpoint {sbom_path_unvalidated!r} has path parameters — skipping "
+            "literal payload probe; pre-flight bootstraps and validates it."
+        )
+    if (
+        allow_live_probe
+        and not templated_sbom_path
+        and resolved_path is not None
+        and (
+            not key_is_explicit
+            or not list_is_explicit
+            or not template_is_explicit
+            or not response_is_explicit
+        )
     ):
         is_websocket = sbom is not None and indicates_websocket(
             sbom,

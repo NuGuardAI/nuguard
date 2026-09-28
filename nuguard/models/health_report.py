@@ -35,6 +35,12 @@ class CredentialCheckResult(BaseModel):
     # Flags that the route may need target.chat_payload_extras or a different
     # payload key, rather than silently treating the probe as fully verified.
     payload_hint: str = ""
+    # Non-blocking note for a 2xx whose body (JSON or every SSE event) is only
+    # an error envelope, e.g. ``{"error": "messages must not be empty"}``. The
+    # route is reachable and authenticated, but the app didn't engage: wrong
+    # payload shape, or its own LLM backend failed. Unlike ``body_warning`` it
+    # never triggers browser-login recovery, since logging in again can't fix it.
+    engagement_error: str = ""
     checked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

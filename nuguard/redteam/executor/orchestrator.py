@@ -432,6 +432,30 @@ def _maybe_mark_endpoint_not_found(
     return chain_status
 
 
+def _record_is_error_only(record: object) -> bool:
+    """True when a scenario got responses and every one was only an error envelope."""
+    from nuguard.common.transport import error_only_response  # noqa: PLC0415
+
+    responses = [
+        str(step.get("response") or "")
+        for step in getattr(record, "steps", None) or []
+        if isinstance(step, dict) and step.get("response")
+    ]
+    return bool(responses) and all(error_only_response(r) for r in responses)
+
+
+def _first_error_only_response(record: object) -> str:
+    """Return the first error-envelope text from a scenario record's steps."""
+    from nuguard.common.transport import error_only_response  # noqa: PLC0415
+
+    for step in getattr(record, "steps", None) or []:
+        if isinstance(step, dict):
+            text = error_only_response(str(step.get("response") or ""))
+            if text:
+                return text
+    return ""
+
+
 def _compute_scan_outcome(
     findings: list,
     records: list[ScenarioRecord],
@@ -778,8 +802,11 @@ class RedteamOrchestrator:
         similar_miss_threshold: int = 4,
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
+        require_engagement: bool = True,
+        engagement_error_threshold: int = 5,
         capability_discovery: bool = True,
         liveness_cache_ttl_seconds: float = 3600.0,
+        preflight_candidates: int = 3,
         llm_capability_dedup: bool = False,
         chat_payload_extras: dict[str, Any] | None = None,
         catalog: "tuple | None" = None,
@@ -866,8 +893,19 @@ class RedteamOrchestrator:
         self._similar_miss_threshold = max(1, similar_miss_threshold)
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
+        # Engagement gate: fail fast when the chat endpoint only ever answers
+        # with error envelopes, instead of "passing" a scan that never reached
+        # the agent. See _verify_target_engagement / _run_scenarios.
+        self._require_engagement = require_engagement
+        self._engagement_error_threshold = max(1, engagement_error_threshold)
+        self._not_engaged_detail: str | None = None
         self._capability_discovery = capability_discovery
         self._liveness_cache_ttl_seconds = max(0.0, liveness_cache_ttl_seconds)
+        # Chat-endpoint pre-flight (see _ensure_endpoint_preflight): run once
+        # per scan, shared by pre-scan discovery and scenario execution.
+        self._preflight_candidates = max(0, preflight_candidates)
+        self._preflight_result: "tuple[bool, list[str]] | None" = None
+        self._preflight_path_params: dict[str, str] = {}
         self._llm_capability_dedup = llm_capability_dedup
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
         self._pre_run_warmup = max(0, pre_run_warmup)
@@ -1137,6 +1175,25 @@ class RedteamOrchestrator:
             self._checkpoint_payload(status=status, abort_reason=abort_reason, records=records, findings=findings),
         )
 
+    def build_partial_run_error(
+        self, exc: BaseException, *, findings: "list[Finding] | None" = None,
+    ) -> PartialRunError:
+        """Save a checkpoint from current progress and wrap ``exc`` as ``PartialRunError``.
+
+        Used both when the scan itself aborts mid-run (see :meth:`run`) and when a
+        post-scan step (e.g. remediation synthesis) fails after every scenario has
+        already completed — either way there's completed work worth a fast-resume
+        checkpoint instead of a bare crash (see issue #508).
+        """
+        self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__, findings=findings)
+        return PartialRunError(
+            exc,
+            partial_payload=self._checkpoint_payload(
+                status="aborted", abort_reason=type(exc).__name__, findings=findings,
+            ),
+            checkpoint_path=self._checkpoint_path,
+        )
+
     async def run(self) -> list[Finding]:
         """Run the full scan, salvaging partial progress into a checkpoint on failure.
 
@@ -1159,21 +1216,81 @@ class RedteamOrchestrator:
                 # Only worth a checkpoint (and a PartialRunError) when at least
                 # one scenario actually completed — an abort before that point
                 # (e.g. auth bootstrap failing) has nothing to resume from.
-                self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__)
-                raise PartialRunError(
-                    exc,
-                    partial_payload=self._checkpoint_payload(status="aborted", abort_reason=type(exc).__name__),
-                    checkpoint_path=self._checkpoint_path,
-                ) from exc
+                raise self.build_partial_run_error(exc) from exc
             raise
         else:
             if self._checkpoint is not None and self._checkpoint_path is not None:
                 self._checkpoint.delete(self._checkpoint_path)
             return findings
 
+    async def _verify_target_engagement(self) -> None:
+        """Send one benign turn and abort when the reply is only an error envelope.
+
+        A 2xx whose body is ``{"error": ...}`` (or an SSE stream of them) means
+        the agent never ran: wrong payload shape, or the app's LLM backend is
+        down. Scenarios sent through that channel can't produce findings, so
+        the run would "pass" without testing anything.
+
+        Raises:
+            TargetNotEngagedError: the probe got only an error envelope.
+        """
+        from nuguard.common.errors import TargetNotEngagedError  # noqa: PLC0415
+        from nuguard.common.target_client_builder import (  # noqa: PLC0415
+            build_target_app_client_from_session,
+        )
+        from nuguard.common.transport import error_only_response  # noqa: PLC0415
+        from nuguard.redteam.target.session import AttackSession  # noqa: PLC0415
+
+        if self._chat_payload_key.startswith("__"):
+            return  # websocket / framework-adapter protocols have their own checks
+        client = build_target_app_client_from_session(
+            self._target_session_config, timeout=self._request_timeout,
+        )
+        session = AttackSession(
+            session_id="engagement-check",
+            target_url=self._target_url,
+            chain_id="engagement-check",
+        )
+        try:
+            async with client:
+                response, _ = await client.send(
+                    "Hello, what can you help me with?", session, retry_transient=True,
+                )
+        except TargetUnavailableError:
+            raise
+        except Exception as exc:  # noqa: BLE001 — the scenario loop has its own breakers
+            _log.warning("engagement check could not complete (continuing): %s", exc)
+            return
+        error_text = error_only_response(response or "")
+        if not error_text:
+            _log.info("engagement check: target answered — %s", (response or "")[:120])
+            return
+        url = f"{self._target_url}{self._chat_path or '/chat'}"
+        shape = (
+            f"{{{self._chat_payload_key!r}: [...]}}" if self._chat_payload_list
+            else f"{{{self._chat_payload_key!r}: \"...\"}}"
+        )
+        raise TargetNotEngagedError(
+            f"The chat endpoint {url} is reachable but answered only with an error, so "
+            f"no scenario could reach the agent.\n"
+            f"  App error: {error_text}\n"
+            f"  Sent body shape: {shape}\n"
+            "Likely causes: (1) the app expects a different payload — set "
+            "target.chat_payload_key / target.chat_payload_list in nuguard.yaml "
+            "(e.g. 'messages' + true for OpenAI/Vercel-style apps); (2) the app's own "
+            "LLM backend is down (errors like ECONNREFUSED / RetryError). "
+            "Set redteam.require_engagement: false to run anyway.",
+            url=url,
+            detail=error_text,
+            payload_key=self._chat_payload_key,
+            payload_list=self._chat_payload_list,
+        )
+
     async def _run_impl(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
         self._emitted_finding_keys.clear()
+        self._preflight_result = None
+        self._preflight_path_params = {}
         _log.info(
             "Starting red-team scan against %s (profile=%s)",
             self._target_url,
@@ -1262,6 +1379,9 @@ class RedteamOrchestrator:
             self._chat_path_source,
         )
 
+        if self._require_engagement:
+            await self._verify_target_engagement()
+
         # 0. Pre-scan discovery: connect to the live agent as the authenticated
         # user and extract their real name + account/booking IDs.  Runs before
         # scenario generation so the discovered profile can:
@@ -1309,6 +1429,14 @@ class RedteamOrchestrator:
             _cached_profile_hit = cached_discovery_profile(self._sbom)
 
             async with _disc_client:
+                # Validate (and if needed rotate) the chat endpoint before
+                # discovery sends anything — an unvalidated endpoint (e.g. a
+                # one-shot generator route, or an unbound path param) makes
+                # every discovery/capability probe fail.
+                await self._ensure_endpoint_preflight(
+                    _disc_client,
+                    auth_headers=self._target_session_config.effective_headers or None,
+                )
                 if _cached_profile_hit is not None:
                     _disc_outcome = None
                 else:
@@ -1676,25 +1804,12 @@ class RedteamOrchestrator:
             # 4xx-doesn't-count-toward-the-circuit-breaker behaviour would otherwise
             # let an entire scan burn through every scenario with no findings.  Rotate
             # through ranked SBOM candidates, then a live probe, before giving up.
-            from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
-                validate_and_rotate_chat_endpoint,
+            _pf_ok, _pf_notes = await self._ensure_endpoint_preflight(
+                client, auth_headers=effective_headers or None
             )
-            _pf = await validate_and_rotate_chat_endpoint(
-                client,
-                self._sbom,
-                has_explicit_endpoint=self._chat_path_source == "config",
-                target_url=self._target_url,
-                auth_headers=effective_headers or None,
-            )
-            self.config_notes.extend(_pf.notes)
-            if _pf.rotated_endpoint is not None:
-                self._chat_path, self._chat_payload_key, self._chat_payload_list, _pf_resp_key = _pf.rotated_endpoint
-                if _pf_resp_key:
-                    self._chat_response_key = _pf_resp_key
-                self._chat_path_source = _pf.endpoint_source or self._chat_path_source
-            if not _pf.ok:
+            if not _pf_ok:
                 self.scan_outcome = "aborted_endpoint_unreachable"
-                _log.error("Redteam: aborting — no working chat endpoint found (%s)", _pf.notes)
+                _log.error("Redteam: aborting — no working chat endpoint found (%s)", _pf_notes)
                 return []
 
             # Per-endpoint liveness: mark every other SBOM-discovered
@@ -1941,6 +2056,8 @@ class RedteamOrchestrator:
             records=self.scenario_records,
             strict=self._strict_outcome,
         )
+        if self._not_engaged_detail is not None and not findings:
+            self.scan_outcome = "aborted_target_not_engaged"
         _log.info("Scan outcome: %s", self.scan_outcome)
 
         # LLM evaluation + summary (opt-in — only when eval_llm is configured)
@@ -2015,6 +2132,9 @@ class RedteamOrchestrator:
         # Kept independent of consecutive_unavailable so an unreachable
         # SBOM-derived REST path cannot trip the general chat breaker.
         consecutive_endpoint_unavailable = 0
+        # Consecutive scenarios whose every response was only an error
+        # envelope (the agent never engaged) — see _record_is_error_only.
+        consecutive_error_envelopes = 0
         # If a prior pass already tripped the circuit (the escalation pass runs
         # after the main pass), skip every scenario — the target is dead and
         # there is no point hammering it again with a fresh abort event.
@@ -2053,7 +2173,7 @@ class RedteamOrchestrator:
             scenario: AttackScenario,
             scenario_idx: int = 0,
         ) -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
-            nonlocal consecutive_unavailable, consecutive_endpoint_unavailable
+            nonlocal consecutive_unavailable, consecutive_endpoint_unavailable, consecutive_error_envelopes
             affected = ", ".join(
                 self._node_name.get(nid, nid) for nid in scenario.target_node_ids[:2]
             )
@@ -2297,6 +2417,18 @@ class RedteamOrchestrator:
                             )
                     else:
                         consecutive_unavailable = 0
+                    if self._require_engagement and _record_is_error_only(_record):
+                        consecutive_error_envelopes += 1
+                        if consecutive_error_envelopes >= self._engagement_error_threshold:
+                            self._not_engaged_detail = _first_error_only_response(_record)
+                            _log.error(
+                                "Target answered only with error envelopes for %d consecutive "
+                                "scenarios — aborting remaining scenarios as not engaged: %s",
+                                consecutive_error_envelopes, self._not_engaged_detail,
+                            )
+                            abort_event.set()
+                    else:
+                        consecutive_error_envelopes = 0
                     # Record executed nodes in coverage tracker.
                     if self._coverage_tracker is not None:
                         for _nid in scenario.target_node_ids:
@@ -3401,6 +3533,71 @@ class RedteamOrchestrator:
 
         return findings
 
+    async def _ensure_endpoint_preflight(
+        self,
+        client: Any,
+        *,
+        auth_headers: "dict[str, str] | None" = None,
+    ) -> "tuple[bool, list[str]]":
+        """Validate/rotate the chat endpoint once per scan and apply it to *client*.
+
+        The first call sends a test message and, when the reply is an error or a
+        structured artefact rather than chat, rotates to a more conversational
+        SBOM candidate (see
+        :func:`~nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint`).
+        The rotation is written back to this orchestrator's chat settings and to
+        ``self._target_session_config`` so clients built later inherit it.
+        Later calls replay the cached bound path params onto *client* instead
+        of re-testing.
+
+        Returns:
+            ``(ok, notes)`` — ``ok`` is ``False`` when no working chat endpoint
+            was found.
+        """
+        cached = getattr(self, "_preflight_result", None)
+        if cached is not None:
+            if hasattr(client, "chat_path") and client.chat_path != self._chat_path:
+                client.set_chat_endpoint(
+                    self._chat_path, self._chat_payload_key, self._chat_payload_list,
+                    self._chat_response_key,
+                )
+            if hasattr(client, "set_path_param"):
+                for _pp_name, _pp_value in self._preflight_path_params.items():
+                    client.set_path_param(_pp_name, _pp_value)
+            return cached
+
+        from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
+            validate_and_rotate_chat_endpoint,
+        )
+
+        _pf = await validate_and_rotate_chat_endpoint(
+            client,
+            self._sbom,
+            has_explicit_endpoint=self._chat_path_source == "config",
+            target_url=self._target_url,
+            auth_headers=auth_headers,
+            max_candidates=self._preflight_candidates,
+        )
+        self.config_notes.extend(_pf.notes)
+        if _pf.rotated_endpoint is not None:
+            self._chat_path, self._chat_payload_key, self._chat_payload_list, _pf_resp_key = (
+                _pf.rotated_endpoint
+            )
+            if _pf_resp_key:
+                self._chat_response_key = _pf_resp_key
+            self._chat_path_source = _pf.endpoint_source or self._chat_path_source
+            _tsc = getattr(self, "_target_session_config", None)
+            if _tsc is not None:
+                _tsc.chat_path = self._chat_path
+                _tsc.chat_payload_key = self._chat_payload_key
+                _tsc.chat_payload_list = self._chat_payload_list
+                if _pf_resp_key:
+                    _tsc.chat_response_key = _pf_resp_key
+        _pp = getattr(client, "path_param_values", None)
+        self._preflight_path_params = dict(_pp) if isinstance(_pp, dict) else {}
+        self._preflight_result = (_pf.ok, list(_pf.notes))
+        return self._preflight_result
+
     async def _maybe_probe_endpoints(self) -> None:
         """Use the common resolver for full or targeted endpoint detection."""
         from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
@@ -3444,8 +3641,19 @@ class RedteamOrchestrator:
             except Exception as exc:  # noqa: BLE001 - persistence is best effort
                 _log.debug("redteam: probe result persist failed: %s", exc)
 
+        # Probe the real API origin (not an SPA frontend), and defer live
+        # probing entirely when auth needs a login step that hasn't run yet —
+        # resolve_target_session() probes again after bootstrap, with auth.
+        from nuguard.common.endpoint_detection.context import (
+            auth_requires_login,
+            resolve_api_origin,
+        )
+
+        probe_target_url, _ = await resolve_api_origin(self._target_url, self._sbom)
+        allow_live_probe = not auth_requires_login(self._auth_config, self._sbom)
+
         resolved = await resolve_chat_endpoint(
-            target_url=self._target_url,
+            target_url=probe_target_url,
             sbom=self._sbom,
             # Pass UNSET (not self._chat_path) when the caller never explicitly
             # configured an endpoint — self._chat_path may already hold a plain
@@ -3466,7 +3674,13 @@ class RedteamOrchestrator:
             probe_payload_extras=self._chat_payload_extras or None,
             llm=self._redteam_llm if self._probe_llm else None,
             probe_result_callback=_persist_probe_result,
+            allow_live_probe=allow_live_probe,
         )
+        if not resolved.path and not allow_live_probe:
+            # Leave the path unset so resolve_target_session() runs full,
+            # authenticated discovery instead of key-probing a "/chat" guess.
+            _log.info("redteam: live endpoint probing deferred until after auth bootstrap")
+            return
         self._chat_path = resolved.path or "/chat"
         self._chat_payload_key = resolved.payload_key or "message"
         self._chat_payload_list = resolved.payload_list

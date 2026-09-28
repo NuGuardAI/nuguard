@@ -109,6 +109,7 @@ from ..models import (
     Edge,
     EncryptionDetail,
     Evidence,
+    HttpRequestMetadata,
     Node,
     NodeMetadata,
     RateLimitDetail,
@@ -117,6 +118,7 @@ from ..models import (
 )
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
+from .endpoint_names import disambiguate_endpoint_names
 from .postprocess import (
     _collapse_bulk_catalog_files,
     _dedup_by_location,
@@ -847,6 +849,7 @@ class AiSbomExtractor:
         # fully-disambiguated detections come in — see the DATASTORE branch
         # inside the Python-file adapter loop.
         _ds_symbol_index: dict[tuple[str, str], str] = {}
+        _py_used_names: dict[str, set[str]] = {}
         try:
             import ast as _ast  # noqa: PLC0415  # isort:skip
             from nuguard.sbom.adapters.python.datastores import (  # noqa: PLC0415, I001
@@ -881,6 +884,11 @@ class AiSbomExtractor:
                 _router_decls[_router_rel] = _collect_py_router_decls(_py_tree)
                 _router_includes[_router_rel] = _collect_py_includes(_py_tree)
                 _router_imports[_router_rel] = _collect_py_router_imports(_py_tree)
+                _py_used_names[_router_rel] = {
+                    node.id
+                    for node in _ast.walk(_py_tree)
+                    if isinstance(node, _ast.Name) and isinstance(node.ctx, _ast.Load)
+                }
                 _tool_names = _collect_py_tool_names(_py_tree)
                 if _tool_names:
                     _tool_defining_files[_router_rel] = _tool_names
@@ -1662,6 +1670,38 @@ class AiSbomExtractor:
         # nodes already exist in that file with provider="faiss").
         _suppress_generic_tech_regex_datastore(node_map)
 
+        # Record Python assets imported and actually referenced by a file with
+        # an agent. The regular hint resolver has only canonical names, so this
+        # evidence is carried into the scoped fallback pass below.
+        _imported_assets: dict[str, set[tuple[ComponentType, str]]] = {}
+        if _resolve_import_to_relpath is not None:
+            _prompt_symbols: dict[tuple[str, str], str] = {}
+            for _acc in node_map.values():
+                if (
+                    _acc.component_type == ComponentType.PROMPT
+                    and _acc.adapter_name in {"python_prompt_const", "prompt_detector"}
+                    and _acc.display_name.isidentifier()
+                ):
+                    for _ev in _acc.evidence:
+                        _prompt_symbols[(_ev.location.path, _acc.display_name)] = _acc.canonical_name
+            for _source_rel, _imports in _router_imports.items():
+                if not _imports:
+                    continue
+                for _local_name, (_level, _module, _original_name) in _imports.items():
+                    if _local_name not in _py_used_names.get(_source_rel, set()):
+                        continue
+                    _target_rel = _resolve_import_to_relpath(_source_rel, _level, _module)
+                    if _target_rel is None:
+                        continue
+                    for _kind, _canonical in (
+                        (ComponentType.PROMPT, _prompt_symbols.get((_target_rel, _original_name))),
+                        (ComponentType.DATASTORE, _ds_symbol_index.get((_target_rel, _original_name))),
+                    ):
+                        if _canonical and (_kind, canonicalize_text(_canonical)) in node_map:
+                            _imported_assets.setdefault(_source_rel, set()).add(
+                                (_kind, canonicalize_text(_canonical))
+                            )
+
         # Fold generic-regex API_ENDPOINT nodes (raw, unprefixed path guesses)
         # into the framework-adapter node for the same route once its real,
         # prefix-resolved path is known — see _dedup_generic_endpoints for why
@@ -1729,6 +1769,7 @@ class AiSbomExtractor:
                         "classified_tables",
                         "classified_fields",
                         "_generic_endpoint_fallback",
+                        "http_request",
                     )
                 }
             )
@@ -1872,6 +1913,12 @@ class AiSbomExtractor:
                 _rtk = acc.metadata.get("response_text_key")
                 if _rtk:
                     node.metadata.response_text_key = str(_rtk)
+                _http = acc.metadata.get("http_request")
+                if isinstance(_http, dict) and _http:
+                    try:
+                        node.metadata.http_request = HttpRequestMetadata.model_validate(_http)
+                    except ValueError:
+                        _log.debug("Ignoring malformed http_request metadata on %s", node.name)
                 _rbs = acc.metadata.get("request_body_schema")
                 if isinstance(_rbs, dict) and _rbs:
                     node.metadata.request_body_schema = {str(k): str(v) for k, v in _rbs.items()}
@@ -2025,7 +2072,8 @@ class AiSbomExtractor:
             node.evidence = sorted(acc.evidence, key=lambda e: e.confidence, reverse=True)
             doc.nodes.append(node)
 
-        self._resolve_edges(doc, node_map)
+        disambiguate_endpoint_names(doc.nodes)
+        self._resolve_edges(doc, node_map, imported_assets=_imported_assets)
 
         # Deduplicate DEPLOYMENT nodes: merge github-actions workflow nodes into
         # the cloud-provider service nodes they deploy to.
@@ -2228,6 +2276,9 @@ class AiSbomExtractor:
             except Exception as exc:  # noqa: BLE001
                 _log.warning("LLM enrichment failed, continuing with deterministic output: %s", exc)
 
+        # Later passes may discover additional endpoints after the initial
+        # graph assembly. Keep their UI labels distinct in the final document.
+        disambiguate_endpoint_names(doc.nodes)
         # Keep summary counts consistent with the final retained node set.
         _refresh_summary_node_counts(doc)
         return doc
@@ -2566,6 +2617,8 @@ class AiSbomExtractor:
         self,
         doc: AiSbomDocument,
         node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
+        *,
+        imported_assets: dict[str, set[tuple[ComponentType, str]]] | None = None,
     ) -> None:
         """Turn RelationshipHints into Edge objects using built node UUIDs.
 
@@ -2578,6 +2631,10 @@ class AiSbomExtractor:
             canon = node.metadata.extras.get("canonical_name", "")
             if canon:
                 canonical_to_id[canon] = node.id
+        typed_canonical_to_id = {
+            (node.component_type, node.metadata.extras.get("canonical_name")): node.id
+            for node in doc.nodes
+        }
 
         rel_type_map = {
             "USES": RelationshipType.USES,
@@ -2678,6 +2735,52 @@ class AiSbomExtractor:
             ]:
                 _add_edge(agent.id, model.id, "USES")
 
+        # A prompt detected independently of an agent adapter (for example a
+        # module-level constant or a prompt in an exported JSON graph) has no
+        # RelationshipHint. Associate it only when one agent has evidence in
+        # the same source file. Explicit hints remain authoritative, and files
+        # with several possible owners are left for their adapters to resolve.
+        def _evidence_paths(node: Node) -> set[str]:
+            return {ev.location.path for ev in node.evidence if ev.location.path}
+
+        agents = by_type.get(ComponentType.AGENT, [])
+        paths_by_id = {n.id: _evidence_paths(n) for n in doc.nodes}
+        prompt_ids = {n.id for n in by_type.get(ComponentType.PROMPT, [])}
+        agent_ids = {n.id for n in agents}
+        guardrail_ids = {n.id for n in by_type.get(ComponentType.GUARDRAIL, [])}
+        prompts_with_owners = {
+            e.target
+            for e in doc.edges
+            if e.source in agent_ids | guardrail_ids
+            and e.target in prompt_ids
+            and e.relationship_type == RelationshipType.USES
+        }
+        for prompt in by_type.get(ComponentType.PROMPT, []):
+            if prompt.id in prompts_with_owners:
+                continue
+            paths = paths_by_id[prompt.id]
+            owners = [agent for agent in agents if paths & paths_by_id[agent.id]]
+            if len(owners) > 1:
+                prompt_name = canonicalize_text(prompt.name.lower())
+                named_owners = [
+                    agent
+                    for agent in owners
+                    if prompt_name.startswith(canonicalize_text(agent.name.lower()) + "_")
+                ]
+                owners = named_owners if len(named_owners) == 1 else []
+            if len(owners) == 1:
+                _add_edge(owners[0].id, prompt.id, "USES", confidence=0.6)
+
+        for source_path, assets in (imported_assets or {}).items():
+            owners = [agent for agent in agents if source_path in paths_by_id[agent.id]]
+            if len(owners) != 1:
+                continue
+            for asset_type, canonical in assets:
+                asset_id = typed_canonical_to_id.get((asset_type, canonical))
+                if asset_id is not None:
+                    relation = "ACCESSES" if asset_type == ComponentType.DATASTORE else "USES"
+                    _add_edge(owners[0].id, asset_id, relation, confidence=0.6)
+
         # Fallback: FRAMEWORK → AGENT (CALLS) via shared metadata.framework
         for agent in by_type.get(ComponentType.AGENT, []):
             fw_name = agent.metadata.framework or ""
@@ -2715,10 +2818,30 @@ class AiSbomExtractor:
             if e.relationship_type == RelationshipType.ACCESSES:
                 tool_to_datastores.setdefault(e.source, []).append(e.target)
 
-        for e in doc.edges:
-            if e.relationship_type == RelationshipType.CALLS:
+        tool_ids = {n.id for n in by_type.get(ComponentType.TOOL, [])}
+        for e in list(doc.edges):
+            if (
+                e.relationship_type == RelationshipType.CALLS
+                and e.source in agent_ids
+                and e.target in tool_ids
+                and (
+                    e.derivation == "hint"
+                    or paths_by_id[e.source] & paths_by_id[e.target]
+                )
+            ):
                 for ds_id in tool_to_datastores.get(e.target, []):
                     _add_edge(e.source, ds_id, "ACCESSES")
+
+        # Agents can use a datastore directly, without a TOOL node. Infer that
+        # relationship only when a single agent and the datastore are detected
+        # in the same file; a directory or framework match is too broad here.
+        for datastore in by_type.get(ComponentType.DATASTORE, []):
+            paths = paths_by_id[datastore.id]
+            owners = [agent for agent in agents if paths & paths_by_id[agent.id]]
+            if len(owners) == 1 and (
+                owners[0].id, datastore.id, "ACCESSES"
+            ) not in seen_edges:
+                _add_edge(owners[0].id, datastore.id, "ACCESSES", confidence=0.5)
 
         # Structural edges: DEPLOYMENT → CONTAINER_IMAGE (DEPLOYS).
         # Gated by _structural_edge_related to avoid an all-to-all N*M join
@@ -2816,6 +2939,28 @@ class AiSbomExtractor:
                 if not self._structural_edge_related(guardrail, agent):
                     continue
                 _add_edge(guardrail.id, agent.id, "PROTECTS", confidence=0.4)
+
+        # A guardrail protecting an agent also covers the prompts that agent
+        # uses. This works for both explicit and scoped fallback PROTECTS edges.
+        agent_prompts: dict[Any, set[Any]] = {}
+        for edge in doc.edges:
+            if (
+                edge.source in agent_ids
+                and edge.target in prompt_ids
+                and edge.relationship_type == RelationshipType.USES
+            ):
+                agent_prompts.setdefault(edge.source, set()).add(edge.target)
+        for edge in list(doc.edges):
+            if (
+                edge.source in guardrail_ids
+                and edge.target in agent_ids
+                and edge.relationship_type == RelationshipType.PROTECTS
+            ):
+                for prompt_id in agent_prompts.get(edge.target, set()):
+                    if edge.derivation == "hint" or (
+                        paths_by_id[edge.source] & paths_by_id[prompt_id]
+                    ):
+                        _add_edge(edge.source, prompt_id, "PROTECTS", confidence=0.5)
 
     async def _llm_enrich(
         self,

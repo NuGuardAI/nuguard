@@ -74,6 +74,7 @@ class GoogleADKAdapter:
         run_path: str = _DEFAULT_RUN_PATH,
         streaming_run_path: str = "/run_sse",
         sbom_app_candidates: list[str] | None = None,
+        requires_verification: bool = False,
     ) -> None:
         self._app_name = app_name.strip()
         self._user_id = user_id or _DEFAULT_USER_ID
@@ -87,6 +88,15 @@ class GoogleADKAdapter:
         # Cached session IDs keyed by scenario_key (usually AttackSession.session_id).
         # Empty-string key is used when called without a scenario context.
         self._session_ids: dict[str, str] = {}
+        # Issue #552: when this adapter was selected purely from SBOM
+        # framework evidence (no explicit adk.enabled=true opt-in), it must
+        # not be trusted with a real /run request until a live /list-apps
+        # call has actually confirmed the target speaks ADK's protocol —
+        # see _verify_contract, called once from ensure_session. An explicit
+        # opt-in (requires_verification=False, the caller told us this
+        # really is ADK) skips this and behaves exactly as before #552.
+        self._requires_verification = requires_verification
+        self._verified = not requires_verification
         # Asyncio lock to serialise concurrent session-creation calls for the
         # same scenario key (avoid duplicate POST requests).
         import asyncio as _asyncio
@@ -134,8 +144,11 @@ class GoogleADKAdapter:
 
         Raises:
             RuntimeError: When ``app_name`` is still empty after attempting
-                auto-resolution, or when the session endpoint returns a
-                non-2xx status.
+                auto-resolution, when live verification (issue #552) finds
+                the target does not speak ADK's ``/list-apps`` contract, or
+                when the session endpoint returns a non-2xx status. The
+                caller (``TargetAppClient._send_inner``) treats all of these
+                as "not really ADK" and falls back to generic HTTP POST.
         """
         # When session_per_scenario is disabled, use a single shared key.
         cache_key = "" if not self._session_per_scenario else scenario_key
@@ -147,6 +160,23 @@ class GoogleADKAdapter:
             # Double-check inside the lock (another coroutine may have created it).
             if cache_key in self._session_ids:
                 return self._session_ids[cache_key]
+
+            # Issue #552: an adapter selected from SBOM evidence alone (no
+            # explicit adk.enabled=true opt-in) must not be trusted with a
+            # real request — even when app_name is already known from SBOM
+            # extras — until a live /list-apps call actually confirms the
+            # target speaks ADK's protocol. Checked once per adapter
+            # instance; an explicit opt-in (requires_verification=False)
+            # skips this entirely, unchanged from pre-#552 behavior.
+            if self._requires_verification and not self._verified:
+                if not await self._verify_contract(http_client):
+                    raise RuntimeError(
+                        "GoogleADKAdapter: app_name could not be determined. "
+                        "target does not appear to expose an ADK-shaped "
+                        "/list-apps endpoint — cannot verify this is an ADK "
+                        "target from SBOM evidence alone."
+                    )
+                self._verified = True
 
             # Resolve app_name lazily if not already set.
             if not self._app_name:
@@ -316,6 +346,41 @@ class GoogleADKAdapter:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    async def _verify_contract(self, http_client: httpx.AsyncClient) -> bool:
+        """Positively verify the target speaks ADK's ``/list-apps`` contract.
+
+        Issue #552: unlike :meth:`_resolve_app_name`, this never mutates
+        ``self._app_name`` — its only job is to confirm the target is really
+        ADK-shaped before any app_name (whether pre-set from config/SBOM
+        extras, or about to be auto-resolved) is trusted for a real request.
+
+        Returns:
+            ``True`` when ``GET /list-apps`` returns HTTP 200 with a JSON
+            list body (even an empty one — an empty list is still a valid
+            ADK response shape, unlike a 404 or an HTML error page).
+            ``False`` on any non-200 status, non-list body, or request error.
+        """
+        try:
+            resp = await http_client.get(_LIST_APPS_PATH)
+        except Exception as exc:
+            _log.debug("GoogleADKAdapter: /list-apps verification request failed: %s", exc)
+            return False
+        if resp.status_code != 200:
+            _log.debug(
+                "GoogleADKAdapter: /list-apps returned HTTP %d — not an ADK target",
+                resp.status_code,
+            )
+            return False
+        try:
+            body = resp.json()
+        except Exception:
+            _log.debug("GoogleADKAdapter: /list-apps response was not valid JSON")
+            return False
+        if not isinstance(body, list):
+            _log.debug("GoogleADKAdapter: /list-apps response was not a JSON list")
+            return False
+        return True
 
     async def _resolve_app_name(self, http_client: httpx.AsyncClient) -> None:
         """Attempt to resolve ``app_name`` from the ADK ``/list-apps`` endpoint.

@@ -496,3 +496,85 @@ class TestAuthSchemeDedup:
         auth_nodes = [n for n in doc.nodes if n.component_type == ComponentType.AUTH]
         assert len(auth_nodes) == 1
         assert len(auth_nodes[0].evidence) == 2
+
+
+class TestHttpRequestMetadata:
+    def test_maps_path_query_header_cookie_and_body(self) -> None:
+        code = """
+from fastapi import FastAPI, Query, Header, Cookie
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class ChatRequest(BaseModel):
+    message: str
+
+@app.get("/items/{item_id}")
+def item(item_id: int, q: str = Query(None), trace: str = Header(...), session: str = Cookie(None)):
+    return item_id
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    return req.message
+"""
+        detections = _extract(code)
+        endpoints = {
+            d.metadata["endpoint"]: d.metadata["http_request"]
+            for d in detections
+            if d.component_type == ComponentType.API_ENDPOINT
+        }
+
+        item_request = endpoints["/items/{item_id}"]
+        params = {(p["name"], p["location"]): p for p in item_request["parameters"]}
+        assert params[("item_id", "path")]["required"] is True
+        assert params[("q", "query")]["required"] is False
+        assert params[("trace", "header")]["required"] is True
+        assert params[("session", "cookie")]["required"] is False
+        assert item_request["methods"] == ["GET"]
+
+        chat_request = endpoints["/chat"]
+        assert chat_request["parameters"] == []
+        assert chat_request["content_types"] == ["application/json"]
+        assert chat_request["has_unresolved_inputs"] is False
+
+    def test_upload_file_is_multipart_and_di_params_are_skipped(self) -> None:
+        code = """
+from fastapi import FastAPI, Depends, UploadFile
+
+app = FastAPI()
+
+def get_db():
+    return None
+
+@app.post("/upload")
+def upload(file: UploadFile, db=Depends(get_db)):
+    return file.filename
+"""
+        endpoint = next(
+            d for d in _extract(code) if d.component_type == ComponentType.API_ENDPOINT
+        )
+        http_request = endpoint.metadata["http_request"]
+
+        assert http_request["parameters"] == [
+            {"name": "file", "location": "multipart", "type_hint": "string", "required": True}
+        ]
+        assert http_request["content_types"] == ["multipart/form-data"]
+
+    def test_unannotated_default_int_param_is_query(self) -> None:
+        code = """
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/search")
+def search(page: int = 1):
+    return page
+"""
+        endpoint = next(
+            d for d in _extract(code) if d.component_type == ComponentType.API_ENDPOINT
+        )
+        http_request = endpoint.metadata["http_request"]
+
+        assert http_request["parameters"] == [
+            {"name": "page", "location": "query", "type_hint": "int", "required": False}
+        ]

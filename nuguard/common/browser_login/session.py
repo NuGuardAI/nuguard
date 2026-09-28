@@ -51,6 +51,10 @@ class BrowserLoginResult:
     candidate_extra_fields: dict[str, str] = field(default_factory=dict)
     ambiguous_fields: dict[str, list[str]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    # Bearer token the app itself uses after login (from web storage or an
+    # observed same-origin Authorization header). SPAs that authenticate API
+    # calls with a header rather than a cookie need this, not cookies.
+    bearer_token: str | None = field(default=None, repr=False)
 
 
 def _require_playwright() -> Any:
@@ -102,6 +106,8 @@ class BrowserLoginSession:
         self._browser: Any = None
         self._context: Any = None
         self._page: "Page | None" = None
+        # Last same-origin "Authorization: Bearer" token the app sent itself.
+        self._observed_bearer: str | None = None
 
     async def __aenter__(self) -> "BrowserLoginSession":
         await self._launch()
@@ -136,6 +142,20 @@ class BrowserLoginSession:
         self._context = await self._browser.new_context()
         self._page = await self._context.new_page()
         self._page.set_default_timeout(self.timeout_s * 1000)
+        self._page.on("request", self._observe_authorization)
+
+    def _observe_authorization(self, request: "Request") -> None:
+        """Remember the bearer token the app attaches to its own API calls."""
+        try:
+            if not _same_origin(request.url, self.target_url):
+                return
+            token = heuristics.bearer_from_authorization_header(
+                request.headers.get("authorization", "")
+            )
+            if token:
+                self._observed_bearer = token
+        except Exception:  # noqa: BLE001 — observation is best-effort
+            return
 
     async def close(self) -> None:
         for obj in (self._context, self._browser):
@@ -175,6 +195,7 @@ class BrowserLoginSession:
         await self._trigger_login()
         await self._fill_credentials(username, password)
         await self._submit_and_wait()
+        bearer_token = await self._capture_bearer_token()
 
         warnings: list[str] = []
         identity_url, identity_payload = await self._probe_identity()
@@ -212,6 +233,7 @@ class BrowserLoginSession:
             candidate_extra_fields=candidate_extra_fields,
             ambiguous_fields=ambiguous_fields,
             warnings=warnings,
+            bearer_token=bearer_token or self._observed_bearer,
         )
 
     # ------------------------------------------------------------------
@@ -233,36 +255,123 @@ class BrowserLoginSession:
                 cause=str(exc),
             ) from exc
 
-    async def _trigger_login(self) -> None:
-        candidates = heuristics.build_text_candidates(
-            self.browser_cfg.login_button_text, heuristics.DEFAULT_LOGIN_TRIGGER_TEXTS
-        )
-        for text in candidates:
-            locator = self.page.get_by_text(re.compile(re.escape(text), re.I)).first
-            try:
-                if await locator.count() > 0:
-                    _log.info("browser_login: clicking login trigger %r", text)
-                    await locator.click(timeout=2000)
-                    await self.page.wait_for_timeout(self.browser_cfg.extra_wait_ms)
-                    return
-            except Exception:  # noqa: BLE001 — try the next candidate
-                _log.debug("browser_login: login trigger candidate %r failed", text, exc_info=True)
-                continue
+    async def _dismiss_overlays(self) -> None:
+        """Close welcome dialogs / cookie banners that intercept clicks.
 
-        # Some apps present the login form directly on load (no separate
-        # trigger click needed) — treat "credential fields already visible"
-        # as success rather than failing here.
+        Best-effort and bounded: clicks at most one visible button per
+        candidate name (exact match, never substring), then presses Escape
+        for modal frameworks that close on it.
+        """
+        clicked = 0
+        for text in heuristics.DEFAULT_OVERLAY_DISMISS_TEXTS:
+            if clicked >= 4:
+                break
+            name = re.compile(rf"^\s*{re.escape(text)}\s*$", re.I)
+            locator = self.page.get_by_role("button", name=name).first
+            try:
+                if await locator.count() > 0 and await locator.is_visible():
+                    _log.info("browser_login: dismissing overlay via %r", text)
+                    await locator.click(timeout=2000)
+                    clicked += 1
+                    await self.page.wait_for_timeout(300)
+            except Exception:  # noqa: BLE001 — overlay handling is best-effort
+                continue
+        try:
+            await self.page.keyboard.press("Escape")
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def _click_visible_trigger(self, texts: list[str]) -> str | None:
+        """Click the first visible button/link/menu item named by *texts*.
+
+        Role-based lookup first (exact accessible name), then a visible text
+        match — so hidden template text or an off-screen nav item is never
+        "clicked" and mistaken for progress.
+        """
+        for text in texts:
+            name = re.compile(rf"^\s*{re.escape(text)}\s*$", re.I)
+            locators = [
+                self.page.get_by_role("button", name=name).first,
+                self.page.get_by_role("link", name=name).first,
+                self.page.get_by_role("menuitem", name=name).first,
+            ]
+            locators.append(self.page.get_by_text(name).first)
+            for locator in locators:
+                try:
+                    if await locator.count() > 0 and await locator.is_visible():
+                        await locator.click(timeout=2000)
+                        await self.page.wait_for_timeout(self.browser_cfg.extra_wait_ms)
+                        return text
+                except Exception:  # noqa: BLE001 — try the next candidate
+                    _log.debug("browser_login: trigger candidate %r failed", text, exc_info=True)
+                    continue
+        return None
+
+    async def _trigger_login(self) -> None:
         if await self._has_credential_fields():
             _log.info("browser_login: credential fields already visible, no login trigger needed")
             return
+        await self._dismiss_overlays()
+
+        login_texts = heuristics.build_text_candidates(
+            self.browser_cfg.login_button_text, heuristics.DEFAULT_LOGIN_TRIGGER_TEXTS
+        )
+        # 1. A login trigger visible on the landing page.
+        clicked = await self._click_visible_trigger(login_texts)
+        if clicked:
+            _log.info("browser_login: clicked login trigger %r", clicked)
+            if await self._has_credential_fields():
+                return
+        # 2. Login hidden behind an account/user menu (common on SPAs).
+        menu = await self._click_visible_trigger(heuristics.DEFAULT_ACCOUNT_MENU_TEXTS)
+        if menu:
+            _log.info("browser_login: opened account menu %r", menu)
+            clicked = await self._click_visible_trigger(login_texts)
+            if clicked:
+                _log.info("browser_login: clicked login trigger %r in account menu", clicked)
+            if await self._has_credential_fields():
+                return
+        # 3. Well-known login routes, including hash-router SPAs.
+        for route in heuristics.DEFAULT_LOGIN_ROUTES:
+            try:
+                await self.page.goto(
+                    self.target_url + route,
+                    wait_until="networkidle",
+                    timeout=self.browser_cfg.navigation_timeout_ms,
+                )
+            except Exception:  # noqa: BLE001 — route may not exist
+                continue
+            await self._dismiss_overlays()
+            if await self._has_credential_fields():
+                _log.info("browser_login: found login form at %s", route)
+                return
 
         raise BrowserLoginError(
-            f"Could not find a login button on {self.target_url}. Try setting "
+            f"Could not find a login form on {self.target_url} (tried visible login "
+            "buttons, account menus, and common login routes). Set "
             "target.browser_discovery.login_button_text, or the app may already be "
             "authenticated / require a different flow.",
             step="find_login_trigger",
             url=self.target_url,
         )
+
+    async def _capture_bearer_token(self) -> str | None:
+        """Read a post-login bearer token from web storage, if the app keeps one."""
+        try:
+            storage = await self.page.evaluate(
+                "() => { const out = {};"
+                " for (const s of [window.localStorage, window.sessionStorage]) {"
+                "   for (let i = 0; i < s.length; i++) { const k = s.key(i); out[k] = s.getItem(k); } }"
+                " return out; }"
+            )
+        except Exception:  # noqa: BLE001 — storage may be blocked
+            return None
+        if not isinstance(storage, dict):
+            return None
+        token = heuristics.extract_storage_token(storage)
+        if token:
+            _log.info("browser_login: captured bearer token from web storage")
+        return token
 
     async def _has_credential_fields(self) -> bool:
         password_candidates = heuristics.build_candidates(

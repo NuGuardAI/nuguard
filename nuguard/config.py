@@ -373,10 +373,16 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_skip_discovery"] = bool(redteam["skip_discovery"])
     if "discovery_max_turns" in redteam:
         flat["redteam_discovery_max_turns"] = int(redteam["discovery_max_turns"])
+    if "require_engagement" in redteam:
+        flat["redteam_require_engagement"] = bool(redteam["require_engagement"])
+    if "engagement_error_threshold" in redteam:
+        flat["redteam_engagement_error_threshold"] = int(redteam["engagement_error_threshold"])
     if "capability_discovery" in redteam:
         flat["redteam_capability_discovery"] = bool(redteam["capability_discovery"])
     if "liveness_cache_ttl_seconds" in redteam:
         flat["redteam_liveness_cache_ttl_seconds"] = float(redteam["liveness_cache_ttl_seconds"])
+    if "preflight_candidates" in redteam:
+        flat["redteam_preflight_candidates"] = int(redteam["preflight_candidates"])
     if "browser_discover_endpoints" in redteam:
         flat["redteam_browser_discover_endpoints"] = bool(redteam["browser_discover_endpoints"])
     if "llm_capability_dedup" in redteam:
@@ -758,6 +764,18 @@ class BehaviorConfig(BaseModel):
             "cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached "
             "result — including one written by a prior redteam run against the same "
             "enriched SBOM — is used as-is, skipping the live ping entirely."
+        ),
+    )
+    preflight_candidates: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        description=(
+            "How many alternative SBOM chat-endpoint candidates the pre-flight check "
+            "compares (yaml: behavior.preflight_candidates) when the auto-discovered "
+            "endpoint's reply to a test message is an error or a structured artefact "
+            "rather than a conversational reply. 0 disables candidate comparison. "
+            "Ignored when target_endpoint is set explicitly."
         ),
     )
     browser_discover_endpoints: bool = Field(
@@ -1407,6 +1425,22 @@ class NuGuardConfig(BaseSettings):
             "Discovery stops early when a name or ID is extracted."
         ),
     )
+    redteam_require_engagement: bool = Field(
+        default=True,
+        description=(
+            "Abort before scenarios run when the chat endpoint answers only with error "
+            "envelopes (wrong payload shape, or the app's LLM backend is down), and abort "
+            "mid-run after redteam.engagement_error_threshold such scenarios in a row "
+            "(yaml: redteam.require_engagement)."
+        ),
+    )
+    redteam_engagement_error_threshold: int = Field(
+        default=5,
+        description=(
+            "Consecutive scenarios whose every response is an error envelope before the "
+            "run aborts as not engaged (yaml: redteam.engagement_error_threshold)."
+        ),
+    )
     redteam_capability_discovery: bool = Field(
         default=True,
         description=(
@@ -1425,6 +1459,18 @@ class NuGuardConfig(BaseSettings):
             "cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached "
             "result — including one written by a prior behavior run against the same "
             "enriched SBOM — is used as-is, skipping the live ping entirely."
+        ),
+    )
+    redteam_preflight_candidates: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        description=(
+            "How many alternative SBOM chat-endpoint candidates the pre-flight check "
+            "compares (yaml: redteam.preflight_candidates) when the auto-discovered "
+            "endpoint's reply to a test message is an error or a structured artefact "
+            "rather than a conversational reply. 0 disables candidate comparison. "
+            "Ignored when the chat endpoint is set explicitly."
         ),
     )
     redteam_browser_discover_endpoints: bool = Field(

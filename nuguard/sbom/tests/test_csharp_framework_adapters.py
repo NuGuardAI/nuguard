@@ -1115,3 +1115,47 @@ public class ChatController : ControllerBase
 
     assert "request_body_schema" not in endpoint.metadata
     assert "chat_payload_key" not in endpoint.metadata
+
+
+def test_aspnet_controller_emits_http_request_bindings() -> None:
+    source = """using Microsoft.AspNetCore.Mvc;
+using OpenAI.Chat;
+public record ChatRequest(string Message, string ConversationId);
+[ApiController]
+[Route("api/[controller]")]
+public class ChatController : ControllerBase
+{
+    [HttpPost("{tenantId}/complete")]
+    public string Complete(
+        string tenantId,
+        [FromQuery(Name = "lang")] string language,
+        [FromHeader] string xTrace,
+        int page = 1,
+        CancellationToken cancellationToken = default,
+        [FromBody] ChatRequest request = null)
+    {
+        return client.CompleteChat(request.Message);
+    }
+}
+"""
+    endpoint = _by_type(
+        _extract(CSharpAspNetCoreAdapter(), source, "ChatController.cs"),
+        ComponentType.API_ENDPOINT,
+    )[0]
+    http_request = endpoint.metadata["http_request"]
+    params = {(p["name"], p["location"]): p for p in http_request["parameters"]}
+
+    assert http_request["methods"] == ["POST"]
+    assert params[("tenantId", "path")]["required"] is True
+    assert params[("lang", "query")]["required"] is True
+    assert ("xTrace", "header") in params
+    assert params[("page", "query")] == {
+        "name": "page",
+        "location": "query",
+        "type_hint": "int",
+        "required": False,
+    }
+    assert ("Message", "json") in params
+    assert not any(name == "cancellationToken" for name, _ in params)
+    assert http_request["content_types"] == ["application/json"]
+    assert http_request["has_unresolved_inputs"] is False

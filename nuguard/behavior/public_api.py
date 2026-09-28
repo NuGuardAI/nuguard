@@ -171,12 +171,21 @@ async def run_behavior_scenarios(
         runner_kwargs["progress_sink"] = _progress_sink
     runner = BehaviorRunner(**runner_kwargs)
     result = await runner.run(request.scenarios, pre_scan_profile=request.pre_scan_profile)
-    result.remediation_plan = await _synthesize_behavior_remediation_plan(
-        result.findings,
-        sbom=sbom,
-        policy=normalized_policy,
-        llm_client=remediation_llm_client or llm_client,
-    )
+    try:
+        result.remediation_plan = await _synthesize_behavior_remediation_plan(
+            result.findings,
+            sbom=sbom,
+            policy=normalized_policy,
+            llm_client=remediation_llm_client or llm_client,
+        )
+    except Exception as exc:
+        # All scenarios already completed at this point (runner.run() above
+        # returned normally) — a failure in the post-hoc remediation-synthesis
+        # LLM call shouldn't throw away that work. Checkpoint it the same way
+        # a mid-scan abort would (see BehaviorRunner.run) so `--resume` can
+        # skip straight to remediation instead of rerunning every scenario
+        # (issue #508).
+        raise runner.build_partial_run_error(exc) from exc
     backfill_finding_remediation(result.findings, result.remediation_plan)
     return result
 
