@@ -11,7 +11,11 @@
   <a href="https://pypi.org/project/nuguard/"><img src="https://img.shields.io/pypi/pyversions/nuguard.svg" alt="Python versions"></a>
   <a href="https://github.com/NuGuardAI/nuguard/stargazers"><img src="https://img.shields.io/github/stars/NuGuardAI/nuguard.svg?style=social" alt="GitHub Stars"></a>
 </p>
-
+<h2 align="center">Try NuGuard for free</h2>
+<p align="center">
+  Explore the hosted platform. No credit card required.<br><br>
+  <a href="https://nuguard.ai/experience-platform"><img src="https://img.shields.io/badge/Start_Your_Free_Trial_→-15803d?style=for-the-badge" alt="Start your free trial"></a>
+</p>
 <p align="center">
   <a href="#what-it-does">What it does</a> ·
   <a href="#see-it-in-action">See it in action</a> ·
@@ -124,7 +128,7 @@ Nuclei-backed, bounded conventional pentest — explicit authorization required.
 
 **Free trial available — no credit card required.**
 
-[![Start Free Trial →](https://img.shields.io/badge/Start_Free_Trial_→-111111?style=for-the-badge)](http://nuguard.ai)
+[![Start Free Trial →](https://img.shields.io/badge/Start_Free_Trial_→-15803d?style=for-the-badge)](https://nuguard.ai/experience-platform)
 
 </td>
 </tr>

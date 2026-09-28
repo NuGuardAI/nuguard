@@ -170,11 +170,14 @@ def _privilege_notes(art: Any) -> str:
 
 
 def _runtime_literal(value: str) -> str:
-    """Render scanner-controlled text as literal Markdown, not markup."""
-    import html
+    """Render scanner-controlled text as literal Markdown, not markup.
 
-    value = html.escape(" ".join(value.split()), quote=False)
-    return re.sub(r"([\\`*_{}\[\]()#+.!|>-])", r"\\\1", value)
+    CommonMark backslash escapes (``\\<``, ``\\&``) keep raw HTML and entity
+    references inert while still reading as the original characters —
+    HTML-entity encoding (``&amp;``) showed up verbatim in raw Markdown.
+    """
+    value = " ".join(value.split())
+    return re.sub(r"([\\`*_{}\[\]()#+.!|<>&-])", r"\\\1", value)
 
 
 def _render_runtime_artefact(lines: list[str], art: Any) -> None:

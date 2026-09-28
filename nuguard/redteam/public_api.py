@@ -195,6 +195,7 @@ class RedteamRunRequest(BaseModel):
     engagement_error_threshold: int = 5
     capability_discovery: bool = True
     liveness_cache_ttl_seconds: float = 3600.0
+    preflight_candidates: int = Field(default=3, ge=0, le=10)
     llm_capability_dedup: bool = False
     chat_payload_extras: dict[str, Any] | None = None
     pre_run_warmup: int = 0
@@ -455,6 +456,7 @@ async def run_redteam(
         engagement_error_threshold=request.engagement_error_threshold,
         capability_discovery=request.capability_discovery,
         liveness_cache_ttl_seconds=request.liveness_cache_ttl_seconds,
+        preflight_candidates=request.preflight_candidates,
         llm_capability_dedup=request.llm_capability_dedup,
         chat_payload_extras=request.chat_payload_extras,
         catalog=catalog,
@@ -509,12 +511,27 @@ async def run_redteam(
         _filters = {s.strip().lower().replace("-", "_") for s in request.scenario_filter if s and s.strip()}
         findings = [f for f in findings if finding_matches_scenario_filter(f, _filters)]
 
-    remediation_plan = await _build_remediation_plan(
-        findings,
-        sbom=sbom,
-        policy=normalized_policy,
-        llm_client=remediation_llm_client or eval_llm,
-    )
+    try:
+        remediation_plan = await _build_remediation_plan(
+            findings,
+            sbom=sbom,
+            policy=normalized_policy,
+            llm_client=remediation_llm_client or eval_llm,
+        )
+    except Exception as exc:
+        # All scenarios already completed at this point — a failure in the
+        # post-hoc remediation-synthesis LLM call shouldn't throw away that
+        # work. Checkpoint it the same way a mid-scan abort would (see
+        # RedteamOrchestrator.run) so `--resume` can skip straight to
+        # remediation instead of rerunning every scenario (issue #508).
+        partial_exc = orchestrator.build_partial_run_error(exc, findings=findings)
+        try:
+            partial_exc.partial_result = _build_partial_result(orchestrator, partial_exc)
+        except Exception:
+            _log.exception(
+                "Failed to build partial RedteamRunResult after remediation-synthesis failure"
+            )
+        raise partial_exc from exc
     backfill_finding_remediation(findings, remediation_plan)
 
     llm_coding_brief: str | None = None

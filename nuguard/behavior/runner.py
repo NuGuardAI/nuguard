@@ -805,6 +805,13 @@ class BehaviorRunner:
         self._completed_signatures: set[str] = set()
         self.scenario_results: list[ScenarioResult] = []
         self._auth_session: Any = None
+        # Chat-endpoint pre-flight state, shared by discover() and run() — see
+        # _ensure_endpoint_preflight(). None = not yet run.
+        self._preflight_cache: bool | None = None
+        # Set when the target reports an exhausted usage quota mid-run.
+        self._quota_exhausted_detail: str = ""
+        self._rotated_chat_endpoint: "tuple[str, str, bool, str | None] | None" = None
+        self._bootstrapped_path_params: dict[str, str] = {}
         self._target_session_config: Any = None
         self._target_session_resolution_attempted = False
         # Health report from the shared resolver (see _resolve_target_session_once),
@@ -993,7 +1000,6 @@ class BehaviorRunner:
         from nuguard.common.target_client_builder import (
             build_target_app_client,
             resolve_auth_config_with_sbom_fallback,
-            resolve_target_url,
         )
 
         # Build auth config from the behavior config's auth section
@@ -1030,23 +1036,15 @@ class BehaviorRunner:
         # (Static-hosting URLs like azurestaticapps.net have no server routes and
         # would cause bootstrap to fail with 404/405 even when credentials are valid.)
         _config_url = getattr(self._config, "target", None) or ""
-        target_url, _url_notes = resolve_target_url(_config_url, self._sbom)
+        # Static-hosting fallback, plus a scan of a served SPA bundle for a
+        # baked-in separate-origin API base URL (SBOM/live-probe discovery
+        # can't find that origin because every path under target_url is
+        # served by the frontend's catch-all route). Memoised across stages.
+        from nuguard.common.endpoint_detection.context import resolve_api_origin
+
+        target_url, _url_notes = await resolve_api_origin(_config_url, self._sbom)
         if not target_url:
             target_url = _config_url
-
-        # Some SPAs call a separate-origin backend directly from client-side JS
-        # instead of proxying /api through their own server — SBOM/live-probe
-        # discovery can't find that origin because every path under target_url
-        # is served by the frontend's catch-all route. Best-effort: scan the
-        # served bundle for a baked-in API base URL before auth bootstrap runs.
-        from nuguard.common.endpoint_detection.frontend_origin import (
-            discover_api_origin_from_frontend_bundle,
-        )
-
-        _bundle_origin, _bundle_notes = await discover_api_origin_from_frontend_bundle(target_url)
-        if _bundle_origin:
-            target_url = _bundle_origin
-            _url_notes = _url_notes + _bundle_notes
 
         # Store resolved URL so _run_scenario can display it correctly.
         self._resolved_target_url = target_url
@@ -1061,6 +1059,7 @@ class BehaviorRunner:
         try:
             bootstrapper, health_report = await bootstrap_auth_runtime(
                 target_url=target_url,
+                sbom=self._sbom,
                 endpoint=endpoint or ("/ws" if _is_websocket else "/chat"),
                 auth_config=runtime.auth_config,
                 run_id=str(_uuid.uuid4()),
@@ -1094,9 +1093,12 @@ class BehaviorRunner:
         except AuthError:
             raise
         except Exception as exc:
-            from nuguard.common.errors import TargetEndpointNotFoundError
+            from nuguard.common.errors import (
+                TargetEndpointNotFoundError,
+                TargetQuotaExhaustedError,
+            )
 
-            if isinstance(exc, TargetEndpointNotFoundError):
+            if isinstance(exc, (TargetEndpointNotFoundError, TargetQuotaExhaustedError)):
                 raise
             _log.debug("_build_client: bootstrap skipped: %s", exc)
             bootstrap_headers = getattr(runtime, "initial_headers", {}) or {}
@@ -1728,6 +1730,11 @@ class BehaviorRunner:
                     _rate_limit_retries = 0   # reset on successful reply
                     _transient_retry_idx = 0  # reset on a genuine response
             except Exception as exc:
+                from nuguard.common.errors import TargetQuotaExhaustedError  # noqa: PLC0415
+
+                if isinstance(exc, TargetQuotaExhaustedError):
+                    # Won't clear on retry — abort the whole run (see _run_one).
+                    raise
                 send_error = str(exc)
                 _log.warning("_run_scenario turn %d: send failed: %s", turn_idx + 1, exc)
                 response = ""
@@ -2226,6 +2233,8 @@ class BehaviorRunner:
             coverage_turns=coverage_turns_used,
             deviations=scenario_deviations,
             matched_topic=getattr(scenario, "matched_topic", None),
+            scoped_tools=list(getattr(scenario, "scoped_tools", None) or []),
+            scoped_agents=list(getattr(scenario, "scoped_agents", None) or []),
         )
 
     def _cached_discovery_profile(self) -> "DiscoveredProfile | None":
@@ -2285,6 +2294,85 @@ class BehaviorRunner:
         except Exception as exc:
             _log.warning("behavior capability discovery: could not persist SBOM artifact: %s", exc)
 
+    async def _ensure_endpoint_preflight(self, client: Any) -> bool:
+        """Validate/rotate the chat endpoint once per runner and apply it to *client*.
+
+        Sends a test message to the configured chat endpoint, binding any
+        path params it declares (e.g. a bootstrapped conversation ``:id``),
+        and rotates to a more conversational SBOM candidate when the reply is
+        an error or a structured artefact (see
+        :func:`~nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint`).
+        This must run before pre-scan/capability discovery: those probes use
+        the same endpoint, and an unvalidated one (a one-shot generator route,
+        or an unresolved path param) makes every one of them fail.
+
+        The first call does the live check; later calls (``discover()`` builds
+        its own client before ``run()`` builds another) replay the cached
+        rotation and path-param bindings onto *client* without re-testing.
+
+        Returns:
+            ``False`` when no working chat endpoint was found.
+        """
+        cached = getattr(self, "_preflight_cache", None)
+        if cached is not None:
+            if self._rotated_chat_endpoint and hasattr(client, "set_chat_endpoint"):
+                client.set_chat_endpoint(*self._rotated_chat_endpoint)
+            if self._bootstrapped_path_params and hasattr(client, "set_path_param"):
+                for _pp_name, _pp_value in self._bootstrapped_path_params.items():
+                    client.set_path_param(_pp_name, _pp_value)
+            return bool(cached)
+
+        self._rotated_chat_endpoint = None
+        self._bootstrapped_path_params = {}
+        _has_explicit_endpoint = self._endpoint_is_explicit()
+        self._target_endpoint_source = "config" if _has_explicit_endpoint else "default"
+        preflight_ok = True
+        try:
+            from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
+                validate_and_rotate_chat_endpoint,
+            )
+
+            _bootstrap_hdrs: dict[str, str] = (
+                getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
+            )
+            _target_url = (
+                getattr(self, "_resolved_target_url", None)
+                or getattr(self._config, "target", None)
+                or ""
+            )
+            _pf = await validate_and_rotate_chat_endpoint(
+                client,
+                self._sbom,
+                has_explicit_endpoint=_has_explicit_endpoint,
+                target_url=_target_url,
+                auth_headers=_bootstrap_hdrs or None,
+                max_candidates=int(getattr(self._config, "preflight_candidates", 3)),
+            )
+            for _pf_note in _pf.notes:
+                _console.print(
+                    f"[bold red]⚠ {_pf_note}[/bold red]" if not _pf.ok else f"  [cyan]{_pf_note}[/cyan]"
+                )
+            if _pf.rotated_endpoint is not None:
+                self._rotated_chat_endpoint = _pf.rotated_endpoint
+                self._target_endpoint_source = _pf.endpoint_source or self._target_endpoint_source
+            if not _pf.ok:
+                preflight_ok = False
+            # Path params (e.g. a bootstrapped conversation ":id") are bound on
+            # this client only — isolated scenario clients get a fresh
+            # TargetAppClient each with no such binding, so capture them here
+            # to replay on every scenario client and later runner clients.
+            _client_path_params = getattr(client, "path_param_values", None)
+            if isinstance(_client_path_params, dict):
+                self._bootstrapped_path_params = dict(_client_path_params)
+        except Exception as _pf_exc:
+            from nuguard.common.errors import TargetQuotaExhaustedError  # noqa: PLC0415
+
+            if isinstance(_pf_exc, TargetQuotaExhaustedError):
+                raise
+            _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
+        self._preflight_cache = preflight_ok
+        return preflight_ok
+
     async def discover(self) -> "DiscoveredProfile | None":
         """Run pre-scan discovery against the live agent and return the profile.
 
@@ -2304,6 +2392,10 @@ class BehaviorRunner:
         _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
         try:
             client = await self._build_client()
+            # Validate the chat endpoint before any discovery turn is sent.
+            if not await self._ensure_endpoint_preflight(client):
+                _log.info("behavior pre-scan discovery: skipped — no working chat endpoint")
+                return None
 
             # Surface identity-field warnings so users see them without digging into logs.
             for _note in client.resolution_notes:
@@ -2476,6 +2568,21 @@ class BehaviorRunner:
             return
         self._checkpoint.save(self._checkpoint_path, self._checkpoint_payload(status=status, abort_reason=abort_reason))
 
+    def build_partial_run_error(self, exc: BaseException) -> PartialRunError:
+        """Save a checkpoint from current progress and wrap ``exc`` as ``PartialRunError``.
+
+        Used both when the run itself aborts mid-scan (see :meth:`run`) and when a
+        post-scan step (e.g. remediation synthesis) fails after every scenario has
+        already completed — either way there's completed work worth a fast-resume
+        checkpoint instead of a bare crash (see issue #508).
+        """
+        self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__)
+        return PartialRunError(
+            exc,
+            partial_payload=self._checkpoint_payload(status="aborted", abort_reason=type(exc).__name__),
+            checkpoint_path=self._checkpoint_path,
+        )
+
     async def run(
         self,
         scenarios: list[BehaviorScenario],
@@ -2499,12 +2606,7 @@ class BehaviorRunner:
                 # Only worth a checkpoint (and a PartialRunError) when at least
                 # one scenario actually completed — an abort before that point
                 # (e.g. client/auth bootstrap failing) has nothing to resume from.
-                self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__)
-                raise PartialRunError(
-                    exc,
-                    partial_payload=self._checkpoint_payload(status="aborted", abort_reason=type(exc).__name__),
-                    checkpoint_path=self._checkpoint_path,
-                ) from exc
+                raise self.build_partial_run_error(exc) from exc
             raise
         else:
             if self._checkpoint is not None and self._checkpoint_path is not None:
@@ -2581,53 +2683,11 @@ class BehaviorRunner:
             _log.error("BehaviorRunner.run: could not build client: %s", exc)
             raise
 
-        # Reset endpoint rotation state for this run.
-        self._rotated_chat_endpoint: "tuple[str, str, bool, str | None] | None" = None
-        self._bootstrapped_path_params: dict[str, str] = {}
-
-        # Pre-flight endpoint validation: send a single test request to verify the
-        # configured chat endpoint is reachable, and bind any path params it
-        # declares (e.g. a bootstrapped conversation ":id"), before pre-scan/
-        # capability discovery runs below — those also send probes through this
-        # same client, and an unresolved path param makes every one of them fail
-        # with "[CONFIG_ERROR: unresolved path param ...]" instead of a real
-        # response (degrading pre-scan discovery and polluting capability
-        # discovery with a bogus tool/sub-agent literally named "[CONFIG_ERROR").
-        # On 405/404, rotate through ranked SBOM candidates then fall back to
-        # live probing. Abort the run cleanly if no working endpoint is found.
-        _preflight_ok = True
+        # Pre-flight endpoint validation (shared with discover(); runs once per
+        # runner and is replayed onto this client when discover() already ran it).
+        _preflight_ok = await self._ensure_endpoint_preflight(client)
         _configured_endpoint = getattr(self._config, "target_endpoint", "") or ""
         _has_explicit_endpoint = self._endpoint_is_explicit()
-        self._target_endpoint_source = "config" if _has_explicit_endpoint else "default"
-        try:
-            from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
-                validate_and_rotate_chat_endpoint,
-            )
-            _bootstrap_hdrs: dict[str, str] = getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
-            _pf = await validate_and_rotate_chat_endpoint(
-                client,
-                self._sbom,
-                has_explicit_endpoint=_has_explicit_endpoint,
-                target_url=target_url or "",
-                auth_headers=_bootstrap_hdrs or None,
-            )
-            for _pf_note in _pf.notes:
-                _console.print(f"[bold red]⚠ {_pf_note}[/bold red]" if not _pf.ok else f"  [cyan]{_pf_note}[/cyan]")
-            if _pf.rotated_endpoint is not None:
-                self._rotated_chat_endpoint = _pf.rotated_endpoint
-                self._target_endpoint_source = _pf.endpoint_source or self._target_endpoint_source
-            if not _pf.ok:
-                _preflight_ok = False
-            # Path params (e.g. a bootstrapped conversation ":id") are bound on
-            # the shared preflight client only — isolated scenario clients get a
-            # fresh TargetAppClient each with no such binding, so capture them
-            # here to replay on every scenario client below, and on the
-            # pre-scan/capability discovery probes that use this same client.
-            _client_path_params = getattr(client, "path_param_values", None)
-            if isinstance(_client_path_params, dict):
-                self._bootstrapped_path_params = _client_path_params
-        except Exception as _pf_exc:
-            _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
 
         # Per-endpoint liveness: mark every other SBOM-discovered API_ENDPOINT
         # node operational/non-operational via a live ping, so scenario
@@ -2921,6 +2981,16 @@ class BehaviorRunner:
                             _first_turn_405_count = 0
                     return result
                 except Exception as exc:
+                    from nuguard.common.errors import TargetQuotaExhaustedError  # noqa: PLC0415
+
+                    if isinstance(exc, TargetQuotaExhaustedError):
+                        async with _abort_lock:
+                            if not _abort_run.is_set():
+                                _abort_run.set()
+                                self._quota_exhausted_detail = str(exc)
+                                _log.error("BehaviorRunner.run: aborting — %s", exc)
+                                _console.print(f"[bold red]⚠ Aborting run: {exc}[/bold red]")
+                        return None
                     if isinstance(exc, asyncio.TimeoutError):
                         _log.error(
                             "BehaviorRunner.run: scenario %s timed out after %ss "
@@ -3217,6 +3287,9 @@ class BehaviorRunner:
             scan_outcome = "high_findings"
         elif all_findings:
             scan_outcome = "findings"
+        elif getattr(self, "_quota_exhausted_detail", ""):
+            # No findings and the target's usage quota ran out mid-run.
+            scan_outcome = "aborted_target_unavailable"
         else:
             # No findings — check if the target was unreachable during dynamic phase
             _HTTP_ERROR = "http_error"
@@ -3289,6 +3362,7 @@ class BehaviorRunner:
         types that target those components).
         """
         from nuguard.behavior.models import BehaviorScenarioType
+        from nuguard.output.validation_report import scenario_status_from_score
 
         component_map: dict[str, BehaviorCoverage] = {}
         normalized_component_name: dict[str, str] = {}
@@ -3359,9 +3433,15 @@ class BehaviorRunner:
                             node_type=ntype,
                         )
                     if ntype == "API_ENDPOINT":
-                        nroute = _endpoint_path_from_component_name(nname)
+                        node_meta = getattr(node, "metadata", None)
+                        nroute = _normalise_endpoint_route(
+                            getattr(node_meta, "endpoint", None) or ""
+                        ) or _endpoint_path_from_component_name(nname)
                         if nroute:
                             endpoint_norm_map[nroute] = nname
+                        # Independently-verified liveness (issue #555's sweep) — a
+                        # separate claim from scenario_outcome below; never merged.
+                        component_map[nname].endpoint_operational = getattr(node_meta, "operational", None)
 
         # Register config-provided aliases now that component_map is initialized.
         if isinstance(cfg_aliases, dict):
@@ -3400,6 +3480,12 @@ class BehaviorRunner:
             stype = sr.scenario_type
             # Endpoint coverage: mark endpoint node exercised when scenario ran
             if stype == ep_coverage_type:
+                # One ENDPOINT_COVERAGE scenario always targets exactly one endpoint
+                # (see scenarios.py's endpoint-coverage builder), so the scenario's
+                # own overall_score is a correctly-scoped outcome for that endpoint —
+                # reuses the same threshold as the report's Scenario Details section
+                # instead of inventing a new signal.
+                _ep_outcome = scenario_status_from_score(getattr(sr, "overall_score", 0.0) or 0.0)
                 for verdict_dict in sr.verdicts:
                     target = str(verdict_dict.get("target_component") or sr.scenario_name or "")
                     runtime_endpoint = str(verdict_dict.get("effective_endpoint") or "")
@@ -3426,11 +3512,37 @@ class BehaviorRunner:
                         resolved_name = fallback_name
                         confidence = "runtime_only_unmapped"
 
+                    # Route-mapping bookkeeping runs regardless of outcome — mapping
+                    # accuracy and "did we get a real response" are different questions.
                     cov = component_map[resolved_name]
-                    cov.exercised = True
                     cov.mapping_confidence = confidence
                     if resolved_route:
                         cov.mapped_from_endpoint = resolved_route
+
+                    # A transport-level failure (no response ever received) proves
+                    # nothing about the endpoint's own behavior — never claim it as
+                    # exercised for this verdict. Issue #562: this previously fell
+                    # through to exercised=True + exercised_within_policy=True.
+                    is_transport_failure = any(
+                        d.get("deviation_type") == "http_error"
+                        for d in (verdict_dict.get("deviations") or [])
+                        if isinstance(d, dict)
+                    )
+                    if is_transport_failure:
+                        continue
+
+                    first_exercise = not cov.exercised
+                    cov.exercised = True
+                    cov.scenario_outcome = _ep_outcome
+                    if first_exercise:
+                        cov.first_exercised_scenario = sr.scenario_name
+                        cov.first_exercised_turn = verdict_dict.get("turn")
+                        cov.first_exercised_request = str(
+                            verdict_dict.get("user_message") or verdict_dict.get("prompt") or ""
+                        )
+                        cov.first_exercised_response = str(
+                            verdict_dict.get("agent_response") or verdict_dict.get("response") or ""
+                        )
                     has_violation = any(
                         d.get("deviation_type") in ("policy_violation", "data_leak")
                         for d in (verdict_dict.get("deviations") or [])
@@ -3501,8 +3613,36 @@ class BehaviorRunner:
             norm = normalise_name(mention)
             return normalized_component_name.get(norm) or descriptive_alias_norm_map.get(norm)
 
+        # Coverage-dedicated scenario types whose job is to exercise one specific
+        # component — sr.overall_score is meaningful *for that component* only
+        # here. INTENT_HAPPY_PATH/GUARDRAIL_PROBE/DATA_DISCOVERY_PROBE/
+        # ENDPOINT_COVERAGE scenarios can also incidentally name an agent/tool in
+        # their response text, but their score measures something else entirely
+        # (e.g. did a guardrail hold) — attaching it to an incidental mention
+        # would be a new false claim, not a fix (issue #562 review).
+        _agent_tool_coverage_types = frozenset({
+            BehaviorScenarioType.AGENT_COVERAGE.value,
+            BehaviorScenarioType.COMPONENT_COVERAGE.value,
+            BehaviorScenarioType.GUIDED_COVERAGE.value,
+        })
+
         # Update from scenario results (agents/tools via mention detection)
         for sr in scenario_results:
+            _is_coverage_scenario = sr.scenario_type in _agent_tool_coverage_types
+            _sr_outcome = (
+                scenario_status_from_score(getattr(sr, "overall_score", 0.0) or 0.0)
+                if _is_coverage_scenario
+                else None
+            )
+            # A coverage-dedicated scenario can be responsible for more than one
+            # component (a COMPONENT_COVERAGE tool chain, or a GUIDED_COVERAGE
+            # multi-tool probe) — scoped_tools/scoped_agents is the scenario's own
+            # full membership set. target_component only ever names one of them
+            # (e.g. tool_names[0] of a chain), so it under-covers a multi-component
+            # scenario if used alone; it remains the fallback for the (currently
+            # unobserved) case where a coverage scenario sets neither scoped list.
+            _sr_scoped_agents = frozenset(getattr(sr, "scoped_agents", None) or [])
+            _sr_scoped_tools = frozenset(getattr(sr, "scoped_tools", None) or [])
             for verdict_dict in sr.verdicts:
                 agents = verdict_dict.get("agents_mentioned") or []
                 tools = verdict_dict.get("tools_mentioned") or []
@@ -3512,12 +3652,34 @@ class BehaviorRunner:
                     for d in deviations
                     if isinstance(d, dict)
                 )
+                # Only a component within this scenario's own declared scope may
+                # receive its outcome — a different component incidentally
+                # mentioned in the same coverage scenario's response is still
+                # "named", not "judged".
+                _verdict_target = verdict_dict.get("target_component") or ""
+
+                def _record_first_exercise(cov: BehaviorCoverage, first_exercise: bool) -> None:
+                    if not first_exercise:
+                        return
+                    cov.first_exercised_scenario = sr.scenario_name
+                    cov.first_exercised_turn = verdict_dict.get("turn")
+                    cov.first_exercised_request = str(
+                        verdict_dict.get("user_message") or verdict_dict.get("prompt") or ""
+                    )
+                    cov.first_exercised_response = str(
+                        verdict_dict.get("agent_response") or verdict_dict.get("response") or ""
+                    )
 
                 for a in agents:
                     key, confidence = _resolve_agent_or_tool_mention(a, "AGENT")
                     if key:
                         cov = component_map[key]
+                        first_exercise = not cov.exercised
                         cov.exercised = True
+                        _agent_in_scope = key in _sr_scoped_agents if _sr_scoped_agents else _verdict_target == key
+                        if _is_coverage_scenario and _agent_in_scope:
+                            cov.scenario_outcome = _sr_outcome
+                        _record_first_exercise(cov, first_exercise)
                         cov.mapping_confidence = cov.mapping_confidence or confidence
                         mapped_component_mentions.add(f"AGENT:{a}->{key}:{confidence}")
                         if a not in cov.evidence_mentions:
@@ -3547,7 +3709,12 @@ class BehaviorRunner:
                     key, confidence = _resolve_agent_or_tool_mention(t, "TOOL")
                     if key:
                         cov = component_map[key]
+                        first_exercise = not cov.exercised
                         cov.exercised = True
+                        _tool_in_scope = key in _sr_scoped_tools if _sr_scoped_tools else _verdict_target == key
+                        if _is_coverage_scenario and _tool_in_scope:
+                            cov.scenario_outcome = _sr_outcome
+                        _record_first_exercise(cov, first_exercise)
                         cov.mapping_confidence = cov.mapping_confidence or confidence
                         mapped_component_mentions.add(f"TOOL:{t}->{key}:{confidence}")
                         if t not in cov.evidence_mentions:
