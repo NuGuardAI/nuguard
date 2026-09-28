@@ -1,110 +1,100 @@
 ---
 name: ai-security-review
 description: >
-  Activate when the user asks to audit, review, scan, pentest, or assess the security of an AI
-  application, agent, chatbot, or LLM-powered system. Also activate when the user mentions prompt injection, data exfiltration, guardrail bypass, red-teaming, penetration testing, AI SBOM, cognitive policy, OWASP LLM Top 10, NIST AI RMF, or EU AI Act compliance.
+  This skill should be used when the user asks to "audit my AI app", "review my agent's
+  security", "run a security scan", "pentest my chatbot", or mentions prompt injection,
+  data exfiltration, guardrail bypass, red-teaming, AI SBOM, cognitive policy, OWASP LLM
+  Top 10, NIST AI RMF, or EU AI Act compliance for an AI application.
 version: 0.5.4
 ---
 
-You are conducting an AI application security review using NuGuard's pipeline.
+Run NuGuard's security pipeline against an AI application and report the results as a
+developer-facing brief. Run the steps in order — each one builds on the last.
 
-## Workflow
+## Step 0 — Load project config
 
-Run steps in order. Each step builds on the previous one.
+Read `.claude/nuguard.local.md`. If it does not exist, invoke `/nuguard-config` to collect
+LLM credentials, target URL, and auth settings, then continue.
 
-### Step 0 — Load project config
+Use its fields throughout: `llm_api_key` → `LITELLM_API_KEY` env var (add `--llm` when
+present); `llm_model` / `llm_api_base` / `llm_api_version` → LLM provider settings;
+`target_url` / `chat_endpoint` → behavior and redteam steps; `auth_type` plus its matching
+credential fields.
 
-Read `.claude/nuguard.local.md`.
+## Step 1 — Inventory (AI-SBOM)
 
-- If the file **does not exist**, invoke `/nuguard-config` to collect LLM credentials, target URL,
-  and authentication settings before proceeding. Do not continue to Step 1 until the config exists.
-- Extract these fields from the YAML frontmatter and use them throughout:
-  - `llm_api_key` → inject as `LITELLM_API_KEY` env var on all CLI calls; add `--llm` flag when present
-  - `llm_model`, `llm_api_base`, `llm_api_version` → LLM provider settings (already in `nuguard.yaml`)
-  - `target_url`, `chat_endpoint` → used for behavior and redteam steps
-  - `auth_type` + matching credential fields (`auth_token`, `auth_api_key_*`, `auth_username`, `auth_password`)
+Run `nuguard sbom generate --source .` (or `uv run nuguard ...` if not on PATH). This is the
+foundation every later step reads from.
 
-### Step 1 — Inventory (AI-SBOM)
+Surface from the summary: AI frameworks in use, MCP servers and their trust level,
+datastores with PII/PHI, tools flagged `sql_injectable` / `ssrf_possible` / `high_privilege`,
+and whether guardrail nodes are wired to agent nodes.
 
-Run `nuguard sbom generate --source .` via Bash (use `uv run nuguard` if `nuguard` is not on PATH).
-The SBOM is the foundation: every subsequent step works from the components detected here.
+## Step 2 — Static risk analysis
 
-Key things to surface from the SBOM summary:
-- Which AI frameworks are in use (LangChain, OpenAI Agents SDK, CrewAI, etc.)
-- Whether MCP servers are present (and whether they are trusted or untrusted)
-- Datastores with PII/PHI classification
-- Tools with `sql_injectable`, `ssrf_possible`, or `high_privilege` metadata
-- Whether guardrail nodes exist and are wired to agent nodes
+Run `nuguard analyze --sbom app.sbom.json --min-severity medium`. Highlight the
+high-priority NGA rules: agent with no guardrail (NGA-001), high-privilege tool with no HITL
+trigger (NGA-003), SQL-injectable parameter (NGA-007), PII datastore with no auth boundary
+(NGA-009), unauthenticated API endpoint (NGA-011), system prompt exposed via injection
+surface (NGA-014), missing audit trail (NGA-018). Map each finding to its OWASP LLM Top 10
+item (LLM01–LLM10).
 
-### Step 2 — Static Risk Analysis
+## Step 3 — Config and policy init
 
-Run `nuguard analyze --sbom app.sbom.json --min-severity medium` via Bash. Focus your interpretation on:
-
-**High-priority NGA rules to highlight:**
-- NGA-001: Agent without any guardrail node
-- NGA-003: High-privilege tool without HITL trigger
-- NGA-007: SQL-injectable tool parameter
-- NGA-009: PII datastore without auth boundary
-- NGA-011: Unauthenticated API endpoint on agent graph
-- NGA-014: System prompt accessible via injection surface
-- NGA-018: No audit trail node in graph
-
-For each finding, map it to the OWASP LLM Top 10 item it corresponds to (LLM01–LLM10).
-
-### Step 3 — Config and Policy Initialization
-
-Before running the policy check, ensure `nuguard.yaml` and `cognitive-policy.md` exist
-in the project directory. If missing, run via Bash:
+If `nuguard.yaml` or `cognitive-policy.md` are missing, build them from the repo:
 
 ```bash
-# With LLM available: drafts a concise cognitive policy (5–6 topics per section)
-nuguard init --llm
-
-# Without LLM: writes blank section headings for manual fill-in
-nuguard init
+nuguard init --llm    # drafts a concise cognitive policy (5-6 topics/section) from the SBOM
+nuguard init          # writes blank section headings instead
 ```
 
-`nuguard init` creates:
-- `nuguard.yaml` — config file pre-filled with the detected SBOM path, source directory,
-  and any target URL the user has provided
-- `cognitive-policy.md` — when `--llm` is passed, a concise LLM-drafted policy with
-  5–6 allowed and restricted topics tailored to the application; otherwise blank headings
-- `canary.example.json` — template for seeding canary values before red-team runs
+Skip this if both files already exist. Then run
+`nuguard policy check --policy cognitive-policy.md --sbom app.sbom.json` and explain any
+gap between what the policy declares and what the SBOM shows is actually enforced.
 
-If `nuguard.yaml` or `cognitive-policy.md` already exist, skip this step (pass
-`force=false`, the default).
+## Step 4 — Target verification (only if a live target is available)
 
-Once both files exist, run `nuguard policy check --policy cognitive-policy.md --sbom app.sbom.json` via Bash.
-Explain gaps in plain language — what the policy declares vs. what the SBOM shows is actually enforced.
+Before sending any real traffic, run `nuguard target verify --config nuguard.yaml`. It
+sends one probe per declared credential (default + canary tenants), confirms auth and
+connectivity, and — when an SBOM is present — runs a short pre-scan discovery conversation
+that surfaces which account/tenant NuGuard is actually scanning. Confirm that identity with
+the user before proceeding; a failed or unexpected-account result means fix credentials
+first rather than continuing to Step 5.
 
-### Step 4 — Dynamic Validation (if live target available)
+## Step 5 — Behavior validation
 
-If the user provides a target URL:
-- Run `nuguard behavior --config nuguard.yaml --mode static+dynamic` via Bash first (faster, no attack payloads)
-- If behavior finds intent drift or policy violations, escalate to `nuguard redteam --config nuguard.yaml` to confirm exploitability
-- Both commands auto-discover the chat endpoint from the SBOM (including two-step
-  create-conversation-then-post-message APIs) before probing live — no manual `chat_endpoint`
-  needed unless discovery fails. Tune candidate breadth with `preflight_candidates` in
-  `nuguard.yaml` (default 3) if the target exposes several plausible chat-like routes.
-- If the run stops early reporting the target's usage quota or plan limit was exhausted, this
-  is not an auth or config problem — tell the user to raise the target's quota/plan and re-run;
-  do not suggest changing credentials.
+Run `nuguard validate --config nuguard.yaml` — a happy-path and policy-compliance runner
+that checks whether the app does what it claims and stays inside the topics declared in
+`cognitive-policy.md`, without adversarial payloads. Treat any failure here as high-priority:
+it means the app breaks its own declared contract under normal use.
 
-## Reporting Style
+## Step 6 — Dynamic validation
 
-Present findings as a developer-facing security brief:
+Run `nuguard behavior --config nuguard.yaml --mode static+dynamic` next — it's intent-aware
+(checks for drift from the declared purpose) and still sends no attack payloads. If it finds
+intent drift or policy violations, escalate to `nuguard redteam --config nuguard.yaml` to
+confirm exploitability.
+
+`target verify`, `behavior`, and `redteam` all auto-discover the chat endpoint from the
+SBOM, including two-step create-conversation-then-post-message APIs — no manual
+`chat_endpoint` needed unless discovery fails (tune breadth with `preflight_candidates` in
+`nuguard.yaml`, default 3).
+
+If a run stops early citing an exhausted usage quota or plan limit, tell the user to raise
+the target's quota and re-run — that is not an auth or config problem.
+
+## Reporting style
+
 1. **Risk summary** — one paragraph, plain language, worst-case impact
 2. **Findings table** — severity | rule | component | one-line description
-3. **Top 3 fixes** — ranked by severity × exploitability, each with a specific code-level
-   change (not "add authentication" but "add a `tenant_id` filter to the SQL query in
-   `tools/db_tool.py` before execution")
-4. **What's clean** — briefly note the components that passed so the user knows the
-   scan was thorough
+3. **Top 3 fixes** — ranked by severity × exploitability, each a specific code-level change
+   ("add a `tenant_id` filter to the SQL query in `tools/db_tool.py`", not "add authentication")
+4. **What's clean** — the components that passed, so the user knows the scan was thorough
 
-## Important Constraints
+## Constraints
 
-- Never fabricate findings. Only report what NuGuard tools return.
-- If a tool returns `status: "error"`, diagnose the error before continuing.
-- If `node_count == 0` from the SBOM, the extractor found no AI components — tell the
-  user why (wrong source path, unsupported framework, etc.) before proceeding.
-- Canary hits are always CRITICAL regardless of other signals. Flag them first.
+- Never fabricate findings — report only what NuGuard tools return.
+- If a tool returns `status: "error"`, diagnose it before continuing.
+- If `node_count == 0`, the extractor found no AI components — explain why (wrong source
+  path, unsupported framework) before proceeding.
+- Canary hits are always CRITICAL — flag them first, regardless of other signals.
