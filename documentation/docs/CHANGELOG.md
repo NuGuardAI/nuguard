@@ -2,6 +2,17 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## v0.9.10 - 2026-09-28
+
+### Improved
+- **Target verification:** Failures caused by an exhausted usage quota or plan limit are now classified separately from auth failures, so scans stop with a clear "raise your quota" message instead of a misleading credential error.
+- **Endpoint discovery:** Chat-endpoint discovery now works against more two-step (create-conversation-then-post-message) and SPA-fronted applications.
+- **AI-SBOM accuracy:** Repeated API endpoints get concise, distinct names instead of collapsing into duplicates; prompts and datastores are now correctly connected in the generated SBOM graph.
+
+### Changed
+- The `ai-security-review` and `sbom-analysis` Claude Code plugin skills were simplified and clarified for AI developers, and the security-review pipeline now includes explicit target-verification and behavior-validation steps ahead of dynamic and red-team testing.
+- Cloud-pentesting documentation wording simplified and landing-page assets refreshed.
+
 ## v0.9.9 - 2026-09-26
 
 ### Improved
