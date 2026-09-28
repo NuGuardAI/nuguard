@@ -4281,7 +4281,8 @@
           "config",
           "sbom",
           "probe",
-          "default"
+          "default",
+          "enriched_sbom_cache"
         ],
         "title": "Endpoint Source",
         "type": "string"
@@ -4921,7 +4922,8 @@
           "config",
           "sbom",
           "probe",
-          "default"
+          "default",
+          "enriched_sbom_cache"
         ],
         "title": "Endpoint Source",
         "type": "string"
@@ -5410,7 +5412,8 @@
           "config",
           "sbom",
           "probe",
-          "default"
+          "default",
+          "enriched_sbom_cache"
         ],
         "title": "Endpoint Source",
         "type": "string"
