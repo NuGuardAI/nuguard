@@ -34,7 +34,7 @@ TargetVerifyStatus = Literal[
     "skipped",
 ]
 
-EndpointSource = Literal["config", "sbom", "probe", "default"]
+EndpointSource = Literal["config", "sbom", "probe", "default", "enriched_sbom_cache"]
 
 
 class TargetVerifyRequest(BaseModel):
