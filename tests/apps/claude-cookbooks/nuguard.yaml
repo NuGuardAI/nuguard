@@ -1,0 +1,33 @@
+# nuguard.yaml — NuGuard config for Claude Cookbooks
+#
+# Claude Cookbooks (https://github.com/anthropics/claude-cookbooks) is a
+# collection of example agents/notebooks, not a single running application.
+# There is no live chat endpoint to target, so this fixture only drives
+# static capabilities (sbom generate / analyze) against the repo's source —
+# no behavior/redteam target block is configured here.
+#
+# Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
+
+# ─── Project file paths ───────────────────────────────────────────────────────
+source: https://github.com/anthropics/claude-cookbooks   # generate SBOM straight from GitHub, no local checkout
+sbom: ./claude-cookbooks.sbom.json                        # output path for generated SBOM
+
+# ─── LLM settings ─────────────────────────────────────────────────────────────
+llm:
+  model: azure/DeepSeek-V4-Pro
+  api_key: ${AZURE_DEEPSEEK_KEY}          # never put keys here; use env var interpolation
+  api_base: ${AZURE_DEEPSEEK_ENDPOINT}    # optional override for Azure OpenAI endpoint URL
+
+# ─── SBOM generation ──────────────────────────────────────────────────────────
+sbom_generation:
+  llm: true                               # set true to enrich SBOM nodes with LLM descriptions
+
+# ─── Static analysis ──────────────────────────────────────────────────────────
+analyze:
+  min_severity: low
+
+# ─── Output ───────────────────────────────────────────────────────────────────
+output:
+  format: markdown
+  fail_on: low
+  sarif_file: ./nuguard-results.sarif
