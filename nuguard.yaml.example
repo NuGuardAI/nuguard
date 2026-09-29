@@ -321,11 +321,17 @@ redteam:
   #   nuguard redteam catalog-export --output my-catalog.yaml
   # catalog: ./my-catalog.yaml
 
-  # Which categories to run (omit section, or leave empty, to run both).
-  # 'destructive' scenarios attempt to mutate/destroy state (cancel, delete, close,
-  # remove, purge, refund, terminate, deactivate, wipe, revoke, unsubscribe,
-  # deregister, ...) — they run last, after all non-destructive scenarios, so an
-  # account's intact data is available to every non-destructive probe first.
+  # Which categories to run (omit section, or leave empty, to run non-destructive
+  # only — the safe-by-default behavior; destructive testing must be opted into
+  # explicitly). 'destructive' covers both scenarios that attempt to mutate/destroy
+  # state via chat (cancel, delete, close, remove, purge, refund, terminate,
+  # deactivate, wipe, revoke, unsubscribe, deregister, ...) and any write-capable
+  # direct-HTTP attack (mass assignment, price tampering, injection probes, ...)
+  # that would send a real POST/PUT/PATCH/DELETE under the run's own credentials —
+  # they run last, after all non-destructive scenarios, so an account's intact
+  # data is available to every non-destructive probe first. Configure
+  # redteam.canary with a tenant session_token to route those write-capable
+  # attacks through a disposable identity instead of the run's own credentials.
   scenarios:
     - non-destructive   # safe-by-default: prompts, exfiltration probes, policy/API/recon attacks
     #- destructive       # uncomment to also run mutating actions against the target
