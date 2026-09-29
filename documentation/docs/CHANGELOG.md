@@ -2,6 +2,12 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## v0.9.11 - 2026-09-29
+
+### Improved
+- **Safer red-team scans:** Runs now default to non-destructive scenarios. Mutating attacks require an explicit opt-in, and write-capable API checks use a configured disposable canary identity when available. Reports explain the selected default and any credential fallback.
+- **Target verification:** Previously verified chat endpoints can be reused from the enriched AI-SBOM, with the source identified in reports.
+
 ## v0.9.10 - 2026-09-28
 
 ### Improved
