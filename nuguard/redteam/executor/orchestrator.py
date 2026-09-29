@@ -617,7 +617,7 @@ def _is_destructive_finding(finding: Finding) -> bool:
     if _is_destructive_text(finding.title, finding.description):
         return True
     for step in finding.attack_steps:
-        if not isinstance(step, dict) or not step.get("target_path"):
+        if not step.get("target_path"):
             continue
         method = str(step.get("method") or "").upper()
         if method in _CREDENTIALED_WRITE_METHODS and not step.get("strip_auth"):
