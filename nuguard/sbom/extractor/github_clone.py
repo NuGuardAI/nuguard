@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import re
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 from urllib.parse import urlsplit
 
 import httpx
 
+from nuguard.common.github_url import try_parse_github_subfolder
 from nuguard.common.logging import get_logger
 from nuguard.common.url_sanitization import (
     redact_repository_url_from_text,
@@ -55,6 +58,94 @@ def is_repository_not_found_error(exc: BaseException) -> bool:
     reinterpreted as "maybe a subfolder."
     """
     return bool(_NOT_FOUND_RE.search(str(exc)))
+
+
+class ClonePlain(Protocol):
+    """Signature of ``AiSbomExtractor._clone_repo`` — kept as a ``Protocol``
+    (rather than ``Callable``) because callers/tests invoke it with keyword
+    arguments (``url=``, ``ref=``, ``dest=``)."""
+
+    def __call__(self, *, url: str, ref: str | None, dest: Path) -> None: ...
+
+
+@dataclass(frozen=True)
+class ClonedSource:
+    """Where a :func:`resolve_and_clone` call materialized its checkout.
+
+    ``path`` is the directory to scan — the repo root for a plain clone, or
+    ``dest_root / subpath`` when a GitHub subfolder URL was resolved.
+    ``ref_used`` is the ref actually requested for that checkout: the caller's
+    explicit *ref* when given, otherwise a ref recovered from a ``/tree/<ref>/``
+    URL, otherwise ``None`` (repository default branch).
+    """
+
+    path: Path
+    ref_used: str | None
+
+
+def resolve_and_clone(
+    url: str,
+    ref: str | None,
+    dest_root: Path,
+    *,
+    clone_plain: ClonePlain,
+    token: str | None = None,
+) -> ClonedSource:
+    """Clone *url* into *dest_root*, transparently handling GitHub subfolder URLs.
+
+    Single shared entry point for "resolve a possibly-subfolder GitHub URL and
+    materialize it on disk", used by both
+    :meth:`~nuguard.sbom.extractor.core.AiSbomExtractor.extract_from_repo` (the
+    frozen library contract client code calls directly) and the CLI
+    (``nuguard sbom generate --from-repo``, ``nuguard analyze``'s remote
+    re-clone). Previously each of those re-implemented this dispatch
+    independently; centralizing it here means a credentialed
+    ``.../tree/<ref>/<subpath>`` URL — the shape that broke
+    ``extract_from_repo`` — now resolves the same way everywhere.
+
+    Any credentials embedded in *url* (``https://<token>@github.com/...`` or
+    ``https://x-access-token:<token>@github.com/...``) are recovered as the
+    GitHub API token for the subfolder path when *token* is not given
+    explicitly; the credential-stripped URL is what's fed to the subfolder
+    parser so a ``/tree/`` path isn't mistaken for a userinfo-bearing host.
+
+    Dispatch:
+      - Not a GitHub subfolder URL (plain repo-root, or a non-GitHub host) →
+        *clone_plain* on the original *url*, unchanged from today.
+      - ``/tree/<ref>/<subpath>`` form → unambiguous, go straight to the
+        subfolder clone path.
+      - Bare shorthand (``org/repo/<subpath>``) → ambiguous: try *clone_plain*
+        first; only reinterpret the trailing path segments as a subfolder on
+        a definitive "not found" failure. Any other failure propagates
+        unchanged.
+    """
+    parsed = urlsplit(url)
+    resolved_token = token or parsed.password or parsed.username or None
+    clean_url = sanitize_repository_url(url)
+    gh = try_parse_github_subfolder(clean_url)
+
+    if gh is None:
+        clone_plain(url=url, ref=ref, dest=dest_root)
+        return ClonedSource(path=dest_root, ref_used=ref)
+
+    if not gh.is_ambiguous_shorthand:
+        assert gh.subpath is not None  # guaranteed by try_parse_github_subfolder
+        effective_ref = ref if ref is not None else gh.url_ref
+        clone_github_subfolder(
+            gh.repo_root_url, effective_ref, gh.subpath, dest_root, token=resolved_token
+        )
+        return ClonedSource(path=dest_root / gh.subpath, ref_used=effective_ref)
+
+    assert gh.subpath is not None  # guaranteed by try_parse_github_subfolder
+    try:
+        clone_plain(url=url, ref=ref, dest=dest_root)
+    except RuntimeError as exc:
+        if not is_repository_not_found_error(exc):
+            raise
+        clone_github_subfolder(gh.repo_root_url, ref, gh.subpath, dest_root, token=resolved_token)
+        return ClonedSource(path=dest_root / gh.subpath, ref_used=ref)
+    else:
+        return ClonedSource(path=dest_root, ref_used=ref)
 
 
 def _sparse_pattern(path: str) -> bytes:

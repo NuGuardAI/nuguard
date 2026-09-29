@@ -20,6 +20,7 @@ from nuguard.sbom.extractor.github_clone import (
     _sparse_pattern,
     clone_github_subfolder,
     is_repository_not_found_error,
+    resolve_and_clone,
 )
 
 TREE_ENTRIES = [
@@ -193,6 +194,120 @@ class TestSparsePattern:
 
     def test_plain_filename_unescaped(self) -> None:
         assert _sparse_pattern("python-backend/app.py") == b"/python-backend/app.py\n"
+
+
+class TestResolveAndClone:
+    """Dispatch tests for the shared resolver used by both
+    ``AiSbomExtractor.extract_from_repo`` and the CLI (``nuguard sbom
+    generate --from-repo``, ``nuguard analyze``'s remote re-clone)."""
+
+    def test_plain_url_calls_clone_plain_only(self, tmp_path: Path) -> None:
+        dest = tmp_path / "repo"
+        clone_plain = MagicMock()
+        clone_subfolder = MagicMock()
+        with patch(
+            "nuguard.sbom.extractor.github_clone.clone_github_subfolder", clone_subfolder
+        ):
+            cloned = resolve_and_clone(
+                "https://github.com/org/repo", "main", dest, clone_plain=clone_plain
+            )
+        clone_plain.assert_called_once_with(url="https://github.com/org/repo", ref="main", dest=dest)
+        clone_subfolder.assert_not_called()
+        assert cloned.path == dest
+        assert cloned.ref_used == "main"
+
+    def test_credentialed_tree_url_routes_to_subfolder_with_extracted_token(
+        self, tmp_path: Path
+    ) -> None:
+        """Reproduces the ai-asset-service bug: a token-embedded ``/tree/<ref>/<subpath>``
+        URL passed straight to ``extract_from_repo`` must resolve to the subfolder
+        clone path (not a doomed ``git clone`` of the tree URL itself), with the
+        embedded token forwarded as the GitHub API token."""
+        dest = tmp_path / "repo"
+        clone_plain = MagicMock()
+        clone_subfolder = MagicMock()
+        url = (
+            "https://x-access-token:github_pat_faketoken123@github.com/"
+            "NuGuardAI/openai-cs-agents-demo/tree/main/python-backend"
+        )
+        with patch(
+            "nuguard.sbom.extractor.github_clone.clone_github_subfolder", clone_subfolder
+        ):
+            cloned = resolve_and_clone(url, None, dest, clone_plain=clone_plain)
+
+        clone_plain.assert_not_called()
+        clone_subfolder.assert_called_once_with(
+            "https://github.com/NuGuardAI/openai-cs-agents-demo",
+            "main",
+            "python-backend",
+            dest,
+            token="github_pat_faketoken123",
+        )
+        assert cloned.path == dest / "python-backend"
+        assert cloned.ref_used == "main"
+
+    def test_explicit_ref_overrides_url_embedded_ref(self, tmp_path: Path) -> None:
+        dest = tmp_path / "repo"
+        clone_subfolder = MagicMock()
+        with patch(
+            "nuguard.sbom.extractor.github_clone.clone_github_subfolder", clone_subfolder
+        ):
+            cloned = resolve_and_clone(
+                "https://github.com/org/repo/tree/main/sub",
+                "develop",
+                dest,
+                clone_plain=MagicMock(),
+            )
+        args, kwargs = clone_subfolder.call_args
+        assert args[1] == "develop"
+        assert cloned.ref_used == "develop"
+
+    def test_ambiguous_bare_shorthand_falls_back_on_not_found(self, tmp_path: Path) -> None:
+        dest = tmp_path / "repo"
+        not_found = RuntimeError(
+            "git clone failed for 'https://github.com/org/repo/sub' @ None: "
+            "remote: Not Found\nfatal: repository 'https://github.com/org/repo/sub/' not found"
+        )
+        clone_plain = MagicMock(side_effect=not_found)
+        clone_subfolder = MagicMock()
+        with patch(
+            "nuguard.sbom.extractor.github_clone.clone_github_subfolder", clone_subfolder
+        ):
+            cloned = resolve_and_clone(
+                "https://github.com/org/repo/sub", None, dest, clone_plain=clone_plain
+            )
+        clone_plain.assert_called_once()
+        clone_subfolder.assert_called_once_with(
+            "https://github.com/org/repo", None, "sub", dest, token=None
+        )
+        assert cloned.path == dest / "sub"
+
+    def test_ambiguous_bare_shorthand_other_failure_propagates(self, tmp_path: Path) -> None:
+        dest = tmp_path / "repo"
+        auth_error = RuntimeError("fatal: Authentication failed")
+        clone_plain = MagicMock(side_effect=auth_error)
+        clone_subfolder = MagicMock()
+        with (
+            patch("nuguard.sbom.extractor.github_clone.clone_github_subfolder", clone_subfolder),
+            pytest.raises(RuntimeError, match="Authentication failed"),
+        ):
+            resolve_and_clone(
+                "https://github.com/org/repo/sub", None, dest, clone_plain=clone_plain
+            )
+        clone_subfolder.assert_not_called()
+
+    def test_non_github_host_never_touches_subfolder_path(self, tmp_path: Path) -> None:
+        dest = tmp_path / "repo"
+        clone_plain = MagicMock()
+        clone_subfolder = MagicMock()
+        with patch(
+            "nuguard.sbom.extractor.github_clone.clone_github_subfolder", clone_subfolder
+        ):
+            resolve_and_clone(
+                "https://gitlab.com/org/repo/tree/main/sub", None, dest, clone_plain=clone_plain
+            )
+        clone_plain.assert_called_once()
+        clone_subfolder.assert_not_called()
 
 
 class TestIsRepositoryNotFoundError:

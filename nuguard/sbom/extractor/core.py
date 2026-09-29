@@ -34,6 +34,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
+from nuguard.common.github_url import try_parse_github_subfolder
 from nuguard.common.logging import get_logger
 from nuguard.common.soft_reject import partition_node_counts
 from nuguard.common.url_sanitization import (
@@ -120,7 +121,7 @@ from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
 from .endpoint_names import disambiguate_endpoint_names
 from .git_safety import SAFE_REF_RE, SAFE_URL_RE, validate_ref, validate_url
-from .github_clone import clone_github_subfolder
+from .github_clone import clone_github_subfolder, resolve_and_clone
 from .postprocess import (
     _collapse_bulk_catalog_files,
     _dedup_by_location,
@@ -2329,22 +2330,29 @@ class AiSbomExtractor:
                 print(f)
         """
         display_url = sanitize_repository_url(source_ref or url)
-        repository_path = urlsplit(display_url).path.rstrip("/")
+        gh = try_parse_github_subfolder(display_url)
+        repository_path = urlsplit(
+            gh.repo_root_url if gh is not None else display_url
+        ).path.rstrip("/")
         app_name = PurePosixPath(repository_path).name.removesuffix(".git") or "repo"
 
         if cache_dir is not None:
             repo_dir = Path(cache_dir) / "repo" / app_name
             repo_dir.mkdir(parents=True, exist_ok=True)
-            self._clone_repo(url=url, ref=ref, dest=repo_dir)
-            return self.extract_from_path(repo_dir, config, source_ref=display_url, branch=ref)
+            cloned = resolve_and_clone(url, ref, repo_dir, clone_plain=self._clone_repo)
+            return self.extract_from_path(
+                cloned.path, config, source_ref=display_url, branch=cloned.ref_used
+            )
 
         with tempfile.TemporaryDirectory(
             prefix="nuguard_clone_", ignore_cleanup_errors=True
         ) as temp_dir:
             repo_dir = Path(temp_dir) / "repo" / app_name
             repo_dir.mkdir(parents=True, exist_ok=True)
-            self._clone_repo(url=url, ref=ref, dest=repo_dir)
-            doc = self.extract_from_path(repo_dir, config, source_ref=display_url, branch=ref)
+            cloned = resolve_and_clone(url, ref, repo_dir, clone_plain=self._clone_repo)
+            doc = self.extract_from_path(
+                cloned.path, config, source_ref=display_url, branch=cloned.ref_used
+            )
         _log.debug("Deleted cloned repo temp dir: %s", temp_dir)
         return doc
 

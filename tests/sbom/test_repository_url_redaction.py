@@ -85,6 +85,46 @@ def test_repository_cache_name_uses_url_path_only(
     assert _TOKEN not in result.model_dump_json()
 
 
+def test_extract_from_repo_resolves_credentialed_subfolder_url(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression test for the ai-asset-service bug: a client calling the
+    frozen ``extract_from_repo`` contract directly with a token-embedded
+    ``/tree/<ref>/<subpath>`` URL (as opposed to a plain repo-root URL) must
+    resolve to the subfolder clone path instead of a doomed ``git clone`` of
+    the tree URL itself."""
+    extractor = AiSbomExtractor()
+    subfolder_calls: list[tuple[str, str | None, str]] = []
+
+    def fake_clone_github_subfolder(repo_root_url, ref, subpath, dest, *, token=None, **kwargs):
+        subfolder_calls.append((repo_root_url, ref, subpath))
+        (dest / subpath).mkdir(parents=True, exist_ok=True)
+        return "deadbeef"
+
+    monkeypatch.setattr(
+        "nuguard.sbom.extractor.github_clone.clone_github_subfolder",
+        fake_clone_github_subfolder,
+    )
+    monkeypatch.setattr(
+        extractor,
+        "extract_from_path",
+        lambda path, config, **kwargs: AiSbomDocument(target=kwargs["source_ref"]),
+    )
+
+    url = (
+        "https://x-access-token:"
+        f"{_TOKEN}@github.com/NuGuardAI/openai-cs-agents-demo/tree/main/python-backend"
+    )
+    result = extractor.extract_from_repo(url, "main", AiSbomConfig(), cache_dir=tmp_path)
+
+    assert subfolder_calls == [
+        ("https://github.com/NuGuardAI/openai-cs-agents-demo", "main", "python-backend")
+    ]
+    assert result.target == "https://github.com/NuGuardAI/openai-cs-agents-demo/tree/main/python-backend"
+    assert _TOKEN not in result.model_dump_json()
+
+
 @pytest.mark.asyncio
 async def test_public_result_uses_sanitized_source_ref(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_from_repo(

@@ -243,94 +243,32 @@ def _clone_and_extract(
     ref: str | None,
     cfg_source_ref: str | None,
     config: AiSbomConfig,
-    token: str | None,
 ) -> "AiSbomDocument":
-    """Clone *from_repo* and extract an SBOM, transparently handling GitHub subfolders.
+    """Clone *from_repo* and extract an SBOM.
 
-    Dispatch:
-      - Not a GitHub subfolder URL (plain repo-root, or a non-GitHub host) →
-        today's unmodified ``extract_from_repo`` call, unchanged.
-      - ``/tree/<ref>/<subpath>`` form → unambiguous, go straight to the
-        subfolder clone path.
-      - Bare shorthand (``org/repo/<subpath>``) → ambiguous: try the direct
-        clone first (identical to today's behavior); only reinterpret the
-        trailing path segments as a subfolder on a definitive "not found"
-        failure. Any other failure propagates unchanged.
+    ``clone_url`` (which may have a token embedded for private-repo auth) is
+    handed to ``extract_from_repo``, which itself detects and transparently
+    resolves GitHub subfolder URLs (``.../tree/<ref>/<subpath>`` or the bare
+    shorthand ``.../org/repo/<subpath>``) — see
+    ``nuguard.sbom.extractor.github_clone.resolve_and_clone``, the single
+    shared implementation used here and by the library entry point.
     """
     from nuguard.common.github_url import try_parse_github_subfolder  # noqa: PLC0415
-    from nuguard.sbom.extractor import is_repository_not_found_error  # noqa: PLC0415
 
     gh = try_parse_github_subfolder(from_repo)
     url_ref = gh.url_ref if gh is not None else None
     effective_ref = ref if ref is not None else (url_ref or cfg_source_ref)
 
-    if gh is None:
-        _console.print(f"[bold]Cloning[/bold] {from_repo} ({effective_ref or 'default branch'}) …")
-        return extractor.extract_from_repo(
-            clone_url, ref=effective_ref, config=config, source_ref=from_repo
-        )
-
-    if ref is not None and gh.url_ref is not None and ref != gh.url_ref:
+    if ref is not None and gh is not None and gh.url_ref is not None and ref != gh.url_ref:
         _console.print(
             f"[yellow]Note:[/yellow] --ref {ref!r} overrides the ref embedded "
             f"in the URL ({gh.url_ref!r})."
         )
 
-    if not gh.is_ambiguous_shorthand:
-        assert gh.subpath is not None  # guaranteed by try_parse_github_subfolder
-        _log.info(
-            "Detected GitHub tree-URL form: repo=%s ref=%s subpath=%s",
-            gh.repo_root_url, effective_ref, gh.subpath,
-        )
-        _console.print(
-            f"[bold]Cloning[/bold] {gh.repo_root_url} subfolder {gh.subpath!r} "
-            f"({effective_ref or 'default branch'}) …"
-        )
-        return extractor.extract_from_repo_subfolder(
-            gh.repo_root_url,
-            ref=effective_ref,
-            subpath=gh.subpath,
-            config=config,
-            source_ref=from_repo,
-            token=token,
-        )
-
-    assert gh.subpath is not None  # guaranteed by try_parse_github_subfolder
-    _log.info(
-        "Detected possible GitHub subfolder shorthand: repo=%s candidate_subpath=%s",
-        gh.repo_root_url, gh.subpath,
-    )
     _console.print(f"[bold]Cloning[/bold] {from_repo} ({effective_ref or 'default branch'}) …")
-    try:
-        doc = extractor.extract_from_repo(
-            clone_url, ref=effective_ref, config=config, source_ref=from_repo
-        )
-    except RuntimeError as exc:
-        if not is_repository_not_found_error(exc):
-            _log.info(
-                "%s clone failed for a reason other than 'not found'; not retrying as a subfolder",
-                from_repo,
-            )
-            raise
-        _log.info(
-            "%s not found directly; retrying as repo=%s subpath=%s",
-            from_repo, gh.repo_root_url, gh.subpath,
-        )
-        _console.print(
-            f"[bold]Retrying[/bold] as subfolder: {gh.repo_root_url} / {gh.subpath!r} "
-            f"({effective_ref or 'default branch'}) …"
-        )
-        return extractor.extract_from_repo_subfolder(
-            gh.repo_root_url,
-            ref=effective_ref,
-            subpath=gh.subpath,
-            config=config,
-            source_ref=from_repo,
-            token=token,
-        )
-    else:
-        _log.info("%s resolved directly — no subfolder detected", from_repo)
-        return doc
+    return extractor.extract_from_repo(
+        clone_url, ref=effective_ref, config=config, source_ref=from_repo
+    )
 
 
 def _resolve_token(token: str | None) -> str | None:
@@ -468,7 +406,6 @@ def _do_generate(
                 ref=ref,
                 cfg_source_ref=cfg.source_ref,
                 config=config,
-                token=resolved_token,
             )
         else:
             assert source is not None  # guarded by the exit above
