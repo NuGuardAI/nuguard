@@ -2316,7 +2316,12 @@ class AiSbomExtractor:
                 leaking auth tokens embedded in *url*.
 
         Returns:
-            The extracted :class:`AiSbomDocument`.
+            The extracted :class:`AiSbomDocument`. When *cache_dir* is supplied,
+            ``doc.local_cloned_path`` holds the absolute path of the scanned
+            source (the root that node ``SourceLocation.path`` values resolve
+            against; includes the subfolder for GitHub subfolder URLs). It is
+            ``None`` without *cache_dir* and is excluded from serialization, so
+            read it from the returned object *before* serializing.
 
         Example::
 
@@ -2340,9 +2345,11 @@ class AiSbomExtractor:
             repo_dir = Path(cache_dir) / "repo" / app_name
             repo_dir.mkdir(parents=True, exist_ok=True)
             cloned = resolve_and_clone(url, ref, repo_dir, clone_plain=self._clone_repo)
-            return self.extract_from_path(
+            doc = self.extract_from_path(
                 cloned.path, config, source_ref=display_url, branch=cloned.ref_used
             )
+            doc.local_cloned_path = str(Path(cloned.path).resolve())
+            return doc
 
         with tempfile.TemporaryDirectory(
             prefix="nuguard_clone_", ignore_cleanup_errors=True
@@ -2402,8 +2409,15 @@ class AiSbomExtractor:
                 ``Authorization`` header.
 
         Returns:
-            The extracted :class:`AiSbomDocument`.
+            The extracted :class:`AiSbomDocument`; ``local_cloned_path`` is set
+            to the scanned subfolder when *cache_dir* is supplied (see
+            :meth:`extract_from_repo`).
+
+        Raises:
+            ValueError: *subpath* is absolute or contains ``..``.
         """
+        if PurePosixPath(subpath).is_absolute() or ".." in PurePosixPath(subpath).parts:
+            raise ValueError(f"Invalid subfolder path {subpath!r}: must be relative, without '..'")
         display_url = sanitize_repository_url(source_ref or repo_root_url)
         repo_name = (
             PurePosixPath(urlsplit(repo_root_url).path.rstrip("/")).name.removesuffix(".git")
@@ -2414,9 +2428,11 @@ class AiSbomExtractor:
             repo_dir = Path(cache_dir) / "repo" / repo_name
             repo_dir.mkdir(parents=True, exist_ok=True)
             clone_github_subfolder(repo_root_url, ref, subpath, repo_dir, token=token)
-            return self.extract_from_path(
+            doc = self.extract_from_path(
                 repo_dir / subpath, config, source_ref=display_url, branch=ref
             )
+            doc.local_cloned_path = str((repo_dir / subpath).resolve())
+            return doc
 
         with tempfile.TemporaryDirectory(
             prefix="nuguard_clone_", ignore_cleanup_errors=True
