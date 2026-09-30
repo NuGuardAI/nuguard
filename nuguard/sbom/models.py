@@ -1263,6 +1263,20 @@ class AiSbomDocument(BaseModel):
         description="Tool that produced this document",
     )
     target: str = Field(description="Repository URL or local path that was scanned")
+    local_cloned_path: str | None = Field(
+        default=None,
+        exclude=True,  # in-process handoff only; never serialized
+        description=(
+            "Absolute filesystem path where the scanned source actually lives on disk — "
+            "the root that every SourceLocation.path (and other relative-path fields) in "
+            "this document resolves against. Populated by extract_from_repo/"
+            "extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise "
+            "the clone was a temp directory already deleted by the time this document is "
+            "returned, so there is nothing durable to point at). None for extract_from_path "
+            "callers who already know their own source path. Excluded from serialization: "
+            "read it from the returned object before serializing."
+        ),
+    )
     nodes: list[Node] = Field(
         default_factory=list,
         description="Detected AI components",
