@@ -2,6 +2,11 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## v0.9.12 - 2026-09-30
+
+### Improved
+- **Partial repo scans:** `nuguard sbom generate --from-repo` accepts GitHub subfolder URLs, so large repositories can be scanned by just the AI-relevant subfolder. The cloned path is exposed on the generated AI-SBOM.
+
 ## v0.9.11 - 2026-09-29
 
 ### Improved
