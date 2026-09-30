@@ -5,6 +5,7 @@ Major product and documentation changes for NuGuard users. See the linked guides
 ## v0.9.11 - 2026-09-29
 
 ### Improved
+- **Cloned source location:** When a repository is scanned with a cache directory, the returned AI-SBOM document exposes `local_cloned_path`, the on-disk root its relative file paths resolve against (including GitHub subfolder URLs). It is available on the returned object only and is not written to serialized output, so read it before serializing.
 - **Safer red-team scans:** Runs now default to non-destructive scenarios. Mutating attacks require an explicit opt-in, and write-capable API checks use a configured disposable canary identity when available. Reports explain the selected default and any credential fallback.
 - **Target verification:** Previously verified chat endpoints can be reused from the enriched AI-SBOM, with the source identified in reports.
 
