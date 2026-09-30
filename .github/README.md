@@ -101,6 +101,24 @@ Install the NuGuard plugin and run SBOM, analysis, behavior, and red-team scans 
 [![Read the Plugin Guide](https://img.shields.io/badge/→_Read_the_Plugin_Guide-111111?style=for-the-badge)](../documentation/docs/plugin-guide.md)
 
 
+### 🔧 Using Smithery?
+
+NuGuard is available as a **Smithery Skill** — install it once and use it from any MCP-compatible client (Claude Desktop, Claude Code, Cursor, and more).
+
+```bash
+# Option A — pip (recommended)
+pip install "nuguard[mcp]"
+python -m nuguard.mcp   # starts the MCP server over stdio
+
+# Option B — uvx (no install needed)
+uvx --from "nuguard[mcp]" nuguard-mcp
+```
+
+Or search for **nuguard** on [smithery.ai](https://smithery.ai) and click Install — Smithery configures your MCP client automatically, prompting for your `LITELLM_API_KEY` and other options.
+
+[![smithery badge](https://smithery.ai/badge/nuguard)](https://smithery.ai/server/nuguard)
+
+
 ### 🎯 Need to pentest a live target?
 
 Nuclei-backed, bounded conventional pentest — explicit authorization required.
