@@ -1355,7 +1355,8 @@ class NuGuardConfig(BaseSettings):
         default_factory=list,
         description=(
             "Which categories to run: 'destructive', 'non-destructive', or both — "
-            "empty = both (yaml: redteam.scenarios)."
+            "empty = non-destructive only (safe by default; list 'destructive' to "
+            "explicitly opt in to mutating attacks) (yaml: redteam.scenarios)."
         ),
     )
     mcp_trusted_servers: list[str] = Field(
