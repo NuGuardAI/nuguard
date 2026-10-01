@@ -39,6 +39,7 @@ async def resolve_chat_endpoint(
     probe_payload_extras: dict[str, object] | None = None,
     llm: Any = None,
     enable_browser_fallback: bool = False,
+    browser_auth_config: Any = None,
     probe_result_callback: Callable[[ProbeResult], None] | None = None,
     allow_live_probe: bool = True,
 ) -> ResolvedEndpoint:
@@ -131,7 +132,7 @@ async def resolve_chat_endpoint(
             )
         except Exception as exc:  # noqa: BLE001 - detector must remain best effort
             notes.append(f"Live endpoint discovery failed: {exc}")
-        if probe_result is not None:
+        if probe_result is not None and probe_result.confirmed:
             if probe_result_callback is not None:
                 probe_result_callback(probe_result)
             resolved_path = probe_result.path
@@ -236,7 +237,7 @@ async def resolve_chat_endpoint(
                     probe_payload_extras=probe_payload_extras,
                     llm=llm,
                 )
-                if fallback_probe is not None:
+                if fallback_probe is not None and fallback_probe.confirmed:
                     if probe_result_callback is not None:
                         probe_result_callback(fallback_probe)
                     resolved_path = fallback_probe.path
@@ -264,13 +265,24 @@ async def resolve_chat_endpoint(
                 else:
                     notes.append(
                         f"SBOM-derived endpoint {sbom_path_unvalidated!r} did not validate as "
-                        "chat-capable, and full endpoint probing found no alternative; "
-                        "keeping it as a last resort."
+                        "chat-capable, and full endpoint probing found no confirmed alternative."
                     )
+                    resolved_path = None
+                    path_source = EndpointSource.UNKNOWN
+                    if not key_is_explicit:
+                        resolved_key = None
+                    if not list_is_explicit:
+                        resolved_list = None
+                    if not response_is_explicit:
+                        resolved_response = None
 
     # Browser detection is deliberately opt-in because it starts a headless browser.
     if resolved_path is None and enable_browser_fallback:
-        browser_result = await detect_with_browser(target_url)
+        browser_result = await detect_with_browser(
+            target_url,
+            auth_config=browser_auth_config,
+            timeout_s=max(1, min(int(timeout), 60)),
+        )
         if browser_result is not None:
             resolved_path, browser_payload = browser_result
             path_source = EndpointSource.BROWSER

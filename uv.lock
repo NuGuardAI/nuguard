@@ -174,6 +174,15 @@ wheels = [
 ]
 
 [[package]]
+name = "art"
+version = "6.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d4/7d/7d80509bbd19fb747edef94ba487dbadd2747944774ccc0528ad0d005a36/art-6.5.tar.gz", hash = "sha256:a98d77b42c278697ec6cf4b5bdcdfd997f6b2425332da078d4e31e31377d1844", size = 672902, upload-time = "2025-04-12T17:02:20.279Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/67/29/57b06fdb3abdf52c621d3ca3caea735e2db4c8d48288ebd26af448e8e247/art-6.5-py3-none-any.whl", hash = "sha256:70706408144c45c666caab690627d5c74aea7b6c7ce8cc968408ddeef8d84afd", size = 610382, upload-time = "2025-04-12T17:02:21.97Z" },
+]
+
+[[package]]
 name = "attrs"
 version = "26.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1543,7 +1552,7 @@ wheels = [
 
 [[package]]
 name = "nuguard"
-version = "0.9.12"
+version = "0.9.13"
 source = { editable = "." }
 dependencies = [
     { name = "cyclonedx-bom" },
@@ -1585,6 +1594,10 @@ mcp = [
 secrets = [
     { name = "cryptography" },
 ]
+smithery = [
+    { name = "mcp" },
+    { name = "smithery" },
+]
 spdx = [
     { name = "pyshacl" },
     { name = "rdflib" },
@@ -1612,6 +1625,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.23" },
     { name = "litellm", specifier = ">=1.83.10" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0" },
+    { name = "mcp", marker = "extra == 'smithery'", specifier = ">=1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "pathspec", specifier = ">=0.12" },
     { name = "pip", marker = "extra == 'dev'", specifier = ">=26.1" },
@@ -1628,6 +1642,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.0" },
     { name = "ruamel-yaml", marker = "extra == 'browser'", specifier = ">=0.18" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
+    { name = "smithery", marker = "extra == 'smithery'", specifier = ">=0.2.4" },
     { name = "starlette", marker = "extra == 'mcp'", specifier = ">=1.3.1" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "tree-sitter", specifier = ">=0.23" },
@@ -1637,7 +1652,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.12" },
     { name = "websockets", specifier = ">=12.0" },
 ]
-provides-extras = ["dev", "mcp", "spdx", "secrets", "browser"]
+provides-extras = ["dev", "mcp", "smithery", "spdx", "secrets", "browser"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2567,6 +2582,23 @@ wheels = [
 ]
 
 [[package]]
+name = "smithery"
+version = "0.4.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "art" },
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "toml" },
+    { name = "typer" },
+    { name = "uvicorn" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1e/75/d0b0fc1a5c10a20f3e01cefd98276ccbe7b44d74eeb6551bd2f42d8b4768/smithery-0.4.4.tar.gz", hash = "sha256:18ae19af8405e6476ca4984036d4460822ec1647ad2262addb4909d03387d671", size = 17396, upload-time = "2025-10-24T15:47:44.543Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/30/54/a088fa621c9c76a72a70079fac42b822137a1609ec08525168bd8e9f415d/smithery-0.4.4-py3-none-any.whl", hash = "sha256:883d060b3ecc73a2972019760e342f5a04b62edf18e3bc03594a41851319808a", size = 25372, upload-time = "2025-10-24T15:47:43.045Z" },
+]
+
+[[package]]
 name = "sniffio"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2690,6 +2722,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fd/18/a545c4ea42af3df6effd7d13d250ba77a0a86fb20393143bbb9a92e434d4/tokenizers-0.22.2-cp39-abi3-win32.whl", hash = "sha256:a6bf3f88c554a2b653af81f3204491c818ae2ac6fbc09e76ef4773351292bc92", size = 2502363, upload-time = "2026-01-05T10:45:20.593Z" },
     { url = "https://files.pythonhosted.org/packages/65/71/0670843133a43d43070abeb1949abfdef12a86d490bea9cd9e18e37c5ff7/tokenizers-0.22.2-cp39-abi3-win_amd64.whl", hash = "sha256:c9ea31edff2968b44a88f97d784c2f16dc0729b8b143ed004699ebca91f05c48", size = 2747786, upload-time = "2026-01-05T10:45:18.411Z" },
     { url = "https://files.pythonhosted.org/packages/72/f4/0de46cfa12cdcbcd464cc59fde36912af405696f687e53a091fb432f694c/tokenizers-0.22.2-cp39-abi3-win_arm64.whl", hash = "sha256:9ce725d22864a1e965217204946f830c37876eee3b2ba6fc6255e8e903d5fcbc", size = 2612133, upload-time = "2026-01-05T10:45:17.232Z" },
+]
+
+[[package]]
+name = "toml"
+version = "0.10.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/be/ba/1f744cdc819428fc6b5084ec34d9b30660f6f9daaf70eead706e3203ec3c/toml-0.10.2.tar.gz", hash = "sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f", size = 22253, upload-time = "2020-11-01T01:40:22.204Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/44/6f/7120676b6d73228c96e17f1f794d8ab046fc910d781c8d151120c3f1569e/toml-0.10.2-py2.py3-none-any.whl", hash = "sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b", size = 16588, upload-time = "2020-11-01T01:40:20.672Z" },
 ]
 
 [[package]]
