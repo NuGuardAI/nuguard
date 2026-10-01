@@ -184,6 +184,39 @@ async def test_resolver_defers_live_probe_when_disallowed() -> None:
     assert any("deferred" in n for n in resolved.notes)
 
 
+@pytest.mark.asyncio
+async def test_resolver_replaces_sbom_guess_when_validation_fails() -> None:
+    from nuguard.common.endpoint_detection.live_probe import ProbeResult
+    from nuguard.common.endpoint_detection.models import EndpointSource, PayloadShape
+
+    sbom = AiSbomDocument(target="./app", nodes=[_node("/api/chat/message")])
+    fallback_shape = PayloadShape(
+        key="message", is_list=False, source=EndpointSource.FALLBACK,
+    )
+    with (
+        patch(
+            "nuguard.common.endpoint_detection.resolver.discover_chat_config",
+            return_value=("/api/chat/message", "message", False, None),
+        ),
+        patch(
+            "nuguard.common.endpoint_detection.resolver.detect_payload_shape",
+            new=AsyncMock(return_value=fallback_shape),
+        ),
+        patch(
+            "nuguard.common.endpoint_detection.resolver.probe_endpoint",
+            new=AsyncMock(return_value=ProbeResult("/extract", "text", False)),
+        ) as probe,
+    ):
+        resolved = await resolve_chat_endpoint(
+            "http://api.test", sbom, probe_payload_extras={"consumerID": "c1"},
+        )
+
+    assert resolved.path == "/extract"
+    assert resolved.path_source.value == "probe"
+    assert resolved.payload_key == "text"
+    assert probe.await_count == 1
+
+
 # ── capability discovery stops when the circuit breaker trips ────────────────
 
 
