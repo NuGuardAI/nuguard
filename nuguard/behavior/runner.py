@@ -777,6 +777,8 @@ class BehaviorRunner:
         judge_cache: Any = None,
         endpoint_explicitly_set: bool | None = None,
         progress_sink: Callable[[dict[str, Any]], None] | None = None,
+        resolved_endpoint_source: str | None = None,
+        user_config_fields: frozenset[str] | None = None,
     ) -> None:
         self._config = config
         self._sbom = sbom
@@ -791,6 +793,11 @@ class BehaviorRunner:
         # user actually wrote in nuguard.yaml. None means "no analyzer involved
         # (e.g. direct BehaviorRunner use)" — fall back to config truthiness.
         self._endpoint_explicitly_set = endpoint_explicitly_set
+        # Source of an endpoint BehaviorAnalyzer already live-confirmed ("probe" /
+        # "enriched_sbom_cache"); None when it was not confirmed and must be resolved here.
+        self._resolved_endpoint_source = resolved_endpoint_source
+        # Fields the user actually set; config.model_fields_set also includes analyzer updates.
+        self._user_config_fields = user_config_fields
         self._progress_sink = progress_sink
 
         self._judge = BehaviorJudge(llm_client=llm_client, intent=intent, judge_cache=judge_cache)
@@ -915,6 +922,15 @@ class BehaviorRunner:
                 login_flow=getattr(auth, "login_flow", None),
                 cookie_file=getattr(auth, "cookie_file", ""),
             )
+        user_fields: frozenset[str] = (
+            self._user_config_fields
+            if self._user_config_fields is not None
+            else frozenset(getattr(self._config, "model_fields_set", ()))
+        )
+        keep_resolved = bool(
+            self._resolved_endpoint_source and getattr(self._config, "target_endpoint", "")
+        )
+        chat_response_key = getattr(self._config, "chat_response_key", None) or None
         try:
             session_cfg, health_report = await resolve_target_session(
                 target_url=getattr(self._config, "target", "") or "",
@@ -925,13 +941,17 @@ class BehaviorRunner:
                 chat_payload_key=getattr(self._config, "chat_payload_key", "message") or "message",
                 chat_payload_list=bool(getattr(self._config, "chat_payload_list", False)),
                 chat_payload_extras=dict(getattr(self._config, "chat_payload_extras", None) or {}),
-                chat_response_key=getattr(self._config, "chat_response_key", None) or None,
+                chat_response_key=chat_response_key,
                 config_path=self._config_path,
                 request_timeout=float(getattr(self._config, "request_timeout", 60.0)),
                 payload_format=getattr(self._config, "chat_payload_format", "json") or "json",
-                endpoint_explicit=self._endpoint_is_explicit(),
-                payload_key_explicit="chat_payload_key" in getattr(self._config, "model_fields_set", set()),
-                response_key_explicit="chat_response_key" in getattr(self._config, "model_fields_set", set()),
+                endpoint_explicit=self._endpoint_is_explicit() or keep_resolved,
+                payload_key_explicit=keep_resolved or "chat_payload_key" in user_fields,
+                response_key_explicit=(
+                    (keep_resolved and chat_response_key is not None)
+                    or "chat_response_key" in user_fields
+                ),
+                endpoint_source_hint=self._resolved_endpoint_source if keep_resolved else None,
             )
         except Exception as exc:  # noqa: BLE001
             _log.debug("Behavior shared target resolution skipped: %s", exc)
@@ -1360,7 +1380,12 @@ class BehaviorRunner:
         # show the actual backend URL, not the original config URL (which may have been
         # a static-hosting site that was swapped for the SBOM deployment URL).
         target_url = getattr(client, "base_url", None) or getattr(self._config, "target", "") or ""
-        endpoint = getattr(self._config, "target_endpoint", "") or ""
+        # The client's path is what requests actually use (it may differ after shared resolution).
+        _client_path = getattr(client, "chat_path", None)
+        endpoint = (
+            _client_path if isinstance(_client_path, str) and _client_path else
+            getattr(self._config, "target_endpoint", "") or ""
+        )
         from nuguard.redteam.target.session import AttackSession
         session = AttackSession(
             session_id=run_id,
