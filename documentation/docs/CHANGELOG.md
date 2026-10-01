@@ -2,6 +2,13 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## v0.9.13 - 2026-10-01
+
+### Improved
+- **Chat endpoint discovery:** Target-session resolution now validates SBOM endpoint candidates, probes alternatives with configured authentication and payload extras, and uses browser UI sniffing as a last resort when HTTP discovery cannot confirm an endpoint.
+- **WebSocket discovery:** An unset endpoint remains unset until SBOM discovery selects the route, allowing the correct WebSocket client to be constructed.
+- **Discovery failures:** Runs now report a clear endpoint-not-found result instead of silently probing the generic `/chat` fallback when automatic discovery fails.
+
 ## v0.9.12 - 2026-09-30
 
 ### Improved
