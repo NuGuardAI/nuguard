@@ -8,6 +8,8 @@ import httpx
 import pytest
 import respx
 
+from nuguard.common.endpoint_detection.constants import UNSET
+from nuguard.common.endpoint_detection.models import EndpointSource, PayloadShape, ResolvedEndpoint
 from nuguard.common.session_resolver import (
     _merge_login_response_extras,
     resolve_target_session,
@@ -71,6 +73,56 @@ async def test_resolve_target_session_detects_websocket_from_sbom_before_bootstr
     _, kwargs = mock_bootstrap.call_args
     assert kwargs["is_websocket"] is True
     assert kwargs["endpoint"] == "/ws"
+
+@pytest.mark.asyncio
+async def test_unset_endpoint_uses_shared_resolver_before_bootstrap() -> None:
+    """The public session path must bootstrap with the shared resolver's
+    validated probe result, not independently pin the top SBOM candidate."""
+    bootstrapper, health_report = _mock_bootstrapper()
+    resolved = ResolvedEndpoint(
+        path="/extract",
+        payload=PayloadShape(key="text", is_list=False, source=EndpointSource.PROBE),
+        path_source=EndpointSource.PROBE,
+    )
+    with (
+        patch(
+            "nuguard.common.endpoint_detection.context.resolve_api_origin",
+            new=AsyncMock(return_value=(TARGET, [])),
+        ),
+        patch(
+            "nuguard.common.endpoint_detection.resolver.resolve_chat_endpoint",
+            new=AsyncMock(return_value=resolved),
+        ) as mock_resolve,
+        patch(
+            "nuguard.common.auth_runtime.bootstrap_auth_runtime",
+            new=AsyncMock(return_value=(bootstrapper, health_report)),
+        ) as mock_bootstrap,
+    ):
+        session_cfg, _ = await resolve_target_session(
+            target_url=TARGET,
+            sbom=AiSbomDocument(target="./app", nodes=[Node(
+                name="/api/chat/message",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.9,
+                metadata=NodeMetadata(endpoint="/api/chat/message", method="POST"),
+            )]),
+            auth_config=None,
+            extra_headers={},
+            chat_path="",
+            chat_payload_key="message",
+            chat_payload_list=False,
+            chat_payload_extras={"consumerID": "c1"},
+            chat_response_key=None,
+            endpoint_explicit=False,
+        )
+
+    _, resolve_kwargs = mock_resolve.call_args
+    assert resolve_kwargs["endpoint"] is UNSET
+    assert resolve_kwargs["probe_payload_extras"] == {"consumerID": "c1"}
+    assert session_cfg.chat_path == "/extract"
+    assert session_cfg.chat_payload_key == "text"
+    assert session_cfg.endpoint_source == "probe"
+    assert mock_bootstrap.call_args.kwargs["endpoint"] == "/extract"
 
 
 @pytest.mark.anyio
