@@ -5246,6 +5246,12 @@
         "default": 3,
         "title": "Discovery Max Turns",
         "type": "integer"
+      },
+      "preflight_candidates": {
+        "default": 3,
+        "description": "How many alternative SBOM candidates to test when the resolved chat endpoint's reply isn't clearly conversational, before running pre-scan discovery \u2014 mirrors redteam.preflight_candidates / behavior.preflight_candidates so Target Verify validates the same endpoint candidate pool a subsequent Behavior/Redteam run would.",
+        "title": "Preflight Candidates",
+        "type": "integer"
       }
     },
     "required": [
@@ -5386,6 +5392,7 @@
         "type": "object"
       }
     },
+    "description": "``all_ok`` is False both when a credential check fails and when every\ncredential checks out but no working chat endpoint could be validated\n(see ``checks`` for an entry with ``identity=\"endpoint\"`` in that case \u2014\nendpoint-preflight failure is always structurally visible there, not\nonly in ``discovery_notes``).",
     "properties": {
       "all_ok": {
         "title": "All Ok",

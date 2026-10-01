@@ -16,6 +16,10 @@ from nuguard.common.discovery import (
 from nuguard.common.endpoint_detection.sbom import (
     discover_chat_candidates_from_sbom,
 )
+from nuguard.common.endpoint_preflight import (
+    DEFAULT_PREFLIGHT_CANDIDATES,
+    validate_and_rotate_chat_endpoint,
+)
 from nuguard.common.session_resolver import resolve_target_session
 from nuguard.common.target_client_builder import build_target_app_client_from_session
 from nuguard.models.health_report import CredentialCheckResult
@@ -52,6 +56,16 @@ class TargetVerifyRequest(BaseModel):
     chat_payload_extras: dict[str, Any] | None = None
     request_timeout: float = 30.0
     discovery_max_turns: int = 3
+    preflight_candidates: int = Field(
+        default=DEFAULT_PREFLIGHT_CANDIDATES,
+        description=(
+            "How many alternative SBOM candidates to test when the resolved chat "
+            "endpoint's reply isn't clearly conversational, before running pre-scan "
+            "discovery — mirrors redteam.preflight_candidates / "
+            "behavior.preflight_candidates so Target Verify validates the same "
+            "endpoint candidate pool a subsequent Behavior/Redteam run would."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_login_flow(self) -> "TargetVerifyRequest":
@@ -79,6 +93,12 @@ class TargetVerifyCheck(BaseModel):
 
 
 class TargetVerifyResult(BaseModel):
+    """``all_ok`` is False both when a credential check fails and when every
+    credential checks out but no working chat endpoint could be validated
+    (see ``checks`` for an entry with ``identity="endpoint"`` in that case —
+    endpoint-preflight failure is always structurally visible there, not
+    only in ``discovery_notes``)."""
+
     all_ok: bool
     endpoint: str
     discovered_endpoint: str | None = None
@@ -199,6 +219,7 @@ async def verify_target(
     config_path: "Path | None" = None,
 ) -> TargetVerifyResult:
     auth_config = _build_auth_config(request)
+    endpoint_explicit = "chat_path" in request.model_fields_set
     session_cfg, health = await resolve_target_session(
         target_url=request.target_url,
         sbom=sbom,
@@ -212,7 +233,7 @@ async def verify_target(
         probe_payload_extras=request.chat_payload_extras or None,
         config_path=config_path,
         request_timeout=request.request_timeout,
-        endpoint_explicit="chat_path" in request.model_fields_set,
+        endpoint_explicit=endpoint_explicit,
         payload_key_explicit="chat_payload_key" in request.model_fields_set,
         response_key_explicit="chat_response_key" in request.model_fields_set,
     )
@@ -221,6 +242,8 @@ async def verify_target(
     all_ok = all(item.status in ("ok", "skipped") for item in checks)
     discovered_profile = None
     discovery_notes: list[str] = []
+    endpoint = session_cfg.chat_path
+    endpoint_source = session_cfg.endpoint_source
 
     if all_ok:
         client = build_target_app_client_from_session(
@@ -228,43 +251,78 @@ async def verify_target(
             timeout=request.request_timeout,
         )
         async with client:
-            outcome = await run_discovery(
+            # Validate (and if needed rotate) the chat endpoint, and bootstrap
+            # any templated path param (e.g. :id on a create-conversation-then-
+            # post-message route) — the same preflight RedteamOrchestrator.run()
+            # and BehaviorRunner already run before their own pre-scan discovery.
+            # Without this, every discovery turn against a templated endpoint
+            # fails with "[CONFIG_ERROR: unresolved path param ...]" and Target
+            # Verify silently reports no profile — see issue #611.
+            preflight = await validate_and_rotate_chat_endpoint(
                 client,
-                AttackSession(
-                    session_id=f"verify-{uuid.uuid4()}",
-                    target_url=session_cfg.base_url,
-                    chain_id="verify-target",
-                ),
-                DiscoveryRequest(
-                    use_case=getattr(getattr(sbom, "summary", None), "use_case", "") if sbom is not None else "",
-                    max_turns=request.discovery_max_turns,
-                    fallback_endpoints=(
-                        discover_chat_candidates_from_sbom(sbom)
-                        if sbom is not None
-                        else []
-                    ),
-                ),
+                sbom,
+                has_explicit_endpoint=endpoint_explicit,
+                target_url=session_cfg.base_url,
+                auth_headers=session_cfg.effective_headers or None,
+                max_candidates=request.preflight_candidates,
             )
-        discovered_profile = outcome.profile if not outcome.profile.is_empty else None
-        discovery_notes = outcome.notes
+            discovery_notes.extend(preflight.notes)
+            if preflight.rotated_endpoint is not None:
+                endpoint = preflight.rotated_endpoint[0]
+                if preflight.endpoint_source is not None:
+                    endpoint_source = preflight.endpoint_source
+
+            if not preflight.ok:
+                all_ok = False
+                # Structured signal, not just a free-text note: a caller
+                # inspecting `checks` to find out why all_ok is False must
+                # see something there, not just credential checks that all
+                # say "ok" with the real reason buried in discovery_notes.
+                checks.append(
+                    TargetVerifyCheck(
+                        identity="endpoint",
+                        status="endpoint_not_found",
+                        endpoint=endpoint,
+                        error_detail=(
+                            "; ".join(preflight.notes)
+                            or "No working chat endpoint found during preflight validation."
+                        ),
+                    )
+                )
+            else:
+                outcome = await run_discovery(
+                    client,
+                    AttackSession(
+                        session_id=f"verify-{uuid.uuid4()}",
+                        target_url=session_cfg.base_url,
+                        chain_id="verify-target",
+                    ),
+                    DiscoveryRequest(
+                        use_case=getattr(getattr(sbom, "summary", None), "use_case", "") if sbom is not None else "",
+                        max_turns=request.discovery_max_turns,
+                        fallback_endpoints=(
+                            discover_chat_candidates_from_sbom(sbom)
+                            if sbom is not None
+                            else []
+                        ),
+                    ),
+                )
+                discovered_profile = outcome.profile if not outcome.profile.is_empty else None
+                discovery_notes.extend(outcome.notes)
 
     return TargetVerifyResult(
         all_ok=all_ok,
-        endpoint=session_cfg.chat_path,
+        endpoint=endpoint,
         discovered_endpoint=(
-            session_cfg.chat_path
-            if session_cfg.endpoint_source in ("sbom", "probe")
-            else None
+            endpoint if endpoint_source in ("sbom", "probe") else None
         ),
         endpoint_source=cast(
             EndpointSource,
-            session_cfg.endpoint_source
-            if session_cfg.endpoint_source in {"config", "sbom", "probe", "default"}
-            else "default",
+            endpoint_source if endpoint_source in {"config", "sbom", "probe", "default"} else "default",
         ),
         checks=checks,
         discovered_profile=discovered_profile,
-        discovery_hint={"endpoint_source": session_cfg.endpoint_source},
+        discovery_hint={"endpoint_source": endpoint_source},
         discovery_notes=discovery_notes,
     )
 

@@ -497,3 +497,605 @@ async def test_parity_tv_001(monkeypatch):
     assert verify_result.endpoint_source in {"config", "default"}
     assert resolve_result.endpoint_source == verify_result.endpoint_source
     assert resolve_result.effective_endpoint == "/chat"
+
+
+# ---------------------------------------------------------------------------
+# verify_target() runs endpoint/path-param preflight before discovery
+# (issue #611) — unit tests mock validate_and_rotate_chat_endpoint directly,
+# the same way the rest of this file mocks resolve_target_session/run_discovery
+# at the module-import boundary; validate_and_rotate_chat_endpoint's own
+# internal correctness (candidate rotation, bootstrap) is covered by
+# nuguard/common/tests/test_endpoint_preflight.py.
+# ---------------------------------------------------------------------------
+
+class _PreflightFakeClient:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        _ = (exc_type, exc, tb)
+        return False
+
+
+def _fake_resolve_target_session_factory(session_cfg):
+    async def _fake_resolve_target_session(**kwargs):
+        _ = kwargs
+        report = TargetHealthReport(
+            target_url="http://target",
+            endpoint="/chat",
+            run_id="r-pf",
+            checks=[
+                CredentialCheckResult(
+                    identity="default",
+                    auth_type="none",
+                    endpoint="http://target/chat",
+                    status="ok",
+                    http_status_code=200,
+                )
+            ],
+        )
+        return session_cfg, report
+
+    return _fake_resolve_target_session
+
+
+@pytest.mark.asyncio
+async def test_verify_target_calls_preflight_before_discovery(monkeypatch):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    calls: list[dict] = []
+
+    async def _fake_preflight(client, sbom, **kwargs):
+        _ = (client, sbom)
+        calls.append(kwargs)
+        return PreflightOutcome(ok=True)
+
+    async def _fake_run_discovery(client, session, request):
+        _ = (client, session, request)
+        return DiscoveryOutcome(profile=DiscoveredProfile(), notes=[])
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *args, **kwargs: _PreflightFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint",
+        _fake_preflight,
+    )
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", _fake_run_discovery)
+
+    await verify_target(TargetVerifyRequest(target_url="http://target"))
+
+    assert len(calls) == 1
+    assert calls[0]["target_url"] == "http://target"
+    assert calls[0]["max_candidates"] == 3  # TargetVerifyRequest default
+
+
+@pytest.mark.asyncio
+async def test_verify_target_passes_configured_preflight_candidates(monkeypatch):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    calls: list[dict] = []
+
+    async def _fake_preflight(client, sbom, **kwargs):
+        _ = (client, sbom)
+        calls.append(kwargs)
+        return PreflightOutcome(ok=True)
+
+    async def _fake_run_discovery(client, session, request):
+        _ = (client, session, request)
+        return DiscoveryOutcome(profile=DiscoveredProfile(), notes=[])
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *args, **kwargs: _PreflightFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint",
+        _fake_preflight,
+    )
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", _fake_run_discovery)
+
+    await verify_target(
+        TargetVerifyRequest(target_url="http://target", preflight_candidates=7)
+    )
+
+    assert calls[0]["max_candidates"] == 7
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("request_kwargs", "expected_explicit"),
+    [
+        ({"target_url": "http://target"}, False),
+        ({"target_url": "http://target", "chat_path": "/custom"}, True),
+    ],
+)
+async def test_verify_target_threads_has_explicit_endpoint(
+    monkeypatch, request_kwargs, expected_explicit
+):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    calls: list[dict] = []
+
+    async def _fake_preflight(client, sbom, **kwargs):
+        _ = (client, sbom)
+        calls.append(kwargs)
+        return PreflightOutcome(ok=True)
+
+    async def _fake_run_discovery(client, session, request):
+        _ = (client, session, request)
+        return DiscoveryOutcome(profile=DiscoveredProfile(), notes=[])
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *args, **kwargs: _PreflightFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint",
+        _fake_preflight,
+    )
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", _fake_run_discovery)
+
+    await verify_target(TargetVerifyRequest(**request_kwargs))
+
+    assert calls[0]["has_explicit_endpoint"] is expected_explicit
+
+
+@pytest.mark.asyncio
+async def test_verify_target_updates_endpoint_on_rotation(monkeypatch):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    async def _fake_preflight(client, sbom, **kwargs):
+        _ = (client, sbom, kwargs)
+        return PreflightOutcome(
+            ok=True,
+            rotated_endpoint=("/rotated/chat", "message", False, None),
+            endpoint_source="sbom",
+            notes=["rotated to /rotated/chat"],
+        )
+
+    async def _fake_run_discovery(client, session, request):
+        _ = (client, session, request)
+        return DiscoveryOutcome(profile=DiscoveredProfile(), notes=[])
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config(endpoint_source="probe")),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *args, **kwargs: _PreflightFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint",
+        _fake_preflight,
+    )
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", _fake_run_discovery)
+
+    result = await verify_target(TargetVerifyRequest(target_url="http://target"))
+
+    assert result.endpoint == "/rotated/chat"
+    assert result.discovered_endpoint == "/rotated/chat"
+    assert result.endpoint_source == "sbom"
+    assert "rotated to /rotated/chat" in result.discovery_notes
+
+
+@pytest.mark.asyncio
+async def test_verify_target_skips_discovery_when_preflight_fails(monkeypatch):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    discovery_called = False
+
+    async def _fake_preflight(client, sbom, **kwargs):
+        _ = (client, sbom, kwargs)
+        return PreflightOutcome(ok=False, notes=["no working chat endpoint found"])
+
+    async def _fake_run_discovery(client, session, request):
+        nonlocal discovery_called
+        discovery_called = True
+        _ = (client, session, request)
+        return DiscoveryOutcome(profile=DiscoveredProfile(), notes=[])
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *args, **kwargs: _PreflightFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint",
+        _fake_preflight,
+    )
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", _fake_run_discovery)
+
+    result = await verify_target(TargetVerifyRequest(target_url="http://target"))
+
+    assert discovery_called is False
+    assert result.all_ok is False
+    assert result.discovered_profile is None
+    assert "no working chat endpoint found" in result.discovery_notes
+    # Structured signal, not just free text: a caller inspecting `checks`
+    # alone must be able to see why all_ok is False.
+    endpoint_checks = [c for c in result.checks if c.identity == "endpoint"]
+    assert len(endpoint_checks) == 1
+    assert endpoint_checks[0].status == "endpoint_not_found"
+    assert "no working chat endpoint found" in endpoint_checks[0].error_detail
+
+
+# ---------------------------------------------------------------------------
+# End-to-end regression test for issue #611: a templated, two-step chat
+# endpoint (create a conversation, then POST to .../:id/messages) resolves
+# and discovers a profile, instead of every discovery turn failing with
+# "[CONFIG_ERROR: unresolved path param 'id']". Uses a real TargetAppClient
+# (via build_target_app_client_from_session, not mocked) against a respx-
+# mocked HTTP transport, so this exercises the actual production code path —
+# only resolve_target_session is faked, to avoid re-driving the full auth
+# bootstrap flow, which is unrelated to this bug.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_verify_target_resolves_templated_endpoint_and_discovers_profile(monkeypatch):
+    import uuid as _uuid
+
+    import httpx
+    import respx
+
+    from nuguard.common.session_resolver import TargetSessionConfig
+    from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
+    from nuguard.sbom.types import ComponentType
+
+    chat_path = "/chat/conversations/:id/messages"
+    source_path = "/chat/conversations"
+    chat_node = Node(
+        id=_uuid.uuid5(_uuid.NAMESPACE_URL, f"API_ENDPOINT/{chat_path}"),
+        name=chat_path,
+        component_type=ComponentType.API_ENDPOINT,
+        confidence=0.99,
+        metadata=NodeMetadata(
+            endpoint=chat_path,
+            method="POST",
+            path_params=["id"],
+            path_param_sources={"id": source_path},
+        ),
+    )
+    source_node = Node(
+        id=_uuid.uuid5(_uuid.NAMESPACE_URL, f"API_ENDPOINT/{source_path}"),
+        name=source_path,
+        component_type=ComponentType.API_ENDPOINT,
+        confidence=0.99,
+        metadata=NodeMetadata(endpoint=source_path, method="POST"),
+    )
+    sbom = AiSbomDocument(target="./app", nodes=[chat_node, source_node])
+
+    session_cfg = TargetSessionConfig(
+        base_url="http://target-app.test",
+        chat_path=chat_path,
+        chat_payload_key="message",
+        chat_payload_list=False,
+        chat_payload_extras={},
+        chat_response_key="reply",
+        auth_session=_FakeAuthSession(),
+        effective_headers={},
+        endpoint_source="sbom",
+        resolution_notes=[],
+    )
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(session_cfg),
+    )
+
+    with respx.mock:
+        create_route = respx.post("http://target-app.test/chat/conversations").mock(
+            return_value=httpx.Response(201, json={"id": "conv-abc123"})
+        )
+        message_route = respx.post(
+            "http://target-app.test/chat/conversations/conv-abc123/messages"
+        ).mock(
+            return_value=httpx.Response(
+                200, json={"reply": "Name: Alice Johnson. Account ID: ACCT-1001."}
+            )
+        )
+
+        result = await verify_target(
+            TargetVerifyRequest(target_url="http://target-app.test"), sbom=sbom
+        )
+
+        assert create_route.called
+        assert message_route.called
+        assert result.endpoint == chat_path
+        assert result.discovered_profile is not None
+        assert not any("CONFIG_ERROR" in note for note in result.discovery_notes)
+
+
+@pytest.mark.asyncio
+async def test_verify_target_reflects_real_rotation_to_a_working_candidate(monkeypatch):
+    """End-to-end, not mocked: the primary endpoint answers HTTP 400 (a status
+    bootstrap's health-check classifies as "ok" with a payload_hint — see
+    bootstrap.py — but validate_and_rotate_chat_endpoint's stricter preflight
+    check flags as a wrong-route signal), and a second SBOM-declared endpoint
+    answers conversationally. Proves verify_target() correctly reflects a
+    *real* rotation outcome, not just that it reacts to a mocked
+    PreflightOutcome (which every other rotation test in this file uses)."""
+    import httpx
+    import respx
+
+    from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
+    from nuguard.sbom.types import ComponentType
+
+    alt_endpoint = "/api/better-chat"
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            Node(
+                name="chat_endpoint",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.9,
+                metadata=NodeMetadata(endpoint="/chat", method="POST"),
+            ),
+            Node(
+                name="better_chat_endpoint",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.95,
+                metadata=NodeMetadata(endpoint=alt_endpoint, method="POST"),
+            ),
+        ],
+    )
+
+    session_cfg = _session_config(endpoint_source="sbom")
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(session_cfg),
+    )
+
+    with respx.mock:
+        bad_route = respx.post("http://target/chat").mock(
+            return_value=httpx.Response(400, json={"error": "bad request"})
+        )
+        good_route = respx.post(f"http://target{alt_endpoint}").mock(
+            return_value=httpx.Response(
+                200, json={"response": "Name: Alice Johnson. Account ID: ACCT-1001."}
+            )
+        )
+
+        result = await verify_target(
+            TargetVerifyRequest(target_url="http://target"), sbom=sbom
+        )
+
+        assert bad_route.called
+        assert good_route.called
+        assert result.endpoint == alt_endpoint
+        assert result.discovered_endpoint == alt_endpoint
+        assert result.endpoint_source in ("sbom", "probe")
+        assert result.discovered_profile is not None
+        assert result.discovered_profile.customer_name == "Alice Johnson"
+
+
+class _TrackingBootstrapClient:
+    """Minimal, fully-controlled TargetAppClient stand-in for proving
+    validate_and_rotate_chat_endpoint's resource-amplification behavior
+    deterministically — a real TargetAppClient against respx can't be used
+    here because endpoint_detection's live-probe fallback (a long built-in
+    list of generic path guesses, unrelated to anything declared in the
+    test's SBOM) outranks/out-competes small, hand-built SBOM candidate
+    sets in ways that make which candidates actually get tried
+    non-deterministic from a test's point of view. This fake mirrors the
+    shape of _BootstrapDummyClient in
+    nuguard/common/tests/test_endpoint_preflight.py, except it tracks every
+    set_path_param call with which chat_path was active at the time,
+    instead of collapsing to a single "bootstrapped: yes/no" flag — needed
+    to distinguish "candidate A bootstrapped" from "candidate B bootstrapped"
+    rather than just "something got bootstrapped at some point".
+    """
+
+    def __init__(self, working_path: str, initial_path: str) -> None:
+        self.chat_path = initial_path
+        self.working_path = working_path
+        self.path_param_values: dict[str, str] = {}
+        self.bootstrap_calls: list[tuple[str, str, str]] = []  # (chat_path, param, value)
+
+    async def send(self, message: str, session: object) -> tuple[str, list[dict]]:
+        _ = (message, session)
+        if self.chat_path == self.working_path and self.path_param_values:
+            return "Name: Alice Johnson. Account ID: ACCT-1001.", []
+        return "[HTTP 400] bad request", []
+
+    async def invoke_endpoint(
+        self, path: str, method: str = "POST", body: dict | None = None, **_kw: object
+    ) -> tuple[int, str, dict]:
+        _ = (method, body)
+        return 201, "", {"id": f"id-for-{path}"}
+
+    def set_chat_endpoint(self, chat_path: str, *_a: object, **_kw: object) -> None:
+        self.chat_path = chat_path
+        self.path_param_values = {}  # mirrors real TargetAppClient.set_chat_endpoint
+
+    def set_path_param(self, name: str, value: str) -> None:
+        self.path_param_values[name] = value
+        self.bootstrap_calls.append((self.chat_path, name, value))
+
+
+@pytest.mark.asyncio
+async def test_rotation_bootstraps_path_param_for_every_templated_candidate_tested():
+    """When rotation tests multiple ranked candidates and more than one is
+    itself templated, the prerequisite resource gets created once per
+    templated candidate tried — not just once for whichever one eventually
+    wins — and the eventual winner gets bootstrapped a *second* time on
+    top of that, since set_chat_endpoint clears bound path params on every
+    candidate switch, including the final "re-select the winner" step (see
+    endpoint_preflight.py's own comment there). This is pre-existing
+    validate_and_rotate_chat_endpoint behavior, newly reachable through
+    Target Verify by this fix (issue #611) — pinning it down with an
+    assertion rather than leaving it as an unverified review comment."""
+    from nuguard.common.endpoint_preflight import validate_and_rotate_chat_endpoint
+    from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
+    from nuguard.sbom.types import ComponentType
+
+    primary_chat = "/chat/sessions/:id/messages"
+    primary_source = "/internal/create-session"
+    alt_chat = "/chat/convos/:id/messages"
+    alt_source = "/internal/create-convo"
+
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            Node(
+                name="primary_chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.9,
+                metadata=NodeMetadata(
+                    endpoint=primary_chat, method="POST", chat_payload_key="message",
+                    path_params=["id"], path_param_sources={"id": primary_source},
+                ),
+            ),
+            Node(
+                name="alt_chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.95,
+                metadata=NodeMetadata(
+                    endpoint=alt_chat, method="POST", chat_payload_key="message",
+                    path_params=["id"], path_param_sources={"id": alt_source},
+                ),
+            ),
+        ],
+    )
+
+    client = _TrackingBootstrapClient(working_path=alt_chat, initial_path=primary_chat)
+
+    outcome = await validate_and_rotate_chat_endpoint(
+        client, sbom, has_explicit_endpoint=False, target_url="http://target"
+    )
+
+    assert outcome.ok is True
+    assert outcome.rotated_endpoint is not None
+    assert outcome.rotated_endpoint[0] == alt_chat
+
+    bootstrapped_paths = [call[0] for call in client.bootstrap_calls]
+    # The rejected primary candidate was still bootstrapped once to be
+    # testable at all...
+    assert bootstrapped_paths.count(primary_chat) == 1
+    # ...and the winning candidate was bootstrapped twice: once while being
+    # scored, once more when re-selected as the final winner.
+    assert bootstrapped_paths.count(alt_chat) == 2
+
+
+# ---------------------------------------------------------------------------
+# Test F: preflight_candidates=0 disables SBOM-candidate rotation testing,
+# without crashing — for a caller who wants path-param bootstrapping on the
+# current endpoint but not candidate-rotation testing.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_zero_preflight_candidates_disables_rotation_without_crashing(monkeypatch):
+    """max_candidates=0 means the SBOM-candidate loop never runs at all
+    (ranked_candidates[:0] == []) — the alternate, working candidate is never
+    tried or bootstrapped, even though it exists and would have won with the
+    default of 3. The live-probe-fallback stage that follows a failed SBOM
+    rotation is unrelated to max_candidates and still runs — mocked here to
+    return "nothing found" immediately, since it otherwise makes real,
+    sequential network connection attempts against ~20 hardcoded guess paths
+    (confirmed empirically: ~15s+ unmocked) that have nothing to do with
+    what max_candidates=0 is actually supposed to test."""
+    from nuguard.common.endpoint_preflight import validate_and_rotate_chat_endpoint
+    from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
+    from nuguard.sbom.types import ComponentType
+
+    async def _fake_probe_endpoint(*args, **kwargs):
+        _ = (args, kwargs)
+        return None
+
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_detection.live_probe.probe_endpoint", _fake_probe_endpoint
+    )
+
+    primary_chat = "/chat/sessions/:id/messages"
+    primary_source = "/internal/create-session"
+    alt_chat = "/chat/convos/:id/messages"
+    alt_source = "/internal/create-convo"
+
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            Node(
+                name="primary_chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.9,
+                metadata=NodeMetadata(
+                    endpoint=primary_chat, method="POST", chat_payload_key="message",
+                    path_params=["id"], path_param_sources={"id": primary_source},
+                ),
+            ),
+            Node(
+                name="alt_chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.95,
+                metadata=NodeMetadata(
+                    endpoint=alt_chat, method="POST", chat_payload_key="message",
+                    path_params=["id"], path_param_sources={"id": alt_source},
+                ),
+            ),
+        ],
+    )
+
+    # alt_chat is the working endpoint — would win rotation at the default
+    # max_candidates=3 (proven by the sibling test above), but must never
+    # even be tried here.
+    client = _TrackingBootstrapClient(working_path=alt_chat, initial_path=primary_chat)
+
+    outcome = await validate_and_rotate_chat_endpoint(
+        client, sbom, has_explicit_endpoint=False, target_url="http://target",
+        max_candidates=0,
+    )
+
+    assert outcome.ok is False  # nothing else was tried, so nothing was found
+    bootstrapped_paths = [call[0] for call in client.bootstrap_calls]
+    assert bootstrapped_paths == [primary_chat]  # only the original, never alt_chat
+
+
+# ---------------------------------------------------------------------------
+# Test G: resolve_target_session_public() is explicitly out of scope for
+# this fix (documented in issue #611 — it never builds a discovery client at
+# all, so there's nothing to preflight-validate). Regression guard against
+# accidental future scope creep silently wiring it in.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_resolve_target_session_public_does_not_run_endpoint_preflight(monkeypatch):
+    called = False
+
+    async def _fake_preflight(*args, **kwargs):
+        nonlocal called
+        called = True
+        _ = (args, kwargs)
+        from nuguard.common.endpoint_preflight import PreflightOutcome
+        return PreflightOutcome(ok=True)
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint",
+        _fake_preflight,
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+
+    await resolve_target_session_public(
+        TargetSessionResolveRequest(target_url="http://target")
+    )
+
+    assert called is False

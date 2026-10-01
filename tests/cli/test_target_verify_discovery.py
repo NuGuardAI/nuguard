@@ -166,3 +166,334 @@ def test_verify_without_sbom_notes_discovery_unavailable() -> None:
     assert result.exit_code == 0, result.output
     assert "discovery skipped" in result.output
     assert "API Endpoint" in result.output
+
+
+@respx.mock
+def test_verify_resolves_templated_endpoint_and_discovers_account(tmp_path: Path) -> None:
+    """Regression test for issue #611: a templated, two-step chat endpoint
+    (create a conversation, then POST to .../:id/messages) must resolve the
+    path param and discover a profile instead of every turn — including the
+    auth health-check probe and the pre-scan discovery conversation — failing
+    with "[CONFIG_ERROR: unresolved path param 'id']"."""
+    chat_endpoint = "/chat/conversations/:id/messages"
+    source_endpoint = "/chat/conversations"
+    # The health-check probe (AuthBootstrapper) and the pre-scan discovery
+    # preflight each independently resolve :id via their own POST to the
+    # source endpoint — both return the same fixed id here, so both end up
+    # POSTing to the same resolved message path.
+    respx.post(f"{TARGET}{source_endpoint}").mock(
+        return_value=httpx.Response(201, json={"id": "conv-abc123"})
+    )
+    respx.post(f"{TARGET}/chat/conversations/conv-abc123/messages").mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+    doc = AiSbomDocument(
+        target="./test-app",
+        nodes=[
+            Node(
+                name="chat_endpoint",
+                component_type=NodeType.API_ENDPOINT,
+                confidence=0.95,
+                metadata=NodeMetadata(
+                    endpoint=chat_endpoint,
+                    method="POST",
+                    chat_payload_key="message",
+                    path_params=["id"],
+                    path_param_sources={"id": source_endpoint},
+                ),
+            ),
+            Node(
+                name="create_conversation",
+                component_type=NodeType.API_ENDPOINT,
+                confidence=0.95,
+                metadata=NodeMetadata(endpoint=source_endpoint, method="POST"),
+            ),
+        ],
+    )
+    sbom_path = tmp_path / "app.sbom.json"
+    sbom_path.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "target",
+            "verify",
+            "--target",
+            TARGET,
+            "--endpoint",
+            chat_endpoint,
+            "--sbom",
+            str(sbom_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "CONFIG_ERROR" not in result.output
+    assert "Alice Johnson" in result.output
+    assert "ACCT-0001" in result.output
+
+
+@respx.mock
+def test_verify_skips_discovery_when_preflight_finds_no_working_endpoint(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """When preflight reports ok=False (no working chat endpoint — e.g. an
+    explicit endpoint that fails validation with rotation suppressed), that
+    must surface the same way the existing "default credential did not
+    verify" skip note does — one summary line after the table — not as a
+    separately-styled message printed earlier from inside
+    _run_pre_scan_discovery. validate_and_rotate_chat_endpoint's own
+    rotation/scoring logic is covered by nuguard/common/tests/test_endpoint_preflight.py;
+    this test only verifies target.py's handling of an ok=False outcome."""
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    respx.post(FULL_URL).mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+
+    async def _fake_preflight(client, sbom, **kwargs):
+        _ = (client, sbom, kwargs)
+        return PreflightOutcome(ok=False, notes=["endpoint rejected the test request"])
+
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint", _fake_preflight
+    )
+
+    sbom_path = _write_sbom(tmp_path)
+    result = runner.invoke(
+        app,
+        [
+            "target",
+            "verify",
+            "--target",
+            TARGET,
+            "--endpoint",
+            ENDPOINT,
+            "--sbom",
+            str(sbom_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    # Rich may word-wrap this line in a narrow terminal — normalize before matching.
+    normalized_output = " ".join(result.output.split())
+    assert "Skipping account/golden-data discovery" in normalized_output
+    assert "no working chat endpoint found during preflight validation" in normalized_output
+    assert "Alice Johnson" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# Test A: --preflight-candidates CLI wiring (issue #611 review finding).
+# Monkeypatches validate_and_rotate_chat_endpoint to capture max_candidates —
+# the goal is proving the CLI's flag/config plumbing reaches it correctly,
+# not re-testing rotation's own internal candidate-scoring logic (covered by
+# nuguard/common/tests/test_endpoint_preflight.py).
+# ---------------------------------------------------------------------------
+
+def _capture_max_candidates(monkeypatch, captured: list[int]):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    async def _fake_preflight(client, sbom, **kwargs):
+        _ = (client, sbom)
+        captured.append(kwargs["max_candidates"])
+        return PreflightOutcome(ok=True)
+
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint", _fake_preflight
+    )
+
+
+@respx.mock
+def test_verify_preflight_candidates_cli_flag_overrides_default(
+    tmp_path: Path, monkeypatch
+) -> None:
+    respx.post(FULL_URL).mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+    captured: list[int] = []
+    _capture_max_candidates(monkeypatch, captured)
+    sbom_path = _write_sbom(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "target", "verify",
+            "--target", TARGET,
+            "--endpoint", ENDPOINT,
+            "--sbom", str(sbom_path),
+            "--preflight-candidates", "7",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured == [7]
+
+
+@respx.mock
+def test_verify_preflight_candidates_falls_back_to_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    respx.post(FULL_URL).mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+    captured: list[int] = []
+    _capture_max_candidates(monkeypatch, captured)
+    sbom_path = _write_sbom(tmp_path)
+    cfg_path = tmp_path / "nuguard.yaml"
+    cfg_path.write_text("redteam:\n  preflight_candidates: 5\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "target", "verify",
+            "--config", str(cfg_path),
+            "--target", TARGET,
+            "--endpoint", ENDPOINT,
+            "--sbom", str(sbom_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured == [5]
+
+
+@respx.mock
+def test_verify_preflight_candidates_defaults_to_three(
+    tmp_path: Path, monkeypatch
+) -> None:
+    respx.post(FULL_URL).mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+    captured: list[int] = []
+    _capture_max_candidates(monkeypatch, captured)
+    sbom_path = _write_sbom(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["target", "verify", "--target", TARGET, "--endpoint", ENDPOINT, "--sbom", str(sbom_path)],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured == [3]
+
+
+# ---------------------------------------------------------------------------
+# Test B: explicit --endpoint suppresses rotation even when a better SBOM
+# candidate exists and the explicit endpoint's reply looks wrong (HTTP 400 —
+# a status bootstrap's health-check classifies as "ok" with a payload_hint,
+# but validate_and_rotate_chat_endpoint's stricter preflight check flags as
+# a wrong-route signal). Real preflight, real respx routes — not mocked —
+# proving "config must win" (documentation/docs/endpoint-resolution-
+# precedence-plan.md) holds for the CLI's own has_explicit_endpoint wiring,
+# not just the public API's (already covered by
+# test_verify_target_threads_has_explicit_endpoint in
+# tests/common/test_target_verify_public_api.py).
+# ---------------------------------------------------------------------------
+
+@respx.mock
+def test_verify_explicit_endpoint_suppresses_rotation_to_better_candidate(
+    tmp_path: Path,
+) -> None:
+    alt_endpoint = "/api/better-chat"
+    bad_route = respx.post(FULL_URL).mock(
+        return_value=httpx.Response(400, json={"error": "bad request"})
+    )
+    good_route = respx.post(f"{TARGET}{alt_endpoint}").mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+    doc = AiSbomDocument(
+        target="./test-app",
+        nodes=[
+            Node(
+                name="chat_endpoint",
+                component_type=NodeType.API_ENDPOINT,
+                confidence=0.9,
+                metadata=NodeMetadata(endpoint=ENDPOINT, method="POST", chat_payload_key="message"),
+            ),
+            Node(
+                name="better_chat_endpoint",
+                component_type=NodeType.API_ENDPOINT,
+                confidence=0.95,
+                metadata=NodeMetadata(endpoint=alt_endpoint, method="POST", chat_payload_key="message"),
+            ),
+        ],
+    )
+    sbom_path = tmp_path / "app.sbom.json"
+    sbom_path.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "target", "verify",
+            "--target", TARGET,
+            "--endpoint", ENDPOINT,
+            "--sbom", str(sbom_path),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    # Exact call counts on the primary endpoint aren't asserted here: this
+    # harness (CliRunner + respx on this platform) retries/re-sends more
+    # than the application logic itself does even for an already-passing,
+    # unmodified scenario (confirmed empirically against a vanilla success
+    # case) — an environment characteristic unrelated to this fix. What
+    # actually proves "config must win" is that the alternate endpoint is
+    # never touched at all, regardless of how many times the explicit one
+    # was retried.
+    assert bad_route.called
+    assert good_route.call_count == 0  # rotation never attempted
+    assert "Alice Johnson" not in result.output
+    normalized_output = " ".join(result.output.split())
+    assert "no working chat endpoint found during preflight validation" in normalized_output
+
+
+# ---------------------------------------------------------------------------
+# Test E: auto-discovered endpoint (no --endpoint) that is ALSO templated —
+# combines SBOM auto-discovery with path-param bootstrapping, two features
+# that are each tested separately elsewhere but never together.
+# ---------------------------------------------------------------------------
+
+@respx.mock
+def test_verify_auto_discovers_templated_endpoint_and_bootstraps_path_param(
+    tmp_path: Path,
+) -> None:
+    chat_endpoint = "/chat/conversations/:id/messages"
+    source_endpoint = "/chat/conversations"
+    respx.post(f"{TARGET}{source_endpoint}").mock(
+        return_value=httpx.Response(201, json={"id": "conv-xyz789"})
+    )
+    respx.post(f"{TARGET}/chat/conversations/conv-xyz789/messages").mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+    doc = AiSbomDocument(
+        target="./test-app",
+        nodes=[
+            Node(
+                name="chat_endpoint",
+                component_type=NodeType.API_ENDPOINT,
+                confidence=0.95,
+                metadata=NodeMetadata(
+                    endpoint=chat_endpoint,
+                    method="POST",
+                    chat_payload_key="message",
+                    path_params=["id"],
+                    path_param_sources={"id": source_endpoint},
+                ),
+            ),
+            Node(
+                name="create_conversation",
+                component_type=NodeType.API_ENDPOINT,
+                confidence=0.95,
+                metadata=NodeMetadata(endpoint=source_endpoint, method="POST"),
+            ),
+        ],
+    )
+    sbom_path = tmp_path / "app.sbom.json"
+    sbom_path.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
+
+    # No --endpoint: must come from SBOM auto-discovery, same as
+    # test_verify_auto_discovers_endpoint_from_sbom, but this time the
+    # auto-discovered endpoint is also templated.
+    result = runner.invoke(
+        app,
+        ["target", "verify", "--target", TARGET, "--sbom", str(sbom_path)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "CONFIG_ERROR" not in result.output
+    assert chat_endpoint in result.output
+    assert "Alice Johnson" in result.output
+    assert "ACCT-0001" in result.output

@@ -86,6 +86,18 @@ def verify_command(
             help="Max pre-scan discovery turns (default: redteam.discovery_max_turns, or 3).",
         ),
     ] = None,
+    preflight_candidates: Annotated[
+        int | None,
+        typer.Option(
+            "--preflight-candidates",
+            help=(
+                "How many alternative SBOM candidates to test when the resolved chat "
+                "endpoint's reply isn't clearly conversational (default: "
+                "redteam.preflight_candidates, or 3) — matches the pool a subsequent "
+                "Behavior/Redteam run would test."
+            ),
+        ),
+    ] = None,
     skip_discovery: Annotated[
         bool,
         typer.Option(
@@ -123,6 +135,7 @@ def verify_command(
             sbom,
             discovery_max_turns,
             skip_discovery,
+            preflight_candidates,
         )
     )
 
@@ -136,6 +149,7 @@ async def _verify_async(
     sbom_override: Path | None = None,
     discovery_max_turns_override: int | None = None,
     skip_discovery_override: bool = False,
+    preflight_candidates_override: int | None = None,
 ) -> None:
     # Load config
     try:
@@ -199,6 +213,11 @@ async def _verify_async(
         discovery_max_turns_override
         if discovery_max_turns_override is not None
         else getattr(cfg, "redteam_discovery_max_turns", 3)
+    )
+    effective_preflight_candidates = (
+        preflight_candidates_override
+        if preflight_candidates_override is not None
+        else getattr(cfg, "redteam_preflight_candidates", 3)
     )
     effective_skip_discovery = skip_discovery_override or getattr(
         cfg, "redteam_skip_discovery", False
@@ -275,6 +294,9 @@ async def _verify_async(
                 chat_response_key=chat_response_key,
                 canary_config=canary_config,
                 config_path=config_path,
+                endpoint_explicit=bool(ep_configured),
+                payload_key_explicit="redteam_chat_payload_key" in configured_fields,
+                response_key_explicit="redteam_chat_response_key" in configured_fields,
             )
         except TargetUnavailableError as exc:
             console.print(f"[red]✗ Target unavailable:[/red] {exc}")
@@ -348,9 +370,15 @@ async def _verify_async(
         if default_check is not None and default_check.status != "ok":
             discovery_skip_note = "default credential did not verify"
         else:
-            profile = await _run_pre_scan_discovery(
-                sbom_doc, session_cfg, max_turns=effective_discovery_max_turns
+            profile, preflight_skip_note = await _run_pre_scan_discovery(
+                sbom_doc,
+                session_cfg,
+                max_turns=effective_discovery_max_turns,
+                has_explicit_endpoint=bool(ep_configured),
+                preflight_candidates=effective_preflight_candidates,
             )
+            if preflight_skip_note:
+                discovery_skip_note = preflight_skip_note
 
     # Render results table — Identity/Detail carry the discovered user/account
     # and golden data for the default identity's row.
@@ -463,13 +491,21 @@ async def _run_pre_scan_discovery(
     session_cfg: "TargetSessionConfig",
     *,
     max_turns: int,
-) -> "DiscoveredProfile | None":
+    has_explicit_endpoint: bool,
+    preflight_candidates: int,
+) -> "tuple[DiscoveredProfile | None, str | None]":
     """Run the same pre-scan discovery conversation used by behavior/redteam.
 
-    Returns ``None`` (rather than raising) on failure — discovery is diagnostic,
-    never fatal to `target verify`.
+    Returns ``(profile, skip_reason)``. ``profile`` is ``None`` (rather than
+    raising) on failure — discovery is diagnostic, never fatal to
+    `target verify`. ``skip_reason`` is set only when a working chat endpoint
+    could not be validated at all (as opposed to discovery running but
+    finding nothing), so the caller can surface it the same way as the
+    existing "default credential did not verify" skip note, instead of a
+    differently-styled message printed from inside this function.
     """
     from nuguard.common.discovery import run_discovery_conversation
+    from nuguard.common.endpoint_preflight import validate_and_rotate_chat_endpoint
     from nuguard.common.target_client_builder import build_target_app_client
     from nuguard.redteam.target.session import AttackSession
 
@@ -493,12 +529,31 @@ async def _run_pre_scan_discovery(
         if sbom_doc.summary is not None:
             use_case = getattr(sbom_doc.summary, "use_case", "") or ""
         async with client:
-            return await run_discovery_conversation(
+            # Validate (and if needed rotate) the chat endpoint, and bootstrap
+            # any templated path param (e.g. :id on a create-conversation-then-
+            # post-message route) before sending any discovery turn — the same
+            # preflight RedteamOrchestrator.run() and BehaviorRunner already run.
+            # Without this, every turn against a templated endpoint fails with
+            # "[CONFIG_ERROR: unresolved path param ...]" — see issue #611.
+            preflight = await validate_and_rotate_chat_endpoint(
+                client,
+                sbom_doc,
+                has_explicit_endpoint=has_explicit_endpoint,
+                target_url=session_cfg.base_url,
+                auth_headers=session_cfg.effective_headers or None,
+                max_candidates=preflight_candidates,
+            )
+            for note in preflight.notes:
+                console.print(f"  [dim]{note}[/dim]")
+            if not preflight.ok:
+                return None, "no working chat endpoint found during preflight validation"
+            profile = await run_discovery_conversation(
                 client, session, use_case=use_case, max_turns=max_turns
             )
+            return profile, None
     except Exception as exc:
         console.print(f"  [yellow]Discovery failed (non-fatal):[/yellow] {exc}")
-        return None
+        return None, None
 
 
 # Field names checked (in order) for a configured user/account identity to
