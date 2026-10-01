@@ -42,7 +42,7 @@ def payload_shape_from_probe_result(
         else None
     )
 
-    if result is None:
+    if result is None or not result.confirmed:
         resolved_source = EndpointSource.FALLBACK
         notes = (note or "Payload shape probe returned no result; defaults were retained.",)
     else:
@@ -116,7 +116,7 @@ async def detect_payload_shape(
         hint_path=endpoint,
         llm=llm,
     )
-    if result is not None and probe_result_callback is not None:
+    if result is not None and result.confirmed and probe_result_callback is not None:
         probe_result_callback(result)
 
     return payload_shape_from_probe_result(

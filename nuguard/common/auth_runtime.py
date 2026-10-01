@@ -1,6 +1,7 @@
 """Shared auth runtime helpers used by behavior and redteam flows."""
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Mapping
 
@@ -10,6 +11,8 @@ from nuguard.models.health_report import TargetHealthReport
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from nuguard.common.endpoint_detection.models import ResolvedEndpoint
 
     # Deferred to avoid re-entering nuguard.common.__init__ mid-import — see
     # the matching comment in nuguard/common/bootstrap.py.
@@ -86,6 +89,7 @@ async def bootstrap_auth_runtime(
     payload_key: str = "message",
     payload_list: bool = False,
     sbom: "AiSbomDocument | None" = None,
+    endpoint_resolver: "Callable[[dict[str, str]], Awaitable[ResolvedEndpoint]] | None" = None,
 ) -> tuple[AuthBootstrapper, TargetHealthReport]:
     """Run shared auth bootstrap and return both bootstrapper and report.
 
@@ -112,6 +116,7 @@ async def bootstrap_auth_runtime(
         payload_key=payload_key,
         payload_list=payload_list,
         sbom=sbom,
+        endpoint_resolver=endpoint_resolver,
     )
     report = await bootstrapper.run()
     return bootstrapper, report

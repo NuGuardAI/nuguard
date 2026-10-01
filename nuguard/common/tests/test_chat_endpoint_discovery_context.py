@@ -217,6 +217,46 @@ async def test_resolver_replaces_sbom_guess_when_validation_fails() -> None:
     assert probe.await_count == 1
 
 
+@pytest.mark.asyncio
+async def test_resolver_uses_browser_after_unconfirmed_http_discovery() -> None:
+    from nuguard.common.endpoint_detection.live_probe import ProbeResult
+    from nuguard.common.endpoint_detection.models import EndpointSource, PayloadShape
+
+    sbom = AiSbomDocument(target="./app", nodes=[_node("/api/chat/message")])
+    fallback_shape = PayloadShape(key="message", is_list=False, source=EndpointSource.FALLBACK)
+    browser_shape = PayloadShape(key="text", is_list=False, source=EndpointSource.BROWSER)
+    browser_auth = AuthConfig(type="basic", username="alice", password="password")
+    with (
+        patch(
+            "nuguard.common.endpoint_detection.resolver.discover_chat_config",
+            return_value=("/api/chat/message", "message", False, None),
+        ),
+        patch(
+            "nuguard.common.endpoint_detection.resolver.detect_payload_shape",
+            new=AsyncMock(return_value=fallback_shape),
+        ),
+        patch(
+            "nuguard.common.endpoint_detection.resolver.probe_endpoint",
+            new=AsyncMock(return_value=ProbeResult("/api/chat/message", "message", False, confirmed=False)),
+        ),
+        patch(
+            "nuguard.common.endpoint_detection.resolver.detect_with_browser",
+            new=AsyncMock(return_value=("/extract", browser_shape)),
+        ) as browser,
+    ):
+        resolved = await resolve_chat_endpoint(
+            "http://api.test",
+            sbom,
+            probe_payload_extras={"consumerID": "c1"},
+            enable_browser_fallback=True,
+            browser_auth_config=browser_auth,
+        )
+
+    assert browser.await_args.kwargs["auth_config"] is browser_auth
+    assert resolved.path == "/extract"
+    assert resolved.path_source is EndpointSource.BROWSER
+
+
 # ── capability discovery stops when the circuit breaker trips ────────────────
 
 

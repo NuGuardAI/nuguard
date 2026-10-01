@@ -9,12 +9,17 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 import httpx
 
 from nuguard.common.auth import AuthConfig, AuthSession
-from nuguard.common.errors import TargetQuotaExhaustedError, TargetUnavailableError
+from nuguard.common.errors import (
+    TargetEndpointNotFoundError,
+    TargetQuotaExhaustedError,
+    TargetUnavailableError,
+)
 from nuguard.common.http import QUOTA_EXHAUSTED_PREFIX, quota_exhausted_detail
 from nuguard.common.logging import get_logger
 from nuguard.common.transport import error_envelope_message, error_only_response
@@ -24,6 +29,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from nuguard.common.auth_recovery import BrowserAuthRecovery
+    from nuguard.common.endpoint_detection.models import ResolvedEndpoint
 
     # Deferred: nuguard.redteam.target.canary imports nuguard.common.logging,
     # which would re-enter nuguard.common.__init__ mid-import (it pulls in this
@@ -106,6 +112,7 @@ class AuthBootstrapper:
         payload_key: str = "message",
         payload_list: bool = False,
         sbom: "AiSbomDocument | None" = None,
+        endpoint_resolver: "Callable[[dict[str, str]], Awaitable[ResolvedEndpoint]] | None" = None,
     ) -> None:
         self._target_url = target_url.rstrip("/")
         # Used to resolve a templated chat endpoint (".../:id/messages") into a
@@ -130,6 +137,7 @@ class AuthBootstrapper:
         # an HTTP POST — see resolve_target_session()'s pre-bootstrap WS detection.
         self._is_websocket = is_websocket
         self._ws_auth_message = ws_auth_message
+        self._endpoint_resolver = endpoint_resolver
         # Path to the loaded nuguard.yaml, when known. Passed through to
         # attempt_browser_auth_recovery() so a successful browser-login
         # recovery can be persisted back into the file (see run()); None
@@ -241,12 +249,6 @@ class AuthBootstrapper:
         self._session = AuthSession(self._default_auth, self._target_url)
         await self._session.initialize()
 
-        report = TargetHealthReport(
-            target_url=self._target_url,
-            endpoint=self._endpoint,
-            run_id=self._run_id,
-        )
-
         # If login_flow auth was configured but token acquisition failed, the SBOM's
         # declared auth endpoint isn't usable. If this config came from a "basic"
         # username/password that we upgraded to login_flow, fall back to sending
@@ -278,6 +280,39 @@ class AuthBootstrapper:
                 self.full_url,
             )
 
+        # Use acquired login-session headers for endpoint discovery when the
+        # configured auth requires a login step. This must happen before the
+        # first chat health-check request so an unverified SBOM guess never
+        # reaches bootstrap.
+        resolver_headers = (
+            fallback_auth_config.to_headers()
+            if fallback_auth_config is not None
+            else self._session.headers()
+        )
+        if self._endpoint_resolver is not None:
+            resolved_endpoint = await self._endpoint_resolver(resolver_headers)
+            if not resolved_endpoint.path:
+                raise TargetEndpointNotFoundError(
+                    "Could not discover a chat endpoint from the SBOM, HTTP probes, "
+                    "or browser fallback. Set target_endpoint explicitly or verify "
+                    "the target URL and chat UI.",
+                    url=self._target_url,
+                )
+            self._endpoint = resolved_endpoint.path
+            self._payload_key = (
+                resolved_endpoint.payload_key
+                if resolved_endpoint.payload_key and not resolved_endpoint.payload_key.startswith("__")
+                else "message"
+            )
+            self._payload_list = resolved_endpoint.payload_list
+            self._is_websocket = resolved_endpoint.payload_key == "__websocket__"
+
+        report = TargetHealthReport(
+            target_url=self._target_url,
+            endpoint=self._endpoint,
+            run_id=self._run_id,
+        )
+
         # Always check the default credential. Use the fallback headers when the
         # login flow failed; otherwise the live session headers (the acquired JWT
         # for login_flow auth, or the static headers for other auth types).
@@ -290,11 +325,7 @@ class AuthBootstrapper:
         )
         result = await self._check_one(
             identity="default",
-            headers=(
-                fallback_auth_config.to_headers()
-                if fallback_auth_config is not None
-                else self._session.headers()
-            ),
+            headers=resolver_headers,
             auth_type=probe_auth_type,
         )
 
