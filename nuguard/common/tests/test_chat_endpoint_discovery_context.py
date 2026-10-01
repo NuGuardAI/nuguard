@@ -252,6 +252,7 @@ async def test_resolver_uses_browser_after_unconfirmed_http_discovery() -> None:
             browser_auth_config=browser_auth,
         )
 
+    assert browser.await_args is not None
     assert browser.await_args.kwargs["auth_config"] is browser_auth
     assert resolved.path == "/extract"
     assert resolved.path_source is EndpointSource.BROWSER

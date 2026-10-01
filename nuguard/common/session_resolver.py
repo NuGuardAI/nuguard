@@ -409,6 +409,8 @@ async def resolve_target_session(
     defer_endpoint_resolution = (
         not is_endpoint_explicit and auth_requires_login(effective_auth, sbom)
     )
+    endpoint_source = "config" if is_endpoint_explicit else "default"
+    _chat_path_unknown_at_bootstrap = False
 
     async def _resolve_endpoint(auth_headers: dict[str, str] | None):
         nonlocal chat_path, chat_payload_key, chat_payload_list
@@ -452,7 +454,6 @@ async def resolve_target_session(
         return resolved
 
     endpoint_resolver = None
-    endpoint_source = "config" if is_endpoint_explicit else "default"
     is_websocket = False
     if defer_endpoint_resolution:
         # Authenticated probes must use the acquired session, not credentials

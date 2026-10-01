@@ -39,10 +39,10 @@ async def detect_with_browser(
                 headless=True,
                 timeout_s=timeout_s,
             ) as session:
-                result = await session.run(chat_message=chat_message, sniff_chat=True)
-            if result.sniffed_endpoint and result.sniffed_chat_request:
-                path = urlparse(result.sniffed_endpoint).path or None
-                key_info = _find_chat_payload_key(result.sniffed_chat_request, chat_message)
+                login_result = await session.run(chat_message=chat_message, sniff_chat=True)
+            if login_result.sniffed_endpoint and login_result.sniffed_chat_request:
+                path = urlparse(login_result.sniffed_endpoint).path or None
+                key_info = _find_chat_payload_key(login_result.sniffed_chat_request, chat_message)
                 if key_info is not None:
                     payload_key, payload_list = key_info
         except Exception as exc:  # noqa: BLE001 - browser fallback is best effort
@@ -54,13 +54,13 @@ async def detect_with_browser(
             sniff_chat_endpoint_headless,  # noqa: PLC0415
         )
 
-        result = await sniff_chat_endpoint_headless(
+        sniffed_result = await sniff_chat_endpoint_headless(
             target_url,
             chat_message=chat_message,
             timeout_s=timeout_s,
         )
-        if result is not None:
-            path, payload_key, payload_list = result
+        if sniffed_result is not None:
+            path, payload_key, payload_list = sniffed_result
     if not path or not payload_key:
         return None
     return path, PayloadShape(
