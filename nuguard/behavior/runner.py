@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     from nuguard.behavior.escalation import EscalationLadder, FamilyCircuitBreaker
     from nuguard.behavior.models import IntentProfile
     from nuguard.behavior.refusal import RefusalReason
+    from nuguard.common.auth import AuthConfig
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
@@ -2237,37 +2238,59 @@ class BehaviorRunner:
             scoped_agents=list(getattr(scenario, "scoped_agents", None) or []),
         )
 
-    def _cached_discovery_profile(self) -> "DiscoveredProfile | None":
+    def _discovery_auth_config(self) -> "AuthConfig | None":
+        """The statically-configured AuthConfig for the current auth session,
+        or None — used to fingerprint which identity a cached discovered
+        profile was captured against. See AuthSession.auth_config.
+
+        Uses getattr rather than direct attribute access because
+        ``self._auth_session`` is typed ``Any`` and some callers (tests, and
+        any other minimal duck-typed stand-in) supply an object that only
+        implements the subset of the AuthSession interface they need, e.g.
+        just ``headers()`` — mirroring the existing defensive
+        ``getattr(self._auth_session, "headers", lambda: {})()`` pattern
+        used elsewhere in this class.
+        """
+        return getattr(self._auth_session, "auth_config", None)
+
+    def _cached_discovery_profile(self, target_url: str) -> "DiscoveredProfile | None":
         """Return a previously-persisted, non-empty pre-scan profile from the
-        SBOM's ``discovered_profile`` field, or ``None`` if absent/empty/invalid.
+        SBOM's ``discovered_profile`` field, or ``None`` if absent/empty/invalid
+        or captured against a different target/auth identity than the current run.
 
         Lets a later run reuse a profile a previous run already discovered live,
-        skipping the discovery HTTP round-trip entirely.
+        skipping the discovery HTTP round-trip entirely. Delegates to the
+        shared nuguard.common.discovery.cached_discovery_profile so behavior
+        and redteam apply the identical target/auth staleness check rather
+        than two independently-maintained copies of the same logic.
         """
-        if self._sbom is None or self._sbom.discovered_profile is None:
-            return None
-        from nuguard.common.discovery import DiscoveredProfile  # noqa: PLC0415
+        from nuguard.common.discovery import cached_discovery_profile  # noqa: PLC0415
 
-        try:
-            profile = DiscoveredProfile.model_validate(self._sbom.discovered_profile)
-        except Exception as exc:
-            _log.warning("behavior pre-scan discovery: could not parse cached SBOM profile: %s", exc)
-            return None
-        return None if profile.is_empty else profile
+        return cached_discovery_profile(self._sbom, target_url, self._discovery_auth_config())
 
-    def _persist_discovery_profile_sbom(self, profile: "DiscoveredProfile") -> None:
-        """Cache a freshly-discovered, non-empty pre-scan profile onto the SBOM
-        so later runs against the same enriched SBOM can reuse it.
+    def _persist_discovery_profile_sbom(self, profile: "DiscoveredProfile", target_url: str) -> None:
+        """Cache a freshly-discovered, non-empty pre-scan profile (and the
+        target/auth fingerprint it was captured against) onto the SBOM so
+        later runs against the same enriched SBOM can reuse it.
 
-        No-op when the profile is empty (never overwrite a good cached profile
-        with an empty one) or no source SBOM path is known.
+        No-op when the profile is empty — never overwrite a good cached
+        profile with an empty one. The in-memory write happens regardless of
+        whether a source SBOM path is known (same-process reuse works even
+        for an in-memory-only SBOM); only persisting to disk needs a path.
         """
-        if profile.is_empty or self._sbom_path is None or self._sbom is None:
+        if profile.is_empty or self._sbom is None:
+            return
+        from nuguard.common.discovery import profile_cache_fingerprint  # noqa: PLC0415
+
+        self._sbom.discovered_profile = profile.model_dump(mode="json")
+        self._sbom.discovered_profile_fingerprint = profile_cache_fingerprint(
+            target_url, self._discovery_auth_config()
+        )
+        if self._sbom_path is None:
             return
         from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
             persist_discovery_profile_sbom,
         )
-        self._sbom.discovered_profile = profile.model_dump(mode="json")
         try:
             artifact = persist_discovery_profile_sbom(self._sbom, self._sbom_path)
             _log.info("behavior pre-scan discovery: persisted profile to %s", artifact)
@@ -2410,7 +2433,7 @@ class BehaviorRunner:
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
             _disc_fallbacks = self._discovery_fallback_endpoints()
-            _cached_profile = self._cached_discovery_profile()
+            _cached_profile = self._cached_discovery_profile(_target_url)
             if _cached_profile is not None:
                 profile = _cached_profile
                 _console.print(
@@ -2431,7 +2454,7 @@ class BehaviorRunner:
                     "behavior pre-scan discovery: name=%r ids=%s turns=%d source=%s",
                     profile.customer_name, profile.ids, profile.turns_sent, profile.source,
                 )
-                self._persist_discovery_profile_sbom(profile)
+                self._persist_discovery_profile_sbom(profile, _target_url)
 
             if bool(getattr(self._config, "capability_discovery", True)):
                 from nuguard.common.discovery import (  # noqa: PLC0415
@@ -2760,7 +2783,7 @@ class BehaviorRunner:
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
 
-            _cached_profile = self._cached_discovery_profile()
+            _cached_profile = self._cached_discovery_profile(target_url or "")
             if _cached_profile is not None:
                 self._pre_scan_profile = _cached_profile
                 self._judge.set_profile(_cached_profile)
@@ -2789,7 +2812,7 @@ class BehaviorRunner:
                     self._pre_scan_profile.ids,
                     self._pre_scan_profile.source,
                 )
-                self._persist_discovery_profile_sbom(self._pre_scan_profile)
+                self._persist_discovery_profile_sbom(self._pre_scan_profile, target_url or "")
 
             # Capability discovery: ask the live agent about its tools (always
             # cross-checked against the SBOM) and, when actually missing from

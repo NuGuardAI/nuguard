@@ -2288,35 +2288,69 @@ async def test_probe_tool_families_empty_sbom_returns_empty():
 # ---------------------------------------------------------------------------
 
 
+_DISCOVERY_TARGET_URL = "http://localhost:8080"
+
+
 def test_cached_discovery_profile_none_when_sbom_has_no_profile():
     sbom = AiSbomDocument(target="./app")
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
-    assert runner._cached_discovery_profile() is None
+    assert runner._cached_discovery_profile(_DISCOVERY_TARGET_URL) is None
 
 
 def test_cached_discovery_profile_none_when_sbom_missing():
     runner = BehaviorRunner(config=_make_config(), sbom=None, policy=None, intent=_make_intent(), llm_client=None)
-    assert runner._cached_discovery_profile() is None
+    assert runner._cached_discovery_profile(_DISCOVERY_TARGET_URL) is None
 
 
 def test_cached_discovery_profile_none_when_persisted_profile_is_empty():
     sbom = AiSbomDocument(target="./app", discovered_profile=DiscoveredProfile().model_dump(mode="json"))
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
-    assert runner._cached_discovery_profile() is None
+    assert runner._cached_discovery_profile(_DISCOVERY_TARGET_URL) is None
 
 
 def test_cached_discovery_profile_none_when_persisted_profile_is_malformed():
     sbom = AiSbomDocument(target="./app", discovered_profile={"ids": "not-a-list"})
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
-    assert runner._cached_discovery_profile() is None
+    assert runner._cached_discovery_profile(_DISCOVERY_TARGET_URL) is None
 
 
-def test_cached_discovery_profile_returns_persisted_non_empty_profile():
+def test_cached_discovery_profile_none_when_fingerprint_missing():
+    """issue #611 Bug 2: a profile persisted before discovered_profile_fingerprint
+    existed (or by any writer that didn't stamp one) is always a cache miss —
+    never blindly trusted just because the field is present and non-empty."""
     profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
     sbom = AiSbomDocument(target="./app", discovered_profile=profile.model_dump(mode="json"))
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+    assert runner._cached_discovery_profile(_DISCOVERY_TARGET_URL) is None
 
-    cached = runner._cached_discovery_profile()
+
+def test_cached_discovery_profile_none_when_target_url_differs():
+    """issue #611 Bug 2: a profile captured against a different target_url
+    must not be reused — the regression this fix exists to close."""
+    from nuguard.common.discovery import profile_cache_fingerprint
+
+    profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
+    sbom = AiSbomDocument(
+        target="./app",
+        discovered_profile=profile.model_dump(mode="json"),
+        discovered_profile_fingerprint=profile_cache_fingerprint("http://staging.example.test", None),
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+    assert runner._cached_discovery_profile("http://prod.example.test") is None
+
+
+def test_cached_discovery_profile_returns_persisted_non_empty_profile():
+    from nuguard.common.discovery import profile_cache_fingerprint
+
+    profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
+    sbom = AiSbomDocument(
+        target="./app",
+        discovered_profile=profile.model_dump(mode="json"),
+        discovered_profile_fingerprint=profile_cache_fingerprint(_DISCOVERY_TARGET_URL, None),
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    cached = runner._cached_discovery_profile(_DISCOVERY_TARGET_URL)
 
     assert cached == profile
 
@@ -2326,22 +2360,30 @@ def test_persist_discovery_profile_sbom_noop_for_empty_profile():
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
     runner._sbom_path = MagicMock()
 
-    runner._persist_discovery_profile_sbom(DiscoveredProfile())
+    runner._persist_discovery_profile_sbom(DiscoveredProfile(), _DISCOVERY_TARGET_URL)
 
     assert sbom.discovered_profile is None
 
 
-def test_persist_discovery_profile_sbom_noop_without_sbom_path():
+def test_persist_discovery_profile_sbom_writes_in_memory_without_sbom_path():
+    """issue #611: the in-memory write no longer requires a backing file —
+    same-process reuse (e.g. a platform caller running behavior then redteam
+    against the same in-memory sbom object, no file involved) must still
+    work. Only the disk-persistence step is skipped without a path."""
     sbom = AiSbomDocument(target="./app")
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
     runner._sbom_path = None
+    profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"])
 
-    runner._persist_discovery_profile_sbom(DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"]))
+    runner._persist_discovery_profile_sbom(profile, _DISCOVERY_TARGET_URL)
 
-    assert sbom.discovered_profile is None
+    assert sbom.discovered_profile == profile.model_dump(mode="json")
+    assert sbom.discovered_profile_fingerprint is not None
 
 
 def test_persist_discovery_profile_sbom_writes_profile_onto_sbom_and_disk(tmp_path):
+    from nuguard.common.discovery import profile_cache_fingerprint
+
     sbom = AiSbomDocument(target="./app")
     sbom_path = tmp_path / "app.sbom.json"
     sbom_path.write_text(sbom.model_dump_json())
@@ -2349,13 +2391,15 @@ def test_persist_discovery_profile_sbom_writes_profile_onto_sbom_and_disk(tmp_pa
     runner._sbom_path = sbom_path
     profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
 
-    runner._persist_discovery_profile_sbom(profile)
+    runner._persist_discovery_profile_sbom(profile, _DISCOVERY_TARGET_URL)
 
     assert sbom.discovered_profile == profile.model_dump(mode="json")
+    assert sbom.discovered_profile_fingerprint == profile_cache_fingerprint(_DISCOVERY_TARGET_URL, None)
     enriched_path = sbom_path.with_name("app.sbom.enriched.json")
     assert enriched_path.exists()
     written = AiSbomDocument.model_validate_json(enriched_path.read_text())
     assert DiscoveredProfile.model_validate(written.discovered_profile) == profile
+    assert written.discovered_profile_fingerprint == profile_cache_fingerprint(_DISCOVERY_TARGET_URL, None)
 
 
 @pytest.mark.asyncio
@@ -2365,8 +2409,14 @@ async def test_discover_reuses_cached_sbom_profile_and_skips_run_discovery():
     (tests/apps/kscope/reports/agentic-test-20260828T201422.log:8096 showed a
     live run coming back empty even though a good profile was already known).
     """
+    from nuguard.common.discovery import profile_cache_fingerprint
+
     cached_profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
-    sbom = AiSbomDocument(target="./app", discovered_profile=cached_profile.model_dump(mode="json"))
+    sbom = AiSbomDocument(
+        target="./app",
+        discovered_profile=cached_profile.model_dump(mode="json"),
+        discovered_profile_fingerprint=profile_cache_fingerprint(_DISCOVERY_TARGET_URL, None),
+    )
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
 
     mock_client = MagicMock()

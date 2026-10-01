@@ -3056,8 +3056,21 @@
         }
       ],
       "default": null,
-      "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+      "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery. Only trusted when discovered_profile_fingerprint matches the current run's target_url/auth identity \u2014 see nuguard.common.discovery.cached_discovery_profile.",
       "title": "Discovered Profile"
+    },
+    "discovered_profile_fingerprint": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Hash of the target_url + auth identity discovered_profile was captured against (see nuguard.common.discovery.profile_cache_fingerprint). A cached discovered_profile is only reused when this matches the current run's target/auth \u2014 otherwise it's treated as a cache miss and live discovery runs again. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+      "title": "Discovered Profile Fingerprint"
     }
   },
   "required": [

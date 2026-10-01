@@ -1476,7 +1476,9 @@ class RedteamOrchestrator:
             from nuguard.common.discovery import (  # noqa: PLC0415
                 cached_discovery_profile,
             )
-            _cached_profile_hit = cached_discovery_profile(self._sbom)
+            _cached_profile_hit = cached_discovery_profile(
+                self._sbom, self._target_url, self._auth_config
+            )
 
             async with _disc_client:
                 # Validate (and if needed rotate) the chat endpoint before
@@ -1528,11 +1530,21 @@ class RedteamOrchestrator:
                     _pre_scan_profile.turns_sent,
                     _pre_scan_profile.source,
                 )
+                if not _pre_scan_profile.is_empty and self._sbom is not None:
+                    from nuguard.common.discovery import profile_cache_fingerprint  # noqa: PLC0415
+
+                    # In-memory write is unconditional (same-process reuse —
+                    # e.g. a platform caller running behavior then redteam
+                    # against the same in-memory sbom object — works even with
+                    # no backing file); only the disk write below needs a path.
+                    self._sbom.discovered_profile = _pre_scan_profile.model_dump(mode="json")
+                    self._sbom.discovered_profile_fingerprint = profile_cache_fingerprint(
+                        self._target_url, self._auth_config
+                    )
                 if not _pre_scan_profile.is_empty and self._sbom_path is not None and self._sbom is not None:
                     from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
                         persist_discovery_profile_sbom,
                     )
-                    self._sbom.discovered_profile = _pre_scan_profile.model_dump(mode="json")
                     try:
                         _profile_artifact = persist_discovery_profile_sbom(self._sbom, self._sbom_path)
                         _log.info("pre-scan discovery: persisted profile to %s", _profile_artifact)

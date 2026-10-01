@@ -1316,6 +1316,20 @@ class AiSbomDocument(BaseModel):
             "behavior/redteam run successfully discovers the authenticated test "
             "user's real identity via a live DISCOVER conversation. Later runs "
             "against this SBOM reuse it instead of re-running discovery. Delete "
-            "or regenerate the enriched SBOM file to force a fresh discovery."
+            "or regenerate the enriched SBOM file to force a fresh discovery. "
+            "Only trusted when discovered_profile_fingerprint matches the "
+            "current run's target_url/auth identity — see "
+            "nuguard.common.discovery.cached_discovery_profile."
+        ),
+    )
+    discovered_profile_fingerprint: str | None = Field(
+        default=None,
+        description=(
+            "Hash of the target_url + auth identity discovered_profile was "
+            "captured against (see nuguard.common.discovery.profile_cache_fingerprint). "
+            "A cached discovered_profile is only reused when this matches the "
+            "current run's target/auth — otherwise it's treated as a cache miss "
+            "and live discovery runs again. Absent on SBOMs persisted before "
+            "this field existed, which are therefore always treated as a miss."
         ),
     )
