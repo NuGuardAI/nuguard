@@ -2283,6 +2283,35 @@ async def test_probe_tool_families_empty_sbom_returns_empty():
     assert results == {}
 
 
+@pytest.mark.asyncio
+async def test_probe_tool_families_replays_preflight_endpoint_and_path_params():
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=_make_sbom_two_agents(),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._preflight_cache = True
+    runner._rotated_chat_endpoint = ("/api/conversations/abc/messages", "prompt", False, None)
+    runner._bootstrapped_path_params = {"conversation_id": "abc"}
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.set_chat_endpoint = MagicMock()
+    mock_client.set_path_param = MagicMock()
+    mock_client.send = AsyncMock(return_value=("Sure, I can help with that.", []))
+
+    with patch.object(runner, "_build_client", new=AsyncMock(return_value=mock_client)):
+        await runner.probe_tool_families()
+
+    mock_client.set_chat_endpoint.assert_called_once_with(
+        "/api/conversations/abc/messages", "prompt", False, None
+    )
+    mock_client.set_path_param.assert_called_once_with("conversation_id", "abc")
+    assert mock_client.send.await_count == 2
+
+
 # ---------------------------------------------------------------------------
 # Cached pre-scan discovery profile (reuse across runs via enriched SBOM)
 # ---------------------------------------------------------------------------

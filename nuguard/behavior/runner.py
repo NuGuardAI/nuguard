@@ -2548,6 +2548,10 @@ class BehaviorRunner:
             _log.warning("probe_tool_families: failed to build client (%s)", exc)
             return {}
 
+        if not await self._ensure_endpoint_preflight(client):
+            _log.info("probe_tool_families: skipped — no working chat endpoint")
+            return {}
+
         target_url = getattr(self, "_resolved_target_url", None) or getattr(self._config, "target", "") or ""
         _console.rule("[bold cyan]Tool-family Reachability Probe[/bold cyan]", style="dim cyan")
 
