@@ -37,6 +37,26 @@ mcp = FastMCP(
 
 
 # ---------------------------------------------------------------------------
+# Smithery Skills entry point
+# ---------------------------------------------------------------------------
+
+def create_server(config: dict | None = None) -> FastMCP:
+    """Factory called by the Smithery platform when a user installs nuguard as a Skill.
+
+    Applies the user-supplied Smithery config (API keys, paths) as environment
+    variables before returning the shared FastMCP instance.
+    """
+    cfg = config or {}
+    if litellm_key := cfg.get("litellm_api_key", ""):
+        os.environ["LITELLM_API_KEY"] = litellm_key
+    if nuguard_config := cfg.get("nuguard_config_path", ""):
+        os.environ["NUGUARD_DEFAULT_CONFIG"] = nuguard_config
+    if redteam_model := cfg.get("redteam_llm_model", ""):
+        os.environ["NUGUARD_REDTEAM_LLM_MODEL"] = redteam_model
+    return mcp
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
