@@ -12,7 +12,7 @@ from rich.table import Table
 
 from nuguard.common.auth import AuthConfig
 from nuguard.common.auth_runtime import resolve_auth_runtime
-from nuguard.common.errors import TargetUnavailableError
+from nuguard.common.errors import TargetEndpointNotFoundError, TargetUnavailableError
 from nuguard.config import load_config
 from nuguard.redteam.target.canary import CanaryConfig
 
@@ -275,7 +275,13 @@ async def _verify_async(
                 chat_response_key=chat_response_key,
                 canary_config=canary_config,
                 config_path=config_path,
+                endpoint_explicit=bool(ep_configured),
+                payload_key_explicit="redteam_chat_payload_key" in configured_fields,
+                response_key_explicit="redteam_chat_response_key" in configured_fields,
             )
+        except TargetEndpointNotFoundError as exc:
+            console.print(f"[red]✗ Endpoint discovery failed:[/red] {exc}")
+            raise typer.Exit(code=1)
         except TargetUnavailableError as exc:
             console.print(f"[red]✗ Target unavailable:[/red] {exc}")
             raise typer.Exit(code=2)
@@ -324,6 +330,9 @@ async def _verify_async(
                 payload_key_explicit="redteam_chat_payload_key" in configured_fields,
                 response_key_explicit="redteam_chat_response_key" in configured_fields,
             )
+        except TargetEndpointNotFoundError as exc:
+            console.print(f"[red]✗ Endpoint discovery failed:[/red] {exc}")
+            raise typer.Exit(code=1)
         except TargetUnavailableError as exc:
             console.print(f"[red]✗ Target unavailable:[/red] {exc}")
             raise typer.Exit(code=2)

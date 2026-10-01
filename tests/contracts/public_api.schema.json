@@ -4281,6 +4281,7 @@
           "config",
           "sbom",
           "probe",
+          "browser",
           "default",
           "enriched_sbom_cache"
         ],
@@ -4922,6 +4923,7 @@
           "config",
           "sbom",
           "probe",
+          "browser",
           "default",
           "enriched_sbom_cache"
         ],
@@ -5412,6 +5414,7 @@
           "config",
           "sbom",
           "probe",
+          "browser",
           "default",
           "enriched_sbom_cache"
         ],

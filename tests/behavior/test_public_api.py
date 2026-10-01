@@ -370,6 +370,7 @@ def test_behavior_runner_merges_config_headers_into_client(
     runner = BehaviorRunner(
         config=BehaviorConfig(
             target="http://localhost:9999",
+            target_endpoint="/chat",
             headers={"X-Tenant-Id": "tenant-1"},
         ),
     )

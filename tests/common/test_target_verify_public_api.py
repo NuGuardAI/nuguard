@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import ValidationError
 
 from nuguard.common.auth import AuthConfig, LoginFlowConfig
 from nuguard.common.discovery import DiscoveredProfile, DiscoveryOutcome
+from nuguard.common.errors import TargetEndpointNotFoundError
 from nuguard.common.target_verify_public_api import (
     TargetSessionResolveRequest,
     TargetVerifyRequest,
@@ -46,6 +48,21 @@ def _session_config(*, endpoint_source: str = "default"):
         endpoint_source=endpoint_source,
         resolution_notes=[],
     )
+
+
+@pytest.mark.asyncio
+async def test_verify_target_reports_endpoint_discovery_failure() -> None:
+    request = TargetVerifyRequest(target_url="http://target")
+    with patch(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        new=AsyncMock(side_effect=TargetEndpointNotFoundError("Could not discover a chat endpoint")),
+    ):
+        result = await verify_target(request)
+
+    assert result.all_ok is False
+    assert result.endpoint_source == "default"
+    assert result.checks[0].status == "endpoint_not_found"
+    assert "Could not discover a chat endpoint" in (result.checks[0].error_detail or "")
 
 
 @pytest.mark.parametrize(
