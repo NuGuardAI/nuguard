@@ -26,13 +26,21 @@ class SbomGenerator:
             output.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
         return doc
 
-    def from_repo(self, url: str, ref: str = "main", output: Path | None = None) -> AiSbomDocument:
-        """Clone *url* at *ref* and return an AiSbomDocument."""
+    def from_repo(
+        self, url: str, ref: str | None = None, output: Path | None = None
+    ) -> AiSbomDocument:
+        """Clone *url* at *ref* and return an AiSbomDocument.
+
+        ``ref=None`` (the default) clones the repository's default branch,
+        matching ``AiSbomExtractor.extract_from_repo``'s semantics. If *url*
+        targets a GitHub subfolder (``.../tree/<ref>/<subpath>`` or the bare
+        shorthand ``.../org/repo/<subpath>``), the subfolder is resolved
+        automatically — see ``AiSbomExtractor.extract_from_repo``, which
+        performs this detection itself.
+        """
+        source_ref = sanitize_repository_url(url)
         doc = self._extractor.extract_from_repo(
-            url,
-            ref,
-            self.config,
-            source_ref=sanitize_repository_url(url),
+            url, ref, self.config, source_ref=source_ref
         )
         if output is not None:
             from .serializer import AiSbomSerializer

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 
 from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, GoalType, ScenarioType
 from nuguard.redteam.executor.executor import StepResult
+from nuguard.redteam.scenarios._chain_factory import apply_secondary_credential
 from nuguard.redteam.scenarios.api_attacks import (
     _DB_ERROR_SIGNATURES,
     _JWT_WEAK_SECRETS,
@@ -651,6 +652,380 @@ def test_generator_produces_mass_assignment_for_post_endpoint():
     scenarios = gen.generate()
     mass = [s for s in scenarios if s.scenario_type == ScenarioType.MASS_ASSIGNMENT]
     assert len(mass) == 1
+
+
+# ---------------------------------------------------------------------------
+# Canary/secondary-credential routing for write-capable scenarios (issue #561)
+# ---------------------------------------------------------------------------
+
+def _canary_config_with_tenant(session_token: str = "tok_canary_abc123"):
+    from nuguard.redteam.target.canary import CanaryConfig, CanaryTenant
+
+    return CanaryConfig(tenants=[CanaryTenant(tenant_id="tenant-canary", session_token=session_token)])
+
+
+def test_catalog_mass_assignment_builder_routes_through_canary_credential():
+    """Regression guard for the catalog-sourced mass_assignment factory
+    (catalog/builders.py:_build_mass_assignment) — a second, independent
+    source of the same vulnerability that isn't reached by anything wired
+    only into ScenarioGenerator._api_attack_scenarios(). Exercised directly
+    against a BuilderContext with no bound target_endpoint (the shape that
+    survives dedup against the legacy per-endpoint scenario as a distinct
+    object — see generator.py's (goal_type, scenario_type, target_node_ids)
+    merge key)."""
+    from nuguard.redteam.catalog.builders import BuilderContext, _build_mass_assignment
+    from nuguard.redteam.catalog.registry import SCENARIO_CATALOG
+
+    spec = next(s for s in SCENARIO_CATALOG if s.resolved_builder_key() == "mass_assignment")
+    agent = Node(
+        id=_uuid.uuid5(_uuid.NAMESPACE_URL, "agent1"),
+        name="Assistant",
+        component_type=NodeType.AGENT,
+        confidence=0.9,
+    )
+
+    ctx_no_canary = BuilderContext(
+        sbom=_make_sbom([agent]), spec=spec, profile=None,
+        target_agent=agent, target_tool=None, policy=None,
+    )
+    scenarios = _build_mass_assignment(ctx_no_canary)
+    assert len(scenarios) == 1
+    assert scenarios[0].chain.steps[0].strip_auth is False
+
+    ctx_with_canary = ctx_no_canary._replace(
+        canary_auth_headers={"Authorization": "Bearer canary-tok"}
+    )
+    scenarios = _build_mass_assignment(ctx_with_canary)
+    assert len(scenarios) == 1
+    step = scenarios[0].chain.steps[0]
+    assert step.strip_auth is True
+    assert step.extra_headers == {"Authorization": "Bearer canary-tok"}
+
+
+def test_generate_from_catalog_routes_mass_assignment_through_canary_credential():
+    """End-to-end: ScenarioGenerator.generate_from_catalog() threads
+    canary_auth_headers through select_scenarios() -> BuilderContext ->
+    _build_mass_assignment, closing the second/catalog-only source of
+    credentialed mass-assignment scenarios (issue #561)."""
+    agent = Node(
+        id=_uuid.uuid5(_uuid.NAMESPACE_URL, "agent1"),
+        name="Assistant",
+        component_type=NodeType.AGENT,
+        confidence=0.9,
+    )
+    sbom = _make_sbom([agent])
+    gen = ScenarioGenerator(sbom, canary_config=_canary_config_with_tenant())
+    scenarios = gen.generate_from_catalog(scan_profile="full")
+    mass = [s for s in scenarios if s.catalog_id == "A07"]
+    assert len(mass) == 1
+    step = mass[0].chain.steps[0]
+    assert step.strip_auth is True
+    assert step.extra_headers.get("Authorization") == "Bearer tok_canary_abc123"
+
+
+def test_generate_from_catalog_routes_mass_assignment_through_canary_when_endpoint_bound():
+    """Same as above, but with a real API_ENDPOINT node present — exercises
+    select_scenarios()'s `_needs_api` expansion branch (catalog/selector.py),
+    which binds ctx.target_endpoint and is a separate BuilderContext
+    construction site from the agent-only fallback the sibling test above
+    exercises. Both sites must thread canary_auth_headers."""
+    agent = Node(
+        id=_uuid.uuid5(_uuid.NAMESPACE_URL, "agent1"),
+        name="Assistant",
+        component_type=NodeType.AGENT,
+        confidence=0.9,
+    )
+    endpoint = _api_node("ep-catalog", "Create User", path="/api/users", method="POST")
+    sbom = _make_sbom([agent, endpoint])
+    gen = ScenarioGenerator(sbom, canary_config=_canary_config_with_tenant())
+    scenarios = gen.generate_from_catalog(scan_profile="full")
+    mass = [s for s in scenarios if s.catalog_id == "A07"]
+    assert len(mass) == 1
+    assert mass[0].target_node_ids == [str(endpoint.id)]  # confirms target_endpoint was bound
+    step = mass[0].chain.steps[0]
+    assert step.strip_auth is True
+    assert step.extra_headers.get("Authorization") == "Bearer tok_canary_abc123"
+
+
+def test_generator_routes_mass_assignment_through_canary_credential_when_configured():
+    node = _api_node("ep2", "Create User", path="/api/users", method="POST")
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom, canary_config=_canary_config_with_tenant())
+    scenarios = gen.generate()
+    mass = [s for s in scenarios if s.scenario_type == ScenarioType.MASS_ASSIGNMENT]
+    assert len(mass) == 1
+    step = mass[0].chain.steps[0]
+    assert step.strip_auth is True
+    assert step.extra_headers.get("Authorization") == "Bearer tok_canary_abc123"
+    assert not gen.credential_fallback_notes
+
+
+def test_generator_falls_back_to_primary_credential_without_canary_and_notes_it():
+    node = _api_node("ep2", "Create User", path="/api/users", method="POST")
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    mass = [s for s in scenarios if s.scenario_type == ScenarioType.MASS_ASSIGNMENT]
+    assert len(mass) == 1
+    step = mass[0].chain.steps[0]
+    assert step.strip_auth is False
+    assert step.extra_headers == {}
+    assert gen.credential_fallback_notes
+    assert "canary" in gen.credential_fallback_notes[0].lower()
+
+
+def test_apply_secondary_credential_leaves_scenario_unchanged_when_no_headers():
+    scenario = build_mass_assignment("ep2", "Create User", "/api/users", method="POST")
+    result = apply_secondary_credential(scenario, None)
+    assert result is scenario
+    assert result.chain.steps[0].strip_auth is False
+
+
+def test_apply_secondary_credential_swaps_credentialed_write_step():
+    scenario = build_mass_assignment("ep2", "Create User", "/api/users", method="POST")
+    result = apply_secondary_credential(scenario, {"Authorization": "Bearer canary-tok"})
+    step = result.chain.steps[0]
+    assert step.strip_auth is True
+    assert step.extra_headers == {"Authorization": "Bearer canary-tok"}
+
+
+def test_apply_secondary_credential_does_not_touch_strip_auth_steps():
+    """build_auth_bypass already strips auth — no real credential to swap."""
+    scenario = build_auth_bypass("ep1", "Get Profile", "/api/profile", method="POST")
+    result = apply_secondary_credential(scenario, {"Authorization": "Bearer canary-tok"})
+    step = result.chain.steps[0]
+    assert step.strip_auth is True
+    assert step.extra_headers == {}
+
+
+# ---------------------------------------------------------------------------
+# Every write-capable builder wrapped in _api_attack_scenarios() is routed
+# through the canary credential when configured (issue #561) — not just
+# mass_assignment. One test per remaining builder (price_tampering already
+# covered by test_generator_routes_mass_assignment_through_canary_credential_
+# when_configured's sibling for mass assignment; this covers the other 7).
+# ---------------------------------------------------------------------------
+
+def test_generator_routes_price_tampering_through_canary_credential():
+    node = _api_node_with_schema("ep2b", "Checkout", "/api/checkout", "POST", {"totalPrice": "number"})
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom, canary_config=_canary_config_with_tenant())
+    scenarios = gen.generate()
+    price = [s for s in scenarios if s.scenario_type == ScenarioType.PRICE_TAMPERING]
+    assert len(price) == 1
+    step = price[0].chain.steps[0]
+    assert step.strip_auth is True
+    assert step.extra_headers.get("Authorization") == "Bearer tok_canary_abc123"
+
+
+def test_generator_routes_injection_probe_through_canary_credential():
+    node = _api_node_with_schema("ep6", "Create Comment", "/api/comments", "POST", {"body": "string"})
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom, canary_config=_canary_config_with_tenant())
+    scenarios = gen.generate()
+    injected = [s for s in scenarios if s.scenario_type == ScenarioType.SQL_INJECTION]
+    assert len(injected) == 1
+    assert injected[0].chain.steps  # sanity: candidates were generated
+    for step in injected[0].chain.steps:
+        assert step.strip_auth is True
+        assert step.extra_headers.get("Authorization") == "Bearer tok_canary_abc123"
+
+
+def test_generator_routes_path_traversal_probe_through_canary_credential():
+    node = _api_node_with_schema("ep7", "Download File", "/api/download", "POST", {"filename": "string"})
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom, canary_config=_canary_config_with_tenant())
+    scenarios = gen.generate()
+    traversal = [s for s in scenarios if s.scenario_type == ScenarioType.PATH_TRAVERSAL]
+    assert len(traversal) == 1
+    for step in traversal[0].chain.steps:
+        assert step.strip_auth is True
+        assert step.extra_headers.get("Authorization") == "Bearer tok_canary_abc123"
+
+
+def test_generator_routes_open_redirect_probe_through_canary_credential():
+    node = _api_node_with_schema("ep8", "Continue", "/api/continue", "POST", {"redirect_url": "string"})
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom, canary_config=_canary_config_with_tenant())
+    scenarios = gen.generate()
+    redirect = [s for s in scenarios if s.scenario_type == ScenarioType.OPEN_REDIRECT]
+    assert len(redirect) == 1
+    for step in redirect[0].chain.steps:
+        assert step.strip_auth is True
+        assert step.extra_headers.get("Authorization") == "Bearer tok_canary_abc123"
+
+
+def test_generator_routes_reflected_xss_probe_through_canary_credential():
+    node = _api_node_with_schema("ep9", "Post Comment", "/api/post-comment", "POST", {"comment": "string"})
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom, canary_config=_canary_config_with_tenant())
+    scenarios = gen.generate()
+    xss = [s for s in scenarios if s.scenario_type == ScenarioType.REFLECTED_XSS]
+    assert len(xss) == 1
+    for step in xss[0].chain.steps:
+        assert step.strip_auth is True
+        assert step.extra_headers.get("Authorization") == "Bearer tok_canary_abc123"
+
+
+def test_generator_routes_auth_scope_bypass_through_canary_credential():
+    node = Node(
+        id=_uuid.uuid5(_uuid.NAMESPACE_URL, "ep10"),
+        name="Admin Panel",
+        component_type=NodeType.API_ENDPOINT,
+        confidence=0.9,
+        metadata=NodeMetadata(endpoint="/api/admin", method="POST", auth_scope="admin"),
+    )
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom, canary_config=_canary_config_with_tenant())
+    scenarios = gen.generate()
+    # build_auth_bypass ALSO fires for this node (auth_required unset, not a
+    # public path) and shares ScenarioType.AUTH_BYPASS — disambiguate by
+    # title; auth_bypass already strip_auth=True so it's unaffected either way.
+    scope = [
+        s for s in scenarios
+        if s.scenario_type == ScenarioType.AUTH_BYPASS and "BFLA" in s.title
+    ]
+    assert len(scope) == 1
+    step = scope[0].chain.steps[0]
+    assert step.strip_auth is True
+    assert step.extra_headers.get("Authorization") == "Bearer tok_canary_abc123"
+
+
+def test_generator_routes_rate_limit_probe_through_canary_credential():
+    node = _api_node("ep11", "Submit Order", path="/api/orders", method="POST")
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom, canary_config=_canary_config_with_tenant())
+    scenarios = gen.generate()
+    rate = [
+        s for s in scenarios
+        if s.scenario_type == ScenarioType.AUTH_BYPASS and "Rate-Limit" in s.title
+    ]
+    assert len(rate) == 1
+    for step in rate[0].chain.steps:
+        assert step.strip_auth is True
+        assert step.extra_headers.get("Authorization") == "Bearer tok_canary_abc123"
+
+
+# ---------------------------------------------------------------------------
+# _canary_auth_headers resolution (issue #561)
+# ---------------------------------------------------------------------------
+
+def test_generator_canary_auth_headers_none_without_canary_config():
+    sbom = _make_sbom([_api_node("ep1", "Endpoint")])
+    gen = ScenarioGenerator(sbom)
+    assert gen._canary_auth_headers is None
+
+
+def test_generator_canary_auth_headers_none_when_no_tenant_has_session_token():
+    from nuguard.redteam.target.canary import CanaryConfig, CanaryTenant
+
+    canary_config = CanaryConfig(
+        tenants=[CanaryTenant(tenant_id="tenant-a"), CanaryTenant(tenant_id="tenant-b")]
+    )
+    sbom = _make_sbom([_api_node("ep1", "Endpoint")])
+    gen = ScenarioGenerator(sbom, canary_config=canary_config)
+    assert gen._canary_auth_headers is None
+
+
+def test_generator_canary_auth_headers_uses_first_tenant_with_a_token():
+    from nuguard.redteam.target.canary import CanaryConfig, CanaryTenant
+
+    canary_config = CanaryConfig(
+        tenants=[
+            CanaryTenant(tenant_id="tenant-a"),  # no session_token — skipped
+            CanaryTenant(tenant_id="tenant-b", session_token="tok_b"),
+            CanaryTenant(tenant_id="tenant-c", session_token="tok_c"),
+        ]
+    )
+    sbom = _make_sbom([_api_node("ep1", "Endpoint")])
+    gen = ScenarioGenerator(sbom, canary_config=canary_config)
+    assert gen._canary_auth_headers == {"Authorization": "Bearer tok_b"}
+
+
+# ---------------------------------------------------------------------------
+# Edge cases (issue #561, test plan section IV)
+# ---------------------------------------------------------------------------
+
+def test_generator_canary_auth_headers_none_with_empty_tenants_list():
+    """A real (non-duck-typed) CanaryConfig with tenants=[] — the for loop
+    over an empty list never assigns _canary_auth_headers, distinct from the
+    'tenants present but none have a token' case already covered above."""
+    from nuguard.redteam.target.canary import CanaryConfig
+
+    canary_config = CanaryConfig(tenants=[])
+    sbom = _make_sbom([_api_node("ep1", "Endpoint")])
+    gen = ScenarioGenerator(sbom, canary_config=canary_config)
+    assert gen._canary_auth_headers is None
+
+
+def test_generator_canary_auth_headers_resolves_custom_header_string_token():
+    """A session_token shaped as 'Header-Name: value' (contains a colon in its
+    first whitespace-split token) routes through AuthConfig.from_header_string
+    instead of the plain-bearer branch — produces a custom header, not
+    Authorization: Bearer <token>."""
+    from nuguard.redteam.target.canary import CanaryConfig, CanaryTenant
+
+    canary_config = CanaryConfig(
+        tenants=[CanaryTenant(tenant_id="tenant-a", session_token="X-API-Key: sk-canary-123")]
+    )
+    sbom = _make_sbom([_api_node("ep1", "Endpoint")])
+    gen = ScenarioGenerator(sbom, canary_config=canary_config)
+    assert gen._canary_auth_headers == {"X-API-Key": "sk-canary-123"}
+
+
+def test_generator_custom_header_canary_token_routes_mass_assignment_on_the_wire_shape():
+    """The resolved custom-header canary credential is what actually gets
+    applied to a write-capable scenario's step, not just resolved and
+    discarded."""
+    from nuguard.redteam.target.canary import CanaryConfig, CanaryTenant
+
+    canary_config = CanaryConfig(
+        tenants=[CanaryTenant(tenant_id="tenant-a", session_token="X-API-Key: sk-canary-123")]
+    )
+    node = _api_node("ep2", "Create User", path="/api/users", method="POST")
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom, canary_config=canary_config)
+    scenarios = gen.generate()
+    mass = [s for s in scenarios if s.scenario_type == ScenarioType.MASS_ASSIGNMENT]
+    assert len(mass) == 1
+    step = mass[0].chain.steps[0]
+    assert step.strip_auth is True
+    assert step.extra_headers == {"X-API-Key": "sk-canary-123"}
+
+
+# ---------------------------------------------------------------------------
+# credential_fallback_notes recorded once, not per-endpoint (issue #561)
+# ---------------------------------------------------------------------------
+
+def test_generator_credential_fallback_note_emitted_once_for_multiple_endpoints():
+    nodes = [
+        _api_node("ep2", "Create User", path="/api/users", method="POST"),
+        _api_node("ep12", "Create Order", path="/api/orders", method="POST"),
+        _api_node("ep13", "Create Comment", path="/api/comments", method="POST"),
+    ]
+    sbom = _make_sbom(nodes)
+    gen = ScenarioGenerator(sbom)
+    scenarios = gen.generate()
+    mass = [s for s in scenarios if s.scenario_type == ScenarioType.MASS_ASSIGNMENT]
+    assert len(mass) == 3  # one per endpoint — the note-dedup subject
+    assert len(gen.credential_fallback_notes) == 1
+
+
+def test_generator_credential_fallback_note_not_duplicated_across_legacy_and_catalog_paths():
+    """Mirrors RedteamOrchestrator.run(): generate() (legacy path) then
+    generate_from_catalog() on the SAME generator instance — the catalog's
+    _build_mass_assignment factory is a second, independent source of a
+    write-capable scenario (issue #561 Gap B); the fallback note must still
+    only appear once total, not once per source."""
+    node = _api_node("ep2", "Create User", path="/api/users", method="POST")
+    sbom = _make_sbom([node])
+    gen = ScenarioGenerator(sbom)
+
+    gen.generate()
+    assert len(gen.credential_fallback_notes) == 1
+
+    gen.generate_from_catalog(scan_profile="full")
+    assert len(gen.credential_fallback_notes) == 1
 
 
 def test_generator_produces_idor_for_id_param_endpoint():

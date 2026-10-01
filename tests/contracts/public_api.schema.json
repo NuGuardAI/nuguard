@@ -10870,6 +10870,19 @@
             "title": "Target",
             "type": "string"
           },
+          "local_cloned_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
+            "title": "Local Cloned Path"
+          },
           "nodes": {
             "description": "Detected AI components",
             "items": {
@@ -14058,6 +14071,19 @@
             "description": "Repository URL or local path that was scanned",
             "title": "Target",
             "type": "string"
+          },
+          "local_cloned_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
+            "title": "Local Cloned Path"
           },
           "nodes": {
             "description": "Detected AI components",
@@ -17463,6 +17489,19 @@
             "title": "Target",
             "type": "string"
           },
+          "local_cloned_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
+            "title": "Local Cloned Path"
+          },
           "nodes": {
             "description": "Detected AI components",
             "items": {
@@ -20559,6 +20598,19 @@
             "description": "Repository URL or local path that was scanned",
             "title": "Target",
             "type": "string"
+          },
+          "local_cloned_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
+            "title": "Local Cloned Path"
           },
           "nodes": {
             "description": "Detected AI components",

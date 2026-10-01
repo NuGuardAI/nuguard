@@ -57,6 +57,7 @@ def _clone_remote_source_for_analysis(url: str, ref: str | None = None) -> str |
 
     from nuguard.cli.commands.sbom import _inject_token, _resolve_token  # noqa: PLC0415
     from nuguard.sbom.extractor import AiSbomExtractor  # noqa: PLC0415
+    from nuguard.sbom.extractor.github_clone import resolve_and_clone  # noqa: PLC0415
 
     clone_dir = tempfile.mkdtemp(prefix="nuguard_analyze_clone_")
     try:
@@ -68,8 +69,11 @@ def _clone_remote_source_for_analysis(url: str, ref: str | None = None) -> str |
         )
         repo_dir = Path(clone_dir) / "repo"
         repo_dir.mkdir(parents=True, exist_ok=True)
-        AiSbomExtractor._clone_repo(url=clone_url, ref=ref, dest=repo_dir)
-        return str(repo_dir)
+        cloned = resolve_and_clone(
+            clone_url, ref, repo_dir, clone_plain=AiSbomExtractor._clone_repo
+        )
+        _log.info("Cloned %s -> %s (ref=%s)", url, cloned.path, cloned.ref_used)
+        return str(cloned.path)
     except Exception as exc:
         _log.warning("_clone_remote_source_for_analysis: clone of %s failed: %s", url, exc)
         typer.echo(
