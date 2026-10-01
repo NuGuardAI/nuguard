@@ -261,6 +261,8 @@ async def _verify_async(
         discovered_list = resolved_endpoint.payload_list
         chat_response_key = resolved_endpoint.response_key
         pre_resolution_notes.extend(resolved_endpoint.notes)
+        # Keep a live-probe-confirmed endpoint instead of re-resolving it below.
+        keep_resolved = not ep_configured and resolved_endpoint.path_source.value == "probe"
 
         try:
             session_cfg, report = await resolve_target_session(
@@ -275,9 +277,10 @@ async def _verify_async(
                 chat_response_key=chat_response_key,
                 canary_config=canary_config,
                 config_path=config_path,
-                endpoint_explicit=bool(ep_configured),
-                payload_key_explicit="redteam_chat_payload_key" in configured_fields,
+                endpoint_explicit=bool(ep_configured) or keep_resolved,
+                payload_key_explicit=keep_resolved or "redteam_chat_payload_key" in configured_fields,
                 response_key_explicit="redteam_chat_response_key" in configured_fields,
+                endpoint_source_hint="probe" if keep_resolved else None,
             )
         except TargetEndpointNotFoundError as exc:
             console.print(f"[red]✗ Endpoint discovery failed:[/red] {exc}")
