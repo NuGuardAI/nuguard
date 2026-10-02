@@ -166,3 +166,48 @@ def test_verify_without_sbom_notes_discovery_unavailable() -> None:
     assert result.exit_code == 0, result.output
     assert "discovery skipped" in result.output
     assert "API Endpoint" in result.output
+
+
+@respx.mock
+def test_verify_keeps_live_probed_endpoint_for_session_resolution(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """An endpoint the pre-bootstrap probe confirmed (e.g. kscope's /extract,
+    not chat-named) is passed to the shared session resolver as kept, so it is
+    not re-resolved to another SBOM candidate."""
+    from nuguard.common.errors import TargetEndpointNotFoundError
+
+    respx.get(url__regex=r".*").mock(return_value=httpx.Response(404))
+    respx.post(f"{TARGET}/chat").mock(
+        return_value=httpx.Response(400, json={"error": "consumerID and message are required"})
+    )
+    respx.post(f"{TARGET}/extract").mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+    respx.post(url__regex=r".*").mock(return_value=httpx.Response(404))
+    doc = AiSbomDocument.model_validate(
+        {"target": "./test-app", "summary": {"api_endpoints": ["/chat", "/extract"]}}
+    )
+    sbom_path = tmp_path / "app.sbom.json"
+    sbom_path.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
+
+    captured: dict = {}
+
+    async def _fake_resolve_target_session(**kwargs):
+        captured.update(kwargs)
+        raise TargetEndpointNotFoundError("stop after capture", url=TARGET)
+
+    monkeypatch.setattr(
+        "nuguard.common.session_resolver.resolve_target_session",
+        _fake_resolve_target_session,
+    )
+    result = runner.invoke(
+        app,
+        ["target", "verify", "--target", TARGET, "--sbom", str(sbom_path)],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert captured["chat_path"] == "/extract"
+    assert captured["endpoint_explicit"] is True
+    assert captured["payload_key_explicit"] is True
+    assert captured["endpoint_source_hint"] == "probe"

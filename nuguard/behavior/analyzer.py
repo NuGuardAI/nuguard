@@ -220,6 +220,8 @@ class BehaviorAnalyzer:
                 # confirmed endpoint is found even when its path doesn't look
                 # chat-like (e.g. "/extract").
                 _confirmed = None
+                # Set only when the endpoint below is live-confirmed, so the runner keeps it.
+                _endpoint_source: str | None = None
                 if not (_key_explicit or _list_explicit or _response_explicit) and self._sbom is not None:
                     _configured_path = (
                         getattr(self._config, "target_endpoint", "")
@@ -236,6 +238,7 @@ class BehaviorAnalyzer:
 
                 if _confirmed is not None:
                     _c_path, _c_key, _c_list, _c_resp = _confirmed
+                    _endpoint_source = "enriched_sbom_cache"
                     resolved_updates["target_endpoint"] = _c_path
                     resolved_updates["chat_payload_key"] = _c_key
                     resolved_updates["chat_payload_list"] = _c_list
@@ -275,6 +278,8 @@ class BehaviorAnalyzer:
                     )
                     if resolved_endpoint.path:
                         resolved_updates["target_endpoint"] = resolved_endpoint.path
+                    if resolved_endpoint.path_source.value == "probe":
+                        _endpoint_source = "probe"
                     if resolved_endpoint.payload_key:
                         resolved_updates["chat_payload_key"] = resolved_endpoint.payload_key
                     resolved_updates["chat_payload_list"] = resolved_endpoint.payload_list
@@ -311,6 +316,8 @@ class BehaviorAnalyzer:
                     "llm_client": self._llm,
                     "judge_cache": judge_cache,
                     "endpoint_explicitly_set": _user_had_explicit_endpoint,
+                    "resolved_endpoint_source": _endpoint_source,
+                    "user_config_fields": frozenset(configured_fields),
                 }
                 if self._progress_sink is not None:
                     runner_kwargs["progress_sink"] = self._emit_progress

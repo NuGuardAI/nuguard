@@ -777,6 +777,8 @@ class BehaviorRunner:
         judge_cache: Any = None,
         endpoint_explicitly_set: bool | None = None,
         progress_sink: Callable[[dict[str, Any]], None] | None = None,
+        resolved_endpoint_source: str | None = None,
+        user_config_fields: frozenset[str] | None = None,
     ) -> None:
         self._config = config
         self._sbom = sbom
@@ -791,6 +793,11 @@ class BehaviorRunner:
         # user actually wrote in nuguard.yaml. None means "no analyzer involved
         # (e.g. direct BehaviorRunner use)" — fall back to config truthiness.
         self._endpoint_explicitly_set = endpoint_explicitly_set
+        # Source of an endpoint BehaviorAnalyzer already live-confirmed ("probe" /
+        # "enriched_sbom_cache"); None when it was not confirmed and must be resolved here.
+        self._resolved_endpoint_source = resolved_endpoint_source
+        # Fields the user actually set; config.model_fields_set also includes analyzer updates.
+        self._user_config_fields = user_config_fields
         self._progress_sink = progress_sink
 
         self._judge = BehaviorJudge(llm_client=llm_client, intent=intent, judge_cache=judge_cache)
@@ -915,6 +922,15 @@ class BehaviorRunner:
                 login_flow=getattr(auth, "login_flow", None),
                 cookie_file=getattr(auth, "cookie_file", ""),
             )
+        user_fields: frozenset[str] = (
+            self._user_config_fields
+            if self._user_config_fields is not None
+            else frozenset(getattr(self._config, "model_fields_set", ()))
+        )
+        keep_resolved = bool(
+            self._resolved_endpoint_source and getattr(self._config, "target_endpoint", "")
+        )
+        chat_response_key = getattr(self._config, "chat_response_key", None) or None
         try:
             session_cfg, health_report = await resolve_target_session(
                 target_url=getattr(self._config, "target", "") or "",
@@ -925,13 +941,17 @@ class BehaviorRunner:
                 chat_payload_key=getattr(self._config, "chat_payload_key", "message") or "message",
                 chat_payload_list=bool(getattr(self._config, "chat_payload_list", False)),
                 chat_payload_extras=dict(getattr(self._config, "chat_payload_extras", None) or {}),
-                chat_response_key=getattr(self._config, "chat_response_key", None) or None,
+                chat_response_key=chat_response_key,
                 config_path=self._config_path,
                 request_timeout=float(getattr(self._config, "request_timeout", 60.0)),
                 payload_format=getattr(self._config, "chat_payload_format", "json") or "json",
-                endpoint_explicit=self._endpoint_is_explicit(),
-                payload_key_explicit="chat_payload_key" in getattr(self._config, "model_fields_set", set()),
-                response_key_explicit="chat_response_key" in getattr(self._config, "model_fields_set", set()),
+                endpoint_explicit=self._endpoint_is_explicit() or keep_resolved,
+                payload_key_explicit=keep_resolved or "chat_payload_key" in user_fields,
+                response_key_explicit=(
+                    (keep_resolved and chat_response_key is not None)
+                    or "chat_response_key" in user_fields
+                ),
+                endpoint_source_hint=self._resolved_endpoint_source if keep_resolved else None,
             )
         except Exception as exc:  # noqa: BLE001
             _log.debug("Behavior shared target resolution skipped: %s", exc)
@@ -1360,7 +1380,12 @@ class BehaviorRunner:
         # show the actual backend URL, not the original config URL (which may have been
         # a static-hosting site that was swapped for the SBOM deployment URL).
         target_url = getattr(client, "base_url", None) or getattr(self._config, "target", "") or ""
-        endpoint = getattr(self._config, "target_endpoint", "") or ""
+        # The client's path is what requests actually use (it may differ after shared resolution).
+        _client_path = getattr(client, "chat_path", None)
+        endpoint = (
+            _client_path if isinstance(_client_path, str) and _client_path else
+            getattr(self._config, "target_endpoint", "") or ""
+        )
         from nuguard.redteam.target.session import AttackSession
         session = AttackSession(
             session_id=run_id,
@@ -2523,6 +2548,10 @@ class BehaviorRunner:
             _log.warning("probe_tool_families: failed to build client (%s)", exc)
             return {}
 
+        if not await self._ensure_endpoint_preflight(client):
+            _log.info("probe_tool_families: skipped — no working chat endpoint")
+            return {}
+
         target_url = getattr(self, "_resolved_target_url", None) or getattr(self._config, "target", "") or ""
         _console.rule("[bold cyan]Tool-family Reachability Probe[/bold cyan]", style="dim cyan")
 
@@ -2934,18 +2963,57 @@ class BehaviorRunner:
                     f"[bold]{getattr(scenario, 'name', '?')}[/bold]  "
                     f"[dim]{getattr(getattr(scenario, 'scenario_type', None), 'value', getattr(scenario, 'scenario_type', ''))}[/dim]"
                 )
-                _scenario_client = await self._build_client() if _isolate else client
+                _scenario_type = getattr(
+                    getattr(scenario, "scenario_type", None), "value",
+                    getattr(scenario, "scenario_type", None),
+                )
+                _is_endpoint_coverage = _scenario_type == "endpoint_coverage"
+                _owns_scenario_client = _isolate or _is_endpoint_coverage
+                _scenario_client = await self._build_client() if _owns_scenario_client else client
                 # Apply any endpoint rotation discovered during pre-flight so each
                 # isolated scenario client uses the correct (non-broken) endpoint.
-                if _isolate and self._rotated_chat_endpoint:
+                if _owns_scenario_client and self._rotated_chat_endpoint:
                     _scenario_client.set_chat_endpoint(*self._rotated_chat_endpoint)
                 # Replay path params bootstrapped during pre-flight (e.g. a
                 # two-step chat's conversation ":id") — a fresh isolated client
                 # otherwise starts with none bound, causing every turn to fail
                 # with an unresolved-path-param config error.
-                if _isolate and self._bootstrapped_path_params and hasattr(_scenario_client, "set_path_param"):
+                if _owns_scenario_client and self._bootstrapped_path_params and hasattr(_scenario_client, "set_path_param"):
                     for _pp_name, _pp_value in self._bootstrapped_path_params.items():
                         _scenario_client.set_path_param(_pp_name, _pp_value)
+                _coverage_endpoint = getattr(scenario, "target_endpoint", None)
+                if _is_endpoint_coverage and _coverage_endpoint:
+                    endpoint_metadata = next(
+                        (
+                            getattr(node, "metadata", None)
+                            for node in getattr(self._sbom, "nodes", [])
+                            if getattr(getattr(node, "metadata", None), "endpoint", None)
+                            == _coverage_endpoint
+                        ),
+                        None,
+                    )
+                    payload_key = (
+                        getattr(endpoint_metadata, "chat_payload_key", None)
+                        or getattr(self._config, "chat_payload_key", "message")
+                        or "message"
+                    )
+                    payload_list = (
+                        bool(endpoint_metadata.chat_payload_list)
+                        if endpoint_metadata is not None
+                        and getattr(endpoint_metadata, "chat_payload_key", None)
+                        else bool(getattr(self._config, "chat_payload_list", False))
+                    )
+                    response_key = (
+                        getattr(endpoint_metadata, "response_text_key", None)
+                        or getattr(self._config, "chat_response_key", None)
+                        or None
+                    )
+                    _scenario_client.set_chat_endpoint(
+                        _coverage_endpoint,
+                        payload_key,
+                        payload_list,
+                        response_key,
+                    )
                 try:
                     # Per-scenario wall-clock timeout (issue #508) — mirrors redteam's
                     # scenario_timeout. asyncio.wait_for raises TimeoutError, already
@@ -2959,6 +3027,8 @@ class BehaviorRunner:
                     _first_verdict = (result.verdicts if result else None or [][:1])
                     _first_v = _first_verdict[0] if _first_verdict else None
                     _is_first_turn_405 = (
+                        not _is_endpoint_coverage
+                        and
                         _first_v is not None
                         and "[HTTP 405]" in str(_first_v.get("reasoning", ""))
                     )
@@ -3006,7 +3076,7 @@ class BehaviorRunner:
                         )
                     return None
                 finally:
-                    if _isolate:
+                    if _owns_scenario_client:
                         await _scenario_client.aclose()
 
         # Defer destructive scenarios (cancel, delete, close, etc.) to the end
