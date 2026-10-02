@@ -352,6 +352,13 @@ redteam:
       expect: refused
       severity: critical
 
+  # Number of paraphrase variants generated per regression above (roleplay,
+  # extraction-between-markers, audit-evidence, encoded, second-person
+  # indirection) — catches the case where the literal configured message is
+  # refused but a trivially-similar paraphrase succeeds. Built-in templates
+  # work without an attack LLM; set 0 to evaluate only the literal message.
+  defence_regression_paraphrases: 5
+
   # Per-request HTTP timeout in seconds (default: 120)
   # Multi-agent pipelines with LLM calls can take 60–120 s; increase for slow apps
   request_timeout: 120

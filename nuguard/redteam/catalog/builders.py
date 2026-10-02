@@ -69,6 +69,10 @@ def _stamp(scenarios: list, ctx: BuilderContext) -> list:
             "safe_execution": spec.safe_execution,
             "required_capabilities": [c.value for c in spec.required_capabilities],
             "expected_control": spec.expected_control,
+            "identity_sensitive": spec.identity_sensitive,
+            "decorator_allowed": spec.decorator_allowed,
+            "dual_path": spec.dual_path,
+            "observation_parallel": spec.observation_parallel,
         }))
     return stamped
 
@@ -833,4 +837,23 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "quality_gate_inference":     _build_quality_gate_inference,
     "artifact_integrity_probe":   _build_artifact_integrity_probe,
     "cross_env_credential_reuse": _build_cross_env_credential_reuse,
+    # ── Trust/identity-binding (A10-A11) — redteam-proposal.md W2 ─────────
+    # Disabled specs; real logic lands with the Phase 3 TrustContext wrapper.
+    "identity_binding_conflict":   _stub("identity_binding_conflict"),
+    "identity_invalid_cred_spoof": _stub("identity_invalid_cred_spoof"),
+    # ── Agentic Surface Exposure (W01-W04) — redteam-proposal.md W1 ───────
+    "surface_unauth_inventory":   _stub("surface_unauth_inventory"),
+    "surface_schema_exposure":    _stub("surface_schema_exposure"),
+    "surface_unauth_observation": _stub("surface_unauth_observation"),
+    "surface_cors_misconfig":     _stub("surface_cors_misconfig"),
+    # ── Dual-Path Tool Exposure (X01-X02) — redteam-proposal.md W10 ───────
+    "dual_path_read":             _stub("dual_path_read"),
+    "dual_path_write":            _stub("dual_path_write"),
+    # ── Router and Agent-Selection Abuse (Q01-Q03) — redteam-proposal.md W4 ─
+    "router_keyword_seed":        _stub("router_keyword_seed"),
+    "router_privileged_probe":    _stub("router_privileged_probe"),
+    "router_side_channel":        _stub("router_side_channel"),
+    # ── Observation and Side-Channel (L01-L02) — redteam-proposal.md W7 ───
+    "observation_unauth_connect":      _stub("observation_unauth_connect"),
+    "observation_cross_session_leak":  _stub("observation_cross_session_leak"),
 }

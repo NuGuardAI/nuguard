@@ -592,6 +592,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     # Redteam defence_regressions
     if isinstance(redteam, dict) and "defence_regressions" in redteam:
         flat["redteam_defence_regressions"] = redteam["defence_regressions"]
+    if isinstance(redteam, dict) and "defence_regression_paraphrases" in redteam:
+        flat["redteam_defence_regression_paraphrases"] = redteam["defence_regression_paraphrases"]
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
@@ -1896,6 +1898,16 @@ class NuGuardConfig(BaseSettings):
     redteam_defence_regressions: list[dict] = Field(
         default_factory=list,
         description="Defence regression scenarios declared in nuguard.yaml redteam.defence_regressions.",
+    )
+    redteam_defence_regression_paraphrases: int = Field(
+        default=5,
+        description=(
+            "Number of paraphrase variants generated per defence_regressions entry "
+            "(roleplay, extraction-between-markers, audit-evidence, encoded, "
+            "second-person indirection). 0 disables paraphrase expansion and "
+            "evaluates only the literal configured message "
+            "(yaml: redteam.defence_regression_paraphrases)."
+        ),
     )
 
     def resolved_auth_config(self) -> "AuthConfig":
