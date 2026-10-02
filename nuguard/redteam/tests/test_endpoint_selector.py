@@ -4,9 +4,11 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 
+from nuguard.common.llm_client import LLMClient
 from nuguard.redteam.scenarios.endpoint_selector import (
     PROBE_FAMILIES,
     EndpointPlan,
@@ -54,9 +56,13 @@ class _FakeLLM:
         return self.reply
 
 
+def _llm(reply: str | Exception) -> LLMClient:
+    return cast("LLMClient", _FakeLLM(reply))
+
+
 @pytest.mark.asyncio
 async def test_no_plan_below_threshold() -> None:
-    assert await build_endpoint_plan(_sbom(10), profile="full", llm=_FakeLLM("{}")) is None
+    assert await build_endpoint_plan(_sbom(10), profile="full", llm=_llm("{}")) is None
 
 
 @pytest.mark.asyncio
@@ -78,7 +84,7 @@ async def test_llm_scopes_families_above_threshold() -> None:
     sbom = _sbom(30)
     ids = [str(n.id) for n in sbom.nodes]
     reply = json.dumps({"xss": [ids[0], ids[1], "bogus-id"], "jwt_tampering": [ids[2]]})
-    plan = await build_endpoint_plan(sbom, profile="full", llm=_FakeLLM(reply), threshold=25)
+    plan = await build_endpoint_plan(sbom, profile="full", llm=_llm(reply), threshold=25)
     assert plan is not None
     assert plan.allowed["xss"] == {ids[0], ids[1]}  # unknown ids dropped
     assert plan.permits("xss", ids[0]) and not plan.permits("xss", ids[5])
@@ -88,7 +94,7 @@ async def test_llm_scopes_families_above_threshold() -> None:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("reply", [RuntimeError("boom"), "not json"])
 async def test_llm_failure_falls_back_with_note(reply: str | Exception) -> None:
-    plan = await build_endpoint_plan(_sbom(30), profile="full", llm=_FakeLLM(reply))
+    plan = await build_endpoint_plan(_sbom(30), profile="full", llm=_llm(reply))
     assert plan is not None and plan.notes
     assert plan.permits("xss", "anything")  # no narrowing on failure
 
