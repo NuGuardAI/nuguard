@@ -92,11 +92,14 @@ class DiscoveredProfile(BaseModel):
         return not self.customer_name and not self.ids
 
 
-def profile_cache_fingerprint(target_url: str, auth_config: "AuthConfig | None") -> str:
-    """Stable fingerprint of (target_url, auth identity) a cached
-    ``discovered_profile`` is captured against — used to detect when a
-    cached profile no longer applies because the target or identity changed
-    (see :func:`cached_discovery_profile`).
+def auth_identity_string(auth_config: "AuthConfig | None") -> str:
+    """Stable string identifying *auth_config*'s configured credential.
+
+    Shared building block for every target/auth cache fingerprint in this
+    codebase (see :func:`profile_cache_fingerprint` and
+    :func:`nuguard.common.endpoint_preflight.endpoint_cache_fingerprint`) —
+    factored out so both fingerprints apply the identical, type-aware rule
+    rather than maintaining two copies of it.
 
     Deliberately type-aware per auth type rather than a blind reuse of
     ``AuthConfig.header`` (the approach
@@ -104,12 +107,12 @@ def profile_cache_fingerprint(target_url: str, auth_config: "AuthConfig | None")
     uses for structural-enrichment caching): ``header`` is empty for
     ``login_flow`` auth, so reusing it here would make the fingerprint
     unable to distinguish two different login_flow identities against the
-    same target — exactly the scenario this fingerprint exists to catch.
+    same target — exactly the scenario these fingerprints exist to catch.
 
-    Hashes only the *static configured* credential (header string, username,
-    login_flow payload/endpoint, cookie_file path) — never a dynamically
-    acquired session token — so the same configured identity produces the
-    same fingerprint across separate runs/processes.
+    Built only from the *static configured* credential (header string,
+    username, login_flow payload/endpoint, cookie_file path) — never a
+    dynamically acquired session token — so the same configured identity
+    produces the same string across separate runs/processes.
     """
     identity = "none"
     if auth_config is not None:
@@ -127,6 +130,16 @@ def profile_cache_fingerprint(target_url: str, auth_config: "AuthConfig | None")
             identity = f"cookie_file:{auth_config.cookie_file}"
         elif auth_type != "none":
             identity = auth_type
+    return identity
+
+
+def profile_cache_fingerprint(target_url: str, auth_config: "AuthConfig | None") -> str:
+    """Stable fingerprint of (target_url, auth identity) a cached
+    ``discovered_profile`` is captured against — used to detect when a
+    cached profile no longer applies because the target or identity changed
+    (see :func:`cached_discovery_profile`).
+    """
+    identity = auth_identity_string(auth_config)
     return hashlib.sha256(f"{target_url}|{identity}".encode()).hexdigest()
 
 

@@ -3635,13 +3635,59 @@ class RedteamOrchestrator:
             return cached
 
         from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
+            cached_endpoint_resolution,
+            persist_endpoint_resolution,
             validate_and_rotate_chat_endpoint,
         )
+
+        _has_explicit = self._chat_path_source == "config"
+        _sbom_hit = cached_endpoint_resolution(
+            self._sbom,
+            self._target_url,
+            self._auth_config,
+            required_chat_path=self._chat_path if _has_explicit else None,
+        )
+        if _sbom_hit is not None:
+            _resolved, _resolved_params = _sbom_hit
+            if hasattr(client, "set_chat_endpoint"):
+                client.set_chat_endpoint(
+                    _resolved.chat_path, _resolved.chat_payload_key,
+                    _resolved.chat_payload_list, _resolved.chat_response_key,
+                )
+            if hasattr(client, "set_path_param"):
+                for _pp_name, _pp_value in _resolved_params.items():
+                    client.set_path_param(_pp_name, _pp_value)
+            self._chat_path = _resolved.chat_path
+            self._chat_payload_key = _resolved.chat_payload_key
+            self._chat_payload_list = _resolved.chat_payload_list
+            if _resolved.chat_response_key:
+                self._chat_response_key = _resolved.chat_response_key
+            if _resolved.endpoint_source and not _has_explicit and _resolved.endpoint_source != "config":
+                # "config" is only a truthful source label for the run that
+                # actually configured the endpoint explicitly — a non-explicit
+                # run reusing that run's cached resolution must not inherit
+                # the label (it never configured anything itself).
+                self._chat_path_source = _resolved.endpoint_source
+            _tsc = getattr(self, "_target_session_config", None)
+            if _tsc is not None:
+                _tsc.chat_path = self._chat_path
+                _tsc.chat_payload_key = self._chat_payload_key
+                _tsc.chat_payload_list = self._chat_payload_list
+                if _resolved.chat_response_key:
+                    _tsc.chat_response_key = _resolved.chat_response_key
+            self._preflight_path_params = dict(_resolved_params)
+            _hit_note = (
+                f"Chat endpoint {self._chat_path!r} reused from a previously-validated "
+                "SBOM resolution — skipped live preflight."
+            )
+            self.config_notes.append(_hit_note)
+            self._preflight_result = (True, [_hit_note])
+            return self._preflight_result
 
         _pf = await validate_and_rotate_chat_endpoint(
             client,
             self._sbom,
-            has_explicit_endpoint=self._chat_path_source == "config",
+            has_explicit_endpoint=_has_explicit,
             target_url=self._target_url,
             auth_headers=auth_headers,
             max_candidates=self._preflight_candidates,
@@ -3664,6 +3710,30 @@ class RedteamOrchestrator:
         _pp = getattr(client, "path_param_values", None)
         self._preflight_path_params = dict(_pp) if isinstance(_pp, dict) else {}
         self._preflight_result = (_pf.ok, list(_pf.notes))
+
+        if _pf.ok and self._sbom is not None:
+            persist_endpoint_resolution(
+                self._sbom,
+                self._target_url,
+                self._auth_config,
+                chat_path=self._chat_path,
+                chat_payload_key=self._chat_payload_key,
+                chat_payload_list=self._chat_payload_list,
+                chat_response_key=self._chat_response_key,
+                endpoint_source=self._chat_path_source,
+                path_param_values=self._preflight_path_params,
+            )
+            if self._sbom_path is not None:
+                from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
+                    persist_endpoint_resolution_sbom,
+                )
+
+                try:
+                    _ep_artifact = persist_endpoint_resolution_sbom(self._sbom, self._sbom_path)
+                    _log.info("preflight: persisted endpoint resolution to %s", _ep_artifact)
+                except Exception as exc:
+                    _log.warning("preflight: could not persist endpoint resolution: %s", exc)
+
         return self._preflight_result
 
     async def _maybe_probe_endpoints(self) -> None:

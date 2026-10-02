@@ -2352,6 +2352,8 @@ class BehaviorRunner:
         preflight_ok = True
         try:
             from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
+                cached_endpoint_resolution,
+                persist_endpoint_resolution,
                 validate_and_rotate_chat_endpoint,
             )
 
@@ -2363,6 +2365,47 @@ class BehaviorRunner:
                 or getattr(self._config, "target", None)
                 or ""
             )
+            _auth_config = self._discovery_auth_config()
+            _current_chat_path = getattr(client, "chat_path", None)
+            _sbom_hit = cached_endpoint_resolution(
+                self._sbom,
+                _target_url,
+                _auth_config,
+                required_chat_path=_current_chat_path if _has_explicit_endpoint else None,
+            )
+            if _sbom_hit is not None:
+                _resolved, _resolved_params = _sbom_hit
+                if hasattr(client, "set_chat_endpoint"):
+                    client.set_chat_endpoint(
+                        _resolved.chat_path, _resolved.chat_payload_key,
+                        _resolved.chat_payload_list, _resolved.chat_response_key,
+                    )
+                if hasattr(client, "set_path_param"):
+                    for _pp_name, _pp_value in _resolved_params.items():
+                        client.set_path_param(_pp_name, _pp_value)
+                if _current_chat_path is not None and _resolved.chat_path != _current_chat_path:
+                    self._rotated_chat_endpoint = (
+                        _resolved.chat_path, _resolved.chat_payload_key,
+                        _resolved.chat_payload_list, _resolved.chat_response_key,
+                    )
+                if (
+                    _resolved.endpoint_source
+                    and not _has_explicit_endpoint
+                    and _resolved.endpoint_source != "config"
+                ):
+                    # "config" is only a truthful source label for the run that
+                    # actually configured the endpoint explicitly — a non-explicit
+                    # run reusing that run's cached resolution must not inherit
+                    # the label (it never configured anything itself).
+                    self._target_endpoint_source = _resolved.endpoint_source
+                self._bootstrapped_path_params = dict(_resolved_params)
+                _console.print(
+                    f"  [cyan]Chat endpoint {_resolved.chat_path!r} reused from a "
+                    "previously-validated SBOM resolution — skipped live preflight.[/cyan]"
+                )
+                self._preflight_cache = True
+                return True
+
             _pf = await validate_and_rotate_chat_endpoint(
                 client,
                 self._sbom,
@@ -2387,6 +2430,42 @@ class BehaviorRunner:
             _client_path_params = getattr(client, "path_param_values", None)
             if isinstance(_client_path_params, dict):
                 self._bootstrapped_path_params = dict(_client_path_params)
+            if preflight_ok and self._sbom is not None:
+                # Prefer the already-tracked rotation tuple over re-reading
+                # client.chat_path: it's self-contained (set directly from
+                # _pf.rotated_endpoint above) rather than relying on
+                # validate_and_rotate_chat_endpoint having mutated *client*
+                # as a side effect.
+                if self._rotated_chat_endpoint:
+                    _final_chat_path, _final_payload_key, _final_payload_list, _final_response_key = (
+                        self._rotated_chat_endpoint
+                    )
+                else:
+                    _final_chat_path = getattr(client, "chat_path", None) or _current_chat_path or ""
+                    _final_payload_key = getattr(client, "_chat_payload_key", "message")
+                    _final_payload_list = bool(getattr(client, "_chat_payload_list", False))
+                    _final_response_key = getattr(client, "_chat_response_key", None)
+                persist_endpoint_resolution(
+                    self._sbom,
+                    _target_url,
+                    _auth_config,
+                    chat_path=_final_chat_path,
+                    chat_payload_key=_final_payload_key,
+                    chat_payload_list=_final_payload_list,
+                    chat_response_key=_final_response_key,
+                    endpoint_source=self._target_endpoint_source,
+                    path_param_values=self._bootstrapped_path_params,
+                )
+                if self._sbom_path is not None:
+                    from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
+                        persist_endpoint_resolution_sbom,
+                    )
+
+                    try:
+                        _ep_artifact = persist_endpoint_resolution_sbom(self._sbom, self._sbom_path)
+                        _log.info("behavior pre-flight: persisted endpoint resolution to %s", _ep_artifact)
+                    except Exception as exc:
+                        _log.warning("behavior pre-flight: could not persist endpoint resolution: %s", exc)
         except Exception as _pf_exc:
             from nuguard.common.errors import TargetQuotaExhaustedError  # noqa: PLC0415
 

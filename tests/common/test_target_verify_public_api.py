@@ -1099,3 +1099,400 @@ async def test_resolve_target_session_public_does_not_run_endpoint_preflight(mon
     )
 
     assert called is False
+
+
+# ---------------------------------------------------------------------------
+# resolved_chat_endpoint cache (issue #611 Phase 3) — verify_target() must
+# check the SBOM for a previously-validated resolution before running live
+# preflight, and persist a fresh one after. Mirrors
+# nuguard/redteam/tests/test_orchestrator_endpoint_cache.py for this third
+# call site of validate_and_rotate_chat_endpoint.
+# ---------------------------------------------------------------------------
+
+
+class _CacheAwareFakeClient:
+    def __init__(self, chat_path: str = "/chat") -> None:
+        self.chat_path = chat_path
+        self.path_param_values: dict[str, str] = {}
+        self._chat_payload_key = "message"
+        self._chat_payload_list = False
+        self._chat_response_key: str | None = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        _ = (exc_type, exc, tb)
+        return False
+
+    def set_chat_endpoint(self, path, payload_key, payload_list, response_key=None) -> None:
+        self.chat_path = path
+        self._chat_payload_key = payload_key
+        self._chat_payload_list = payload_list
+        self._chat_response_key = response_key
+
+    def set_path_param(self, name: str, value: str) -> None:
+        self.path_param_values[name] = value
+
+
+def _empty_discovery_sbom(**kwargs):
+    from nuguard.sbom.models import AiSbomDocument
+
+    return AiSbomDocument(target="./app", nodes=[], edges=[], **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_verify_target_cache_hit_skips_live_preflight(monkeypatch):
+    from nuguard.common.endpoint_preflight import persist_endpoint_resolution
+
+    sbom = _empty_discovery_sbom()
+    persist_endpoint_resolution(
+        sbom, "http://target", AuthConfig(type="none"),
+        chat_path="/cached/path", chat_payload_key="messages", chat_payload_list=True,
+        chat_response_key="reply", endpoint_source="sbom", path_param_values={"id": "conv-1"},
+    )
+    mock_validate = _make_async_mock_tracker()
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *a, **kw: _CacheAwareFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint", mock_validate
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.run_discovery",
+        _async_return(DiscoveryOutcome(profile=DiscoveredProfile(), notes=[])),
+    )
+
+    result = await verify_target(TargetVerifyRequest(target_url="http://target"), sbom=sbom)
+
+    assert mock_validate.calls == []
+    assert result.endpoint == "/cached/path"
+    assert result.all_ok is True
+
+
+@pytest.mark.asyncio
+async def test_verify_target_non_explicit_hit_does_not_inherit_config_source_label(monkeypatch):
+    """Regression: a cache entry written by an earlier EXPLICIT run must not
+    make a later NON-explicit verify_target() call falsely report
+    endpoint_source="config" — this call never configured chat_path itself."""
+    from nuguard.common.endpoint_preflight import persist_endpoint_resolution
+
+    sbom = _empty_discovery_sbom()
+    persist_endpoint_resolution(
+        sbom, "http://target", AuthConfig(type="none"),
+        chat_path="/chat", chat_payload_key="message", chat_payload_list=False,
+        chat_response_key=None, endpoint_source="config", path_param_values={},
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *a, **kw: _CacheAwareFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint",
+        _make_async_mock_tracker(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.run_discovery",
+        _async_return(DiscoveryOutcome(profile=DiscoveredProfile(), notes=[])),
+    )
+
+    result = await verify_target(TargetVerifyRequest(target_url="http://target"), sbom=sbom)
+
+    assert result.endpoint_source != "config"
+
+
+@pytest.mark.asyncio
+async def test_verify_target_cache_miss_runs_live_preflight_and_persists(monkeypatch):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    sbom = _empty_discovery_sbom()
+
+    async def _fake_preflight(client, sbom_arg, **kwargs):
+        _ = (client, sbom_arg, kwargs)
+        return PreflightOutcome(
+            ok=True, rotated_endpoint=("/new/path", "message", False, None),
+            endpoint_source="sbom", notes=[],
+        )
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *a, **kw: _CacheAwareFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint", _fake_preflight
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.run_discovery",
+        _async_return(DiscoveryOutcome(profile=DiscoveredProfile(), notes=[])),
+    )
+
+    result = await verify_target(TargetVerifyRequest(target_url="http://target"), sbom=sbom)
+
+    assert result.endpoint == "/new/path"
+    assert sbom.resolved_chat_endpoint is not None
+    assert sbom.resolved_chat_endpoint["chat_path"] == "/new/path"
+    assert sbom.resolved_chat_endpoint_fingerprint is not None
+
+
+@pytest.mark.asyncio
+async def test_verify_target_persists_to_disk_when_sbom_path_set(monkeypatch, tmp_path):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    sbom = _empty_discovery_sbom()
+    sbom_path = tmp_path / "app.sbom.json"
+    sbom_path.write_text(sbom.model_dump_json())
+
+    async def _fake_preflight(client, sbom_arg, **kwargs):
+        _ = (client, sbom_arg, kwargs)
+        return PreflightOutcome(ok=True, notes=[])
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *a, **kw: _CacheAwareFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint", _fake_preflight
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.run_discovery",
+        _async_return(DiscoveryOutcome(profile=DiscoveredProfile(), notes=[])),
+    )
+
+    await verify_target(TargetVerifyRequest(target_url="http://target"), sbom=sbom, sbom_path=sbom_path)
+
+    import json
+
+    written = json.loads(sbom_path.with_name("app.sbom.enriched.json").read_text())
+    assert written["resolved_chat_endpoint"]["chat_path"] == "/chat"
+
+
+@pytest.mark.asyncio
+async def test_verify_target_explicit_endpoint_ignores_cache_for_different_path(monkeypatch):
+    """Config-wins safeguard: a cached resolution for a DIFFERENT path than
+    the explicitly configured chat_path must never be used — live preflight
+    always runs on the explicit path instead."""
+    from nuguard.common.endpoint_preflight import PreflightOutcome, persist_endpoint_resolution
+
+    sbom = _empty_discovery_sbom()
+    persist_endpoint_resolution(
+        sbom, "http://target", AuthConfig(type="none"),
+        chat_path="/some/other/sbom/path", chat_payload_key="message", chat_payload_list=False,
+        chat_response_key=None, endpoint_source="sbom", path_param_values={},
+    )
+    mock_validate = _make_async_mock_tracker(
+        PreflightOutcome(ok=True, notes=[])
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *a, **kw: _CacheAwareFakeClient(chat_path="/explicitly/configured"),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint", mock_validate
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.run_discovery",
+        _async_return(DiscoveryOutcome(profile=DiscoveredProfile(), notes=[])),
+    )
+
+    await verify_target(
+        TargetVerifyRequest(target_url="http://target", chat_path="/explicitly/configured"), sbom=sbom
+    )
+
+    assert len(mock_validate.calls) == 1
+    assert mock_validate.calls[0]["has_explicit_endpoint"] is True
+
+
+def _make_async_mock_tracker(return_value=None):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    if return_value is None:
+        return_value = PreflightOutcome(ok=True, notes=[])
+
+    async def _tracked(client, sbom_arg, **kwargs):
+        _ = (client, sbom_arg)
+        _tracked.calls.append(kwargs)
+        return return_value
+
+    _tracked.calls = []
+    return _tracked
+
+
+def _async_return(value):
+    async def _inner(*args, **kwargs):
+        _ = (args, kwargs)
+        return value
+
+    return _inner
+
+
+# ---------------------------------------------------------------------------
+# discovered_profile cache (issue #611 Phase 2) — verify_target() must check
+# the SBOM for a previously-discovered profile before running the live
+# DISCOVER conversation, and persist a fresh one after. This mirrors the
+# resolved_chat_endpoint cache tests above but was missing entirely until
+# now: Phase 2 wired discovered_profile caching into BehaviorRunner and
+# RedteamOrchestrator but never into verify_target(), so every call re-ran
+# discovery live regardless of a prior successful discovery against the
+# same target/auth.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_verify_target_discovered_profile_cache_hit_skips_run_discovery(monkeypatch):
+    from nuguard.common.discovery import profile_cache_fingerprint
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    sbom = _empty_discovery_sbom()
+    cached = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
+    sbom.discovered_profile = cached.model_dump(mode="json")
+    sbom.discovered_profile_fingerprint = profile_cache_fingerprint("http://target", AuthConfig(type="none"))
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *a, **kw: _CacheAwareFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint",
+        _async_return(PreflightOutcome(ok=True)),
+    )
+    mock_run_discovery = _make_async_mock_tracker()
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", mock_run_discovery)
+
+    result = await verify_target(TargetVerifyRequest(target_url="http://target"), sbom=sbom)
+
+    assert mock_run_discovery.calls == []
+    assert result.discovered_profile is not None
+    assert result.discovered_profile.customer_name == "Asha Patel"
+    assert "Pre-scan discovery (from enriched SBOM)" in " ".join(result.discovery_notes)
+
+
+@pytest.mark.asyncio
+async def test_verify_target_discovered_profile_cache_miss_runs_and_persists(monkeypatch):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    sbom = _empty_discovery_sbom()
+    fresh = DiscoveredProfile(customer_name="Bo Chen", ids=["ACCT-9"], source="live")
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *a, **kw: _CacheAwareFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint",
+        _async_return(PreflightOutcome(ok=True)),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.run_discovery",
+        _async_return(DiscoveryOutcome(profile=fresh, notes=[])),
+    )
+
+    result = await verify_target(TargetVerifyRequest(target_url="http://target"), sbom=sbom)
+
+    assert result.discovered_profile is not None
+    assert result.discovered_profile.customer_name == "Bo Chen"
+    assert sbom.discovered_profile is not None
+    assert sbom.discovered_profile["customer_name"] == "Bo Chen"
+    assert sbom.discovered_profile_fingerprint is not None
+
+
+@pytest.mark.asyncio
+async def test_verify_target_persists_discovered_profile_to_disk_when_sbom_path_set(monkeypatch, tmp_path):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    sbom = _empty_discovery_sbom()
+    sbom_path = tmp_path / "app.sbom.json"
+    sbom_path.write_text(sbom.model_dump_json())
+    fresh = DiscoveredProfile(customer_name="Bo Chen", ids=["ACCT-9"], source="live")
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *a, **kw: _CacheAwareFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint",
+        _async_return(PreflightOutcome(ok=True)),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.run_discovery",
+        _async_return(DiscoveryOutcome(profile=fresh, notes=[])),
+    )
+
+    await verify_target(TargetVerifyRequest(target_url="http://target"), sbom=sbom, sbom_path=sbom_path)
+
+    import json
+
+    written = json.loads(sbom_path.with_name("app.sbom.enriched.json").read_text())
+    assert written["discovered_profile"]["customer_name"] == "Bo Chen"
+    assert written["discovered_profile_fingerprint"]
+
+
+@pytest.mark.asyncio
+async def test_verify_target_auth_mismatch_causes_independent_rediscovery(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from nuguard.common.discovery import profile_cache_fingerprint
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    sbom = _empty_discovery_sbom()
+    stale = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
+    sbom.discovered_profile = stale.model_dump(mode="json")
+    # Cached against a DIFFERENT target than this call will resolve to.
+    sbom.discovered_profile_fingerprint = profile_cache_fingerprint("http://a-different-target", None)
+
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.resolve_target_session",
+        _fake_resolve_target_session_factory(_session_config()),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.build_target_app_client_from_session",
+        lambda *a, **kw: _CacheAwareFakeClient(),
+    )
+    monkeypatch.setattr(
+        "nuguard.common.target_verify_public_api.validate_and_rotate_chat_endpoint",
+        _async_return(PreflightOutcome(ok=True)),
+    )
+    fresh = DiscoveredProfile(customer_name="Carla Diaz", ids=["ACCT-5"], source="live")
+    mock_run_discovery = AsyncMock(return_value=DiscoveryOutcome(profile=fresh, notes=[]))
+    monkeypatch.setattr("nuguard.common.target_verify_public_api.run_discovery", mock_run_discovery)
+
+    result = await verify_target(TargetVerifyRequest(target_url="http://target"), sbom=sbom)
+
+    # A genuine re-discovery attempt was made rather than reusing the stale
+    # cache from "a-different-target".
+    mock_run_discovery.assert_awaited_once()
+    assert result.discovered_profile is not None
+    assert result.discovered_profile.customer_name == "Carla Diaz"
+    assert sbom.discovered_profile["customer_name"] == "Carla Diaz"

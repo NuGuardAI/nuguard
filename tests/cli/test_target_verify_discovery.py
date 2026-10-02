@@ -497,3 +497,54 @@ def test_verify_auto_discovers_templated_endpoint_and_bootstraps_path_param(
     assert chat_endpoint in result.output
     assert "Alice Johnson" in result.output
     assert "ACCT-0001" in result.output
+
+
+@respx.mock
+def test_verify_run_twice_reuses_cached_endpoint_and_profile(tmp_path: Path) -> None:
+    """End-to-end regression for issue #611 Phase 2/3: two real, separate
+    `target verify` CLI invocations against the same --sbom file must share
+    the cached endpoint resolution and discovered profile, not re-probe and
+    re-discover from scratch every time.
+
+    This specifically covers a wiring gap found while adding this test:
+    _verify_async never loaded the already-enriched SBOM sidecar file it
+    itself writes (unlike `behavior`/`redteam`, which both call
+    enrich_sbom_for_run) — so a second real CLI invocation could never see
+    either cache, only the pristine source SBOM. Fixed by wiring
+    enrich_sbom_for_run into _verify_async and adding the discovered_profile
+    cache check/write _run_pre_scan_discovery was missing entirely.
+    """
+    doc = AiSbomDocument(
+        target="./test-app",
+        nodes=[
+            Node(
+                name="chat_endpoint",
+                component_type=NodeType.API_ENDPOINT,
+                confidence=0.95,
+                metadata=NodeMetadata(endpoint=ENDPOINT, method="POST", chat_payload_key="message"),
+            ),
+            Node(name="Assistant", component_type=NodeType.AGENT, confidence=0.95),
+        ],
+    )
+    sbom_path = tmp_path / "app.sbom.json"
+    sbom_path.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
+    route = respx.post(FULL_URL).mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+
+    args = ["target", "verify", "--target", TARGET, "--endpoint", ENDPOINT, "--sbom", str(sbom_path)]
+    first = runner.invoke(app, args)
+    assert first.exit_code == 0, first.output
+    assert "Alice Johnson" in first.output
+    calls_after_first_run = route.call_count
+
+    second = runner.invoke(app, args)
+
+    assert second.exit_code == 0, second.output
+    assert "Alice Johnson" in second.output
+    assert "ACCT-0001" in second.output
+    assert "reused from a previously-validated SBOM resolution" in second.output
+    assert "Pre-scan discovery (from enriched SBOM)" in second.output
+    # The second run must not re-probe/re-discover live — strictly fewer new
+    # HTTP calls than the first run made from a cold cache.
+    assert route.call_count - calls_after_first_run < calls_after_first_run

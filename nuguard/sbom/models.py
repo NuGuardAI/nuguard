@@ -1333,3 +1333,44 @@ class AiSbomDocument(BaseModel):
             "this field existed, which are therefore always treated as a miss."
         ),
     )
+    resolved_chat_endpoint: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Cached result of a live-validated chat-endpoint preflight (a "
+            "serialized nuguard.common.endpoint_preflight.CachedEndpointResolution: "
+            "chat_path, chat_payload_key, chat_payload_list, chat_response_key, "
+            "endpoint_source), persisted here after Target Verify/Behavior/Redteam "
+            "successfully validates (and possibly rotates to) a chat endpoint. "
+            "Later runs — by any of the three tools, in any order — reuse it "
+            "instead of re-probing the target live. Delete or regenerate the "
+            "enriched SBOM file to force fresh validation. Only trusted when "
+            "resolved_chat_endpoint_fingerprint matches the current run's "
+            "target_url/auth identity and this path's currently-declared "
+            "path_param_sources — see "
+            "nuguard.common.endpoint_preflight.cached_endpoint_resolution."
+        ),
+    )
+    resolved_path_param_values: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Path param values (e.g. a bootstrapped conversation :id obtained by "
+            "POSTing to a declared path_param_sources creation endpoint) bound "
+            "onto resolved_chat_endpoint's chat_path during preflight. Reused "
+            "alongside resolved_chat_endpoint whenever "
+            "resolved_chat_endpoint_fingerprint matches the current run."
+        ),
+    )
+    resolved_chat_endpoint_fingerprint: str | None = Field(
+        default=None,
+        description=(
+            "Hash of target_url + auth identity + resolved_chat_endpoint's "
+            "chat_path + that path's current path_param_sources declaration "
+            "(see nuguard.common.endpoint_preflight.endpoint_cache_fingerprint). "
+            "A cached resolved_chat_endpoint/resolved_path_param_values pair is "
+            "only reused when this matches — a target/auth change, or the SBOM "
+            "being regenerated with a different path_param_sources declaration "
+            "for this path, is treated as a cache miss and preflight re-runs "
+            "live. Absent on SBOMs persisted before this field existed, which "
+            "are therefore always treated as a miss."
+        ),
+    )

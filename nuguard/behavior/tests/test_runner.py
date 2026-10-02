@@ -2432,6 +2432,163 @@ async def test_discover_reuses_cached_sbom_profile_and_skips_run_discovery():
 
 
 # ---------------------------------------------------------------------------
+# _ensure_endpoint_preflight's SBOM-backed resolved_chat_endpoint cache
+# (issue #611 Phase 3) — mirrors nuguard/redteam/tests/test_orchestrator_endpoint_cache.py
+# for the sibling BehaviorRunner call site.
+# ---------------------------------------------------------------------------
+
+
+class _FakePreflightClient:
+    def __init__(self, chat_path: str = "/chat") -> None:
+        self.chat_path = chat_path
+        self.path_param_values: dict[str, str] = {}
+        self._chat_payload_key = "message"
+        self._chat_payload_list = False
+        self._chat_response_key: str | None = None
+
+    def set_chat_endpoint(self, path, payload_key, payload_list, response_key=None) -> None:
+        self.chat_path = path
+        self._chat_payload_key = payload_key
+        self._chat_payload_list = payload_list
+        self._chat_response_key = response_key
+
+    def set_path_param(self, name: str, value: str) -> None:
+        self.path_param_values[name] = value
+
+
+def _make_preflight_runner(sbom: AiSbomDocument, *, explicit: bool) -> BehaviorRunner:
+    return BehaviorRunner(
+        config=_make_config(),
+        sbom=sbom,
+        policy=None,
+        intent=_make_intent(),
+        llm_client=None,
+        endpoint_explicitly_set=explicit,
+    )
+
+
+async def test_ensure_endpoint_preflight_cache_hit_skips_live_preflight(monkeypatch):
+    from nuguard.common.endpoint_preflight import persist_endpoint_resolution
+
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    persist_endpoint_resolution(
+        sbom, _DISCOVERY_TARGET_URL, None,
+        chat_path="/cached/path", chat_payload_key="messages", chat_payload_list=True,
+        chat_response_key="reply", endpoint_source="sbom", path_param_values={"id": "conv-1"},
+    )
+    runner = _make_preflight_runner(sbom, explicit=False)
+    runner._resolved_target_url = _DISCOVERY_TARGET_URL
+    mock_validate = AsyncMock()
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint", mock_validate
+    )
+    client = _FakePreflightClient()
+
+    ok = await runner._ensure_endpoint_preflight(client)
+
+    mock_validate.assert_not_awaited()
+    assert ok is True
+    assert client.chat_path == "/cached/path"
+    assert client.path_param_values == {"id": "conv-1"}
+
+
+async def test_ensure_endpoint_preflight_cache_miss_persists(monkeypatch):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    runner = _make_preflight_runner(sbom, explicit=False)
+    runner._resolved_target_url = _DISCOVERY_TARGET_URL
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint",
+        AsyncMock(
+            return_value=PreflightOutcome(
+                ok=True, rotated_endpoint=("/new/path", "message", False, None),
+                endpoint_source="sbom", notes=[],
+            )
+        ),
+    )
+    client = _FakePreflightClient()
+
+    ok = await runner._ensure_endpoint_preflight(client)
+
+    assert ok is True
+    assert sbom.resolved_chat_endpoint is not None
+    assert sbom.resolved_chat_endpoint["chat_path"] == "/new/path"
+    assert sbom.resolved_chat_endpoint_fingerprint is not None
+
+
+async def test_ensure_endpoint_preflight_explicit_ignores_cache_for_different_path(monkeypatch):
+    from nuguard.common.endpoint_preflight import PreflightOutcome, persist_endpoint_resolution
+
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    persist_endpoint_resolution(
+        sbom, _DISCOVERY_TARGET_URL, None,
+        chat_path="/some/other/path", chat_payload_key="message", chat_payload_list=False,
+        chat_response_key=None, endpoint_source="sbom", path_param_values={},
+    )
+    runner = _make_preflight_runner(sbom, explicit=True)
+    runner._resolved_target_url = _DISCOVERY_TARGET_URL
+    mock_validate = AsyncMock(return_value=PreflightOutcome(ok=True, notes=[]))
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint", mock_validate
+    )
+    client = _FakePreflightClient(chat_path="/explicitly/configured")
+
+    await runner._ensure_endpoint_preflight(client)
+
+    mock_validate.assert_awaited_once()
+    assert mock_validate.await_args.kwargs["has_explicit_endpoint"] is True
+
+
+async def test_ensure_endpoint_preflight_explicit_matching_cached_path_is_reused(monkeypatch):
+    from nuguard.common.endpoint_preflight import persist_endpoint_resolution
+
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    persist_endpoint_resolution(
+        sbom, _DISCOVERY_TARGET_URL, None,
+        chat_path="/explicitly/configured", chat_payload_key="message", chat_payload_list=False,
+        chat_response_key=None, endpoint_source="config", path_param_values={"id": "conv-2"},
+    )
+    runner = _make_preflight_runner(sbom, explicit=True)
+    runner._resolved_target_url = _DISCOVERY_TARGET_URL
+    mock_validate = AsyncMock()
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint", mock_validate
+    )
+    client = _FakePreflightClient(chat_path="/explicitly/configured")
+
+    ok = await runner._ensure_endpoint_preflight(client)
+
+    mock_validate.assert_not_awaited()
+    assert ok is True
+    assert client.path_param_values == {"id": "conv-2"}
+
+
+async def test_ensure_endpoint_preflight_non_explicit_hit_does_not_inherit_config_source_label(monkeypatch):
+    """Regression: a cache entry written by an earlier EXPLICIT run must not
+    make a later NON-explicit run falsely report target_endpoint_source
+    == "config" — that run never configured anything itself."""
+    from nuguard.common.endpoint_preflight import persist_endpoint_resolution
+
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    persist_endpoint_resolution(
+        sbom, _DISCOVERY_TARGET_URL, None,
+        chat_path="/chat", chat_payload_key="message", chat_payload_list=False,
+        chat_response_key=None, endpoint_source="config", path_param_values={},
+    )
+    runner = _make_preflight_runner(sbom, explicit=False)
+    runner._resolved_target_url = _DISCOVERY_TARGET_URL
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint", AsyncMock()
+    )
+    client = _FakePreflightClient(chat_path="/chat")
+
+    await runner._ensure_endpoint_preflight(client)
+
+    assert runner._target_endpoint_source == "default"
+
+
+# ---------------------------------------------------------------------------
 # raw_request_body — the original request must survive into the report
 # ---------------------------------------------------------------------------
 
