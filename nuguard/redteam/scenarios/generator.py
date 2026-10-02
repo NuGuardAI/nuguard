@@ -69,6 +69,7 @@ from .data_exfiltration import (
     build_rag_poisoning,
     build_ssn_enumeration,
 )
+from .endpoint_selector import PROBE_FAMILIES, EndpointPlan
 from .evasion import build_encoding_evasion, build_multi_language_bypass
 from .faux_reasoning import (
     build_approval_state_forgery,
@@ -369,7 +370,11 @@ class ScenarioGenerator:
         sbom: AiSbomDocument,
         policy: CognitivePolicy | None = None,
         canary_config: "CanaryConfig | None" = None,
+        endpoint_plan: "EndpointPlan | None" = None,
     ) -> None:
+        # Optional relevance plan narrowing which API endpoints each direct-HTTP
+        # probe family is generated for (see endpoint_selector.build_endpoint_plan).
+        self._endpoint_plan = endpoint_plan
         # Build one non-mutating effective view for every red-team consumer.
         # Soft-rejected nodes remain in the original SBOM for recall and audit.
         effective_nodes = list(iter_effective_nodes(sbom.nodes))
@@ -1839,6 +1844,10 @@ class ScenarioGenerator:
             return False
         return not cls._NON_REST_ENDPOINT_RE.search(candidate)
 
+    def _endpoint_permits(self, family: str, endpoint_id: str) -> bool:
+        """Return True when the endpoint plan allows *family* for *endpoint_id*."""
+        return self._endpoint_plan is None or self._endpoint_plan.permits(family, endpoint_id)
+
     def _api_attack_scenarios(self) -> list[AttackScenario]:
         """Generate direct HTTP attack scenarios from API_ENDPOINT SBOM nodes.
 
@@ -1909,6 +1918,11 @@ class ScenarioGenerator:
             if not path_slug or path_slug in ("generic", "none", "null"):
                 continue
 
+            # Per-family relevance gate (None plan = every family allowed)
+            ok = {f: self._endpoint_permits(f, endpoint_id) for f in PROBE_FAMILIES}
+            if not any(ok.values()):
+                continue
+
             # Determine if this endpoint is obviously public
             path_segments = set(re.split(r"[/\-_.]", path_slug))
             is_public = bool(path_segments & self._PUBLIC_PATH_HINTS)
@@ -1933,37 +1947,39 @@ class ScenarioGenerator:
 
             # Auth bypass: explicit auth_required=True, or unknown (None) and not public
             if meta.auth_required or (meta.auth_required is None and not is_public):
-                out.append(
-                    build_auth_bypass(
-                        endpoint_id=endpoint_id,
-                        endpoint_name=node.name,
-                        path=path,
-                        method=method,
-                        request_body_schema=request_body_schema,
-                        sensitive_fields=endpoint_sensitive_fields,
+                if ok["auth_bypass"]:
+                    out.append(
+                        build_auth_bypass(
+                            endpoint_id=endpoint_id,
+                            endpoint_name=node.name,
+                            path=path,
+                            method=method,
+                            request_body_schema=request_body_schema,
+                            sensitive_fields=endpoint_sensitive_fields,
+                        )
                     )
-                )
 
                 # JWT tampering: same population as auth bypass — a forged
                 # token accepted is a stronger, more specific claim than a
                 # plain missing-auth-check, but only meaningful where auth is
                 # actually expected to be enforced.
-                out.append(
-                    build_jwt_tampering_probe(
-                        endpoint_id=endpoint_id,
-                        endpoint_name=node.name,
-                        path=path,
-                        method=method,
-                        request_body_schema=request_body_schema,
+                if ok["jwt_tampering"]:
+                    out.append(
+                        build_jwt_tampering_probe(
+                            endpoint_id=endpoint_id,
+                            endpoint_name=node.name,
+                            path=path,
+                            method=method,
+                            request_body_schema=request_body_schema,
+                        )
                     )
-                )
 
             # Open Endpoint Data Exposure: no auth is required by design (either
             # explicitly or by public-path match), but the endpoint is declared
             # to return sensitive data — there's no auth bypass to test, just
             # whether the data is exposed to anyone who calls it.
             if meta.auth_required is False or is_public:
-                if is_sensitive:
+                if is_sensitive and ok["open_data_exposure"]:
                     out.append(
                         build_open_data_exposure(
                             endpoint_id=endpoint_id,
@@ -1974,7 +1990,7 @@ class ScenarioGenerator:
                         )
                     )
 
-            if method in ("POST", "PUT", "PATCH"):
+            if method in ("POST", "PUT", "PATCH") and (ok["mass_assignment"] or ok["price_tampering"]):
                 mass_scenario = self._secure_write_scenario(
                     build_mass_assignment(
                         endpoint_id=endpoint_id,
@@ -1984,7 +2000,7 @@ class ScenarioGenerator:
                         request_body_schema=request_body_schema,
                     )
                 )
-                if mass_scenario is not None:
+                if mass_scenario is not None and ok["mass_assignment"]:
                     out.append(mass_scenario)
 
                 price_scenario = self._secure_write_scenario(
@@ -1996,7 +2012,7 @@ class ScenarioGenerator:
                         request_body_schema=request_body_schema,
                     )
                 )
-                if price_scenario is not None:
+                if price_scenario is not None and ok["price_tampering"]:
                     out.append(price_scenario)
 
             # IDOR: explicit metadata flag, explicit path params, or path template pattern
@@ -2021,7 +2037,7 @@ class ScenarioGenerator:
             has_idor_params = meta.idor_surface or any(
                 p.lower() in _ID_LIKE_PARAMS for p in inferred_params
             )
-            if has_idor_params:
+            if has_idor_params and ok["idor"]:
                 scenario = build_idor(
                     endpoint_id=endpoint_id,
                     endpoint_name=node.name,
@@ -2032,18 +2048,22 @@ class ScenarioGenerator:
                 if scenario is not None:
                     out.append(scenario)
 
-            reset_scenario = build_password_reset_probe(
-                endpoint_id=endpoint_id,
-                endpoint_name=node.name,
-                path=path,
-                path_params=inferred_params,
+            reset_scenario = (
+                build_password_reset_probe(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    path_params=inferred_params,
+                )
+                if ok["password_reset"]
+                else None
             )
             if reset_scenario is not None:
                 out.append(reset_scenario)
 
             # Injection probe: fuzz path/body params with SQLi/NoSQLi payloads
             # whenever there's at least one candidate to substitute into.
-            if inferred_params or request_body_schema:
+            if (inferred_params or request_body_schema) and ok["injection"]:
                 injection_scenario = self._secure_write_scenario(
                     build_injection_probe(
                         endpoint_id=endpoint_id,
@@ -2060,7 +2080,7 @@ class ScenarioGenerator:
 
             # Path traversal probe: only fires when a file/path-like param
             # name is actually present (checked inside the builder).
-            if inferred_params or request_body_schema:
+            if (inferred_params or request_body_schema) and ok["path_traversal"]:
                 traversal_scenario = self._secure_write_scenario(
                     build_path_traversal_probe(
                         endpoint_id=endpoint_id,
@@ -2076,7 +2096,7 @@ class ScenarioGenerator:
 
             # Open redirect probe: only fires when a redirect-target-like
             # param name is actually present (checked inside the builder).
-            if inferred_params or request_body_schema:
+            if (inferred_params or request_body_schema) and ok["open_redirect"]:
                 redirect_scenario = self._secure_write_scenario(
                     build_open_redirect_probe(
                         endpoint_id=endpoint_id,
@@ -2094,7 +2114,7 @@ class ScenarioGenerator:
             # parameter to probe (matches build_injection_probe's gate —
             # unlike path-traversal/redirect, XSS reflection isn't limited
             # to parameters with a suggestive name).
-            if inferred_params or request_body_schema:
+            if (inferred_params or request_body_schema) and ok["xss"]:
                 xss_scenario = self._secure_write_scenario(
                     build_reflected_xss_probe(
                         endpoint_id=endpoint_id,
@@ -2111,7 +2131,7 @@ class ScenarioGenerator:
             # BFLA/Scope bypass: when auth_scope or auth_detail metadata is present
             auth_scope = getattr(meta, "auth_scope", None)
             auth_detail = getattr(meta, "auth_detail", None)
-            if auth_scope or auth_detail:
+            if (auth_scope or auth_detail) and ok["auth_scope"]:
                 scope_scenario = self._secure_write_scenario(
                     build_auth_scope_bypass(
                         endpoint_id=endpoint_id,
@@ -2136,7 +2156,7 @@ class ScenarioGenerator:
             # `rate_limited` is never set at all, so the probe never fired.
             # Probing the unconfirmed population lets a real 429 upgrade the
             # static finding to a false positive, and a clean burst confirm it.
-            if not getattr(meta, "rate_limited", False):
+            if not getattr(meta, "rate_limited", False) and ok["rate_limit"]:
                 rate_scenario = self._secure_write_scenario(
                     build_rate_limit_probe(
                         endpoint_id=endpoint_id,

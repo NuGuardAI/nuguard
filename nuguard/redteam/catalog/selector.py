@@ -17,6 +17,7 @@ import hashlib
 from collections import defaultdict
 
 from nuguard.common.logging import get_logger
+from nuguard.models.exploit_chain import ScenarioType
 from nuguard.sbom.models import AiSbomDocument
 
 from .builders import BUILDER_FACTORIES, AppCapabilityProfile, BuilderContext
@@ -136,6 +137,14 @@ def select_scenarios(
         # --- impact filter ----
         if spec.base_impact < min_impact:
             skipped.append((spec.id, spec.category.value, "profile_capped"))
+            continue
+
+        # --- destructive specs are out of CI scope ----
+        if scan_profile == "ci" and (
+            spec.category == ScenarioCategory.DESTRUCTIVE_ACTION
+            or spec.scenario_type == ScenarioType.RESOURCE_EXHAUSTION
+        ):
+            skipped.append((spec.id, spec.category.value, "destructive_not_in_ci"))
             continue
 
         # --- explicitly disabled ----
