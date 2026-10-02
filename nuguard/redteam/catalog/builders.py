@@ -23,10 +23,12 @@ from typing import Callable, NamedTuple
 
 from nuguard.sbom.models import AiSbomDocument, Node
 
-from .capability import AppCapabilityProfile
+from .capability import AgentToolTier, AppCapabilityProfile
 from .spec import ScenarioSpec
 
-__all__ = ["AppCapabilityProfile", "BuilderContext", "BuilderFn", "BUILDER_FACTORIES"]
+__all__ = [
+    "AgentToolTier", "AppCapabilityProfile", "BuilderContext", "BuilderFn", "BUILDER_FACTORIES",
+]
 
 
 class BuilderContext(NamedTuple):
