@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from nuguard.redteam.llm_engine.judge_cache import JudgeCache
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.redteam.target.session import AttackSession
+    from nuguard.redteam.trust_context import TrustContextResult
 
 from nuguard.common.console import print_turn as _common_print_turn
 from nuguard.common.id_extractor import extract_customer_name, extract_ids
@@ -37,7 +38,7 @@ from nuguard.common.run_checkpoint import (
 )
 from nuguard.common.text_similarity import extract_tokens as _extract_evidence_tokens
 from nuguard.common.text_similarity import jaccard as _evidence_jaccard
-from nuguard.models.exploit_chain import ExploitChain, GoalType, ScenarioType
+from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
 from nuguard.models.finding import Finding, Severity
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.policy_engine.evaluator import PolicyViolation
@@ -858,6 +859,7 @@ class RedteamOrchestrator:
         defence_regression_paraphrases: int = 5,
         asm_max_probe_requests: int = 25,
         asm_extra_inventory_paths: list[str] | None = None,
+        trust_context_confirmation_cells: int = 1,
         mode: str = "concurrent",
         progressive_halt_on_severity: str = "none",
         progress_sink: Callable[[dict[str, Any]], None] | None = None,
@@ -978,6 +980,8 @@ class RedteamOrchestrator:
         # return value (see _run_impl) like _regression_findings.
         self._asm_findings: list[Finding] = []
         self.asm: "AgenticSurfaceModel | None" = None
+        # W2 trust-context matrix (nuguard/redteam/trust_context.py).
+        self._trust_context_confirmation_cells = max(0, trust_context_confirmation_cells)
         # Circuit-open flag latched when the 3-strike abort trips; consulted by
         # the escalation pass so it skips rather than re-hitting a dead target.
         self._circuit_open = False
@@ -1423,6 +1427,53 @@ class RedteamOrchestrator:
                 len(new_findings), self.asm.probe_budget_used, self._asm_max_probe_requests,
             )
         self._asm_findings.extend(new_findings)
+
+    @staticmethod
+    def _pick_trust_context_base_step(
+        chain: ExploitChain, step_results: list[StepResult],
+    ) -> ExploitStep | None:
+        """Pick the step to re-run under the trust-context matrix (W2).
+
+        Prefers the step that already demonstrated something (confirmed
+        success) so the matrix tests the *proven* attack surface; falls
+        back to the first attack-shaped step (INJECT/INVOKE) in the chain
+        when nothing succeeded yet.
+        """
+        attack_results = [
+            sr for sr in step_results
+            if sr.step.step_type in ("INJECT", "INVOKE")
+        ]
+        confirmed = next((sr for sr in attack_results if sr.success_signal_found), None)
+        if confirmed is not None:
+            return confirmed.step
+        if attack_results:
+            return attack_results[0].step
+        return next((s for s in chain.steps if s.step_type in ("INJECT", "INVOKE")), None)
+
+    async def _run_trust_context_matrix(
+        self,
+        chain: ExploitChain,
+        step_results: list[StepResult],
+        session: "AttackSession",
+        executor: "AttackExecutor",
+    ) -> "list[TrustContextResult]":
+        """Re-execute this scenario's attack step under W2's sampled matrix.
+
+        Best-effort: a failure here must never fail the scenario. Returns
+        an empty list when there is no attack-shaped step to re-run or no
+        golden-data baseline to compare against (see
+        ``trust_context.assess_identity_mismatch``).
+        """
+        base_step = self._pick_trust_context_base_step(chain, step_results)
+        if base_step is None:
+            return []
+        from nuguard.redteam.trust_context import TrustContextRunner  # noqa: PLC0415
+
+        runner = TrustContextRunner(
+            executor.client, canary_config=self._canary_config,
+            confirmation_cells=self._trust_context_confirmation_cells,
+        )
+        return await runner.run(base_step, session)
 
     async def _run_impl(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
@@ -2458,8 +2509,24 @@ class RedteamOrchestrator:
                                 step_type=sr.step.step_type,
                             )
                     step_details = self._build_step_details(step_results)
+                    _tc_results: list[TrustContextResult] = []
+                    if (
+                        scenario.identity_sensitive
+                        and chain.status != "aborted"
+                        and self._trigger_enabled("identity_mismatch_hits")
+                    ):
+                        try:
+                            _tc_results = await self._run_trust_context_matrix(
+                                chain, step_results, session, executor,
+                            )
+                        except Exception as exc:
+                            _log.warning(
+                                "Trust-context matrix failed for scenario %r (non-fatal): %s",
+                                scenario.title, exc,
+                            )
                     new_findings = self._build_findings(
-                        scenario, chain, step_results, step_details, session=session
+                        scenario, chain, step_results, step_details, session=session,
+                        trust_context_results=_tc_results,
                     )
                     if self._verify_findings and new_findings:
                         await self._verify_findings_probe(new_findings, step_details, executor, session)
@@ -3407,6 +3474,7 @@ class RedteamOrchestrator:
         step_results: list[StepResult],
         step_details: list[dict],
         session: AttackSession | None = None,
+        trust_context_results: "list[TrustContextResult] | None" = None,
     ) -> list[Finding]:
         """Convert scenario execution results into Finding objects."""
         findings: list[Finding] = []
@@ -3538,6 +3606,42 @@ class RedteamOrchestrator:
                             ),
                         )
                     )
+
+        # W2 trust-context matrix (redteam-proposal.md): a confirmed identity
+        # mismatch is deterministic data-membership proof — same evidence
+        # class as a canary hit — so it is checked FIRST, ahead of
+        # canary_hits, rather than folded into critical_success_hits below.
+        if trust_context_results and self._trigger_enabled("identity_mismatch_hits"):
+            _mismatch = next((r for r in trust_context_results if r.verdict == "mismatch"), None)
+            if _mismatch is not None:
+                identity_ngrs = ngrs.score_finding(
+                    GoalType.PRIVILEGE_ESCALATION, deterministic_evidence=True,
+                    cross_tenant=True, turns_used=_turns_used,
+                )
+                identity_title = f"Identity Binding Mismatch — {scenario.title}"
+                findings.append(
+                    Finding(
+                        **_base,
+                        finding_id=_finding_id(identity_title),
+                        title=identity_title,
+                        severity=identity_ngrs.severity,
+                        ngrs_score=identity_ngrs.score,
+                        ngrs_vector=identity_ngrs.vector,
+                        success_indicator="identity_mismatch",
+                        description=(
+                            f"Under trust-context cell {_mismatch.cell.name!r} "
+                            f"(credentials={_mismatch.cell.credentials.value}, "
+                            f"identity_binding={_mismatch.cell.identity_binding.value}), the "
+                            "response disclosed data scoped to the spoofed identity rather "
+                            "than the authenticated credential's identity."
+                        ),
+                        evidence=(
+                            f"Cell: {_mismatch.cell.name} | "
+                            f"Response: {(_mismatch.step_result.response or '')[:300]!r} | "
+                            f"Attack steps: {step_summary}"
+                        ),
+                    )
+                )
 
         # Canary-based finding
         if canary_hits and self._trigger_enabled("canary_hits"):

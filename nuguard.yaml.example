@@ -368,6 +368,12 @@ redteam:
     # extra_inventory_paths:
     #   - /api/v2/tools
 
+  # Trust-context matrix (W2): re-executes identity_sensitive scenarios
+  # (A10/A11, D02/D03, G-series) under invalid/missing credentials plus a
+  # conflicting/spoofed identity — no LLM call, cheap round-trips only.
+  trust_context:
+    confirmation_cells: 1
+
   # Per-request HTTP timeout in seconds (default: 120)
   # Multi-agent pipelines with LLM calls can take 60–120 s; increase for slow apps
   request_timeout: 120

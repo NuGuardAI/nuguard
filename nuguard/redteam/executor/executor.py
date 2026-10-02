@@ -454,6 +454,13 @@ class AttackExecutor:
         self._suppress_spa_html = suppress_spa_html_auth_bypass
         self._credentials: dict[str, str] = credentials or {}
 
+    @property
+    def client(self) -> "TargetClient":
+        """The target client this executor sends through — read-only access
+        for callers that need to issue their own requests against the same
+        target (e.g. :class:`nuguard.redteam.trust_context.TrustContextRunner`)."""
+        return self._client
+
     async def run(
         self, chain: ExploitChain
     ) -> tuple[ExploitChain, list[StepResult], AttackSession]:

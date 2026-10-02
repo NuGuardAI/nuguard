@@ -215,6 +215,9 @@ class RedteamRunRequest(BaseModel):
     entirely (yaml: redteam.asm.max_probe_requests)."""
     asm_extra_inventory_paths: list[str] = Field(default_factory=list)
     """Extra tool/agent-inventory paths to probe (yaml: redteam.asm.extra_inventory_paths)."""
+    trust_context_confirmation_cells: int = 1
+    """Extra W2 trust-context cells run after the first confirmed identity
+    mismatch before early-exiting (yaml: redteam.trust_context.confirmation_cells)."""
 
     @model_validator(mode="before")
     @classmethod
@@ -481,6 +484,7 @@ async def run_redteam(
         defence_regression_paraphrases=request.defence_regression_paraphrases,
         asm_max_probe_requests=request.asm_max_probe_requests,
         asm_extra_inventory_paths=request.asm_extra_inventory_paths,
+        trust_context_confirmation_cells=request.trust_context_confirmation_cells,
         mode=request.mode,
         progressive_halt_on_severity=request.progressive_halt_on_severity,
         progress_sink=_progress_sink,

@@ -471,6 +471,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_trigger_tool_trace_hits"] = bool(
                 finding_triggers["tool_trace_hits"]
             )
+        if "identity_mismatch_hits" in finding_triggers:
+            flat["redteam_trigger_identity_mismatch_hits"] = bool(
+                finding_triggers["identity_mismatch_hits"]
+            )
 
     # Redteam LLM section — skip keys whose env-var interpolation produced None
     redteam_llm = redteam.get("llm", {}) or {}
@@ -602,6 +606,11 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_asm_max_probe_requests"] = _asm["max_probe_requests"]
         if "extra_inventory_paths" in _asm:
             flat["redteam_asm_extra_inventory_paths"] = _asm["extra_inventory_paths"]
+
+    # Redteam trust-context matrix (W2)
+    _trust_context = redteam.get("trust_context", {}) if isinstance(redteam, dict) else {}
+    if isinstance(_trust_context, dict) and "confirmation_cells" in _trust_context:
+        flat["redteam_trust_context_confirmation_cells"] = _trust_context["confirmation_cells"]
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
@@ -1083,6 +1092,10 @@ class RedteamFindingTriggers(BaseModel):
     any_inject_success: bool = False
     # Phase 3 catalog evidence layers
     tool_trace_hits: bool = True
+    # W2 trust-context matrix (redteam-proposal.md) — top-priority tier,
+    # checked ahead of canary_hits: a confirmed identity mismatch is
+    # deterministic data-membership proof, not LLM-judged.
+    identity_mismatch_hits: bool = True
 
     def any_enabled(self) -> bool:
         """Return True when at least one trigger is enabled."""
@@ -1093,6 +1106,7 @@ class RedteamFindingTriggers(BaseModel):
                 self.critical_success_hits,
                 self.any_inject_success,
                 self.tool_trace_hits,
+                self.identity_mismatch_hits,
             ]
         )
 
@@ -1720,6 +1734,14 @@ class NuGuardConfig(BaseSettings):
             "(yaml: redteam.finding_triggers.tool_trace_hits)."
         ),
     )
+    redteam_trigger_identity_mismatch_hits: bool = Field(
+        default=True,
+        description=(
+            "Emit findings when the W2 trust-context matrix confirms a request "
+            "with conflicting/invalid identity returned another identity's data "
+            "(yaml: redteam.finding_triggers.identity_mismatch_hits)."
+        ),
+    )
     redteam_pre_run_warmup: int = Field(
         default=0,
         ge=0,
@@ -1936,6 +1958,16 @@ class NuGuardConfig(BaseSettings):
         ),
     )
 
+    # ----------------------------------------- Trust-context matrix (W2)
+    redteam_trust_context_confirmation_cells: int = Field(
+        default=1,
+        description=(
+            "Extra trust-context cells to run after the first confirmed identity "
+            "mismatch before early-exiting the matrix "
+            "(yaml: redteam.trust_context.confirmation_cells)."
+        ),
+    )
+
     def resolved_auth_config(self) -> "AuthConfig":
         """Build an AuthConfig from the resolved *redteam* auth settings.
 
@@ -1980,6 +2012,7 @@ class NuGuardConfig(BaseSettings):
             critical_success_hits=self.redteam_trigger_critical_success_hits,
             any_inject_success=self.redteam_trigger_any_inject_success,
             tool_trace_hits=self.redteam_trigger_tool_trace_hits,
+            identity_mismatch_hits=self.redteam_trigger_identity_mismatch_hits,
         )
 
     model_config = SettingsConfigDict(

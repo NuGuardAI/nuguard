@@ -8901,6 +8901,11 @@
             "default": true,
             "title": "Tool Trace Hits",
             "type": "boolean"
+          },
+          "identity_mismatch_hits": {
+            "default": true,
+            "title": "Identity Mismatch Hits",
+            "type": "boolean"
           }
         },
         "title": "RedteamFindingTriggers",
@@ -9285,6 +9290,11 @@
         },
         "title": "Asm Extra Inventory Paths",
         "type": "array"
+      },
+      "trust_context_confirmation_cells": {
+        "default": 1,
+        "title": "Trust Context Confirmation Cells",
+        "type": "integer"
       },
       "mode": {
         "default": "concurrent",

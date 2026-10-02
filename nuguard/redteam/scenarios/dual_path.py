@@ -17,7 +17,12 @@ from __future__ import annotations
 
 from typing import Literal
 
-from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitStep, GoalType, ScenarioType
+from nuguard.models.exploit_chain import (
+    HTTP_2XX_SENTINEL,
+    ExploitStep,
+    GoalType,
+    ScenarioType,
+)
 from nuguard.redteam.executor.executor import StepResult
 from nuguard.redteam.llm_engine.refusal_patterns import is_refusal
 
@@ -102,4 +107,50 @@ def build_dual_path_read(
         ),
         steps=steps,
         owasp_llm_ref="LLM06", owasp_asi_ref="ASI02",
+    )
+
+
+def build_identity_invalid_cred_spoof(
+    agent_id: str,
+    agent_name: str,
+    tool_name: str,
+    target_path: str,
+    http_method: str = "GET",
+) -> AttackScenario:
+    """A11 — invalid-credential identity spoof on the direct-HTTP surface
+    (redteam-proposal.md W2/TR02 + W10 extension).
+
+    The W10 X01 baseline tests whether the direct path is reachable at all
+    under the run's own valid credentials. This is the identity-sensitive
+    companion: a single baseline direct-HTTP call against the same
+    endpoint, re-sent by the W2 TrustContextRunner under invalid/missing
+    credentials plus a spoofed identity — the generic version of "no/
+    invalid auth key + spoofed body identity still returns that identity's
+    data" without any app-specific field names.
+    """
+    steps = [
+        ExploitStep(
+            step_id="", step_type="INVOKE",
+            description=f"Baseline direct-HTTP request to {tool_name}",
+            target_node_id=agent_id,
+            payload="",
+            target_path=target_path,
+            http_method=http_method,
+            success_signal=HTTP_2XX_SENTINEL,
+            success_requires_2xx=True,
+            on_failure="skip",
+            contributes_to_finding=False,  # the W2 matrix's verdict is the finding
+        ),
+    ]
+    return make_scenario(
+        agent_id, GoalType.PRIVILEGE_ESCALATION, ScenarioType.IDENTITY_BINDING_CONFLICT,
+        title=f"Invalid-Credential Identity Spoof — {tool_name} ({agent_name})",
+        description=(
+            f"Re-sends a direct-HTTP request to {tool_name} under the W2 trust-context "
+            "matrix (invalid/missing credentials with a spoofed identity) to check "
+            "whether the endpoint enforces authorization independently of the "
+            "chat gate's LLM-level checks."
+        ),
+        steps=steps,
+        owasp_llm_ref="LLM02", owasp_asi_ref="ASI03",
     )

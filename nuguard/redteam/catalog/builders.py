@@ -689,6 +689,31 @@ def _build_artifact_integrity_probe(ctx: BuilderContext) -> list:
     return _stamp([build_artifact_integrity_probe(str(agent.id), agent.name or "assistant", source_url, integrity_hash)], ctx)
 
 
+def _build_identity_binding_conflict(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.authorization import build_identity_binding_conflict
+    agent = ctx.target_agent
+    object_hint = ctx.profile.pii_fields[0] if ctx.profile.pii_fields else "account"
+    results = build_identity_binding_conflict(str(agent.id), agent.name or "assistant", object_hint)
+    return _stamp([results], ctx)
+
+
+def _build_identity_invalid_cred_spoof(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.dual_path import build_identity_invalid_cred_spoof
+    agent = ctx.target_agent
+    endpoint = ctx.target_endpoint
+    if endpoint is None:
+        return []
+    path = (endpoint.metadata.endpoint if endpoint.metadata else None) or "/api/data"
+    method = (endpoint.metadata.method if endpoint.metadata else None) or "GET"
+    if method.upper() not in ("GET", "HEAD", "OPTIONS"):
+        return []  # read-only probe, same policy as X01
+    tool_name = (ctx.target_tool.name if ctx.target_tool else None) or endpoint.name or "endpoint"
+    results = build_identity_invalid_cred_spoof(
+        str(agent.id), agent.name or "assistant", tool_name, path, http_method=method,
+    )
+    return _stamp([results], ctx)
+
+
 def _build_dual_path_read(ctx: BuilderContext) -> list:
     from nuguard.redteam.scenarios.dual_path import build_dual_path_read
     agent = ctx.target_agent
@@ -859,9 +884,8 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "artifact_integrity_probe":   _build_artifact_integrity_probe,
     "cross_env_credential_reuse": _build_cross_env_credential_reuse,
     # ── Trust/identity-binding (A10-A11) — redteam-proposal.md W2 ─────────
-    # Disabled specs; real logic lands with the Phase 3 TrustContext wrapper.
-    "identity_binding_conflict":   _stub("identity_binding_conflict"),
-    "identity_invalid_cred_spoof": _stub("identity_invalid_cred_spoof"),
+    "identity_binding_conflict":   _build_identity_binding_conflict,
+    "identity_invalid_cred_spoof": _build_identity_invalid_cred_spoof,
     # ── Agentic Surface Exposure (W01-W04) — redteam-proposal.md W1 ───────
     "surface_unauth_inventory":   _stub("surface_unauth_inventory"),
     "surface_schema_exposure":    _stub("surface_schema_exposure"),

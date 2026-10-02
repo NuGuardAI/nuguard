@@ -166,6 +166,72 @@ def test_non_dual_path_scenario_never_runs_the_comparison() -> None:
     assert findings == []
 
 
+def test_identity_mismatch_produces_top_priority_finding() -> None:
+    from nuguard.redteam.trust_context import (
+        CredentialAxis,
+        IdentityBindingAxis,
+        IdentityValueAxis,
+        TrustContextCell,
+        TrustContextResult,
+    )
+
+    orchestrator = _orchestrator(_all_triggers_except_critical_off())
+    scenario = _scenario()
+    chain = _chain()
+    step = ExploitStep(step_id="s1", step_type="INJECT", description="x", payload="x")
+    result = StepResult(step=step, response="refused", tool_calls=[])
+    cell = TrustContextCell(
+        "invalid_creds_spoofed_identity", CredentialAxis.INVALID,
+        IdentityBindingAxis.BODY_ONLY, IdentityValueAxis.CROSS_TENANT,
+    )
+    tc_result = TrustContextResult(
+        cell=cell,
+        step_result=StepResult(step=step, response="Bob's data: ACC2002", tool_calls=[]),
+        verdict="mismatch",
+    )
+
+    findings = orchestrator._build_findings(
+        scenario=scenario, chain=chain, step_results=[result],
+        step_details=orchestrator._build_step_details([result]),
+        trust_context_results=[tc_result],
+    )
+
+    assert len(findings) == 1
+    assert findings[0].success_indicator == "identity_mismatch"
+
+
+def test_no_confirmed_mismatch_produces_no_identity_finding() -> None:
+    from nuguard.redteam.trust_context import (
+        CredentialAxis,
+        IdentityBindingAxis,
+        IdentityValueAxis,
+        TrustContextCell,
+        TrustContextResult,
+    )
+
+    orchestrator = _orchestrator(_all_triggers_except_critical_off())
+    scenario = _scenario()
+    chain = _chain()
+    step = ExploitStep(step_id="s1", step_type="INJECT", description="x", payload="x")
+    result = StepResult(step=step, response="refused", tool_calls=[])
+    cell = TrustContextCell(
+        "no_creds_spoofed_identity", CredentialAxis.MISSING,
+        IdentityBindingAxis.BODY_ONLY, IdentityValueAxis.CROSS_TENANT,
+    )
+    tc_result = TrustContextResult(
+        cell=cell, step_result=StepResult(step=step, response="Forbidden", tool_calls=[]),
+        verdict="control_held",
+    )
+
+    findings = orchestrator._build_findings(
+        scenario=scenario, chain=chain, step_results=[result],
+        step_details=orchestrator._build_step_details([result]),
+        trust_context_results=[tc_result],
+    )
+
+    assert findings == []
+
+
 def test_callback_hit_without_use_llm_eval_or_abort_still_qualifies() -> None:
     """A callback_hit must be unconditional proof regardless of on_failure."""
     orchestrator = _orchestrator(_all_triggers_except_critical_off())

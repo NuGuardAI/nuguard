@@ -342,6 +342,7 @@ def redteam(
         defence_regression_paraphrases=cfg.redteam_defence_regression_paraphrases,
         asm_max_probe_requests=cfg.redteam_asm_max_probe_requests,
         asm_extra_inventory_paths=cfg.redteam_asm_extra_inventory_paths or None,
+        trust_context_confirmation_cells=cfg.redteam_trust_context_confirmation_cells,
     )
 
     _partial_run = False
@@ -645,6 +646,7 @@ async def _run_redteam(
     defence_regression_paraphrases: int = 5,
     asm_max_probe_requests: int = 25,
     asm_extra_inventory_paths: "list[str] | None" = None,
+    trust_context_confirmation_cells: int = 1,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -772,6 +774,7 @@ async def _run_redteam(
                 defence_regression_paraphrases=defence_regression_paraphrases,
                 asm_max_probe_requests=asm_max_probe_requests,
                 asm_extra_inventory_paths=asm_extra_inventory_paths,
+                trust_context_confirmation_cells=trust_context_confirmation_cells,
                 verbose=verbose,
                 credentials=credentials,
                 scenario_timeout=scenario_timeout,
@@ -841,6 +844,7 @@ async def _run_redteam(
         defence_regression_paraphrases=defence_regression_paraphrases,
         asm_max_probe_requests=asm_max_probe_requests,
         asm_extra_inventory_paths=asm_extra_inventory_paths,
+        trust_context_confirmation_cells=trust_context_confirmation_cells,
         verbose=verbose,
         credentials=credentials,
         scenario_timeout=scenario_timeout,
@@ -935,6 +939,7 @@ async def _run_orchestrator(  # noqa: C901
     defence_regression_paraphrases: int = 5,
     asm_max_probe_requests: int = 25,
     asm_extra_inventory_paths: "list[str] | None" = None,
+    trust_context_confirmation_cells: int = 1,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from pydantic import SecretStr
 
@@ -992,6 +997,7 @@ async def _run_orchestrator(  # noqa: C901
         defence_regression_paraphrases=defence_regression_paraphrases,
         asm_max_probe_requests=asm_max_probe_requests,
         asm_extra_inventory_paths=asm_extra_inventory_paths or [],
+        trust_context_confirmation_cells=trust_context_confirmation_cells,
         verbose=verbose,
         credentials=(
             {name: SecretStr(value) for name, value in credentials.items()}
