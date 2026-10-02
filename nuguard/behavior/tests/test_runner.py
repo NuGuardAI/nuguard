@@ -336,8 +336,14 @@ async def test_run_end_to_end_endpoint_coverage_report_does_not_overstate_verifi
 
     live_node = _endpoint_node("/api/orders")
     live_node.metadata.operational = True
+    live_node.metadata.endpoint = "/api/orders"
+    live_node.metadata.method = "POST"
+    live_node.metadata.chat_payload_key = "query"
     dead_node = _endpoint_node("/api/checkout")
     dead_node.metadata.operational = False
+    dead_node.metadata.endpoint = "/api/checkout"
+    dead_node.metadata.method = "POST"
+    dead_node.metadata.chat_payload_key = "request"
 
     runner = BehaviorRunner(
         config=_make_config(),
@@ -351,6 +357,7 @@ async def test_run_end_to_end_endpoint_coverage_report_does_not_overstate_verifi
             scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE,
             name="endpoint_coverage_api_orders",
             messages=["What orders do I have?"],
+            target_endpoint="/api/orders",
             target_component="/api/orders",
             target_component_type="API_ENDPOINT",
         ),
@@ -358,12 +365,23 @@ async def test_run_end_to_end_endpoint_coverage_report_does_not_overstate_verifi
             scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE,
             name="endpoint_coverage_api_checkout",
             messages=["Check out my cart."],
+            target_endpoint="/api/checkout",
             target_component="/api/checkout",
             target_component_type="API_ENDPOINT",
         ),
     ]
 
+    configured_endpoints: dict[str, tuple[str, str]] = {}
+
     async def _canned_result(scenario, _client, _evaluator):
+        assert _client.chat_path == scenario.target_endpoint
+        assert _client.chat_payload_key == (
+            "query" if scenario.name == "endpoint_coverage_api_orders" else "request"
+        )
+        configured_endpoints[scenario.name] = (
+            _client.chat_path,
+            _client.chat_payload_key,
+        )
         if scenario.name == "endpoint_coverage_api_orders":
             return ScenarioResult(
                 scenario_id=scenario.scenario_id,
@@ -402,9 +420,22 @@ async def test_run_end_to_end_endpoint_coverage_report_does_not_overstate_verifi
     # tests. Here we're proving pipeline *wiring* (node.metadata.operational ->
     # BehaviorCoverage.endpoint_operational, end to end through run()), so it's
     # neutralized as a no-op to isolate that from the (separately-tested) sweep.
-    mock_client = AsyncMock()
+    def _make_client():
+        mock_client = AsyncMock()
+        mock_client.base_url = "http://localhost:8080"
+        mock_client.chat_path = "/chat"
+        mock_client.chat_payload_key = "message"
+
+        def _set_chat_endpoint(path, payload_key, payload_list=False, response_key=None):
+            mock_client.chat_path = path
+            mock_client.chat_payload_key = payload_key
+
+        mock_client.set_chat_endpoint = MagicMock(side_effect=_set_chat_endpoint)
+        mock_client.aclose = AsyncMock()
+        return mock_client
+
     with (
-        patch.object(runner, "_build_client", new=AsyncMock(return_value=mock_client)),
+        patch.object(runner, "_build_client", new=AsyncMock(side_effect=_make_client)),
         patch.object(runner, "_build_policy_evaluator", return_value=None),
         patch.object(runner, "_run_scenario", side_effect=_canned_result),
         patch("nuguard.common.endpoint_liveness.ensure_endpoint_liveness", new=AsyncMock()),
@@ -425,6 +456,10 @@ async def test_run_end_to_end_endpoint_coverage_report_does_not_overstate_verifi
     assert dead_cov.exercised_within_policy is False
     assert dead_cov.scenario_outcome is None
     assert dead_cov.endpoint_operational is False
+    assert configured_endpoints == {
+        "endpoint_coverage_api_orders": ("/api/orders", "query"),
+        "endpoint_coverage_api_checkout": ("/api/checkout", "request"),
+    }
 
     # scenario_results must be passed through — render_behavior_coverage_evidence
     # (the "## Coverage Evidence" section) is gated on `if result.scenario_results:`

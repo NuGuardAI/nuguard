@@ -2963,18 +2963,57 @@ class BehaviorRunner:
                     f"[bold]{getattr(scenario, 'name', '?')}[/bold]  "
                     f"[dim]{getattr(getattr(scenario, 'scenario_type', None), 'value', getattr(scenario, 'scenario_type', ''))}[/dim]"
                 )
-                _scenario_client = await self._build_client() if _isolate else client
+                _scenario_type = getattr(
+                    getattr(scenario, "scenario_type", None), "value",
+                    getattr(scenario, "scenario_type", None),
+                )
+                _is_endpoint_coverage = _scenario_type == "endpoint_coverage"
+                _owns_scenario_client = _isolate or _is_endpoint_coverage
+                _scenario_client = await self._build_client() if _owns_scenario_client else client
                 # Apply any endpoint rotation discovered during pre-flight so each
                 # isolated scenario client uses the correct (non-broken) endpoint.
-                if _isolate and self._rotated_chat_endpoint:
+                if _owns_scenario_client and self._rotated_chat_endpoint:
                     _scenario_client.set_chat_endpoint(*self._rotated_chat_endpoint)
                 # Replay path params bootstrapped during pre-flight (e.g. a
                 # two-step chat's conversation ":id") — a fresh isolated client
                 # otherwise starts with none bound, causing every turn to fail
                 # with an unresolved-path-param config error.
-                if _isolate and self._bootstrapped_path_params and hasattr(_scenario_client, "set_path_param"):
+                if _owns_scenario_client and self._bootstrapped_path_params and hasattr(_scenario_client, "set_path_param"):
                     for _pp_name, _pp_value in self._bootstrapped_path_params.items():
                         _scenario_client.set_path_param(_pp_name, _pp_value)
+                _coverage_endpoint = getattr(scenario, "target_endpoint", None)
+                if _is_endpoint_coverage and _coverage_endpoint:
+                    endpoint_metadata = next(
+                        (
+                            getattr(node, "metadata", None)
+                            for node in getattr(self._sbom, "nodes", [])
+                            if getattr(getattr(node, "metadata", None), "endpoint", None)
+                            == _coverage_endpoint
+                        ),
+                        None,
+                    )
+                    payload_key = (
+                        getattr(endpoint_metadata, "chat_payload_key", None)
+                        or getattr(self._config, "chat_payload_key", "message")
+                        or "message"
+                    )
+                    payload_list = (
+                        bool(endpoint_metadata.chat_payload_list)
+                        if endpoint_metadata is not None
+                        and getattr(endpoint_metadata, "chat_payload_key", None)
+                        else bool(getattr(self._config, "chat_payload_list", False))
+                    )
+                    response_key = (
+                        getattr(endpoint_metadata, "response_text_key", None)
+                        or getattr(self._config, "chat_response_key", None)
+                        or None
+                    )
+                    _scenario_client.set_chat_endpoint(
+                        _coverage_endpoint,
+                        payload_key,
+                        payload_list,
+                        response_key,
+                    )
                 try:
                     # Per-scenario wall-clock timeout (issue #508) — mirrors redteam's
                     # scenario_timeout. asyncio.wait_for raises TimeoutError, already
@@ -2988,6 +3027,8 @@ class BehaviorRunner:
                     _first_verdict = (result.verdicts if result else None or [][:1])
                     _first_v = _first_verdict[0] if _first_verdict else None
                     _is_first_turn_405 = (
+                        not _is_endpoint_coverage
+                        and
                         _first_v is not None
                         and "[HTTP 405]" in str(_first_v.get("reasoning", ""))
                     )
@@ -3035,7 +3076,7 @@ class BehaviorRunner:
                         )
                     return None
                 finally:
-                    if _isolate:
+                    if _owns_scenario_client:
                         await _scenario_client.aclose()
 
         # Defer destructive scenarios (cancel, delete, close, etc.) to the end
