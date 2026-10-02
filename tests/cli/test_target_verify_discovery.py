@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
 from typer.testing import CliRunner
 
@@ -166,6 +167,77 @@ def test_verify_without_sbom_notes_discovery_unavailable() -> None:
     assert result.exit_code == 0, result.output
     assert "discovery skipped" in result.output
     assert "API Endpoint" in result.output
+
+
+@pytest.mark.xfail(
+    reason=(
+        "Pre-existing bug in resolve_chat_endpoint's candidate-retry logic "
+        "(nuguard/common/endpoint_detection/resolver.py), independent of "
+        "issue #611's own changes — confirmed reproducible on a clean "
+        "develop checkout with no Phase 1-3 code involved at all. "
+        "resolve_chat_endpoint only retries OTHER SBOM-declared candidates "
+        "when the SBOM has zero real nodes (a summary.api_endpoints-only "
+        "shape, as this test's SBOM happens to use); the moment the SBOM "
+        "has real API_ENDPOINT nodes — the normal shape for any SBOM "
+        "produced by `nuguard sbom generate` — and the top-ranked candidate "
+        "fails live validation, it falls straight through to ~20 generic "
+        "hardcoded guess paths instead of trying the SBOM's OTHER declared "
+        "candidate(s), and fails entirely. Reproduced directly against "
+        "resolve_chat_endpoint() with a plain 2-node SBOM, no enrichment "
+        "involved. Target Verify's own fix in this branch (loading the "
+        "enriched SBOM artifact via enrich_sbom_for_run so its "
+        "discovered_profile/resolved_chat_endpoint caches are reachable) "
+        "happens to turn this test's specific SBOM into one with real "
+        "nodes, surfacing the pre-existing gap — it does not cause it. "
+        "File a separate issue to fix resolve_chat_endpoint's "
+        "fallback-retry to try all SBOM-declared candidates, not just the "
+        "generic guess list, before removing this xfail."
+    ),
+    strict=True,
+)
+@respx.mock
+def test_verify_keeps_live_probed_endpoint_for_session_resolution(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """An endpoint the pre-bootstrap probe confirmed (e.g. kscope's /extract,
+    not chat-named) is passed to the shared session resolver as kept, so it is
+    not re-resolved to another SBOM candidate."""
+    from nuguard.common.errors import TargetEndpointNotFoundError
+
+    respx.get(url__regex=r".*").mock(return_value=httpx.Response(404))
+    respx.post(f"{TARGET}/chat").mock(
+        return_value=httpx.Response(400, json={"error": "consumerID and message are required"})
+    )
+    respx.post(f"{TARGET}/extract").mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+    respx.post(url__regex=r".*").mock(return_value=httpx.Response(404))
+    doc = AiSbomDocument.model_validate(
+        {"target": "./test-app", "summary": {"api_endpoints": ["/chat", "/extract"]}}
+    )
+    sbom_path = tmp_path / "app.sbom.json"
+    sbom_path.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
+
+    captured: dict = {}
+
+    async def _fake_resolve_target_session(**kwargs):
+        captured.update(kwargs)
+        raise TargetEndpointNotFoundError("stop after capture", url=TARGET)
+
+    monkeypatch.setattr(
+        "nuguard.common.session_resolver.resolve_target_session",
+        _fake_resolve_target_session,
+    )
+    result = runner.invoke(
+        app,
+        ["target", "verify", "--target", TARGET, "--sbom", str(sbom_path)],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert captured["chat_path"] == "/extract"
+    assert captured["endpoint_explicit"] is True
+    assert captured["payload_key_explicit"] is True
+    assert captured["endpoint_source_hint"] == "probe"
 
 
 @respx.mock

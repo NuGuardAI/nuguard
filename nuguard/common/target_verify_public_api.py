@@ -24,6 +24,7 @@ from nuguard.common.endpoint_preflight import (
     persist_endpoint_resolution,
     validate_and_rotate_chat_endpoint,
 )
+from nuguard.common.errors import TargetEndpointNotFoundError
 from nuguard.common.logging import get_logger
 from nuguard.common.session_resolver import resolve_target_session
 from nuguard.common.target_client_builder import build_target_app_client_from_session
@@ -45,7 +46,7 @@ TargetVerifyStatus = Literal[
     "skipped",
 ]
 
-EndpointSource = Literal["config", "sbom", "probe", "default", "enriched_sbom_cache"]
+EndpointSource = Literal["config", "sbom", "probe", "browser", "default", "enriched_sbom_cache"]
 
 
 class TargetVerifyRequest(BaseModel):
@@ -228,23 +229,38 @@ async def verify_target(
 ) -> TargetVerifyResult:
     auth_config = _build_auth_config(request)
     endpoint_explicit = "chat_path" in request.model_fields_set
-    session_cfg, health = await resolve_target_session(
-        target_url=request.target_url,
-        sbom=sbom,
-        auth_config=auth_config,
-        extra_headers=dict(request.headers or {}),
-        chat_path=request.chat_path or "",
-        chat_payload_key=request.chat_payload_key,
-        chat_payload_list=request.chat_payload_list,
-        chat_payload_extras=dict(request.chat_payload_extras or {}),
-        chat_response_key=request.chat_response_key,
-        probe_payload_extras=request.chat_payload_extras or None,
-        config_path=config_path,
-        request_timeout=request.request_timeout,
-        endpoint_explicit=endpoint_explicit,
-        payload_key_explicit="chat_payload_key" in request.model_fields_set,
-        response_key_explicit="chat_response_key" in request.model_fields_set,
-    )
+    try:
+        session_cfg, health = await resolve_target_session(
+            target_url=request.target_url,
+            sbom=sbom,
+            auth_config=auth_config,
+            extra_headers=dict(request.headers or {}),
+            chat_path=request.chat_path or "",
+            chat_payload_key=request.chat_payload_key,
+            chat_payload_list=request.chat_payload_list,
+            chat_payload_extras=dict(request.chat_payload_extras or {}),
+            chat_response_key=request.chat_response_key,
+            probe_payload_extras=request.chat_payload_extras or None,
+            config_path=config_path,
+            request_timeout=request.request_timeout,
+            endpoint_explicit=endpoint_explicit,
+            payload_key_explicit="chat_payload_key" in request.model_fields_set,
+            response_key_explicit="chat_response_key" in request.model_fields_set,
+        )
+    except TargetEndpointNotFoundError as exc:
+        endpoint = request.chat_path or ""
+        return TargetVerifyResult(
+            all_ok=False,
+            endpoint=endpoint,
+            endpoint_source="default",
+            checks=[TargetVerifyCheck(
+                identity="default",
+                status="endpoint_not_found",
+                endpoint=endpoint or request.target_url,
+                error_detail=str(exc),
+            )],
+            discovery_notes=[str(exc)],
+        )
 
     checks = [_check_from_health(item) for item in health.checks]
     all_ok = all(item.status in ("ok", "skipped") for item in checks)
@@ -433,11 +449,20 @@ async def verify_target(
         all_ok=all_ok,
         endpoint=endpoint,
         discovered_endpoint=(
-            endpoint if endpoint_source in ("sbom", "probe") else None
+            # Use the locally-tracked endpoint/endpoint_source, not
+            # session_cfg's own fields directly: they start as a copy of
+            # session_cfg's post-resolve_target_session state (which may
+            # already reflect develop's live SBOM/probe/browser resolution)
+            # but are then further updated by this function's own endpoint
+            # cache hit / live-preflight-rotation logic below, which never
+            # writes back onto session_cfg itself.
+            endpoint if endpoint_source in ("sbom", "probe", "browser") else None
         ),
         endpoint_source=cast(
             EndpointSource,
-            endpoint_source if endpoint_source in {"config", "sbom", "probe", "default"} else "default",
+            endpoint_source
+            if endpoint_source in {"config", "sbom", "probe", "browser", "default"}
+            else "default",
         ),
         checks=checks,
         discovered_profile=discovered_profile,
@@ -476,7 +501,7 @@ async def resolve_target_session_public(
         endpoint_source=cast(
             EndpointSource,
             session_cfg.endpoint_source
-            if session_cfg.endpoint_source in {"config", "sbom", "probe", "default"}
+            if session_cfg.endpoint_source in {"config", "sbom", "probe", "browser", "default"}
             else "default",
         ),
         chat_payload_key=session_cfg.chat_payload_key,

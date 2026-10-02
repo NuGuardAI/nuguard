@@ -284,6 +284,7 @@ async def resolve_target_session(
     endpoint_explicit: bool | None = None,
     payload_key_explicit: bool = False,
     response_key_explicit: bool = False,
+    endpoint_source_hint: str | None = None,
 ) -> tuple[TargetSessionConfig, "TargetHealthReport"]:
     """Resolve all target-connection config and return a :class:`TargetSessionConfig`.
 
@@ -326,6 +327,8 @@ async def resolve_target_session(
             bootstrap so a successful browser-login auth-recovery fallback
             (see AuthBootstrapper._maybe_recover_via_browser) can persist the
             recovered session back into the file for future runs.
+        endpoint_source_hint: Source reported for an explicit endpoint that the
+            caller already discovered (e.g. ``"probe"``) instead of ``"config"``.
 
     Returns:
         ``(TargetSessionConfig, TargetHealthReport)``
@@ -336,16 +339,21 @@ async def resolve_target_session(
         bootstrap_auth_runtime,
         resolve_auth_runtime,
     )
+    from nuguard.common.endpoint_detection.constants import UNSET  # noqa: PLC0415
+    from nuguard.common.endpoint_detection.context import (  # noqa: PLC0415
+        auth_requires_login,
+    )
     from nuguard.common.endpoint_detection.live_probe import (  # noqa: PLC0415
         is_empty_session_response,
         probe_endpoint,
     )
-    from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
-        discover_chat_config as discover_chat_config_from_sbom,
+    from nuguard.common.endpoint_detection.resolver import (  # noqa: PLC0415
+        resolve_chat_endpoint,
     )
     from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
         indicates_websocket as sbom_indicates_websocket,
     )
+    from nuguard.common.errors import TargetEndpointNotFoundError  # noqa: PLC0415
     from nuguard.common.target_client_builder import (  # noqa: PLC0415
         discover_login_flow_live,
         resolve_auth_config_with_sbom_fallback,
@@ -354,6 +362,9 @@ async def resolve_target_session(
     resolution_notes: list[str] = []
     _run_id = run_id or str(_uuid.uuid4())
     configured_chat_path = chat_path
+    is_endpoint_explicit = (
+        endpoint_explicit if endpoint_explicit is not None else bool(configured_chat_path)
+    )
 
     # ── 1. URL resolution ────────────────────────────────────────────────────
     # Static-hosting fallback + SPA bundle API-origin scan (memoised — the
@@ -367,31 +378,7 @@ async def resolve_target_session(
     if resolved_url:
         target_url = resolved_url
 
-    # ── 2. Static endpoint selection ─────────────────────────────────────────
-    # Resolve static SBOM information before bootstrap so the bootstrap request
-    # reaches the same route the eventual client will use.  Explicit settings
-    # retain their existing precedence.
-    endpoint_source = "config" if endpoint_explicit else "default"
-    if sbom is not None and not endpoint_explicit:
-        discovered_path, discovered_key, discovered_list, discovered_resp_key = (
-            discover_chat_config_from_sbom(
-                sbom,
-                chat_path=chat_path,
-                chat_payload_key=chat_payload_key,
-                chat_payload_list=chat_payload_list,
-            )
-        )
-        if discovered_path and discovered_path != "/chat":
-            chat_path = discovered_path
-            endpoint_source = "sbom"
-            _log.info("resolve_target_session: SBOM discovered endpoint %s", chat_path)
-        if not payload_key_explicit and discovered_key and discovered_key != chat_payload_key:
-            chat_payload_key = discovered_key
-            chat_payload_list = discovered_list
-        if not response_key_explicit and discovered_resp_key:
-            chat_response_key = discovered_resp_key
-
-    # ── 3. Auth upgrade: basic → login_flow ──────────────────────────────────
+    # ── 2. Auth upgrade: basic → login_flow ──────────────────────────────────
     effective_auth = auth_config
     if (
         effective_auth is not None
@@ -416,11 +403,81 @@ async def resolve_target_session(
         headers_override=extra_headers if effective_auth is None else None,
     )
 
+    # ── 3. Shared endpoint/payload resolution ────────────────────────────────
+    # Use the same config > confirmed SBOM > validated SBOM/live-probe path as
+    # BehaviorAnalyzer. A raw top-ranked SBOM candidate is only a hypothesis;
+    # passing it straight to bootstrap can probe an SPA catch-all and trigger
+    # browser recovery before the live resolver gets a chance to find the API.
+    _probe_extras = probe_payload_extras if probe_payload_extras is not None else chat_payload_extras
+    defer_endpoint_resolution = (
+        not is_endpoint_explicit and auth_requires_login(effective_auth, sbom)
+    )
+    endpoint_source = "config" if is_endpoint_explicit else "default"
+    _chat_path_unknown_at_bootstrap = False
+
+    async def _resolve_endpoint(auth_headers: dict[str, str] | None):
+        nonlocal chat_path, chat_payload_key, chat_payload_list
+        nonlocal chat_response_key, endpoint_source, _chat_path_unknown_at_bootstrap
+        resolved = await resolve_chat_endpoint(
+            target_url=target_url,
+            sbom=sbom,
+            endpoint=chat_path if is_endpoint_explicit else UNSET,
+            payload_key=chat_payload_key if payload_key_explicit else UNSET,
+            payload_list=chat_payload_list if payload_key_explicit else UNSET,
+            response_key=chat_response_key if response_key_explicit else UNSET,
+            auth_headers=auth_headers,
+            timeout=request_timeout or 15.0,
+            probe_payload_extras=_probe_extras or None,
+            enable_browser_fallback=not is_endpoint_explicit,
+            browser_auth_config=effective_auth,
+        )
+        resolution_notes.extend(resolved.notes)
+        if not resolved.path:
+            raise TargetEndpointNotFoundError(
+                "Could not discover a chat endpoint from the SBOM, authenticated HTTP probes, "
+                "or browser fallback. Set target_endpoint explicitly or verify the target URL "
+                "and that its chat UI is reachable.",
+                url=target_url,
+            )
+        chat_path = resolved.path
+        if not payload_key_explicit and resolved.payload_key:
+            chat_payload_key = resolved.payload_key
+        if not payload_key_explicit:
+            chat_payload_list = resolved.payload_list
+        if not response_key_explicit and resolved.response_key:
+            chat_response_key = resolved.response_key
+        endpoint_source = resolved.path_source.value
+        if endpoint_source == "sbom":
+            _log.info("resolve_target_session: SBOM endpoint validated %s", chat_path)
+        elif endpoint_source == "probe":
+            _log.info("resolve_target_session: live probe selected endpoint %s", chat_path)
+        elif endpoint_source == "browser":
+            _log.info("resolve_target_session: browser sniff selected endpoint %s", chat_path)
+        _chat_path_unknown_at_bootstrap = False
+        return resolved
+
+    endpoint_resolver = None
+    is_websocket = False
+    if defer_endpoint_resolution:
+        # Authenticated probes must use the acquired session, not credentials
+        # that may be ignored or redirected by the target. Resolve inside
+        # AuthBootstrapper after login and before its first chat health check.
+        chat_path = ""
+
+        async def endpoint_resolver(auth_headers: dict[str, str]):
+            nonlocal is_websocket
+            resolved = await _resolve_endpoint(auth_headers or None)
+            is_websocket = resolved.payload_key == "__websocket__"
+            return resolved
+    else:
+        endpoint_resolution = await _resolve_endpoint(auth_runtime.initial_headers or None)
+        is_websocket = endpoint_resolution.payload_key == "__websocket__"
+
     # ── 4. Auth bootstrap ────────────────────────────────────────────────────
     # WS detection must happen before bootstrap (it decides handshake vs POST),
     # so it runs zero-I/O against whatever the SBOM already knows — the fuller
     # live-probe-based discovery in steps 6/7 below still applies afterwards.
-    is_websocket = bool(
+    is_websocket = is_websocket or bool(
         sbom is not None
         and sbom_indicates_websocket(sbom, chat_path=chat_path, chat_payload_key=chat_payload_key)
     )
@@ -432,7 +489,6 @@ async def resolve_target_session(
     # only the former is stale once live probing finds a real path.
     _chat_path_unknown_at_bootstrap = not chat_path and not is_websocket
 
-    _probe_extras = probe_payload_extras if probe_payload_extras is not None else chat_payload_extras
     bootstrapper, health_report = await bootstrap_auth_runtime(
         target_url=target_url,
         sbom=sbom,
@@ -450,6 +506,7 @@ async def resolve_target_session(
         timeout=request_timeout,
         payload_key=chat_payload_key,
         payload_list=chat_payload_list,
+        endpoint_resolver=endpoint_resolver,
     )
     bootstrap_headers = bootstrapper.session.headers()
     effective_headers = dict(extra_headers)
@@ -642,7 +699,12 @@ async def resolve_target_session(
             resolution_notes=resolution_notes,
             chat_payload_value_template=chat_payload_value_template,
             effective_headers=effective_headers,
-            endpoint_source=endpoint_source,
+            # A caller pinning an endpoint it already discovered reports that discovery's source.
+            endpoint_source=(
+                endpoint_source_hint
+                if endpoint_source == "config" and endpoint_source_hint
+                else endpoint_source
+            ),
             payload_format=payload_format,
         ),
         health_report,

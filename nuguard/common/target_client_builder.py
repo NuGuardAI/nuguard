@@ -672,7 +672,7 @@ def build_target_app_client(
             discovered_path, discovered_key, discovered_list, discovered_response_key = (
                 discover_chat_config_from_sbom(
                     sbom,
-                    chat_path=endpoint or "/chat",
+                    chat_path=endpoint,
                     chat_payload_key=payload_key,
                     chat_payload_list=payload_list,
                 )

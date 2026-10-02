@@ -4281,6 +4281,7 @@
           "config",
           "sbom",
           "probe",
+          "browser",
           "default",
           "enriched_sbom_cache"
         ],
@@ -4922,6 +4923,7 @@
           "config",
           "sbom",
           "probe",
+          "browser",
           "default",
           "enriched_sbom_cache"
         ],
@@ -5419,6 +5421,7 @@
           "config",
           "sbom",
           "probe",
+          "browser",
           "default",
           "enriched_sbom_cache"
         ],
@@ -9035,6 +9038,16 @@
         "default": 180.0,
         "title": "Scenario Timeout",
         "type": "number"
+      },
+      "api_endpoint_threshold": {
+        "default": 25,
+        "title": "Api Endpoint Threshold",
+        "type": "integer"
+      },
+      "ci_api_spot_checks": {
+        "default": 3,
+        "title": "Ci Api Spot Checks",
+        "type": "integer"
       },
       "turn_delay_seconds": {
         "default": 5.0,

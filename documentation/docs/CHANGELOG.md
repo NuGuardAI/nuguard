@@ -2,6 +2,20 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## v0.9.14 - 2026-10-01
+
+### Improved
+- **Endpoint resolution:** Behavior, red-team, and target verification now retain the endpoint confirmed by live probing instead of re-resolving it to a different SBOM candidate. Known-payload probes no longer treat a rejected 4xx response as endpoint confirmation.
+- **Endpoint coverage:** Behavior endpoint-coverage scenarios now send requests to the SBOM endpoint they report testing, using its discovered payload shape. Unsupported GET and unresolved path-parameter routes are skipped.
+- **Tool-family probes:** Reachability probes reuse endpoint-preflight rotation and path-parameter bindings.
+
+## v0.9.13 - 2026-10-01
+
+### Improved
+- **Chat endpoint discovery:** Target-session resolution now validates SBOM endpoint candidates, probes alternatives with configured authentication and payload extras, and uses browser UI sniffing as a last resort when HTTP discovery cannot confirm an endpoint.
+- **WebSocket discovery:** An unset endpoint remains unset until SBOM discovery selects the route, allowing the correct WebSocket client to be constructed.
+- **Discovery failures:** Runs now report a clear endpoint-not-found result instead of silently probing the generic `/chat` fallback when automatic discovery fails.
+
 ## v0.9.12 - 2026-09-30
 
 ### Improved
