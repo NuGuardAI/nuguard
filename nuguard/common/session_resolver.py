@@ -284,6 +284,7 @@ async def resolve_target_session(
     endpoint_explicit: bool | None = None,
     payload_key_explicit: bool = False,
     response_key_explicit: bool = False,
+    endpoint_source_hint: str | None = None,
 ) -> tuple[TargetSessionConfig, "TargetHealthReport"]:
     """Resolve all target-connection config and return a :class:`TargetSessionConfig`.
 
@@ -326,6 +327,8 @@ async def resolve_target_session(
             bootstrap so a successful browser-login auth-recovery fallback
             (see AuthBootstrapper._maybe_recover_via_browser) can persist the
             recovered session back into the file for future runs.
+        endpoint_source_hint: Source reported for an explicit endpoint that the
+            caller already discovered (e.g. ``"probe"``) instead of ``"config"``.
 
     Returns:
         ``(TargetSessionConfig, TargetHealthReport)``
@@ -696,7 +699,12 @@ async def resolve_target_session(
             resolution_notes=resolution_notes,
             chat_payload_value_template=chat_payload_value_template,
             effective_headers=effective_headers,
-            endpoint_source=endpoint_source,
+            # A caller pinning an endpoint it already discovered reports that discovery's source.
+            endpoint_source=(
+                endpoint_source_hint
+                if endpoint_source == "config" and endpoint_source_hint
+                else endpoint_source
+            ),
             payload_format=payload_format,
         ),
         health_report,

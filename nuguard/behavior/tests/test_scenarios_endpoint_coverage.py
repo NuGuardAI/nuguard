@@ -55,3 +55,14 @@ def test_operational_true_endpoint_unaffected() -> None:
     scenarios = _endpoint_coverage_scenarios(sbom, intent)
 
     assert len(scenarios) == 1
+
+
+def test_get_and_unresolved_path_parameter_endpoints_are_skipped() -> None:
+    get_node = _endpoint_node("/api/search")
+    get_node.metadata.method = "GET"
+    templated_node = _endpoint_node("/api/conversations/{conversation_id}/messages")
+    sbom = AiSbomDocument(target="./app", nodes=[get_node, templated_node])
+
+    scenarios = _endpoint_coverage_scenarios(sbom, IntentProfile(app_purpose="search"))
+
+    assert scenarios == []

@@ -1371,6 +1371,10 @@ class RedteamOrchestrator:
 
         from nuguard.common.session_resolver import resolve_target_session
 
+        # Keep an endpoint _maybe_probe_endpoints() live-confirmed instead of re-resolving it.
+        _keep_resolved = bool(self._chat_path) and self._chat_path_source in (
+            "probe", "enriched_sbom_cache",
+        )
         self._target_session_config, self.health_report = await resolve_target_session(
             target_url=self._target_url,
             sbom=self._sbom,
@@ -1384,9 +1388,10 @@ class RedteamOrchestrator:
             canary_config=self._canary_config,
             config_path=self._config_path,
             request_timeout=self._request_timeout,
-            endpoint_explicit=self._chat_path_source == "config",
-            payload_key_explicit=self._chat_payload_key != "message",
+            endpoint_explicit=self._chat_path_source == "config" or _keep_resolved,
+            payload_key_explicit=_keep_resolved or self._chat_payload_key != "message",
             response_key_explicit=bool(self._chat_response_key),
+            endpoint_source_hint=self._chat_path_source if _keep_resolved else None,
         )
         self._target_url = self._target_session_config.base_url
         self._chat_path = self._target_session_config.chat_path
