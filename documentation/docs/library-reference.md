@@ -255,6 +255,12 @@ result = await run_redteam(
 )
 ```
 
+`RedteamRunRequest` additively exposes `defence_regressions`, `defence_regression_paraphrases`,
+`asm_max_probe_requests`, `asm_extra_inventory_paths`, and `trust_context_confirmation_cells`;
+see the agentic-surface notes in the platform integration guide. Findings carry optional
+`evasion_differential`, `decorator_name`, `callback_evidence`, `regression_paraphrase_kind`,
+`dual_path_verdict`, and `state_diff_outcome` evidence fields.
+
 `RedteamRunRequest.auth_config` uses the secret-safe public `RedteamAuthConfig` and remains
 compatible with internal `AuthConfig` and application `AppAuthConfig` inputs. Bearer, API-key,
 basic, login-flow, cookie-file, and no-auth configurations are normalized without placing

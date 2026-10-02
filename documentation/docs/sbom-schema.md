@@ -116,6 +116,7 @@ All fields are optional unless marked otherwise. Fields are populated by whichev
 | `system_prompt_excerpt` | string | First 500 chars of the agent's system prompt, instructions, or backstory. Used by red-team scenario generation. |
 | `injection_risk_score` | float [0, 1] | Pre-computed injection risk score set by the graph enricher. Derived from privileged tools, unauthenticated paths, reachable sensitive datastores, and unguarded HITL triggers. |
 | `model_name` | string | LLM or embedding model name, e.g. `"gpt-4o"`, `"gemini-2.0-flash"` |
+| `asm_summary` | AsmSummary | Summarized, credential-redacted Agentic Surface Model facts from the live red-team surface prober. Written onto AGENT nodes only by `nuguard redteam`; absent from a plain `sbom generate` |
 
 ### MODEL fields
 
@@ -202,6 +203,7 @@ The `name` shown in the AIBOM uses the detected handler name when it is unique. 
 | `context_payload_fields` | object | Non-chat context fields detected in POST body schemas. Values are `"identity"` for static user/tenant/account identifiers or `"session"` for per-conversation identifiers. |
 | `path_param_sources` | object | Maps each entry in `path_params` to the `API_ENDPOINT` path that creates the identified resource, e.g. `{"id": "/chat/conversations"}` for `/chat/conversations/:id/messages` |
 | `no_auth_required` | boolean | True when the endpoint is invocable without authentication |
+| `http_request.parameters[].identity_role` | string \| null | Identity-field tag on an HTTP input parameter: `"subject_id"` (caller/user identifier), `"tenant_id"` (tenant/org scope), `"role_hint"` (role/permission field), or `"none"`. Null when not identity-related. Consumed by the red-team trust-context matrix |
 
 ### DATASTORE fields
 
@@ -358,6 +360,18 @@ Populated by the supply-chain second pass for AI coding-agent and editor configs
 | `enforcement_strict` | boolean | True when auth is enforced on every request with no opt-out |
 | `auth_roles` | string[] | Roles or scopes required for access, e.g. `["admin", "read:users"]` |
 | `jwt_algorithm_restricted` | boolean \| null | True when a JWT verification call site pins an explicit expected algorithm (e.g. `algorithms: ["HS256"]`); false when a verify call was found with no such restriction, which admits alg-confusion attacks (a forged token can switch the algorithm, e.g. to `none`, and be accepted); null when no verification call site was found |
+
+### AsmSummary
+
+Booleans and counts only. The full probed surface (URLs, headers, status codes) is a runtime artifact of `nuguard redteam` and is never written to the SBOM.
+
+| Field | Type | Description |
+|---|---|---|
+| `sibling_endpoint_count` | integer \| null | Number of endpoints discovered beyond the primary chat route |
+| `unauthenticated_inventory_exposed` | boolean \| null | True when a tool/agent inventory endpoint (e.g. `/api/tools`) is reachable without auth |
+| `observation_channel_unauthenticated` | boolean \| null | True when a WebSocket/SSE observation channel accepted a connection without auth |
+| `cors_wildcard_with_credentials_live` | boolean \| null | True when a live `OPTIONS` probe reflected an attacker `Origin` with credentials allowed |
+| `direct_tool_endpoint_path` | string \| null | Path of a confirmed directly-invocable tool endpoint, when one was found |
 
 ### EncryptionDetail
 
