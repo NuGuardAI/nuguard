@@ -605,6 +605,7 @@ async def _blind_probe(
 ) -> "ProbeResult | None":
     """Fallback: try each path with each payload shape until one responds usefully."""
     server_error_fallback: ProbeResult | None = None
+    known_key_rejected_fallback: ProbeResult | None = None
     streaming_error_fallback: ProbeResult | None = None
     streaming_error_rank = -1
     base = str(client.base_url).rstrip("/")
@@ -730,9 +731,11 @@ async def _blind_probe(
             # 4xx other than 404/405 — endpoint exists, payload shape may be wrong
             _log.debug("endpoint_detection: %s key=%r → %d (trying next shape)", path, pay_key, status)
             if known_payload_key:
-                # Caller-specified key got 4xx — accept: endpoint is real, mismatch is config
-                _log.info("endpoint_detection: selected %s (key=%r known, status=%d)", path, pay_key, status)
-                return ProbeResult(path, pay_key, pay_list)
+                # The route exists but rejected the request, so it is not confirmed
+                # as chat; keep sweeping for a path that actually answers.
+                if known_key_rejected_fallback is None:
+                    known_key_rejected_fallback = ProbeResult(path, pay_key, pay_list, confirmed=False)
+                break
 
             # 422 — body tells us the correct field name; LLM handles non-FastAPI formats
             if status == 422:
@@ -776,6 +779,12 @@ async def _blind_probe(
                         return ProbeResult(path, hint_key, hint_key.lower() in MESSAGE_HISTORY_KEYS)
 
     _log.warning("endpoint_detection: no chat-capable endpoint found after probing %d paths", len(paths))
+    if known_key_rejected_fallback:
+        _log.info(
+            "endpoint_detection: selected %s as unconfirmed fallback (4xx with known payload_key=%r)",
+            known_key_rejected_fallback.path, known_key_rejected_fallback.key,
+        )
+        return known_key_rejected_fallback
     if server_error_fallback:
         _log.info(
             "endpoint_detection: selected %s as fallback (5xx — payload_key=%r)",
