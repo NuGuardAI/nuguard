@@ -338,6 +338,8 @@ def redteam(
         progressive_halt_on_severity=cfg.redteam_progressive_halt_on_severity,
         probe_llm=cfg.probe_llm_enabled,
         resume=effective_resume,
+        defence_regressions=cfg.redteam_defence_regressions or None,
+        defence_regression_paraphrases=cfg.redteam_defence_regression_paraphrases,
     )
 
     _partial_run = False
@@ -637,6 +639,8 @@ async def _run_redteam(
     progressive_halt_on_severity: str = "none",
     probe_llm: bool = False,
     resume: str | None = None,
+    defence_regressions: "list[dict] | None" = None,
+    defence_regression_paraphrases: int = 5,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -760,6 +764,8 @@ async def _run_redteam(
                 remediation_llm_client=remediation_llm_client,
                 prompt_cache_dir=prompt_cache_dir,
                 finding_triggers=finding_triggers,
+                defence_regressions=defence_regressions,
+                defence_regression_paraphrases=defence_regression_paraphrases,
                 verbose=verbose,
                 credentials=credentials,
                 scenario_timeout=scenario_timeout,
@@ -825,6 +831,8 @@ async def _run_redteam(
         remediation_llm_client=remediation_llm_client,
         prompt_cache_dir=prompt_cache_dir,
         finding_triggers=finding_triggers,
+        defence_regressions=defence_regressions,
+        defence_regression_paraphrases=defence_regression_paraphrases,
         verbose=verbose,
         credentials=credentials,
         scenario_timeout=scenario_timeout,
@@ -915,6 +923,8 @@ async def _run_orchestrator(  # noqa: C901
     progressive_halt_on_severity: str = "none",
     probe_llm: bool = False,
     resume: str | None = None,
+    defence_regressions: "list[dict] | None" = None,
+    defence_regression_paraphrases: int = 5,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from pydantic import SecretStr
 
@@ -968,6 +978,8 @@ async def _run_orchestrator(  # noqa: C901
             else None
         ),
         finding_triggers=finding_triggers,
+        defence_regressions=defence_regressions,
+        defence_regression_paraphrases=defence_regression_paraphrases,
         verbose=verbose,
         credentials=(
             {name: SecretStr(value) for name, value in credentials.items()}
@@ -1200,8 +1212,18 @@ def _append_remediation_plan(lines: list[str], remediation_plan: list) -> None:
 
 
 def _fail_on_severity(findings: list, fail_on: str) -> None:
-    """Exit with code 2 if any finding meets or exceeds the threshold severity."""
+    """Exit with code 2 if any finding meets or exceeds the threshold severity.
+
+    Defence-regression findings (``regression_paraphrase_kind is not None``)
+    are blocking in CI regardless of this threshold — see
+    ``redteam.defence_regressions`` in ``nuguard.yaml.example`` and
+    ``nuguard.redteam.defence_regressions``.
+    """
     from nuguard.models.finding import Severity
+
+    for f in findings:
+        if getattr(f, "regression_paraphrase_kind", None) is not None:
+            raise typer.Exit(code=2)
 
     _ORDER = [
         Severity.CRITICAL,

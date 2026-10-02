@@ -203,6 +203,13 @@ class RedteamRunRequest(BaseModel):
     golden_data: dict[str, Any] | None = None
     suppress_spa_html_auth_bypass: bool = True
     codegen_escalation_enabled: bool = True
+    defence_regressions: list[dict] | None = None
+    """Messages the app must always refuse (yaml: redteam.defence_regressions).
+    Evaluated in a single-turn pre-pass before scenario dispatch — see
+    :mod:`nuguard.redteam.defence_regressions`."""
+    defence_regression_paraphrases: int = 5
+    """Paraphrase variants generated per entry above; 0 evaluates only the
+    literal configured message (yaml: redteam.defence_regression_paraphrases)."""
 
     @model_validator(mode="before")
     @classmethod
@@ -465,6 +472,8 @@ async def run_redteam(
         golden_data=request.golden_data,
         suppress_spa_html_auth_bypass=request.suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=request.codegen_escalation_enabled,
+        defence_regressions=request.defence_regressions,
+        defence_regression_paraphrases=request.defence_regression_paraphrases,
         mode=request.mode,
         progressive_halt_on_severity=request.progressive_halt_on_severity,
         progress_sink=_progress_sink,

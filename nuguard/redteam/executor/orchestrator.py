@@ -13,9 +13,11 @@ if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
+    from nuguard.common.target_client_builder import TargetClient
     from nuguard.config import RedteamFindingTriggers
     from nuguard.models.token_usage import TokenUsage
     from nuguard.redteam.coverage.tracker import CoverageTracker
+    from nuguard.redteam.defence_regressions.models import DefenceRegressionRunSummary
     from nuguard.redteam.llm_engine.judge_cache import JudgeCache
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.redteam.target.session import AttackSession
@@ -851,6 +853,8 @@ class RedteamOrchestrator:
         golden_data: "dict[str, Any] | None" = None,
         suppress_spa_html_auth_bypass: bool = True,
         codegen_escalation_enabled: bool = True,
+        defence_regressions: list[dict] | None = None,
+        defence_regression_paraphrases: int = 5,
         mode: str = "concurrent",
         progressive_halt_on_severity: str = "none",
         progress_sink: Callable[[dict[str, Any]], None] | None = None,
@@ -957,6 +961,13 @@ class RedteamOrchestrator:
         self._golden_data: dict[str, Any] = golden_data or {}
         self._suppress_spa_html = suppress_spa_html_auth_bypass
         self._codegen_escalation_enabled = codegen_escalation_enabled
+        # W5 defence-regression pre-pass config (nuguard/redteam/defence_regressions/).
+        self._defence_regressions_cfg: list[dict] = defence_regressions or []
+        self._defence_regression_paraphrases = max(0, defence_regression_paraphrases)
+        # Findings raised by the pre-pass — merged into the final return value
+        # (see _run_impl) independently of the normal scenario dispatch loop.
+        self._regression_findings: list[Finding] = []
+        self.defence_regression_summary: "DefenceRegressionRunSummary | None" = None
         # Circuit-open flag latched when the 3-strike abort trips; consulted by
         # the escalation pass so it skips rather than re-hitting a dead target.
         self._circuit_open = False
@@ -1335,6 +1346,43 @@ class RedteamOrchestrator:
             payload_key=self._chat_payload_key,
             payload_list=self._chat_payload_list,
         )
+
+    async def _run_defence_regression_pre_pass(self, client: "TargetClient") -> None:
+        """Evaluate every configured defence-regression spec (W5).
+
+        Populates :attr:`_regression_findings`, merged into the final return
+        value by :meth:`_run_impl`. Single-turn, no chain, no warmup — see
+        :mod:`nuguard.redteam.defence_regressions` for the cost rationale.
+        """
+        from nuguard.redteam.defence_regressions import (
+            DefenceRegressionEvaluator,
+            build_regression_findings,
+        )
+        from nuguard.redteam.defence_regressions.models import DefenceRegressionSpec
+
+        specs: list[DefenceRegressionSpec] = []
+        for raw in self._defence_regressions_cfg:
+            spec = DefenceRegressionSpec.from_config_dict(raw)
+            if spec is None:
+                _log.warning("Skipping malformed redteam.defence_regressions entry: %r", raw)
+                continue
+            specs.append(spec)
+        if not specs:
+            return
+
+        evaluator = DefenceRegressionEvaluator(client, target_url=self._target_url)
+        results, summary = await evaluator.run(
+            specs, self._defence_regression_paraphrases, llm_client=self._redteam_llm,
+        )
+        self.defence_regression_summary = summary
+        new_findings = build_regression_findings(results)
+        if new_findings:
+            _log.warning(
+                "Defence-regression pre-pass: %d regression(s) got through "
+                "(blocking in CI regardless of output.fail_on)",
+                len(new_findings),
+            )
+        self._regression_findings.extend(new_findings)
 
     async def _run_impl(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
@@ -1906,6 +1954,16 @@ class RedteamOrchestrator:
             except Exception as exc:
                 _log.warning("Redteam: endpoint liveness check failed (non-fatal): %s", exc)
 
+            # W5 defence-regression pre-pass (redteam-proposal.md): evaluate every
+            # configured redteam.defence_regressions entry plus its paraphrase
+            # variants, single-turn, before any scenario dispatch. Best-effort —
+            # a failure here must never abort the scan.
+            if self._defence_regressions_cfg:
+                try:
+                    await self._run_defence_regression_pre_pass(client)
+                except Exception as exc:
+                    _log.warning("Redteam: defence-regression pre-pass failed (non-fatal): %s", exc)
+
             # Substitute poison server URL into all scenario step payloads that
             # contain the placeholder host.  This makes indirect injection and RAG
             # poisoning scenarios point at our live server instead of a dead host.
@@ -2091,6 +2149,13 @@ class RedteamOrchestrator:
                     self.scenario_records.extend(escalation_records)
                     self.findings.extend(findings)
 
+        # W5 defence-regression findings ride along with whatever this pass
+        # returns (initial or escalation) — they come from an independent
+        # pre-pass, not scenario dispatch, so they are never duplicated by
+        # either path.
+        if self._regression_findings:
+            findings = self._regression_findings + findings
+            self.findings.extend(self._regression_findings)
         findings = _dedup_findings_by_evidence_similarity(_dedup_findings(findings))
         _log.info("Scan complete: %d findings (after dedup)", len(findings))
 

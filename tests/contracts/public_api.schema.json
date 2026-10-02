@@ -441,6 +441,48 @@
             "default": "",
             "title": "Guardrail Control",
             "type": "string"
+          },
+          "evasion_differential": {
+            "default": false,
+            "title": "Evasion Differential",
+            "type": "boolean"
+          },
+          "decorator_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decorator Name"
+          },
+          "callback_evidence": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Callback Evidence"
+          },
+          "regression_paraphrase_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Paraphrase Kind"
           }
         },
         "required": [
@@ -7976,6 +8018,48 @@
             "default": "",
             "title": "Guardrail Control",
             "type": "string"
+          },
+          "evasion_differential": {
+            "default": false,
+            "title": "Evasion Differential",
+            "type": "boolean"
+          },
+          "decorator_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decorator Name"
+          },
+          "callback_evidence": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Callback Evidence"
+          },
+          "regression_paraphrase_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Paraphrase Kind"
           }
         },
         "required": [
@@ -9145,6 +9229,27 @@
         "title": "Codegen Escalation Enabled",
         "type": "boolean"
       },
+      "defence_regressions": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Defence Regressions"
+      },
+      "defence_regression_paraphrases": {
+        "default": 5,
+        "title": "Defence Regression Paraphrases",
+        "type": "integer"
+      },
       "mode": {
         "default": "concurrent",
         "title": "Mode",
@@ -9587,6 +9692,48 @@
             "default": "",
             "title": "Guardrail Control",
             "type": "string"
+          },
+          "evasion_differential": {
+            "default": false,
+            "title": "Evasion Differential",
+            "type": "boolean"
+          },
+          "decorator_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decorator Name"
+          },
+          "callback_evidence": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Callback Evidence"
+          },
+          "regression_paraphrase_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Paraphrase Kind"
           }
         },
         "required": [
