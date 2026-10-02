@@ -689,6 +689,36 @@ def _build_artifact_integrity_probe(ctx: BuilderContext) -> list:
     return _stamp([build_artifact_integrity_probe(str(agent.id), agent.name or "assistant", source_url, integrity_hash)], ctx)
 
 
+def _build_router_keyword_seed(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.router_manipulation import (
+        _most_privileged_tier,
+        build_router_keyword_seeding,
+    )
+    agent = ctx.target_agent
+    tier = _most_privileged_tier(ctx.profile.agent_tool_tiers)
+    if tier is None or tier.agent_id == str(agent.id):
+        return []  # entry agent is already the most privileged — no escalation story
+    result = build_router_keyword_seeding(str(agent.id), agent.name or "assistant", tier, ctx.sbom)
+    if result is None:
+        return []
+    return _stamp([result], ctx)
+
+
+def _build_router_privileged_probe(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.router_manipulation import (
+        _most_privileged_tier,
+        build_router_privileged_probe,
+    )
+    agent = ctx.target_agent
+    tier = _most_privileged_tier(ctx.profile.agent_tool_tiers)
+    if tier is None or tier.agent_id == str(agent.id):
+        return []
+    result = build_router_privileged_probe(str(agent.id), agent.name or "assistant", tier, ctx.sbom)
+    if result is None:
+        return []
+    return _stamp([result], ctx)
+
+
 def _build_identity_binding_conflict(ctx: BuilderContext) -> list:
     from nuguard.redteam.scenarios.authorization import build_identity_binding_conflict
     agent = ctx.target_agent
@@ -895,8 +925,8 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "dual_path_read":             _build_dual_path_read,
     "dual_path_write":            _stub("dual_path_write"),
     # ── Router and Agent-Selection Abuse (Q01-Q03) — redteam-proposal.md W4 ─
-    "router_keyword_seed":        _stub("router_keyword_seed"),
-    "router_privileged_probe":    _stub("router_privileged_probe"),
+    "router_keyword_seed":        _build_router_keyword_seed,
+    "router_privileged_probe":    _build_router_privileged_probe,
     "router_side_channel":        _stub("router_side_channel"),
     # ── Observation and Side-Channel (L01-L02) — redteam-proposal.md W7 ───
     "observation_unauth_connect":      _stub("observation_unauth_connect"),
