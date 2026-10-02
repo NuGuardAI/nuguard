@@ -1873,12 +1873,11 @@ class RedteamOrchestrator:
         # 3. Set up action logger
         logger = ActionLogger(self._log_path)
 
-        # 4. Execute scenarios (with PoisonPayloadServer for indirect injection / RAG)
+        # 4. Execute scenarios (with CallbackCanaryServer for indirect injection /
+        #    RAG poisoning payload delivery, and W8 SSRF/exfil callback proof)
         findings: list[Finding] = []
-        from nuguard.redteam.executor.poison_server import (
-            POISON_PAYLOAD_HOST,
-            PoisonPayloadServer,
-        )
+        from nuguard.redteam.executor.poison_server import POISON_PAYLOAD_HOST
+        from nuguard.redteam.target.callback_canary import CallbackCanaryServer
         app_name = ""
         if self._sbom.summary:
             app_name = getattr(self._sbom.summary, "application_name", "") or ""
@@ -1902,7 +1901,7 @@ class RedteamOrchestrator:
             self._target_url = client.base_url
 
         async with (
-            PoisonPayloadServer(app_name=app_name or "application") as poison_server,
+            CallbackCanaryServer(app_name=app_name or "application") as poison_server,
             client,
         ):
             # Pre-flight endpoint validation: verify the resolved chat endpoint is
@@ -2041,6 +2040,7 @@ class RedteamOrchestrator:
                 suppress_spa_html_auth_bypass=self._suppress_spa_html,
                 judge_cache=_judge_cache,
                 credentials=self._credentials or None,
+                callback_canary=poison_server,
             )
 
             # Build GuidedAttackExecutor when LLM is configured and guided is enabled
@@ -3420,6 +3420,13 @@ class RedteamOrchestrator:
                 golden_name=session.golden_name or None,
                 golden_data_excerpt=session.golden_data[:500],
             )
+        # W8 egress-callback canary (redteam-proposal.md): a confirmed inbound
+        # callback is hard evidence (source IP, headers, decoded payload) for
+        # an SSRF/exfil primitive — attach it whenever any step observed one,
+        # same pattern as the golden-data baseline above.
+        _callback_hit = next((sr.callback_hit for sr in step_results if sr.callback_hit), None)
+        if _callback_hit:
+            _base["callback_evidence"] = _callback_hit
 
         # Canary-based finding
         if canary_hits and self._trigger_enabled("canary_hits"):
@@ -3572,6 +3579,7 @@ class RedteamOrchestrator:
                 and getattr(sr.step, "contributes_to_finding", True)
                 and (
                     sr.step.on_failure == "abort"
+                    or sr.callback_hit is not None
                     or (
                         getattr(sr.step, "use_llm_eval", False)
                         and sr.llm_eval_confidence in ("high", "medium")
@@ -3580,10 +3588,16 @@ class RedteamOrchestrator:
             ]
             if critical_hits and self._trigger_enabled("critical_success_hits"):
                 # abort-on-success steps (HTTP-status-based, e.g. auth-bypass)
-                # are unconditional proof once success_signal_found is True —
-                # same evidence class as a canary hit. Otherwise take the
+                # and confirmed W8 egress-callback hits are unconditional proof
+                # once success_signal_found is True — same evidence class as a
+                # canary hit, regardless of the step's on_failure setting (a
+                # callback-canary step should fall through to the next variant
+                # on a miss, not abort the whole chain). Otherwise take the
                 # strongest llm_eval_confidence among the hits.
-                _deterministic_hit = any(sr.step.on_failure == "abort" for sr in critical_hits)
+                _deterministic_hit = any(
+                    sr.step.on_failure == "abort" or sr.callback_hit is not None
+                    for sr in critical_hits
+                )
                 _best_confidence = next(
                     (sr.llm_eval_confidence for sr in critical_hits if sr.llm_eval_confidence == "high"),
                     next((sr.llm_eval_confidence for sr in critical_hits if sr.llm_eval_confidence == "medium"), None),

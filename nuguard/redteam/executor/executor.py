@@ -4,7 +4,8 @@ from __future__ import annotations
 import asyncio
 import os
 import re as _re
-from typing import TYPE_CHECKING, Any
+import time
+from typing import TYPE_CHECKING, Any, Literal
 
 from nuguard.common.credentials import detect_confirmation_request, generate_contextual_reply
 from nuguard.common.llm_client import LLMClient
@@ -22,6 +23,7 @@ if TYPE_CHECKING:
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.target_client_builder import TargetClient
     from nuguard.redteam.llm_engine.judge_cache import JudgeCache
+    from nuguard.redteam.target.callback_canary import CallbackCanaryServer
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
 
@@ -277,6 +279,9 @@ class StepResult:
         self.artifact_hit: bool = False
         # Egress-trap hits (set by orchestrator after scenario completes)
         self.egress_trap_hits: list[str] = []
+        # W8: structured hit metadata (role, source_ip, headers) when this
+        # step's callback_canary_role matched a confirmed inbound callback.
+        self.callback_hit: dict[str, Any] | None = None
         # Set for direct-HTTP (target_path) steps: whether the response body
         # actually shows evidence of exposed data (PII-shaped values, a bulk
         # record list, or SBOM-declared sensitive field names) — see
@@ -382,10 +387,13 @@ class AttackExecutor:
         suppress_spa_html_auth_bypass: bool = True,
         judge_cache: "JudgeCache | None" = None,
         credentials: dict[str, str] | None = None,
+        callback_canary: "CallbackCanaryServer | None" = None,
     ) -> None:
         self._client = client
         self._evaluator = PolicyEvaluator(policy) if policy else None
         self._canary = canary
+        # W8 egress-callback canary — see callback_canary_role on ExploitStep.
+        self._callback_canary = callback_canary
         self._logger = logger or ActionLogger()
         self._response_evaluator = (
             LLMResponseEvaluator(eval_llm, cache=judge_cache) if eval_llm else None
@@ -926,6 +934,9 @@ class AttackExecutor:
             if self._app_log_reader:
                 self._app_log_reader.mark()
             _extra_headers = step.extra_headers or None
+            # W8: capture the send time so a post-send canary poll only
+            # matches hits caused by THIS step, not an earlier scenario's.
+            _send_t0 = time.monotonic()
             response, tool_calls = await self._client.send(
                 payload, session, _extra_headers, retry_transient=True
             )
@@ -972,6 +983,22 @@ class AttackExecutor:
             result = StepResult(step=step, response=response, tool_calls=tool_calls)
             result.resolved_payload = _resolved_payload
             result.raw_request_body = session.last_request_body
+            # W8 egress-callback canary: a confirmed inbound hit is hard
+            # evidence — overrides keyword/LLM judgment for this step.
+            if step.callback_canary_role and self._callback_canary is not None:
+                _role_map: dict[str, Literal["ssrf", "exfil", "beacon"]] = {
+                    "ssrf_proof": "ssrf", "exfil_proof": "exfil", "beacon": "beacon",
+                }
+                _canary_role = _role_map[step.callback_canary_role]
+                _hit = await self._callback_canary.poll_for_hit(_send_t0, _canary_role)
+                if _hit is not None:
+                    result.success_signal_found = True
+                    result.callback_hit = _hit.to_dict()
+                    result.egress_trap_hits = [_hit.raw_request]
+                    _log.info(
+                        "Chain %s step %s: egress-callback canary hit (role=%s, source_ip=%s)",
+                        chain.chain_id, step.step_id, _canary_role, _hit.source_ip,
+                    )
             if step.success_requires_new_tool_disclosure:
                 from nuguard.redteam.executor.tool_trace_judge import (
                     new_tool_call_disclosure,
