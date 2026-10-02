@@ -562,6 +562,10 @@ _DESTRUCTIVE_KEYWORDS = frozenset({
     "terminat", "deactiv", "wipe", "revok", "unsubscrib", "deregist",
 })
 
+# Rate-limit probes/bursts hammer the target with rapid requests, which can
+# lock out accounts or degrade the app — classified as destructive.
+_RATE_LIMIT_RE = re.compile(r"rate[\s_-]?limit", re.IGNORECASE)
+
 
 def _is_destructive_text(title: str, description: str) -> bool:
     """Return True when title/description text suggests a destructive/mutating action.
@@ -577,6 +581,8 @@ def _is_destructive_text(title: str, description: str) -> bool:
     """
     attack_part = title.split(" — ")[0]
     text = (attack_part + " " + description).lower()
+    if _RATE_LIMIT_RE.search(text):
+        return True
     return any(k in text for k in _DESTRUCTIVE_KEYWORDS)
 
 
@@ -597,6 +603,8 @@ def _is_destructive_scenario(scenario: AttackScenario) -> bool:
     never contain a destructive keyword) correctly classified.
     """
     if _is_destructive_text(scenario.title, scenario.description):
+        return True
+    if scenario.scenario_type == ScenarioType.RESOURCE_EXHAUSTION:
         return True
     if scenario.chain is not None and any(
         _is_credentialed_mutation_step(step) for step in scenario.chain.steps
@@ -833,6 +841,8 @@ class RedteamOrchestrator:
         verbose: bool = False,
         credentials: dict[str, str] | None = None,
         scenario_timeout: float = 180.0,
+        api_endpoint_threshold: int = 25,
+        ci_api_spot_checks: int = 3,
         turn_delay_seconds: float = 5.0,
         scenario_delay_seconds: float = 0.0,
         similar_miss_threshold: int = 4,
@@ -932,6 +942,8 @@ class RedteamOrchestrator:
         self._verbose = verbose
         self._credentials: dict[str, str] = credentials or {}
         self._scenario_timeout = max(0.0, scenario_timeout)
+        self._api_endpoint_threshold = max(1, api_endpoint_threshold)
+        self._ci_api_spot_checks = max(1, ci_api_spot_checks)
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
         self._scenario_delay_seconds = max(0.0, scenario_delay_seconds)
         self._similar_miss_threshold = max(1, similar_miss_threshold)
@@ -1637,7 +1649,23 @@ class RedteamOrchestrator:
         self.security_invariants = derive_security_invariants(effective_policy)
 
         _progressive = self._mode == "progressive"
-        generator = ScenarioGenerator(self._sbom, effective_policy, canary_config=self._canary_config)
+        from nuguard.redteam.scenarios.endpoint_selector import build_endpoint_plan
+
+        _endpoint_plan = await build_endpoint_plan(
+            self._sbom,
+            profile=self._profile,
+            llm=self._redteam_llm,
+            threshold=self._api_endpoint_threshold,
+            ci_spot_checks=self._ci_api_spot_checks,
+        )
+        if _endpoint_plan is not None:
+            self.config_notes.extend(_endpoint_plan.notes)
+        generator = ScenarioGenerator(
+            self._sbom,
+            effective_policy,
+            canary_config=self._canary_config,
+            endpoint_plan=_endpoint_plan,
+        )
         all_scenarios = generator.generate(with_guided=_with_guided, progressive=_progressive)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
         self.config_notes.extend(generator.skipped_endpoint_notes)
@@ -1697,11 +1725,14 @@ class RedteamOrchestrator:
 
         # 2. Filter by profile and impact score (before enrichment — avoids wasting LLM calls)
         if self._profile == "ci":
-            # ci profile: only high-impact scenarios (score >= 5.0)
+            # ci profile: only high-impact scenarios (score >= 5.0), and never
+            # destructive ones (incl. rate-limit probes) — those need an
+            # explicit non-ci run.
             scenarios = [
                 s
                 for s in all_scenarios
                 if s.impact_score >= max(self._min_impact, 5.0)
+                and not _is_destructive_scenario(s)
             ]
         elif self._profile == "standard":
             scenarios = [

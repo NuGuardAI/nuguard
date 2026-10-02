@@ -302,3 +302,16 @@ def test_orchestrator_invalid_only_token_does_not_trigger_default_note() -> None
     assert orch._scenario_filter == {"typo"}
     assert not orch._scenario_filter_defaulted
     assert not any("defaulting to non-destructive" in note for note in orch.config_notes)
+
+
+# Rate-limit probes/bursts are classified as destructive.
+def test_rate_limit_probe_and_burst_are_destructive() -> None:
+    assert _is_destructive_scenario(_make_scenario("Rate-Limit Probe — /api/chat (5 requests)"))
+    assert _is_destructive_scenario(_make_scenario("Rate Limit Burst — requests_per_min (>10)"))
+
+
+def test_resource_exhaustion_scenario_type_is_destructive() -> None:
+    scenario = _make_scenario("Resource Exhaustion — TestAgent")
+    scenario.scenario_type = ScenarioType.RESOURCE_EXHAUSTION
+    assert _is_destructive_scenario(scenario)
+
