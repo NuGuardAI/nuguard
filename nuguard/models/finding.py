@@ -91,3 +91,10 @@ class Finding(BaseModel):
     # invocation. Always "gate_bypass" when set; the other two
     # compare_dual_path outcomes never produce a finding.
     dual_path_verdict: str | None = None
+    # W9 state-differential verification outcome ("hallucinated_action" |
+    # "verified_mutation" | "silent_mutation") — set only on findings built
+    # from nuguard.redteam.executor.state_diff.classify_state_outcome(). No
+    # catalog builder wires this automatically yet (see state_diff.py's
+    # module docstring); it's a primitive future write-path extensions call
+    # directly once they have a concrete read-back path for their resource.
+    state_diff_outcome: str | None = None
