@@ -210,6 +210,11 @@ class RedteamRunRequest(BaseModel):
     defence_regression_paraphrases: int = 5
     """Paraphrase variants generated per entry above; 0 evaluates only the
     literal configured message (yaml: redteam.defence_regression_paraphrases)."""
+    asm_max_probe_requests: int = 25
+    """Request budget for the Agentic Surface Model prober; 0 disables it
+    entirely (yaml: redteam.asm.max_probe_requests)."""
+    asm_extra_inventory_paths: list[str] = Field(default_factory=list)
+    """Extra tool/agent-inventory paths to probe (yaml: redteam.asm.extra_inventory_paths)."""
 
     @model_validator(mode="before")
     @classmethod
@@ -474,6 +479,8 @@ async def run_redteam(
         codegen_escalation_enabled=request.codegen_escalation_enabled,
         defence_regressions=request.defence_regressions,
         defence_regression_paraphrases=request.defence_regression_paraphrases,
+        asm_max_probe_requests=request.asm_max_probe_requests,
+        asm_extra_inventory_paths=request.asm_extra_inventory_paths,
         mode=request.mode,
         progressive_halt_on_severity=request.progressive_halt_on_severity,
         progress_sink=_progress_sink,

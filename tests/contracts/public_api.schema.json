@@ -9274,6 +9274,18 @@
         "title": "Defence Regression Paraphrases",
         "type": "integer"
       },
+      "asm_max_probe_requests": {
+        "default": 25,
+        "title": "Asm Max Probe Requests",
+        "type": "integer"
+      },
+      "asm_extra_inventory_paths": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Asm Extra Inventory Paths",
+        "type": "array"
+      },
       "mode": {
         "default": "concurrent",
         "title": "Mode",
@@ -11136,6 +11148,78 @@
         "title": "AiSbomDocument",
         "type": "object"
       },
+      "AsmSummary": {
+        "description": "Summarized, credential-redacted Agentic Surface Model facts (W1).\n\nThe full live-probed :class:`~nuguard.redteam.enrichment.asm_models.\nAgenticSurfaceModel` (every probed URL, header, status, timestamp) is a\n*runtime* artifact \u2014 not persisted here, same treatment as\n``chat_payload_extras``. Only booleans/counts safe to commit to the SBOM\nJSON are promoted, written onto the AGENT node by\n``apply_asm_to_sbom()``. Never set directly from a raw header value.",
+        "properties": {
+          "sibling_endpoint_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Number of endpoints discovered beyond the primary chat route",
+            "title": "Sibling Endpoint Count"
+          },
+          "unauthenticated_inventory_exposed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a tool/agent inventory endpoint (e.g. /api/tools) is reachable without auth",
+            "title": "Unauthenticated Inventory Exposed"
+          },
+          "observation_channel_unauthenticated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a WS/SSE observation channel accepted a connection without auth",
+            "title": "Observation Channel Unauthenticated"
+          },
+          "cors_wildcard_with_credentials_live": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a live OPTIONS probe reflected an attacker Origin with credentials allowed",
+            "title": "Cors Wildcard With Credentials Live"
+          },
+          "direct_tool_endpoint_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path of a confirmed directly-invocable tool endpoint, when one was found",
+            "title": "Direct Tool Endpoint Path"
+          }
+        },
+        "title": "AsmSummary",
+        "type": "object"
+      },
       "AuthDetail": {
         "description": "Detailed authentication and authorization posture for a component.",
         "properties": {
@@ -11605,6 +11689,25 @@
             "description": "True when the handler requires the input",
             "title": "Required",
             "type": "boolean"
+          },
+          "identity_role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "subject_id",
+                  "tenant_id",
+                  "role_hint"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Generic, SBOM-driven identity-field tag used by the redteam trust-context matrix (user_id/tenant_id/role-style fields) \u2014 'subject_id' for a caller/user identifier, 'tenant_id' for a tenant/org scope, 'role_hint' for a role/permission field. None when this parameter is not identity-related.",
+            "title": "Identity Role"
           }
         },
         "required": [
@@ -12836,6 +12939,18 @@
             ],
             "default": null,
             "description": "CORS configuration extracted from code or IaC"
+          },
+          "asm_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AsmSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Summarized, credential-redacted Agentic Surface Model facts (redteam-proposal.md W1) \u2014 set on AGENT nodes by nuguard.redteam.enrichment.asm_prober.apply_asm_to_sbom()"
           },
           "debug_error_leak": {
             "anyOf": [
@@ -14338,6 +14453,78 @@
         "title": "AiSbomDocument",
         "type": "object"
       },
+      "AsmSummary": {
+        "description": "Summarized, credential-redacted Agentic Surface Model facts (W1).\n\nThe full live-probed :class:`~nuguard.redteam.enrichment.asm_models.\nAgenticSurfaceModel` (every probed URL, header, status, timestamp) is a\n*runtime* artifact \u2014 not persisted here, same treatment as\n``chat_payload_extras``. Only booleans/counts safe to commit to the SBOM\nJSON are promoted, written onto the AGENT node by\n``apply_asm_to_sbom()``. Never set directly from a raw header value.",
+        "properties": {
+          "sibling_endpoint_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Number of endpoints discovered beyond the primary chat route",
+            "title": "Sibling Endpoint Count"
+          },
+          "unauthenticated_inventory_exposed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a tool/agent inventory endpoint (e.g. /api/tools) is reachable without auth",
+            "title": "Unauthenticated Inventory Exposed"
+          },
+          "observation_channel_unauthenticated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a WS/SSE observation channel accepted a connection without auth",
+            "title": "Observation Channel Unauthenticated"
+          },
+          "cors_wildcard_with_credentials_live": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a live OPTIONS probe reflected an attacker Origin with credentials allowed",
+            "title": "Cors Wildcard With Credentials Live"
+          },
+          "direct_tool_endpoint_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path of a confirmed directly-invocable tool endpoint, when one was found",
+            "title": "Direct Tool Endpoint Path"
+          }
+        },
+        "title": "AsmSummary",
+        "type": "object"
+      },
       "AuthDetail": {
         "description": "Detailed authentication and authorization posture for a component.",
         "properties": {
@@ -14807,6 +14994,25 @@
             "description": "True when the handler requires the input",
             "title": "Required",
             "type": "boolean"
+          },
+          "identity_role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "subject_id",
+                  "tenant_id",
+                  "role_hint"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Generic, SBOM-driven identity-field tag used by the redteam trust-context matrix (user_id/tenant_id/role-style fields) \u2014 'subject_id' for a caller/user identifier, 'tenant_id' for a tenant/org scope, 'role_hint' for a role/permission field. None when this parameter is not identity-related.",
+            "title": "Identity Role"
           }
         },
         "required": [
@@ -16038,6 +16244,18 @@
             ],
             "default": null,
             "description": "CORS configuration extracted from code or IaC"
+          },
+          "asm_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AsmSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Summarized, credential-redacted Agentic Surface Model facts (redteam-proposal.md W1) \u2014 set on AGENT nodes by nuguard.redteam.enrichment.asm_prober.apply_asm_to_sbom()"
           },
           "debug_error_leak": {
             "anyOf": [
@@ -17755,6 +17973,78 @@
         "title": "AiSbomDocument",
         "type": "object"
       },
+      "AsmSummary": {
+        "description": "Summarized, credential-redacted Agentic Surface Model facts (W1).\n\nThe full live-probed :class:`~nuguard.redteam.enrichment.asm_models.\nAgenticSurfaceModel` (every probed URL, header, status, timestamp) is a\n*runtime* artifact \u2014 not persisted here, same treatment as\n``chat_payload_extras``. Only booleans/counts safe to commit to the SBOM\nJSON are promoted, written onto the AGENT node by\n``apply_asm_to_sbom()``. Never set directly from a raw header value.",
+        "properties": {
+          "sibling_endpoint_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Number of endpoints discovered beyond the primary chat route",
+            "title": "Sibling Endpoint Count"
+          },
+          "unauthenticated_inventory_exposed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a tool/agent inventory endpoint (e.g. /api/tools) is reachable without auth",
+            "title": "Unauthenticated Inventory Exposed"
+          },
+          "observation_channel_unauthenticated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a WS/SSE observation channel accepted a connection without auth",
+            "title": "Observation Channel Unauthenticated"
+          },
+          "cors_wildcard_with_credentials_live": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a live OPTIONS probe reflected an attacker Origin with credentials allowed",
+            "title": "Cors Wildcard With Credentials Live"
+          },
+          "direct_tool_endpoint_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path of a confirmed directly-invocable tool endpoint, when one was found",
+            "title": "Direct Tool Endpoint Path"
+          }
+        },
+        "title": "AsmSummary",
+        "type": "object"
+      },
       "AuthDetail": {
         "description": "Detailed authentication and authorization posture for a component.",
         "properties": {
@@ -18224,6 +18514,25 @@
             "description": "True when the handler requires the input",
             "title": "Required",
             "type": "boolean"
+          },
+          "identity_role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "subject_id",
+                  "tenant_id",
+                  "role_hint"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Generic, SBOM-driven identity-field tag used by the redteam trust-context matrix (user_id/tenant_id/role-style fields) \u2014 'subject_id' for a caller/user identifier, 'tenant_id' for a tenant/org scope, 'role_hint' for a role/permission field. None when this parameter is not identity-related.",
+            "title": "Identity Role"
           }
         },
         "required": [
@@ -19455,6 +19764,18 @@
             ],
             "default": null,
             "description": "CORS configuration extracted from code or IaC"
+          },
+          "asm_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AsmSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Summarized, credential-redacted Agentic Surface Model facts (redteam-proposal.md W1) \u2014 set on AGENT nodes by nuguard.redteam.enrichment.asm_prober.apply_asm_to_sbom()"
           },
           "debug_error_leak": {
             "anyOf": [
@@ -20865,6 +21186,78 @@
         "title": "AiSbomDocument",
         "type": "object"
       },
+      "AsmSummary": {
+        "description": "Summarized, credential-redacted Agentic Surface Model facts (W1).\n\nThe full live-probed :class:`~nuguard.redteam.enrichment.asm_models.\nAgenticSurfaceModel` (every probed URL, header, status, timestamp) is a\n*runtime* artifact \u2014 not persisted here, same treatment as\n``chat_payload_extras``. Only booleans/counts safe to commit to the SBOM\nJSON are promoted, written onto the AGENT node by\n``apply_asm_to_sbom()``. Never set directly from a raw header value.",
+        "properties": {
+          "sibling_endpoint_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Number of endpoints discovered beyond the primary chat route",
+            "title": "Sibling Endpoint Count"
+          },
+          "unauthenticated_inventory_exposed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a tool/agent inventory endpoint (e.g. /api/tools) is reachable without auth",
+            "title": "Unauthenticated Inventory Exposed"
+          },
+          "observation_channel_unauthenticated": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a WS/SSE observation channel accepted a connection without auth",
+            "title": "Observation Channel Unauthenticated"
+          },
+          "cors_wildcard_with_credentials_live": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a live OPTIONS probe reflected an attacker Origin with credentials allowed",
+            "title": "Cors Wildcard With Credentials Live"
+          },
+          "direct_tool_endpoint_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path of a confirmed directly-invocable tool endpoint, when one was found",
+            "title": "Direct Tool Endpoint Path"
+          }
+        },
+        "title": "AsmSummary",
+        "type": "object"
+      },
       "AuthDetail": {
         "description": "Detailed authentication and authorization posture for a component.",
         "properties": {
@@ -21334,6 +21727,25 @@
             "description": "True when the handler requires the input",
             "title": "Required",
             "type": "boolean"
+          },
+          "identity_role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "subject_id",
+                  "tenant_id",
+                  "role_hint"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Generic, SBOM-driven identity-field tag used by the redteam trust-context matrix (user_id/tenant_id/role-style fields) \u2014 'subject_id' for a caller/user identifier, 'tenant_id' for a tenant/org scope, 'role_hint' for a role/permission field. None when this parameter is not identity-related.",
+            "title": "Identity Role"
           }
         },
         "required": [
@@ -22565,6 +22977,18 @@
             ],
             "default": null,
             "description": "CORS configuration extracted from code or IaC"
+          },
+          "asm_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/AsmSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Summarized, credential-redacted Agentic Surface Model facts (redteam-proposal.md W1) \u2014 set on AGENT nodes by nuguard.redteam.enrichment.asm_prober.apply_asm_to_sbom()"
           },
           "debug_error_leak": {
             "anyOf": [

@@ -218,6 +218,25 @@ class WebSocketTargetClient:
             _log.warning("WebSocketTargetClient.invoke_endpoint: %s %s failed: %s", method, path, label)
             return 0, f"[REQUEST_ERROR: {label}]", {}
 
+    async def probe_cors(self, path: str, origin: str) -> dict[str, str] | None:
+        """Mirrors :meth:`TargetAppClient.probe_cors` over the plain-HTTP
+        side-channel (W1 ASM) — WS-chat targets still expose plain REST
+        routes CORS can apply to."""
+        client = self._ensure_http_client()
+        try:
+            request = client.build_request(
+                method="OPTIONS", url=path,
+                headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
+            )
+            for name in self._auth_header_names:
+                if name in request.headers:
+                    del request.headers[name]
+            resp = await client.send(request)
+        except Exception as exc:  # noqa: BLE001 — best-effort auxiliary probe
+            _log.debug("WebSocketTargetClient.probe_cors: OPTIONS %s failed: %s", path, exc)
+            return None
+        return {k.lower(): v for k, v in resp.headers.items()}
+
     async def _connect(self) -> None:
         import websockets  # noqa: PLC0415 — optional dep, imported lazily
 

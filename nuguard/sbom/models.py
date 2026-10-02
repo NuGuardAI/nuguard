@@ -119,6 +119,9 @@ class ToolParameter(BaseModel):
 HttpParameterLocation = Literal["path", "query", "header", "cookie", "json", "form", "multipart"]
 
 
+IdentityRole = Literal["none", "subject_id", "tenant_id", "role_hint"]
+
+
 class HttpParameterMetadata(BaseModel):
     """One named input point of an HTTP API_ENDPOINT, independent of language/framework."""
 
@@ -126,6 +129,16 @@ class HttpParameterMetadata(BaseModel):
     location: HttpParameterLocation = Field(description="Where the value is carried in the request")
     type_hint: str = Field(default="string", description="Best-effort source type, e.g. 'int'")
     required: bool = Field(default=False, description="True when the handler requires the input")
+    identity_role: IdentityRole | None = Field(
+        default=None,
+        description=(
+            "Generic, SBOM-driven identity-field tag used by the redteam "
+            "trust-context matrix (user_id/tenant_id/role-style fields) — "
+            "'subject_id' for a caller/user identifier, 'tenant_id' for a "
+            "tenant/org scope, 'role_hint' for a role/permission field. "
+            "None when this parameter is not identity-related."
+        ),
+    )
 
 
 class HttpRequestMetadata(BaseModel):
@@ -207,6 +220,38 @@ class CorsPolicyDetail(BaseModel):
     wildcard_with_credentials: bool = Field(
         default=False,
         description="True when origin is wildcarded AND credentials are allowed — the dangerous combination",
+    )
+
+
+class AsmSummary(BaseModel):
+    """Summarized, credential-redacted Agentic Surface Model facts (W1).
+
+    The full live-probed :class:`~nuguard.redteam.enrichment.asm_models.
+    AgenticSurfaceModel` (every probed URL, header, status, timestamp) is a
+    *runtime* artifact — not persisted here, same treatment as
+    ``chat_payload_extras``. Only booleans/counts safe to commit to the SBOM
+    JSON are promoted, written onto the AGENT node by
+    ``apply_asm_to_sbom()``. Never set directly from a raw header value.
+    """
+
+    sibling_endpoint_count: int | None = Field(
+        default=None, description="Number of endpoints discovered beyond the primary chat route"
+    )
+    unauthenticated_inventory_exposed: bool | None = Field(
+        default=None,
+        description="True when a tool/agent inventory endpoint (e.g. /api/tools) is reachable without auth",
+    )
+    observation_channel_unauthenticated: bool | None = Field(
+        default=None,
+        description="True when a WS/SSE observation channel accepted a connection without auth",
+    )
+    cors_wildcard_with_credentials_live: bool | None = Field(
+        default=None,
+        description="True when a live OPTIONS probe reflected an attacker Origin with credentials allowed",
+    )
+    direct_tool_endpoint_path: str | None = Field(
+        default=None,
+        description="Path of a confirmed directly-invocable tool endpoint, when one was found",
     )
 
 
@@ -745,6 +790,14 @@ class NodeMetadata(BaseModel):
     cors_policy: CorsPolicyDetail | None = Field(
         default=None,
         description="CORS configuration extracted from code or IaC",
+    )
+    asm_summary: AsmSummary | None = Field(
+        default=None,
+        description=(
+            "Summarized, credential-redacted Agentic Surface Model facts "
+            "(redteam-proposal.md W1) — set on AGENT nodes by "
+            "nuguard.redteam.enrichment.asm_prober.apply_asm_to_sbom()"
+        ),
     )
     debug_error_leak: bool | None = Field(
         default=None,

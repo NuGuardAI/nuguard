@@ -340,6 +340,8 @@ def redteam(
         resume=effective_resume,
         defence_regressions=cfg.redteam_defence_regressions or None,
         defence_regression_paraphrases=cfg.redteam_defence_regression_paraphrases,
+        asm_max_probe_requests=cfg.redteam_asm_max_probe_requests,
+        asm_extra_inventory_paths=cfg.redteam_asm_extra_inventory_paths or None,
     )
 
     _partial_run = False
@@ -641,6 +643,8 @@ async def _run_redteam(
     resume: str | None = None,
     defence_regressions: "list[dict] | None" = None,
     defence_regression_paraphrases: int = 5,
+    asm_max_probe_requests: int = 25,
+    asm_extra_inventory_paths: "list[str] | None" = None,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -766,6 +770,8 @@ async def _run_redteam(
                 finding_triggers=finding_triggers,
                 defence_regressions=defence_regressions,
                 defence_regression_paraphrases=defence_regression_paraphrases,
+                asm_max_probe_requests=asm_max_probe_requests,
+                asm_extra_inventory_paths=asm_extra_inventory_paths,
                 verbose=verbose,
                 credentials=credentials,
                 scenario_timeout=scenario_timeout,
@@ -833,6 +839,8 @@ async def _run_redteam(
         finding_triggers=finding_triggers,
         defence_regressions=defence_regressions,
         defence_regression_paraphrases=defence_regression_paraphrases,
+        asm_max_probe_requests=asm_max_probe_requests,
+        asm_extra_inventory_paths=asm_extra_inventory_paths,
         verbose=verbose,
         credentials=credentials,
         scenario_timeout=scenario_timeout,
@@ -925,6 +933,8 @@ async def _run_orchestrator(  # noqa: C901
     resume: str | None = None,
     defence_regressions: "list[dict] | None" = None,
     defence_regression_paraphrases: int = 5,
+    asm_max_probe_requests: int = 25,
+    asm_extra_inventory_paths: "list[str] | None" = None,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from pydantic import SecretStr
 
@@ -980,6 +990,8 @@ async def _run_orchestrator(  # noqa: C901
         finding_triggers=finding_triggers,
         defence_regressions=defence_regressions,
         defence_regression_paraphrases=defence_regression_paraphrases,
+        asm_max_probe_requests=asm_max_probe_requests,
+        asm_extra_inventory_paths=asm_extra_inventory_paths or [],
         verbose=verbose,
         credentials=(
             {name: SecretStr(value) for name, value in credentials.items()}

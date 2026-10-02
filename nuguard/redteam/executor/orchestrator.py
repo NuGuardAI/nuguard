@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from nuguard.models.token_usage import TokenUsage
     from nuguard.redteam.coverage.tracker import CoverageTracker
     from nuguard.redteam.defence_regressions.models import DefenceRegressionRunSummary
+    from nuguard.redteam.enrichment.asm_models import AgenticSurfaceModel
     from nuguard.redteam.llm_engine.judge_cache import JudgeCache
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.redteam.target.session import AttackSession
@@ -855,6 +856,8 @@ class RedteamOrchestrator:
         codegen_escalation_enabled: bool = True,
         defence_regressions: list[dict] | None = None,
         defence_regression_paraphrases: int = 5,
+        asm_max_probe_requests: int = 25,
+        asm_extra_inventory_paths: list[str] | None = None,
         mode: str = "concurrent",
         progressive_halt_on_severity: str = "none",
         progress_sink: Callable[[dict[str, Any]], None] | None = None,
@@ -968,6 +971,13 @@ class RedteamOrchestrator:
         # (see _run_impl) independently of the normal scenario dispatch loop.
         self._regression_findings: list[Finding] = []
         self.defence_regression_summary: "DefenceRegressionRunSummary | None" = None
+        # W1 Agentic Surface Model (nuguard/redteam/enrichment/asm_prober.py).
+        self._asm_max_probe_requests = max(0, asm_max_probe_requests)
+        self._asm_extra_inventory_paths: tuple[str, ...] = tuple(asm_extra_inventory_paths or [])
+        # W01-W04 findings from the ASM pre-pass — merged into the final
+        # return value (see _run_impl) like _regression_findings.
+        self._asm_findings: list[Finding] = []
+        self.asm: "AgenticSurfaceModel | None" = None
         # Circuit-open flag latched when the 3-strike abort trips; consulted by
         # the escalation pass so it skips rather than re-hitting a dead target.
         self._circuit_open = False
@@ -1383,6 +1393,36 @@ class RedteamOrchestrator:
                 len(new_findings),
             )
         self._regression_findings.extend(new_findings)
+
+    async def _run_asm_pre_pass(self, client: "TargetClient") -> None:
+        """Build the W1 Agentic Surface Model and emit W01-W04 findings.
+
+        Best-effort: a failure here must never abort the scan. Mutates
+        ``self._sbom`` in place via ``apply_asm_to_sbom`` so any *later*
+        consumer in this process sees the summarized ASM facts — this
+        does not retroactively affect scenario generation for this same
+        run, which already ran before this pre-pass (the same timing
+        constraint documented on the endpoint-liveness check below).
+        """
+        from nuguard.redteam.enrichment.asm_prober import (
+            apply_asm_to_sbom,
+            build_asm,
+            build_asm_findings,
+        )
+
+        self.asm = await build_asm(
+            client, self._sbom,
+            max_probe_requests=self._asm_max_probe_requests,
+            extra_inventory_paths=self._asm_extra_inventory_paths,
+        )
+        apply_asm_to_sbom(self._sbom, self.asm)
+        new_findings = build_asm_findings(self.asm)
+        if new_findings:
+            _log.warning(
+                "ASM pre-pass: %d unauthenticated-surface finding(s) (budget used %d/%d)",
+                len(new_findings), self.asm.probe_budget_used, self._asm_max_probe_requests,
+            )
+        self._asm_findings.extend(new_findings)
 
     async def _run_impl(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
@@ -1963,6 +2003,18 @@ class RedteamOrchestrator:
                 except Exception as exc:
                     _log.warning("Redteam: defence-regression pre-pass failed (non-fatal): %s", exc)
 
+            # W1 Agentic Surface Model pre-pass (redteam-proposal.md): recon
+            # beyond the chat endpoint — sibling schema/inventory endpoints,
+            # observation-channel connectability, CORS reflection. Runs
+            # unconditionally (unlike defence_regressions, there's no
+            # separate opt-in config block — GET/OPTIONS-only recon is safe
+            # by default); set redteam.asm.max_probe_requests: 0 to disable.
+            if self._asm_max_probe_requests > 0:
+                try:
+                    await self._run_asm_pre_pass(client)
+                except Exception as exc:
+                    _log.warning("Redteam: ASM pre-pass failed (non-fatal): %s", exc)
+
             # Substitute poison server URL into all scenario step payloads that
             # contain the placeholder host.  This makes indirect injection and RAG
             # poisoning scenarios point at our live server instead of a dead host.
@@ -2156,6 +2208,10 @@ class RedteamOrchestrator:
         if self._regression_findings:
             findings = self._regression_findings + findings
             self.findings.extend(self._regression_findings)
+        # W1 ASM findings — same independent-pre-pass treatment as above.
+        if self._asm_findings:
+            findings = self._asm_findings + findings
+            self.findings.extend(self._asm_findings)
         findings = _dedup_findings_by_evidence_similarity(_dedup_findings(findings))
         _log.info("Scan complete: %d findings (after dedup)", len(findings))
 

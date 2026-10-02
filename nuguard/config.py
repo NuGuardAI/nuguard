@@ -595,6 +595,14 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if isinstance(redteam, dict) and "defence_regression_paraphrases" in redteam:
         flat["redteam_defence_regression_paraphrases"] = redteam["defence_regression_paraphrases"]
 
+    # Redteam ASM (Agentic Surface Model) probing budget/paths
+    _asm = redteam.get("asm", {}) if isinstance(redteam, dict) else {}
+    if isinstance(_asm, dict):
+        if "max_probe_requests" in _asm:
+            flat["redteam_asm_max_probe_requests"] = _asm["max_probe_requests"]
+        if "extra_inventory_paths" in _asm:
+            flat["redteam_asm_extra_inventory_paths"] = _asm["extra_inventory_paths"]
+
     # Analyze section
     analyze = data.get("analyze", {}) or {}
     if "min_severity" in analyze:
@@ -1907,6 +1915,24 @@ class NuGuardConfig(BaseSettings):
             "second-person indirection). 0 disables paraphrase expansion and "
             "evaluates only the literal configured message "
             "(yaml: redteam.defence_regression_paraphrases)."
+        ),
+    )
+
+    # ----------------------------------------- Agentic Surface Model (W1)
+    redteam_asm_max_probe_requests: int = Field(
+        default=25,
+        description=(
+            "Request budget for the Agentic Surface Model prober (openapi/schema "
+            "exposure, tool/agent inventory disclosure, observation-channel "
+            "connectability, CORS reflection) — GET/OPTIONS only "
+            "(yaml: redteam.asm.max_probe_requests)."
+        ),
+    )
+    redteam_asm_extra_inventory_paths: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra tool/agent-inventory paths to probe alongside the built-in "
+            "heuristic list (yaml: redteam.asm.extra_inventory_paths)."
         ),
     )
 
