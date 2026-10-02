@@ -562,6 +562,10 @@ _DESTRUCTIVE_KEYWORDS = frozenset({
     "terminat", "deactiv", "wipe", "revok", "unsubscrib", "deregist",
 })
 
+# Rate-limit probes/bursts hammer the target with rapid requests, which can
+# lock out accounts or degrade the app — classified as destructive.
+_RATE_LIMIT_RE = re.compile(r"rate[\s_-]?limit", re.IGNORECASE)
+
 
 def _is_destructive_text(title: str, description: str) -> bool:
     """Return True when title/description text suggests a destructive/mutating action.
@@ -577,6 +581,8 @@ def _is_destructive_text(title: str, description: str) -> bool:
     """
     attack_part = title.split(" — ")[0]
     text = (attack_part + " " + description).lower()
+    if _RATE_LIMIT_RE.search(text):
+        return True
     return any(k in text for k in _DESTRUCTIVE_KEYWORDS)
 
 
@@ -597,6 +603,8 @@ def _is_destructive_scenario(scenario: AttackScenario) -> bool:
     never contain a destructive keyword) correctly classified.
     """
     if _is_destructive_text(scenario.title, scenario.description):
+        return True
+    if scenario.scenario_type == ScenarioType.RESOURCE_EXHAUSTION:
         return True
     if scenario.chain is not None and any(
         _is_credentialed_mutation_step(step) for step in scenario.chain.steps
@@ -1692,11 +1700,14 @@ class RedteamOrchestrator:
 
         # 2. Filter by profile and impact score (before enrichment — avoids wasting LLM calls)
         if self._profile == "ci":
-            # ci profile: only high-impact scenarios (score >= 5.0)
+            # ci profile: only high-impact scenarios (score >= 5.0), and never
+            # destructive ones (incl. rate-limit probes) — those need an
+            # explicit non-ci run.
             scenarios = [
                 s
                 for s in all_scenarios
                 if s.impact_score >= max(self._min_impact, 5.0)
+                and not _is_destructive_scenario(s)
             ]
         elif self._profile == "standard":
             scenarios = [
