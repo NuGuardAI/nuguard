@@ -1428,6 +1428,29 @@ class RedteamOrchestrator:
             )
         self._asm_findings.extend(new_findings)
 
+    async def _run_observation_pass(self) -> None:
+        """W7 passive observation-channel tap (catalog L-series).
+
+        Best-effort: a failure here must never abort the scan. Reuses the
+        W1 ASM's already-discovered observation channels rather than
+        rediscovering them — only channels the ASM confirmed reachable
+        without a credential are worth listening to.
+        """
+        if self.asm is None or not self.asm.observation_channels:
+            return
+        from nuguard.redteam.enrichment.observation_prober import (
+            build_observation_findings,
+            run_observation_pass,
+        )
+
+        events_by_channel = await run_observation_pass(self.asm.observation_channels)
+        new_findings = build_observation_findings(events_by_channel)
+        if new_findings:
+            _log.warning(
+                "Observation pass: %d cross-session-leakage finding(s)", len(new_findings),
+            )
+        self._asm_findings.extend(new_findings)
+
     @staticmethod
     def _pick_trust_context_base_step(
         chain: ExploitChain, step_results: list[StepResult],
@@ -2065,6 +2088,14 @@ class RedteamOrchestrator:
                     await self._run_asm_pre_pass(client)
                 except Exception as exc:
                     _log.warning("Redteam: ASM pre-pass failed (non-fatal): %s", exc)
+
+                # W7 passive observation-channel tap (catalog L-series): reuses
+                # the ASM's own discovered channels, so only runs when the ASM
+                # pre-pass above actually ran.
+                try:
+                    await self._run_observation_pass()
+                except Exception as exc:
+                    _log.warning("Redteam: observation pass failed (non-fatal): %s", exc)
 
             # Substitute poison server URL into all scenario step payloads that
             # contain the placeholder host.  This makes indirect injection and RAG
