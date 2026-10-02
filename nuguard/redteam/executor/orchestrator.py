@@ -2371,6 +2371,7 @@ class RedteamOrchestrator:
 
                     if scenario.chain is None:
                         return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("failed")
+                    scenario.chain.decorator_allowed = scenario.decorator_allowed
                     chain, step_results, session = await executor.run(scenario.chain)
                     if self._verbose:
                         chat_target_url = self._target_url + self._chat_path
@@ -2472,6 +2473,7 @@ class RedteamOrchestrator:
                                     try:
                                         if _esc_scenario.chain is None:
                                             continue
+                                        _esc_scenario.chain.decorator_allowed = _esc_scenario.decorator_allowed
                                         _esc_chain, _esc_results, _esc_session = await executor.run(_esc_scenario.chain)
                                         _esc_step_details = self._build_step_details(_esc_results)
                                         _esc_findings = self._build_findings(
@@ -3427,6 +3429,13 @@ class RedteamOrchestrator:
         _callback_hit = next((sr.callback_hit for sr in step_results if sr.callback_hit), None)
         if _callback_hit:
             _base["callback_evidence"] = _callback_hit
+        # W6 payload decorators: a decorator success where the undecorated
+        # payload failed is a direct filter-quality signal ("plaintext
+        # refused, encoded succeeded = the control is a string filter").
+        _decorator_used = next((sr.decorator_used for sr in step_results if sr.decorator_used), None)
+        if _decorator_used:
+            _base["evasion_differential"] = True
+            _base["decorator_name"] = _decorator_used
 
         # Canary-based finding
         if canary_hits and self._trigger_enabled("canary_hits"):
@@ -3580,6 +3589,7 @@ class RedteamOrchestrator:
                 and (
                     sr.step.on_failure == "abort"
                     or sr.callback_hit is not None
+                    or sr.decorator_used is not None
                     or (
                         getattr(sr.step, "use_llm_eval", False)
                         and sr.llm_eval_confidence in ("high", "medium")
@@ -3587,15 +3597,18 @@ class RedteamOrchestrator:
                 )
             ]
             if critical_hits and self._trigger_enabled("critical_success_hits"):
-                # abort-on-success steps (HTTP-status-based, e.g. auth-bypass)
-                # and confirmed W8 egress-callback hits are unconditional proof
-                # once success_signal_found is True — same evidence class as a
-                # canary hit, regardless of the step's on_failure setting (a
-                # callback-canary step should fall through to the next variant
-                # on a miss, not abort the whole chain). Otherwise take the
-                # strongest llm_eval_confidence among the hits.
+                # abort-on-success steps (HTTP-status-based, e.g. auth-bypass),
+                # confirmed W8 egress-callback hits, and confirmed W6 decorator
+                # bypasses are unconditional proof once success_signal_found is
+                # True — same evidence class as a canary hit, regardless of
+                # the step's on_failure setting (a callback-canary/decorator
+                # step should fall through to the next variant on a miss, not
+                # abort the whole chain). Otherwise take the strongest
+                # llm_eval_confidence among the hits.
                 _deterministic_hit = any(
-                    sr.step.on_failure == "abort" or sr.callback_hit is not None
+                    sr.step.on_failure == "abort"
+                    or sr.callback_hit is not None
+                    or sr.decorator_used is not None
                     for sr in critical_hits
                 )
                 _best_confidence = next(

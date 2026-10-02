@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 from nuguard.common.response_data_check import DataExposureResult, check_response_for_data_exposure
 from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, ExploitStep, GoalType
 from nuguard.models.policy import CognitivePolicy
+from nuguard.redteam.decorators import select_decorator
 from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
 from nuguard.redteam.llm_engine.happy_path import generate_happy_path_opener
 from nuguard.redteam.llm_engine.refusal_patterns import (
@@ -282,6 +283,13 @@ class StepResult:
         # W8: structured hit metadata (role, source_ip, headers) when this
         # step's callback_canary_role matched a confirmed inbound callback.
         self.callback_hit: dict[str, Any] | None = None
+        # W6: name of the PayloadDecorator that produced a success where the
+        # undecorated payload failed (e.g. "base64", "rot13"); None when no
+        # decorator was tried or none succeeded. A confirmed value here is
+        # itself a finding (evasion_differential) — the control is a string
+        # filter, not a policy, if the plaintext refused and the encoded
+        # variant got through.
+        self.decorator_used: str | None = None
         # Set for direct-HTTP (target_path) steps: whether the response body
         # actually shows evidence of exposed data (PII-shaped values, a bulk
         # record list, or SBOM-declared sensitive field names) — see
@@ -663,7 +671,48 @@ class AttackExecutor:
                 # Multi-turn escalation: use adaptive LLM mutations when available,
                 # fall back to static variants.
                 last_response = result.response
-                for attempt in range(self.MAX_MUTATIONS):
+
+                # W6 payload decorators (redteam-proposal.md): try at most one
+                # deterministic encoding/framing/structure transform BEFORE
+                # free-form LLM paraphrase. Runs even with no attack LLM
+                # configured (unlike the mutation loop below), and a success
+                # here is itself evidence the control is a string filter, not
+                # a policy — recorded on the StepResult for _build_findings.
+                _decorator_succeeded = False
+                if chain.decorator_allowed and not getattr(step, "_decorator_tried", False):
+                    step._decorator_tried = True  # type: ignore[attr-defined]
+                    decorator = select_decorator(chain, step)
+                    if decorator is not None:
+                        decorated_payload = decorator.decorate(step.payload)
+                        if not hasattr(step, "_sent_payloads"):
+                            step._sent_payloads = {step.payload}  # type: ignore[attr-defined]
+                        if decorated_payload not in step._sent_payloads:  # type: ignore[attr-defined]
+                            step._sent_payloads.add(decorated_payload)  # type: ignore[attr-defined]
+                            try:
+                                decorated_result = await self._execute_step_with_payload(
+                                    step, decorated_payload, session, chain
+                                )
+                            except TargetUnavailableError:
+                                _log.warning(
+                                    "Chain %s: target unavailable during decorator "
+                                    "attempt (%s) — aborting chain and propagating",
+                                    chain.chain_id, decorator.name,
+                                )
+                                chain.status = "aborted"
+                                raise
+                            last_response = decorated_result.response
+                            if decorated_result.success_signal_found:
+                                decorated_result.decorator_used = decorator.name
+                                session.add_evidence(step.step_id, decorated_result.response)
+                                results.append(decorated_result)
+                                _decorator_succeeded = True
+                                _log.info(
+                                    "Chain %s step %s: decorator %r succeeded where "
+                                    "the undecorated payload failed (evasion_differential)",
+                                    chain.chain_id, step.step_id, decorator.name,
+                                )
+
+                for attempt in range(0 if _decorator_succeeded else self.MAX_MUTATIONS):
                     if detect_confirmation_request(last_response):
                         # The target offered to proceed pending an answer
                         # (e.g. "I can send an OTP — let me know if you'd
