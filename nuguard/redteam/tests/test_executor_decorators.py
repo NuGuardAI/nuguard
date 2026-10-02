@@ -6,6 +6,7 @@ from typing import Any, cast
 import pytest
 
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
+from nuguard.redteam.decorators import DECORATOR_REGISTRY
 from nuguard.redteam.executor.executor import AttackExecutor
 from nuguard.redteam.target.session import AttackSession
 
@@ -67,7 +68,7 @@ async def test_decorator_succeeds_where_plaintext_was_refused() -> None:
     assert results[0].decorator_used is None
     assert results[1].success_signal_found is True
     assert results[1].decorator_used is not None
-    assert results[1].decorator_used in {"base64", "hex", "rot13", "fullwidth_unicode", "leetspeak"}
+    assert results[1].decorator_used in {wd.decorator.name for wd in DECORATOR_REGISTRY}
     # The decorated payload actually sent must not be the literal plaintext.
     assert client.sent_payloads[1] != _PAYLOAD
 

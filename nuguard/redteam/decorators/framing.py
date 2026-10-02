@@ -1,14 +1,14 @@
-"""Framing (pretext) decorators — stub (redteam-proposal.md W3 + W6).
+"""Framing (pretext) decorators (redteam-proposal.md W3 + W6).
 
-Populated once the pretext-template library (W3, Phase 4) lands; each
-``PretextTemplate`` will implement the same ``decorate(payload) -> payload``
-shape as :class:`~nuguard.redteam.decorators.base.PayloadDecorator` so it
-can register here. Empty for now — this module exists so the registry's
-import and the executor's decorator-category plumbing are in place before
-Phase 4, not to be extended ad hoc later.
+The W3 pretext library (``nuguard.redteam.pretexts``) implements the same
+``decorate(payload) -> payload`` shape as
+:class:`~nuguard.redteam.decorators.base.PayloadDecorator`, so its
+templates register directly into the W6 decorator pipeline here.
 """
 from __future__ import annotations
 
+from nuguard.redteam.pretexts import PRETEXT_DECORATORS
+
 from .base import PayloadDecorator
 
-FRAMING_DECORATORS: tuple[PayloadDecorator, ...] = ()
+FRAMING_DECORATORS: tuple[PayloadDecorator, ...] = PRETEXT_DECORATORS
