@@ -689,6 +689,25 @@ def _build_artifact_integrity_probe(ctx: BuilderContext) -> list:
     return _stamp([build_artifact_integrity_probe(str(agent.id), agent.name or "assistant", source_url, integrity_hash)], ctx)
 
 
+def _build_dual_path_read(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.dual_path import build_dual_path_read
+    agent = ctx.target_agent
+    endpoint = ctx.target_endpoint
+    if endpoint is None:
+        return []
+    path = (endpoint.metadata.endpoint if endpoint.metadata else None) or "/api/data"
+    method = (endpoint.metadata.method if endpoint.metadata else None) or "GET"
+    if method.upper() not in ("GET", "HEAD", "OPTIONS"):
+        return []  # X01 is read-only; a write method belongs to X02 (destructive, disabled)
+    tool_name = (ctx.target_tool.name if ctx.target_tool else None) or endpoint.name or "endpoint"
+    sensitive_fields = list(ctx.profile.pii_fields[:3]) if ctx.profile.pii_fields else []
+    results = build_dual_path_read(
+        str(agent.id), agent.name or "assistant", tool_name, path,
+        http_method=method, sensitive_fields=sensitive_fields,
+    )
+    return _stamp([results], ctx)
+
+
 def _build_cross_env_credential_reuse(ctx: BuilderContext) -> list:
     from nuguard.redteam.scenarios.supply_chain_attacks import build_cross_env_credential_reuse
     staging_url = ""
@@ -849,7 +868,7 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "surface_unauth_observation": _stub("surface_unauth_observation"),
     "surface_cors_misconfig":     _stub("surface_cors_misconfig"),
     # ── Dual-Path Tool Exposure (X01-X02) — redteam-proposal.md W10 ───────
-    "dual_path_read":             _stub("dual_path_read"),
+    "dual_path_read":             _build_dual_path_read,
     "dual_path_write":            _stub("dual_path_write"),
     # ── Router and Agent-Selection Abuse (Q01-Q03) — redteam-proposal.md W4 ─
     "router_keyword_seed":        _stub("router_keyword_seed"),

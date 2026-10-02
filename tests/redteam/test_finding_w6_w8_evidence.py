@@ -92,6 +92,80 @@ def test_decorator_success_produces_finding_with_evasion_differential() -> None:
     assert findings[0].decorator_name == "base64"
 
 
+def _dual_path_scenario() -> AttackScenario:
+    return AttackScenario(
+        scenario_id="scn-dual", goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.DUAL_PATH_GATE_BYPASS, title="Dual-path probe",
+        description="x", target_node_ids=["node-1"], dual_path=True,
+    )
+
+
+def test_dual_path_gate_bypass_produces_finding() -> None:
+    orchestrator = _orchestrator(_all_triggers_except_critical_off())
+    scenario = _dual_path_scenario()
+    chain = _chain()
+    chat_step = ExploitStep(
+        step_id="s1", step_type="INVOKE", description="chat", payload="x",
+        target_path=None, contributes_to_finding=False,
+    )
+    direct_step = ExploitStep(
+        step_id="s2", step_type="INVOKE", description="direct", payload="",
+        target_path="/api/accounts/1", contributes_to_finding=False,
+    )
+    chat_result = StepResult(step=chat_step, response="I cannot share that.", tool_calls=[])
+    direct_result = StepResult(
+        step=direct_step, response='{"data": 1}', tool_calls=[], http_status_code=200,
+    )
+
+    findings = orchestrator._build_findings(
+        scenario=scenario, chain=chain, step_results=[chat_result, direct_result],
+        step_details=orchestrator._build_step_details([chat_result, direct_result]),
+    )
+
+    assert len(findings) == 1
+    assert findings[0].dual_path_verdict == "gate_bypass"
+
+
+def test_dual_path_consistent_produces_no_finding() -> None:
+    orchestrator = _orchestrator(_all_triggers_except_critical_off())
+    scenario = _dual_path_scenario()
+    chain = _chain()
+    chat_step = ExploitStep(
+        step_id="s1", step_type="INVOKE", description="chat", payload="x",
+        target_path=None, contributes_to_finding=False,
+    )
+    direct_step = ExploitStep(
+        step_id="s2", step_type="INVOKE", description="direct", payload="",
+        target_path="/api/accounts/1", contributes_to_finding=False,
+    )
+    chat_result = StepResult(step=chat_step, response="Here is the data.", tool_calls=[])
+    direct_result = StepResult(
+        step=direct_step, response='{"data": 1}', tool_calls=[], http_status_code=200,
+    )
+
+    findings = orchestrator._build_findings(
+        scenario=scenario, chain=chain, step_results=[chat_result, direct_result],
+        step_details=orchestrator._build_step_details([chat_result, direct_result]),
+    )
+
+    assert findings == []
+
+
+def test_non_dual_path_scenario_never_runs_the_comparison() -> None:
+    orchestrator = _orchestrator(_all_triggers_except_critical_off())
+    scenario = _scenario()  # dual_path=False by default
+    chain = _chain()
+    step = ExploitStep(step_id="s1", step_type="INVOKE", description="x", payload="x")
+    result = StepResult(step=step, response="refused", tool_calls=[])
+
+    findings = orchestrator._build_findings(
+        scenario=scenario, chain=chain, step_results=[result],
+        step_details=orchestrator._build_step_details([result]),
+    )
+
+    assert findings == []
+
+
 def test_callback_hit_without_use_llm_eval_or_abort_still_qualifies() -> None:
     """A callback_hit must be unconditional proof regardless of on_failure."""
     orchestrator = _orchestrator(_all_triggers_except_critical_off())

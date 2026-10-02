@@ -483,6 +483,18 @@
             ],
             "default": null,
             "title": "Regression Paraphrase Kind"
+          },
+          "dual_path_verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Dual Path Verdict"
           }
         },
         "required": [
@@ -8060,6 +8072,18 @@
             ],
             "default": null,
             "title": "Regression Paraphrase Kind"
+          },
+          "dual_path_verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Dual Path Verdict"
           }
         },
         "required": [
@@ -9734,6 +9758,18 @@
             ],
             "default": null,
             "title": "Regression Paraphrase Kind"
+          },
+          "dual_path_verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Dual Path Verdict"
           }
         },
         "required": [

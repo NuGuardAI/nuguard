@@ -1873,7 +1873,7 @@ _DUAL_PATH: tuple[ScenarioSpec, ...] = (
         "of the same read tool returns 2xx with the requested data.",
         owasp_llm=("LLM06:2026",), owasp_agentic=("ASI02",),
         base_impact=8.0, builder_key="dual_path_read",
-        enabled=False, dual_path=True, priority_rules=(1, 3),
+        enabled=True, dual_path=True, priority_rules=(1, 3),
     ),
     ScenarioSpec(
         id="X02", category=CAT.DUAL_PATH_EXPOSURE, title="Direct invocation of a chat-gated write tool",

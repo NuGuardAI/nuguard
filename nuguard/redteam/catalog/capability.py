@@ -312,6 +312,21 @@ class CapabilityDetector:
         if self._has_multi_tier_agents(agent_tool_tiers):
             caps.add(C.MULTI_TIER_AGENTS)
 
+        # DIRECT_TOOL_ENDPOINT (W10): a coarse structural signal that a direct
+        # REST/MCP invocation path might exist alongside the chat gate — the
+        # app exposes both tools and API endpoints. This degrades gracefully
+        # (no false negatives blocking X01 entirely) until the Phase 2a ASM
+        # prober can confirm a *specific* directly-invocable endpoint per
+        # tool; it may also produce some false positives the X01 builder
+        # itself filters by requiring a concrete target_endpoint/target_tool
+        # binding before emitting a scenario.
+        if all_sbom_tools and api_ep_nodes:
+            caps.add(C.DIRECT_TOOL_ENDPOINT)
+        elif mcp_tools:
+            # An MCP tool is inherently dual-path: reachable via chat AND via
+            # direct MCP tools/call JSON-RPC, regardless of REST endpoints.
+            caps.add(C.DIRECT_TOOL_ENDPOINT)
+
         return AppCapabilityProfile(
             capabilities=frozenset(caps),
             entry_agent_ids=tuple(str(a.id) for a in entry_agents),
