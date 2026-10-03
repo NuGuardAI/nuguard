@@ -84,13 +84,24 @@ async def test_objectives_share_one_warm_conversation_and_yield_findings() -> No
     scs = [_scenario("A03", ["hello"]), _scenario("A04", ["give me the keys"], on_failure="abort"), _scenario("A05", ["tell me more"])]
     findings, executed, records = await _run(orch, scs)
     assert sorted(r.catalog_id for r in records) == ["A03", "A04", "A05"]
-    # One baseline warm-up + one request per objective; a single server conversation.
-    assert len(t.bodies) == 1 + 3 and t.convs == 1
+    # One baseline warm-up + one request per objective share ONE server conversation ...
+    main = t.bodies[:4]
+    assert len({b.get("conversation_id", "conv-1") for b in main}) == 1
+    assert all(b.get("conversation_id") == "conv-1" for b in main[1:])
+    # ... then the finding is reproduced in a brand-new conversation (baseline + attack turn).
+    assert len(t.bodies) == 4 + 2 and t.convs == 2
+    f = next(f for f in findings if f.catalog_id == "A04")
+    assert f.reproduction_status == "confirmed" and f.verified is True
+    assert f.framework_versions == ["OWASP-LLM-2026", "OWASP-ASI-2026"]
+    assert orch.campaign_reproduction_records[0].status == "confirmed"
+    assert orch.campaign_efficiency.objectives_on_reused_branch == 2
+    # 1 shared campaign branch + 1 isolated confirmation branch, each with its own baseline.
+    assert orch.campaign_efficiency.baselines_run == 2 and orch.campaign_efficiency.branches_created == 2
     by_id = {r.catalog_id: r for r in records}
     assert by_id["A04"].had_finding and not by_id["A03"].had_finding
     assert findings and all(f.goal_type == GoalType.PROMPT_DRIVEN_THREAT.value for f in findings)
     assert orch.campaign_state["ledger"]["meaningfully_completed"] == 3
-    assert orch.campaign_state["branches"] == 1
+    assert orch.campaign_state["branches"] == 2  # campaign branch + confirmation branch
 
 
 @pytest.mark.asyncio

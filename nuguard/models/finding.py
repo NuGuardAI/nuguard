@@ -56,6 +56,19 @@ class Finding(BaseModel):
     golden_data_excerpt: str | None = None
     # Post-finding verification probe result (None = not run, True = reproduced, False = unconfirmed)
     verified: bool | None = None
+    # ── Campaign-mode (redteam.mode: campaign) evidence fields — additive, all optional ──
+    # Stable catalog identity of the objective that produced this finding (e.g. "T03").
+    catalog_id: str | None = None
+    # Fresh-session reproduction: "confirmed" | "not_reproduced" | "blocked" | "not_attempted",
+    # kept separate from candidate confidence, evidence kind and effect verification.
+    # ``verified`` above stays populated for compatibility (True = confirmed, False = not_reproduced).
+    reproduction_status: str | None = None
+    # What proved it: "canary" | "tool_trace" | "synthetic_account" | "response_quote".
+    evidence_kind: str | None = None
+    # True only when a controlled effect (canary/synthetic account) corroborated the claim.
+    effect_verified: bool | None = None
+    # Framework versions the references/OWASP refs are expressed in, e.g. "OWASP-LLM-2026".
+    framework_versions: list[str] = Field(default_factory=list)
     # NGRS (NuGuard Risk Score) — see nuguard.redteam.risk_engine.ngrs. 0-100
     # Impact x Likelihood score that `severity` above is banded from; `ngrs_vector`
     # is the human-readable factor breakdown (e.g. "DC:4/VOL:2/SC:1/ACT:3/EV:3/PRE:2/T:2/PM:+1")

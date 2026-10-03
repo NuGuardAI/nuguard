@@ -25,7 +25,7 @@ from nuguard.redteam.scenarios.scenario_types import AttackScenario
 from .branches import Branch, BranchManager, ObjectiveRequirements
 from .discovery import run_clean_baseline
 from .knowledge import KnowledgeStore, Scope
-from .models import ObjectiveExecutionRecord
+from .models import ObjectiveRun
 from .transport import BranchSender, RetryDeferred, TargetLimiter
 
 if TYPE_CHECKING:
@@ -153,14 +153,14 @@ class CampaignExecutor:
         req: ObjectiveRequirements,
         *,
         resume_step_index: int = 0,
-    ) -> ObjectiveExecutionRecord:
+    ) -> ObjectiveRun:
         """Run *scenario*'s chain on *branch*; never sleeps, never sets up a session."""
         chain = scenario.chain
         if chain is None:
             raise ValueError(f"scenario {scenario.scenario_id} has no static chain")
         ref = scenario.catalog_id or scenario.scenario_id
         session = branch.session
-        rec = ObjectiveExecutionRecord(
+        rec = ObjectiveRun(
             catalog_id=scenario.catalog_id,
             scenario_id=scenario.scenario_id,
             branch_id=branch.branch_id,
@@ -212,7 +212,7 @@ class CampaignExecutor:
         req: ObjectiveRequirements,
         director_factory: Callable[[bool], "ConversationDirector"],
         executor_factory: Callable[[BranchClient, "ConversationDirector"], "GuidedAttackExecutor"],
-    ) -> ObjectiveExecutionRecord:
+    ) -> ObjectiveRun:
         """Run a guided conversation on *branch* with its own director.
 
         ``director_factory(setup_done)`` must return a *new* director per objective
@@ -223,7 +223,7 @@ class CampaignExecutor:
         if conv is None:
             raise ValueError(f"scenario {scenario.scenario_id} has no guided conversation")
         ref = scenario.catalog_id or scenario.scenario_id
-        rec = ObjectiveExecutionRecord(
+        rec = ObjectiveRun(
             catalog_id=scenario.catalog_id,
             scenario_id=scenario.scenario_id,
             branch_id=branch.branch_id,
@@ -247,7 +247,7 @@ class CampaignExecutor:
 
     # -- shared -------------------------------------------------------------
     def _finish(
-        self, branch: Branch, ref: str, req: ObjectiveRequirements, rec: ObjectiveExecutionRecord
+        self, branch: Branch, ref: str, req: ObjectiveRequirements, rec: ObjectiveRun
     ) -> None:
         if rec.status == "deferred":
             branch.active_objective = None  # branch stays; the objective re-queues

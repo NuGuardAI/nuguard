@@ -39,12 +39,22 @@ from nuguard.redteam.executor.orchestrator import (
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
 from nuguard.redteam.target.client import TargetUnavailableError
 
+from . import projections
 from .branches import BranchManager, ObjectiveRequirements
-from .checkpoint import DeferredObjective, build_payload, campaign_signature, restore
+from .checkpoint import (
+    DeferredObjective,
+    build_payload,
+    campaign_signature,
+    restore,
+    target_fingerprint,
+)
 from .config import CampaignConfig
+from .confirmation import Candidate, ConfirmationRunner, ReproStatus, SetupItem
 from .executor import CampaignExecutor
 from .knowledge import KnowledgeStore, Scope
 from .ledger import CoverageLedger, Status
+from .llm_limiter import LLMLimiter
+from .models import ObjectiveRun
 from .planner import CampaignPlanner, plan_fingerprint
 from .scheduler import BudgetTracker, CampaignScheduler, Objective, payload_fingerprint
 from .transport import Principal, TargetLimiter
@@ -93,6 +103,13 @@ class CampaignOrchestrator(RedteamOrchestrator):
         self._campaign_cfg = campaign or CampaignConfig()
         self.campaign_ledger = CoverageLedger()
         self.campaign_state: dict[str, Any] = {}
+        self.campaign_coverage: Any = None
+        self.campaign_objective_records: list[Any] = []
+        self.campaign_reproduction_records: list[Any] = []
+        self.campaign_branch_summaries: list[Any] = []
+        self.campaign_observations: list[Any] = []
+        self.campaign_plan: Any = None
+        self.campaign_efficiency: Any = None
         self._campaign_runtime: dict[str, Any] = {}
 
     # -- checkpoint embedding -----------------------------------------------
@@ -209,12 +226,13 @@ class CampaignOrchestrator(RedteamOrchestrator):
         ledger = self.campaign_ledger
         sched = CampaignScheduler(ledger, budget)
         enricher = None
+        llm_limiter: LLMLimiter | None = None
         if self._redteam_llm is not None:
-            from nuguard.redteam.campaign.llm_limiter import LLMLimiter
             from nuguard.redteam.llm_engine.prompt_generator import LLMPromptGenerator
 
+            llm_limiter = LLMLimiter(self._redteam_llm)
             enricher = LLMPromptGenerator(
-                LLMLimiter(self._redteam_llm), self._sbom, self._effective_policy  # type: ignore[arg-type]
+                llm_limiter, self._sbom, self._effective_policy  # type: ignore[arg-type]
             )
         planner = CampaignPlanner(enricher, plan_fingerprint(
             evidence={"profile": bool(sdisc)}, config={"variants": 3}
@@ -228,8 +246,8 @@ class CampaignOrchestrator(RedteamOrchestrator):
         completed: set[str] = set()
         deferred: list[DeferredObjective] = []
         fixtures = self._fixtures(executor)
-        rt = {
-            "target_fp": __import__("nuguard.redteam.campaign.checkpoint", fromlist=["x"]).target_fingerprint(base, self._chat_path),
+        rt: dict[str, Any] = {
+            "target_fp": target_fingerprint(base, self._chat_path),
             "auth_fps": {principal.ref: principal.auth_scope}, "branches": branches, "store": store,
             "budget": budget, "completed": completed, "deferred": deferred,
             "pending_repro": [], "writes": set(), "planner": planner,
@@ -254,18 +272,32 @@ class CampaignOrchestrator(RedteamOrchestrator):
         findings: list[Finding] = []
         executed: list[tuple[str, str, bool]] = []
         records: list[ScenarioRecord] = []
+        t_start = time.monotonic()
+        breadth_ids: set[str] = set()
+        breadth_done = 0
+        first_finding_t: float | None = None
+        breadth_t: float | None = None
+        delay_total = 0.0
+        runs: list[ObjectiveRun] = []
+        cand_map: list[tuple[Objective, list[Finding], ObjectiveRun]] = []
 
         def _finish(o: Objective, rec: ScenarioRecord, new: list[Finding], *, informative: bool) -> None:
+            nonlocal first_finding_t, breadth_t, breadth_done
             records.append(rec)
             executed.append((o.scenario.title, o.scenario.goal_type.value, bool(new)))
             findings.extend(new)
+            if new and first_finding_t is None:
+                first_finding_t = time.monotonic() - t_start
+            if o.objective_id in breadth_ids:
+                breadth_done += 1
+                if breadth_done == len(breadth_ids):
+                    breadth_t = time.monotonic() - t_start
             completed.add(self._sig(o, principal))
             if o.req.persistent_write:
                 rt["writes"].add(o.catalog_id)
             sched.record_outcome(o, informative=informative)
-            if cfg is not None:
-                self._save_checkpoint(status="in_progress", records=self.scenario_records + records,
-                                      findings=self.findings + findings)
+            self._save_checkpoint(status="in_progress", records=self.scenario_records + records,
+                                  findings=self.findings + findings)
 
         # Ledger-only outcomes: redundant, blocked by missing fixtures, already completed.
         for o in objectives:
@@ -296,6 +328,7 @@ class CampaignOrchestrator(RedteamOrchestrator):
             [o for o in runnable if o not in plan.selected and o not in plan.deferred]
         )
         consecutive_unavailable = 0
+        breadth_ids.update(o.objective_id for o in plan.selected)
 
         while pending or len(cooldown):
             for o, step in cooldown.pop_ready(time.monotonic()):
@@ -305,7 +338,9 @@ class CampaignOrchestrator(RedteamOrchestrator):
                 nxt = cooldown.next_eligible_at()
                 if nxt is None:
                     break
-                await asyncio.sleep(min(max(0.0, nxt - time.monotonic()), _MAX_IDLE_SLEEP))
+                wait = min(max(0.0, nxt - time.monotonic()), _MAX_IDLE_SLEEP)
+                delay_total += wait
+                await asyncio.sleep(wait)
                 continue
             if budget.exhausted():
                 for o in pending:
@@ -319,7 +354,7 @@ class CampaignOrchestrator(RedteamOrchestrator):
                 cooldown.push((o, o.scenario.__dict__.get("_campaign_resume", 0)), health.resume_at(key))
                 continue
             try:
-                new_f, rec, informative, defer = await self._run_objective(
+                new_f, rec, informative, defer, run = await self._run_objective(
                     o, cex, principal, scope, guided_executor, planner
                 )
             except TargetUnavailableError:
@@ -346,9 +381,31 @@ class CampaignOrchestrator(RedteamOrchestrator):
                 continue
             budget.spend(requests=rec.turns_used)
             health.record(key, TransportOutcome.OK, now=time.monotonic())
+            runs.append(run)
+            if new_f:
+                cand_map.append((o, new_f, run))
             _finish(o, rec, new_f, informative=informative)
 
+        repros = []
+        if cfg.confirm_in_fresh_sessions and cand_map and not self._circuit_open:
+            repros = await self._confirm_findings(
+                cand_map, cex, caps, principal, scope, budget, runs
+            )
         cex.branches.complete_campaign()
+        requests_total = budget.requests_used + sum(r.trials for r in repros)
+        self.campaign_coverage = projections.coverage_summary(ledger, len(findings))
+        self.campaign_objective_records = projections.objective_records(runs)
+        self.campaign_reproduction_records = [projections.reproduction_public(r) for r in repros]
+        self.campaign_branch_summaries = projections.branch_summaries(branches)
+        self.campaign_observations = projections.observations(store)
+        self.campaign_plan = projections.plan_summary(
+            planner.group(runnable), plan.selected, plan.deferred, plan.fits
+        )
+        self.campaign_efficiency = projections.efficiency_summary(
+            runs=runs, manager=branches, requests=requests_total, llm=llm_limiter,
+            retry_delay_seconds=delay_total, time_to_first_finding_s=first_finding_t,
+            time_to_representative_coverage_s=breadth_t,
+        )
         self.campaign_state = {
             "ledger": ledger.counts(),
             "branches": len(branches.branches),
@@ -394,8 +451,8 @@ class CampaignOrchestrator(RedteamOrchestrator):
         scope: Scope,
         guided_executor: "GuidedAttackExecutor | None",
         planner: CampaignPlanner,
-    ) -> tuple[list[Finding], ScenarioRecord, bool, tuple[float, int] | None]:
-        """Run one objective; returns (findings, record, informative, defer)."""
+    ) -> tuple[list[Finding], ScenarioRecord, bool, tuple[float, int] | None, ObjectiveRun]:
+        """Run one objective; returns (findings, record, informative, defer, run)."""
         scenario = o.scenario
         t0 = time.perf_counter()
         branch = cex.branches.acquire(principal, o.req)
@@ -432,7 +489,10 @@ class CampaignOrchestrator(RedteamOrchestrator):
                 )
             except RetryDeferred as rd:
                 branch.active_objective = None
-                return [], self._record(scenario, "deferred"), False, (rd.delay_seconds, 0)
+                return (
+                    [], self._record(scenario, "deferred"), False, (rd.delay_seconds, 0),
+                    self._blank_run(o, branch, turn0),
+                )
             rec.duration_s = time.perf_counter() - t0
             rec.turns_used = len(sess.turns) - turn0
             rec.turns_budget = scenario.guided_conversation.max_turns
@@ -440,10 +500,15 @@ class CampaignOrchestrator(RedteamOrchestrator):
                 branch, o.catalog_id, o.req, attack_turns=rec.turns_used,
                 attack_accepted=rec.had_finding,
             )
-            return new_f, rec, rec.had_finding, None
+            run = self._blank_run(o, branch, turn0)
+            run.turn_end = len(sess.turns)
+            run.attack_accepted = rec.had_finding
+            run.notes.append("guided objective: fresh-session replay of guided turns is not implemented")
+            self._stamp_findings(new_f, o)
+            return new_f, rec, rec.had_finding, None, run
 
         if scenario.chain is None:
-            return [], self._record(scenario, "failed"), False, None
+            return [], self._record(scenario, "failed"), False, None, self._blank_run(o, branch, 0)
         jit = await planner.enrich_ready([o])
         if jit:
             from nuguard.redteam.llm_engine.prompt_generator import _inject_llm_payloads
@@ -453,7 +518,10 @@ class CampaignOrchestrator(RedteamOrchestrator):
         scenario.chain.decorator_allowed = scenario.decorator_allowed
         orec = await cex.run_static(scenario, branch, o.req, resume_step_index=resume)
         if orec.status == "deferred":
-            return [], self._record(scenario, "deferred"), False, (orec.defer_seconds, orec.resume_step_index)
+            return (
+                [], self._record(scenario, "deferred"), False,
+                (orec.defer_seconds, orec.resume_step_index), orec,
+            )
         chain = scenario.chain
         chain.status = "aborted" if orec.status in ("aborted", "effect_unknown") else "completed"
         step_results = orec.step_results
@@ -476,7 +544,79 @@ class CampaignOrchestrator(RedteamOrchestrator):
         informative = had or any(
             classify_transport(r.response) == TransportOutcome.OK for r in step_results
         )
-        return new_f, rec, informative, None
+        self._stamp_findings(new_f, o)
+        return new_f, rec, informative, None, orec
+
+    @staticmethod
+    def _blank_run(o: Objective, branch: Any, turn_start: int) -> ObjectiveRun:
+        return ObjectiveRun(
+            catalog_id=o.scenario.catalog_id, scenario_id=o.scenario.scenario_id,
+            branch_id=branch.branch_id, turn_start=turn_start,
+            ancestor_setup_refs=tuple(branch.objective_history),
+        )
+
+    @staticmethod
+    def _stamp_findings(findings: list[Finding], o: Objective) -> None:
+        """Campaign evidence fields every finding carries (versions are never relabelled)."""
+        for f in findings:
+            f.catalog_id = o.scenario.catalog_id or None
+            f.framework_versions = list(projections.FRAMEWORK_VERSIONS)
+            f.reproduction_status = f.reproduction_status or ReproStatus.NOT_ATTEMPTED.value
+
+    # -- fresh-session confirmation ---------------------------------------------
+    async def _confirm_findings(
+        self,
+        cand_map: list[tuple[Objective, list[Finding], ObjectiveRun]],
+        cex: CampaignExecutor,
+        caps: TargetCapabilities,
+        principal: Principal,
+        scope: Scope,
+        budget: BudgetTracker,
+        runs: list[ObjectiveRun],
+    ) -> list[Any]:
+        """Reproduce each candidate in a brand-new conversation using reserved capacity."""
+        runner = ConfirmationRunner(
+            cex, caps, self._campaign_cfg, budget,
+            detect=lambda r: bool(r.success_signal_found or r.canary_hits or r.policy_violations),
+        )
+        by_catalog = {r.catalog_id: r for r in runs}
+        out: list[Any] = []
+        for o, fs, run in cand_map:
+            if o.scenario.chain is None:        # guided: no replayable static sequence yet
+                continue
+            deterministic = any(r.canary_hits for r in run.step_results)
+            setup = []
+            for ref in o.meta.prerequisites:
+                prior = by_catalog.get(ref)
+                if prior is None or ref.startswith("L") or prior.branch_id != run.branch_id:
+                    continue
+                steps = tuple(sr.step for sr in prior.step_results)
+                setup.append(SetupItem(ref, steps, write=ref in self._campaign_runtime["writes"]))
+            cand = Candidate(
+                o.objective_id, o.scenario, principal, o.req, scope, setup=setup,
+                evidence_kind="canary" if deterministic else "response_quote",
+                deterministic=deterministic,
+                original_evidence=(fs[0].evidence_quote or fs[0].evidence or "")[:500],
+            )
+            rec = await runner.confirm(cand)
+            out.append(rec)
+            for f in fs:
+                f.reproduction_status = rec.status.value
+                f.evidence_kind = rec.evidence_kind
+                f.effect_verified = rec.effect_verified
+                f.verified = (
+                    True if rec.status == ReproStatus.CONFIRMED
+                    else False if rec.status == ReproStatus.NOT_REPRODUCED else None
+                )
+                if rec.status == ReproStatus.NOT_REPRODUCED:
+                    f.reasoning = (
+                        f"{f.reasoning} [Not reproduced in a fresh session: "
+                        "context-dependent; original evidence retained.]"
+                    ).strip()
+            self._campaign_runtime["pending_repro"].append(
+                {"objective": o.objective_id, "status": rec.status.value}
+            )
+        return out
 
 
 def rec_affected(orch: CampaignOrchestrator, scenario: AttackScenario) -> str:
