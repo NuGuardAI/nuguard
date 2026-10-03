@@ -128,3 +128,95 @@ def test_redteam_run_twice_reuses_cached_endpoint(tmp_path: Path) -> None:
 
     data = json.loads(enriched_path.read_text())
     assert data.get("resolved_chat_endpoint", {}).get("chat_path") == ENDPOINT
+
+
+# ---------------------------------------------------------------------------
+# Cross-COMMAND E2E (as opposed to cross-tool-via-direct-function-call,
+# already covered by tests/cli/test_target_verify_endpoint_cache.py): a real
+# `nuguard target verify` CliRunner invocation, followed by a real, separate
+# `nuguard behavior`/`nuguard redteam` CliRunner invocation against the same
+# --sbom file, proving the actual end-user workflow this issue is about
+# works through both commands' full CLI entry points — not just that the
+# underlying functions hand off correctly when called directly.
+# ---------------------------------------------------------------------------
+
+
+def _verify_args(sbom_path: Path) -> list[str]:
+    return ["target", "verify", "--target", TARGET, "--endpoint", ENDPOINT, "--sbom", str(sbom_path)]
+
+
+@respx.mock
+def test_target_verify_then_behavior_reuses_cached_endpoint(tmp_path: Path) -> None:
+    sbom_path = _write_one_node_sbom(tmp_path)
+    route = respx.post(FULL_URL).mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+
+    verify_result = runner.invoke(app, _verify_args(sbom_path), catch_exceptions=False)
+    assert verify_result.exit_code == 0, verify_result.output
+    calls_after_verify = route.call_count
+    assert calls_after_verify > 0
+    enriched_path = sbom_path.with_name("app.sbom.enriched.json")
+    assert enriched_path.exists()
+
+    out_path = tmp_path / "behavior-report.md"
+    behavior_result = runner.invoke(
+        app,
+        [
+            "behavior", "--dynamic",
+            "--target", TARGET,
+            "--sbom", str(sbom_path),
+            "--output", str(out_path),
+        ],
+        catch_exceptions=False,
+    )
+
+    assert behavior_result.exit_code == 0, behavior_result.output
+    # Not a call-count comparison here (unlike the redteam/target-verify pair
+    # below): behavior has no --endpoint CLI flag, so this run is always
+    # non-explicit, and develop's resolve_target_session now does its own
+    # live endpoint validation *during session resolution* — upstream of,
+    # and independent of, this Phase 3 cache — every time no endpoint is
+    # explicitly configured. That upstream stage's own live calls make raw
+    # call counts an unreliable signal here; the cache-hit message is the
+    # direct, reliable proof that _ensure_endpoint_preflight's own later
+    # validation stage was actually skipped in favor of the cached result.
+    assert "reused from a previously-validated SBOM resolution" in behavior_result.output, (
+        "Expected behavior to report reusing target verify's cached endpoint "
+        f"resolution. Output:\n{behavior_result.output}"
+    )
+
+
+@respx.mock
+def test_target_verify_then_redteam_reuses_cached_endpoint(tmp_path: Path) -> None:
+    sbom_path = _write_one_node_sbom(tmp_path)
+    route = respx.post(FULL_URL).mock(
+        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+    )
+
+    verify_result = runner.invoke(app, _verify_args(sbom_path), catch_exceptions=False)
+    assert verify_result.exit_code == 0, verify_result.output
+    calls_after_verify = route.call_count
+    assert calls_after_verify > 0
+    enriched_path = sbom_path.with_name("app.sbom.enriched.json")
+    assert enriched_path.exists()
+
+    out_path = tmp_path / "redteam-report.md"
+    redteam_result = runner.invoke(
+        app,
+        [
+            "redteam",
+            "--target", TARGET,
+            "--sbom", str(sbom_path),
+            "--output", str(out_path),
+        ],
+        catch_exceptions=False,
+    )
+
+    assert redteam_result.exit_code == 0, redteam_result.output
+    new_calls = route.call_count - calls_after_verify
+    assert new_calls < calls_after_verify, (
+        f"Expected `redteam` to make fewer live calls than `target verify`'s cold "
+        f"run (verify={calls_after_verify}, redteam-new={new_calls}) — it should "
+        f"have reused target verify's cached endpoint resolution from the enriched SBOM."
+    )

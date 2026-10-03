@@ -206,6 +206,18 @@ async def _verify_async(
             sbom_doc = AiSbomSerializer.from_json(sbom_path.read_text())
         except Exception as exc:
             console.print(f"[yellow]Warning:[/yellow] failed to load SBOM {sbom_path}: {exc}")
+        else:
+            # Re-run topology enrichment in case the SBOM file predates it
+            # (idempotent) — matches behavior.py/redteam.py's own pre-load
+            # normalization. Without this, the _enrichment_cache_key computed
+            # below hashes a differently-shaped SBOM than behavior/redteam do
+            # for the identical source file, guaranteeing a cache-key mismatch
+            # and making the issue #611 Phase 2/3 caches unreachable across
+            # commands even though each command's own structural content is
+            # otherwise identical.
+            from nuguard.sbom.enricher import enrich as _enrich_topology_pre
+
+            _enrich_topology_pre(sbom_doc)
     elif sbom_path:
         console.print(f"[yellow]Warning:[/yellow] SBOM file not found: {sbom_path}")
 
