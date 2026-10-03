@@ -45,6 +45,11 @@ class GoogleCESAdapter:
     any node has ``metadata.framework == "google-ces"``.
     """
 
+    #: Campaign-mode state model (see redteam.campaign.transport.capabilities).
+    session_mode = "server_session"
+    supports_reset = True
+
+
     def __init__(self, ces_config: CESDeploymentConfig) -> None:
         self._config = ces_config
         self._client = CESClient(ces_config, token_fn=get_gcloud_token)
