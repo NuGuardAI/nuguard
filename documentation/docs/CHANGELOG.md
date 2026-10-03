@@ -9,6 +9,9 @@ Major product and documentation changes for NuGuard users. See the linked guides
 - **Workload relationships:** New `RUNS`, `BUILT_FROM`, `HOSTS`, `EXPOSES`, `ROUTES_TO`, and `DEPENDS_ON` edges link workloads to images, the code in their build context, gateways, and each other. Endpoints, agents, and MCP servers gain `hosted_by` and `network_exposure` (`public`, `internal`, or `cluster`).
 - **Image scanning:** `nuguard sbom generate --scan-images` runs `syft` on pulled base images to record the real OS and package list. It is off by default and needs `syft` and registry access.
 
+### Changed
+- **Red-team OWASP mappings:** Scenario catalog references now use the OWASP LLM Top 10 **2026** numbering. The catalog previously carried 2025-era numbers, so for example destructive tool actions were cited as `LLM06` and are now `LLM03` (Excessive Agency), hidden-context probes are `LLM08`, and vector/RAG scenarios are `LLM09`. Agentic references were corrected the same way (for example destructive actions map to `ASI02`, not `ASI06`). Reports and findings produced from catalog scenarios cite the new IDs; historical reports keep the 2025 numbers they were generated with.
+
 ### Improved
 - **CloudFormation:** YAML templates that use short-form tags such as `!Ref` and `!Sub` are now scanned instead of being skipped.
 - **Large compose and Bicep files:** Every service is kept; previously only the first three were retained.
