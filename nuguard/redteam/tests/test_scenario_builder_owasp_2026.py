@@ -44,7 +44,7 @@ def test_every_builder_literal_is_canonical() -> None:
 
 
 def test_family_semantics_follow_2026_numbering() -> None:
-    by = {}
+    by: dict[tuple[str, str], set[str]] = {}
     for f, _ln, arg, v in _literals():
         by.setdefault((f, arg), set()).add(v)
     # Sensitive-data exfiltration is LLM02 (never the old LLM06), and no longer ASI10 (Rogue Agents).
