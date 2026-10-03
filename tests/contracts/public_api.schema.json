@@ -8769,6 +8769,127 @@
   },
   "redteam.RedteamRunRequest": {
     "$defs": {
+      "CampaignConfig": {
+        "additionalProperties": false,
+        "description": "Bounds and policy knobs for a campaign run.\n\nRun-level budgets default to ``None`` (no hidden cap); per-objective and\nper-branch limits are always bounded.\n\nExample:\n    >>> CampaignConfig(max_turns_per_branch=12).max_turns_per_branch\n    12",
+        "properties": {
+          "max_turns_per_branch": {
+            "default": 24,
+            "description": "Rotate a conversation branch after this many turns.",
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Max Turns Per Branch",
+            "type": "integer"
+          },
+          "max_branch_tokens": {
+            "default": 8000,
+            "description": "Rotate a conversation branch after this many estimated tokens.",
+            "minimum": 500,
+            "title": "Max Branch Tokens",
+            "type": "integer"
+          },
+          "max_objective_turns": {
+            "default": 12,
+            "description": "Maximum turns spent on a single objective.",
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Max Objective Turns",
+            "type": "integer"
+          },
+          "max_retries_per_incident": {
+            "default": 2,
+            "description": "Retries allowed per transport incident within the retry window.",
+            "maximum": 10,
+            "minimum": 0,
+            "title": "Max Retries Per Incident",
+            "type": "integer"
+          },
+          "retry_window_seconds": {
+            "default": 120.0,
+            "description": "Window over which max_retries_per_incident is counted.",
+            "exclusiveMinimum": 0.0,
+            "title": "Retry Window Seconds",
+            "type": "number"
+          },
+          "confirm_in_fresh_sessions": {
+            "default": true,
+            "description": "Reproduce candidate findings in a fresh conversation.",
+            "title": "Confirm In Fresh Sessions",
+            "type": "boolean"
+          },
+          "target_supports_session_reset": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Operator claim about the target: True = a fresh session can be created, False = no reset/isolation possible, None = detect.",
+            "title": "Target Supports Session Reset"
+          },
+          "campaign_warmup": {
+            "default": true,
+            "description": "Run one benign warm-up per compatible branch (campaign-managed).",
+            "title": "Campaign Warmup",
+            "type": "boolean"
+          },
+          "confirmation_reserve_fraction": {
+            "default": 0.2,
+            "description": "Share of a finite run budget reserved for confirmation/recovery.",
+            "maximum": 0.9,
+            "minimum": 0.0,
+            "title": "Confirmation Reserve Fraction",
+            "type": "number"
+          },
+          "max_run_target_requests": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Run-wide target request budget (None = unlimited).",
+            "title": "Max Run Target Requests"
+          },
+          "max_run_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Run-wide wall-clock budget (None = unlimited).",
+            "title": "Max Run Seconds"
+          },
+          "max_run_llm_cost_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Run-wide attacker-LLM cost budget (None = unlimited).",
+            "title": "Max Run Llm Cost Usd"
+          }
+        },
+        "title": "CampaignConfig",
+        "type": "object"
+      },
       "CanaryConfig": {
         "properties": {
           "global_watch_values": {
@@ -9332,8 +9453,24 @@
       },
       "mode": {
         "default": "concurrent",
+        "enum": [
+          "concurrent",
+          "progressive",
+          "campaign"
+        ],
         "title": "Mode",
         "type": "string"
+      },
+      "campaign": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/CampaignConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       },
       "progressive_halt_on_severity": {
         "default": "none",

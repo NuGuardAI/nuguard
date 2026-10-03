@@ -40,6 +40,7 @@ from nuguard.config import AppAuthConfig, RedteamFindingTriggers
 from nuguard.models.finding import Finding
 from nuguard.models.health_report import TargetHealthReport
 from nuguard.models.token_usage import TokenUsage
+from nuguard.redteam.campaign.config import CampaignConfig
 from nuguard.redteam.executor.orchestrator import (
     RedteamOrchestrator,
     _dedup_findings,
@@ -231,7 +232,8 @@ class RedteamRunRequest(BaseModel):
             normalized["auth_config"] = data["auth_config"].model_dump()
             return normalized
         return data
-    mode: str = "concurrent"
+    mode: Literal["concurrent", "progressive", "campaign"] = "concurrent"
+    campaign: CampaignConfig | None = None
     progressive_halt_on_severity: str = "none"
     probe_llm: bool = False
     resume_from: str | None = None
@@ -427,7 +429,13 @@ async def run_redteam(
         if _resume_checkpoint is None:
             raise ValueError(f"--resume checkpoint not found or unreadable: {request.resume_from}")
 
-    orchestrator = RedteamOrchestrator(
+    if request.mode == "campaign":
+        from nuguard.redteam.campaign.orchestrator import CampaignOrchestrator
+
+        _orchestrator_cls: Any = CampaignOrchestrator
+    else:
+        _orchestrator_cls = RedteamOrchestrator
+    orchestrator = _orchestrator_cls(
         sbom=sbom,
         target_url=request.target_url,
         sbom_path=sbom_path,

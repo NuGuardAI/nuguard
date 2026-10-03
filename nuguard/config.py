@@ -32,6 +32,7 @@ from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
+    from nuguard.redteam.campaign.config import CampaignConfig
 
 _log = get_logger(__name__)
 
@@ -344,6 +345,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_profile"] = redteam["profile"]
     if "mode" in redteam:
         flat["redteam_mode"] = str(redteam["mode"])
+    if "campaign" in redteam and isinstance(redteam["campaign"], dict):
+        for _ck, _cv in redteam["campaign"].items():
+            flat[f"redteam_campaign_{_ck}"] = _cv
     if "progressive" in redteam and isinstance(redteam["progressive"], dict):
         _prog = redteam["progressive"]
         if "halt_on_severity" in _prog:
@@ -1369,13 +1373,51 @@ class NuGuardConfig(BaseSettings):
             "or 'full' (all scenarios, ≥50 on rich SBOMs) (yaml: redteam.profile)."
         ),
     )
-    redteam_mode: str = Field(
+    redteam_mode: Literal["concurrent", "progressive", "campaign"] = Field(
         default="concurrent",
         description=(
             "'concurrent' (default, existing behavior — phase-gated with intra-phase "
-            "parallelism) or 'progressive' (strictly sequential named 0-12 phase "
-            "engagement, see docs/claude-redteam-3.md) (yaml: redteam.mode)."
+            "parallelism), 'progressive' (strictly sequential named 0-12 phase "
+            "engagement, see docs/claude-redteam-3.md) or 'campaign' (opt-in "
+            "conversation-reuse campaigns, see documentation/developer-specs/redteam-v5.md) "
+            "(yaml: redteam.mode)."
         ),
+    )
+    redteam_campaign_max_turns_per_branch: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_turns_per_branch)."
+    )
+    redteam_campaign_max_branch_tokens: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_branch_tokens)."
+    )
+    redteam_campaign_max_objective_turns: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_objective_turns)."
+    )
+    redteam_campaign_max_retries_per_incident: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_retries_per_incident)."
+    )
+    redteam_campaign_retry_window_seconds: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.retry_window_seconds)."
+    )
+    redteam_campaign_confirm_in_fresh_sessions: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.confirm_in_fresh_sessions)."
+    )
+    redteam_campaign_target_supports_session_reset: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.target_supports_session_reset)."
+    )
+    redteam_campaign_campaign_warmup: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.campaign_warmup)."
+    )
+    redteam_campaign_confirmation_reserve_fraction: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.confirmation_reserve_fraction)."
+    )
+    redteam_campaign_max_run_target_requests: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_run_target_requests)."
+    )
+    redteam_campaign_max_run_seconds: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_run_seconds)."
+    )
+    redteam_campaign_max_run_llm_cost_usd: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_run_llm_cost_usd)."
     )
     redteam_progressive_halt_on_severity: str = Field(
         default="none",
@@ -2043,6 +2085,31 @@ class NuGuardConfig(BaseSettings):
                 login_flow=vc_auth.login_flow,
             )
         return AuthConfig(type="none")
+
+    def resolved_redteam_campaign_config(self) -> "CampaignConfig":
+        """Return the validated campaign config (explicit keys over defaults)."""
+        from nuguard.redteam.campaign.config import CampaignConfig
+
+        explicit = {
+            k: v
+            for k, v in self.model_dump().items()
+            if k.startswith("redteam_campaign_") and v is not None
+        }
+        return CampaignConfig.from_flat(explicit)
+
+    @model_validator(mode="after")
+    def _validate_campaign_mode(self) -> "NuGuardConfig":
+        """Reject inconsistent campaign settings at load time (campaign mode only)."""
+        if self.redteam_mode != "campaign":
+            return self
+        campaign = self.resolved_redteam_campaign_config()
+        if self.redteam_pre_run_warmup > 0 and campaign.campaign_warmup:
+            raise ValueError(
+                "redteam.pre_run_warmup conflicts with redteam.campaign.campaign_warmup: "
+                "campaign mode manages its own warm-up. Set pre_run_warmup: 0 or "
+                "campaign.campaign_warmup: false."
+            )
+        return self
 
     def resolved_redteam_finding_triggers(self) -> RedteamFindingTriggers:
         """Build trigger controls from resolved redteam configuration."""
