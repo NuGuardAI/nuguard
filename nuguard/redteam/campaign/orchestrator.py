@@ -503,7 +503,6 @@ class CampaignOrchestrator(RedteamOrchestrator):
             run = self._blank_run(o, branch, turn0)
             run.turn_end = len(sess.turns)
             run.attack_accepted = rec.had_finding
-            run.notes.append("guided objective: fresh-session replay of guided turns is not implemented")
             self._stamp_findings(new_f, o)
             return new_f, rec, rec.had_finding, None, run
 
@@ -548,6 +547,59 @@ class CampaignOrchestrator(RedteamOrchestrator):
         return new_f, rec, informative, None, orec
 
     @staticmethod
+    def _guided_candidate_scenario(scenario: AttackScenario) -> AttackScenario | None:
+        """Static replay form of a *successful* guided conversation (its attacker turns, in order).
+
+        Guided findings carry no fixed payloads; the attacker messages that were actually
+        sent are replayed verbatim as INJECT steps in a fresh branch so history-dependent
+        breakthroughs (rapport, bridge, escalate) are reproduced, not just the last message.
+        """
+        from nuguard.models.exploit_chain import ExploitChain, ExploitStep
+
+        conv = scenario.guided_conversation
+        if conv is None or not conv.succeeded or not conv.turns:
+            return None
+        steps = [
+            ExploitStep(
+                step_id=f"{conv.conversation_id}_r{t.turn}", step_type="INJECT",
+                description=f"replay of guided turn {t.turn} [{t.tactic_used}]",
+                payload=t.attacker_message, on_failure="skip",
+                depends_on=[f"{conv.conversation_id}_r{conv.turns[i - 1].turn}"] if i else [],
+            )
+            for i, t in enumerate(conv.turns)
+        ]
+        chain = ExploitChain(
+            chain_id=f"{conv.conversation_id}-replay", goal_type=conv.goal_type,
+            scenario_type=scenario.scenario_type, sbom_path=list(conv.sbom_path), steps=steps,
+        )
+        return scenario.model_copy(update={"chain": chain, "guided_conversation": None})
+
+    def _guided_judge(self, scenario: AttackScenario) -> Any:
+        """Judge a replay with the same criteria the live conversation used (score == SUCCESS_SCORE)."""
+        conv = scenario.guided_conversation
+        llm = self._redteam_llm
+        if conv is None or llm is None:
+            return None
+        from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
+
+        director = ConversationDirector(
+            llm=llm, eval_llm=self._eval_llm or llm,  # type: ignore[arg-type]
+            goal_type=conv.goal_type, goal_description=conv.goal_description,
+            max_turns=conv.max_turns, mutation_mode=self._guided_mutation_mode,
+        )
+        milestone = conv.milestones[-1] if conv.milestones else conv.goal_description
+
+        async def judge(record: Any) -> bool:
+            last = record.step_results[-1]
+            tactic = conv.turns[-1].tactic_used if conv.turns else ""
+            score, *_ = await director.assess_progress(
+                last.resolved_payload, last.response, milestone, tactic
+            )
+            return score >= director.SUCCESS_SCORE
+
+        return judge
+
+    @staticmethod
     def _blank_run(o: Objective, branch: Any, turn_start: int) -> ObjectiveRun:
         return ObjectiveRun(
             catalog_id=o.scenario.catalog_id, scenario_id=o.scenario.scenario_id,
@@ -582,7 +634,8 @@ class CampaignOrchestrator(RedteamOrchestrator):
         by_catalog = {r.catalog_id: r for r in runs}
         out: list[Any] = []
         for o, fs, run in cand_map:
-            if o.scenario.chain is None:        # guided: no replayable static sequence yet
+            guided = self._guided_candidate_scenario(o.scenario)
+            if o.scenario.chain is None and guided is None:
                 continue
             deterministic = any(r.canary_hits for r in run.step_results)
             setup = []
@@ -593,10 +646,12 @@ class CampaignOrchestrator(RedteamOrchestrator):
                 steps = tuple(sr.step for sr in prior.step_results)
                 setup.append(SetupItem(ref, steps, write=ref in self._campaign_runtime["writes"]))
             cand = Candidate(
-                o.objective_id, o.scenario, principal, o.req, scope, setup=setup,
+                o.objective_id, guided or o.scenario, principal, o.req, scope, setup=setup,
                 evidence_kind="canary" if deterministic else "response_quote",
                 deterministic=deterministic,
                 original_evidence=(fs[0].evidence_quote or fs[0].evidence or "")[:500],
+                judge_only=guided is not None,
+                judge=self._guided_judge(o.scenario) if guided is not None else None,
             )
             rec = await runner.confirm(cand)
             out.append(rec)

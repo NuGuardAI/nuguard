@@ -11,7 +11,6 @@ from nuguard.models.exploit_chain import GoalType, ScenarioType
 from nuguard.redteam.campaign.branches import (
     BranchManager,
     BranchState,
-    ObjectiveRequirements,
     RotationReason,
 )
 from nuguard.redteam.campaign.checkpoint import (
@@ -93,10 +92,11 @@ async def test_roundtrip_restores_ledger_branches_knowledge_budget_and_queue(tmp
     assert payload is not None and payload["status"] == "running"
 
     l2, s2, m2, b2 = _fresh()
+    resumed_principal = Principal.from_headers("primary", PRIMARY.headers)
     rs = await restore(
         payload, sbom=SBOM, policy=None, target_fp=target_fingerprint("http://t", "/chat"),
-        auth_fps={"primary": PRIMARY.auth_scope}, fixture_version="f1", ledger=l2, branches=m2,
-        store=s2, budget=b2, principals={"primary": PRIMARY}, liveness=_alive,
+        auth_fps={"primary": resumed_principal.auth_scope}, fixture_version="f1", ledger=l2, branches=m2,
+        store=s2, budget=b2, principals={"primary": resumed_principal}, liveness=_alive,
     )
     assert l2.entries["D01"].status == Status.COMPLETED and l2.entries["T01"].status == Status.APPLICABLE
     assert s2.get(SCOPE, "baseline", "id", "ACC-1") is not None
@@ -149,6 +149,22 @@ async def test_resume_refuses_mismatched_inputs(tmp_path: Path, override, match)
     with pytest.raises(CheckpointMismatchError, match=match):
         await restore(cps.load(path), ledger=l2, branches=m2, store=s2, budget=b2,
                       principals={"primary": PRIMARY}, liveness=_alive, **kw)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_resume_refuses_legacy_auth_fingerprint_before_restoring_state(tmp_path: Path) -> None:
+    ledger, store, mgr, _b, budget = _state()
+    cps, path = _save(tmp_path, ledger, store, mgr, budget,
+                      auth_fps={"primary": "0123456789abcdef"})
+    l2, s2, m2, b2 = _fresh()
+    with pytest.raises(CheckpointMismatchError, match="auth scope") as exc:
+        await restore(
+            cps.load(path), sbom=SBOM, policy=None, target_fp=target_fingerprint("http://t", "/chat"),
+            auth_fps={"primary": PRIMARY.auth_scope}, fixture_version="f1", ledger=l2, branches=m2,
+            store=s2, budget=b2, principals={"primary": PRIMARY}, liveness=_alive,
+        )
+    assert l2.entries == {} and m2.branches == {} and b2.requests_used == 0
+    assert "SECRET-TOKEN-123" not in str(exc.value)
 
 
 @pytest.mark.asyncio

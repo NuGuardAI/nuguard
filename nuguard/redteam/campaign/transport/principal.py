@@ -8,15 +8,27 @@ branches can be keyed by identity without secrets reaching logs or reports.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
+_AUTH_SCOPE_SALT = b"nuguard:campaign:auth-scope:v1"
+_AUTH_SCOPE_ITERATIONS = 600_000
+
 
 def _fingerprint(headers: dict[str, str]) -> str:
+    """Derive a stable identity label without cheaply guessable password hashes.
+
+    The public, purpose-specific salt is fixed so separate processes can resume
+    checkpoints. This label is not a password verifier; password storage still
+    requires a random per-password salt. Keep the full 256-bit derived value.
+    """
     if not headers:
         return "anonymous"
-    canon = "\n".join(f"{k.lower()}={v}" for k, v in sorted(headers.items()))
-    return hashlib.sha256(canon.encode("utf-8")).hexdigest()[:16]
+    canon = json.dumps(sorted((k.lower(), v) for k, v in headers.items()), separators=(",", ":"))
+    return hashlib.pbkdf2_hmac(
+        "sha256", canon.encode("utf-8"), _AUTH_SCOPE_SALT, _AUTH_SCOPE_ITERATIONS, dklen=32
+    ).hex()
 
 
 @dataclass(frozen=True)

@@ -97,11 +97,15 @@ _MAX_INSTRUCTION_CHARS = 200
 DEFAULT_MAX_IMAGE_PACKAGES = 200
 
 # (regex over one shell command, package manager)
+# Consume complete flag tokens without backtracking: pip's optional second dash
+# and nested repetitions otherwise make malformed RUN commands exponentially slow.
+# A single leading dash covers both short and long flags; the install verb cannot
+# start with a dash, so committing to each flag preserves valid-command matching.
 _INSTALL_COMMANDS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"\bapt(?:-get)?\s+(?:-\S+\s+)*install\s+(?P<args>.+)", re.I), "apt"),
-    (re.compile(r"\bapk\s+(?:-\S+\s+)*add\s+(?P<args>.+)", re.I), "apk"),
-    (re.compile(r"\b(?:yum|dnf|microdnf)\s+(?:-\S+\s+)*install\s+(?P<args>.+)", re.I), "yum"),
-    (re.compile(r"\bpip[0-9.]*\s+(?:--?\S+\s+)*install\s+(?P<args>.+)", re.I), "pip"),
+    (re.compile(r"\bapt(?:-get)?\s+(?:-\S++\s++)*+install\s+(?P<args>.+)", re.I), "apt"),
+    (re.compile(r"\bapk\s+(?:-\S++\s++)*+add\s+(?P<args>.+)", re.I), "apk"),
+    (re.compile(r"\b(?:yum|dnf|microdnf)\s+(?:-\S++\s++)*+install\s+(?P<args>.+)", re.I), "yum"),
+    (re.compile(r"\bpip[0-9.]*\s+(?:-\S++\s++)*+install\s+(?P<args>.+)", re.I), "pip"),
     (re.compile(r"\bnpm\s+(?:i|install|add)\s+(?P<args>.+)", re.I), "npm"),
     (re.compile(r"\byarn\s+add\s+(?P<args>.+)", re.I), "npm"),
 )
