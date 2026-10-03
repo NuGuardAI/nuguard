@@ -41,6 +41,10 @@ sbom_generation:
   # llm_concurrency: 5              # max in-flight LLM calls during enrichment
                                     # (issue #197). Override with NUGUARD_LLM_CONCURRENCY
                                     # or --llm-concurrency. 1 = sequential (legacy).
+  # scan_images: false             # run `syft` on pulled base images to record their real
+                                    # OS and installed packages (needs syft on PATH and
+                                    # registry access). CLI: --scan-images
+  # max_image_packages: 200        # cap on packages recorded per container image
 
   # Gap-fill discovery pass — multi-round LLM discovery of component types
   # that regex/AST extraction can't see structurally (dynamically-registered

@@ -40,6 +40,7 @@ import re
 from collections.abc import Callable
 from uuid import UUID
 
+from .deployment_topology import apply_deployment_topology
 from .http_semantics import apply_http_semantics
 from .models import AiSbomDocument, InstrumentationDetail, Node, NodeMetadata, TestingDetail
 from .types import ComponentType, RelationshipType
@@ -198,6 +199,7 @@ def enrich(doc: AiSbomDocument) -> None:
 
     _enrich_api_endpoints(doc, targets, sources_of_type, post_endpoints_by_path)
     apply_http_semantics(doc)
+    apply_deployment_topology(doc)
     _enrich_tools(doc, tool_frameworks, framework_auth, privilege_node_ids, targets)
     _enrich_agents(doc, targets, sources_of_type, node_by_id)
     _enrich_login_token_key(doc)

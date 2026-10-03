@@ -109,7 +109,10 @@ deterministic core suitable for pre-commit hooks, CI gates, and controlled envir
 ## 1. AI-SBOM Generation (`nuguard sbom`)
 
 Scans Python, TypeScript/JavaScript, Go, C#, Jupyter notebooks, SQL schemas, Dockerfiles,
-Terraform, CloudFormation, Azure Bicep, Kubernetes manifests, and Nginx configs. It also
+Terraform, CloudFormation, Azure Bicep, Kubernetes manifests (with Helm values and Kustomize),
+docker-compose, Cloud Run and ECS descriptors, and Nginx configs. Images are recorded with OS and
+installed packages and each deployed service with replicas, ports, and exposure; workloads link to
+images, endpoints, and gateways (RUNS, HOSTS, EXPOSES, ROUTES_TO, DEPENDS_ON). It also
 normalizes exported n8n, Langflow, Flowise, and Microsoft Copilot Studio workflows into
 the same AI-SBOM graph without executing those workflows.
 

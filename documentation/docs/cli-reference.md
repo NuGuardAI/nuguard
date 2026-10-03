@@ -116,10 +116,13 @@ nuguard sbom generate --source . --llm --format cyclonedx
 | `--token` | `$GH_TOKEN` / `$GITHUB_TOKEN` | GitHub token for private repos |
 | `--output`, `-o` | `app.sbom.json` | Output file |
 | `--llm` / `--no-llm` | off | Enable LLM enrichment of SBOM nodes |
+| `--scan-images` / `--no-scan-images` | off | Run `syft` on pulled base images to record their real OS and installed packages (requires `syft` on PATH and registry access). Overrides `sbom_generation.scan_images` |
 | `--format`, `-f` | `json` | `json` \| `cyclonedx` \| `cyclonedx-ext` \| `markdown` — written alongside the JSON SBOM, not instead of it |
 | `--config` | `./nuguard.yaml` | Config file path — supplies `sbom_generation.llm`, `llm.model`, and `llm.api_key` even when `--source` is passed directly |
 
 Either `--source` or `--from-repo` is required (or `source:` in `nuguard.yaml`).
+
+The SBOM includes container images (base image, OS, packages), deployed workloads (replicas, ports, exposure, identity), and the relationships between workloads, images, endpoints, and gateways. `sbom_generation.scan_images` and `sbom_generation.max_image_packages` (default 200) in `nuguard.yaml` control image scanning and the per-image package cap. See [SBOM schema](sbom-schema.md).
 
 #### 🟣 `nuguard sbom validate`
 
