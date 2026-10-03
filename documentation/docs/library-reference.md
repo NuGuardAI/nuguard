@@ -268,6 +268,14 @@ resolved credentials in serialized requests or result models. Request JSON dumps
 diagnostic representations and must not be persisted or replayed as executable credential
 transport. Platforms should resolve secret references server-side before constructing a request.
 
+`RedteamRunRequest.mode` is `concurrent`, `progressive` or `campaign`; `campaign` accepts a
+`CampaignConfig` (turn/token limits, retry budget, fresh-session confirmation, optional run
+budgets). `RedteamRunResult` additively carries `campaign_coverage`, `campaign_plan`,
+`objective_records`, `reproduction_records`, `branch_summaries`, `capability_observations` and
+`efficiency` (all empty/`None` outside campaign mode); `Finding` gains `catalog_id`,
+`reproduction_status`, `evidence_kind`, `effect_verified` and `framework_versions`. These models
+carry counts, ids and statuses only — never headers, cookies or raw transcripts.
+
 `RedteamRunResult.scan_outcome` is one of:
 
 - `critical_findings`

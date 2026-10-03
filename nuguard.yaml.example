@@ -320,6 +320,23 @@ redteam:
     # omitted). Only applies when mode: progressive.
     halt_on_severity: none
 
+  # Campaign mode (only with mode: campaign) — see documentation/docs/redteam-guide.md.
+  # campaign:
+  #   max_turns_per_branch: 24          # rotate a conversation branch after N turns
+  #   max_branch_tokens: 8000           # ... or N estimated context tokens
+  #   max_objective_turns: 12           # per-objective turn bound (<= max_turns_per_branch)
+  #   max_retries_per_incident: 2       # retries per transport incident ...
+  #   retry_window_seconds: 120         # ... within this window
+  #   confirm_in_fresh_sessions: true   # reproduce findings in a brand-new conversation
+  #   target_supports_session_reset: true  # false = no reset possible (confirmation blocked)
+  #   campaign_warmup: true             # one benign baseline per branch (set pre_run_warmup: 0)
+  #   declared_fixtures: false          # true when dry-run/sandbox tools exist
+  #   fixture_version: ""               # change invalidates a resumed campaign checkpoint
+  #   confirmation_reserve_fraction: 0.2   # share of a finite request budget kept for confirmation
+  #   max_run_target_requests: null     # optional run budgets (null = unlimited)
+  #   max_run_seconds: null
+  #   max_run_llm_cost_usd: null
+
   # Custom scenario catalog — export the built-in catalog as a starting point,
   # edit it, then point here to use your customised version:
   #   nuguard redteam catalog-export --output my-catalog.yaml

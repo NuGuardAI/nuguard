@@ -114,6 +114,10 @@ Request model:
 Response models:
 - `RedteamRunResult`
 - `RedteamExecutionResult` (stream final result type)
+- Campaign mode (`RedteamRunRequest.mode="campaign"`, config in `RedteamRunRequest.campaign`):
+  `CampaignConfig`, `CoverageSummary`, `ObjectiveExecutionRecord`, `ReproductionRecord`,
+  `ConversationBranchSummary`, `CapabilityObservation`, `CampaignPlan`, `EfficiencySummary` —
+  additive optional fields on `RedteamRunResult`; all frozen in the public schema contract.
 
 Entry points:
 - `await run_redteam(request, sbom=..., policy=..., redteam_llm=..., eval_llm=...)`

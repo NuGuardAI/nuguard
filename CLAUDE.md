@@ -116,8 +116,21 @@ nuguard/redteam/
 ├── target/
 │   ├── client.py       # TargetAppClient — HTTP client with circuit breaker
 │   └── canary.py       # CanaryScanner — watches for canary value leaks in responses
+├── campaign/           # Opt-in `redteam.mode: campaign` engine (conversation reuse, coverage-first
+│   │                   #   scheduling, fresh-session confirmation) — see "Campaign mode" below
+│   └── orchestrator.py # CampaignOrchestrator(RedteamOrchestrator) — overrides only _run_scenarios
 └── report.py           # Builds the Markdown/JSON redteam report from scenario records
 ```
+
+### Campaign mode
+
+`redteam.mode: campaign` dispatches catalog objectives into reusable conversation branches
+(`campaign/branches.py`), breadth first then depth, instead of firing independent scenarios
+concurrently. `TargetAppClient` stays shared: conversation state moves onto a `BranchTransport`
+only when `transport=` is passed (otherwise legacy behaviour is byte-identical). Retries raise
+`RetryDeferred` and cool down in a queue — never sleep inside a request slot. Keep campaign state
+JSON-safe and credential-free (only principal refs and auth-scope fingerprints are persisted), and
+never replay a write on resume or confirmation. Design: `documentation/developer-specs/redteam-v5.md`.
 
 ### Data flow
 

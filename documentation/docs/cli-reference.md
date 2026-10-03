@@ -591,6 +591,7 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `--catalog` | — | built-in catalog | Path to a custom scenario catalog YAML. Replaces the built-in catalog. Generate with `nuguard redteam catalog-export` |
 | `--profile` | — | `ci` | `ci` (high-signal only) or `full` (all scenarios) |
 | `--scenarios` | — | both | Comma-separated filter: `destructive`, `non-destructive` |
+| `--mode` | — | `concurrent` (`redteam.mode`) | Engine: `concurrent`, `progressive`, or `campaign` (conversation-reuse, coverage-first; see [redteam-guide](redteam-guide.md#campaign-mode-opt-in)) |
 | `--min-impact-score` | — | `0.0` | Exclude scenarios below this pre-score [0–10] |
 | `--guided` / `--no-guided` | — | on when a redteam LLM is configured | Adaptive multi-turn guided conversations (TAP + PAIR) |
 | `--guided-max-turns` | — | `12` | Max turns per guided conversation |

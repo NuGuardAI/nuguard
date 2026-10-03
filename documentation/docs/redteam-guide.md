@@ -133,6 +133,48 @@ The full unfiltered run (both categories) is what the [example walkthrough](exam
 
 For the full list of attack vectors — 125 scenarios across 18 categories, with per-scenario impact scores, goal types, and safe-execution modes — see the [Red-Team Scenario Catalog](redteam-scenario-catalog.md).
 
+### Campaign mode (opt-in)
+
+`redteam.mode: campaign` (or `nuguard redteam --mode campaign`) replaces the
+fire-all-scenarios dispatcher with a coverage-first scheduler. Use it when a run is slow or leaves
+whole families (tool abuse, agentic trust, MCP) untested. `concurrent` and `progressive` are
+unchanged.
+
+What changes:
+
+- **One conversation, many objectives.** Related objectives share a warm conversation branch
+  (one benign baseline per branch, not one opener per scenario). A branch is rotated on identity
+  change, an accepted instruction override, persistent writes, 24 turns / 8,000 estimated tokens,
+  or unknown state after a transport error.
+- **Breadth first.** One representative meaningful attempt per control × channel × identity
+  boundary, in complexity-level order, then a depth pass. A critical finding never halts unrelated
+  objectives; a failed prompt extraction never blocks tool or data controls.
+- **Retries never hold a request slot.** `429`/5xx cool down in a queue (`Retry-After` honoured,
+  at most two retries per 120 s per incident). A dead API route blocks that route only.
+- **Fresh-session confirmation.** Findings are reproduced in a brand-new conversation using
+  reserved capacity (20% of a finite request budget). Results are reported as `confirmed`,
+  `not_reproduced`, `blocked` or `not_attempted`; the original evidence is kept either way.
+- **Containment is enforced.** Objectives needing a second principal, a callback server, or a
+  declared dry-run/sandbox fixture are recorded as `blocked_fixture:<name>` instead of running.
+- **Coverage is reported separately from findings**, and zero findings with untested controls is
+  labelled *inconclusive*.
+
+```yaml
+redteam:
+  mode: campaign
+  pre_run_warmup: 0            # campaign manages its own warm-up
+  max_concurrent_requests: 1   # one request at a time (default)
+  campaign:
+    confirm_in_fresh_sessions: true
+    target_supports_session_reset: true   # false = no reset possible -> confirmation is blocked
+    declared_fixtures: false              # true when dry-run/sandbox tools exist
+    max_run_target_requests: 600          # optional; unset = no hidden cap
+```
+
+Current limits: WebSocket targets are not supported (use `concurrent`), and fresh-session replay of
+*guided* findings is not implemented yet (they are reported `not_attempted`). See
+[redteam-design.md](redteam-design.md#12a-campaign-mode) for the design.
+
 ### Resuming an aborted run
 
 If a run is interrupted (crash, circuit breaker trip, `Ctrl-C`) after at least one scenario has
