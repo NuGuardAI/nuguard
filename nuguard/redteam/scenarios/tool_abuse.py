@@ -28,7 +28,7 @@ def build_sql_injection(
         scenario_type=ScenarioType.SQL_INJECTION,
         sbom_path=[tool_id],
         owasp_asi_ref="ASI02",
-        owasp_llm_ref="LLM04",
+        owasp_llm_ref="LLM03:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -81,7 +81,7 @@ def build_ssrf(
         scenario_type=ScenarioType.SSRF,
         sbom_path=[tool_id],
         owasp_asi_ref="ASI02",
-        owasp_llm_ref="LLM04",
+        owasp_llm_ref="LLM03:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -150,8 +150,8 @@ def build_direct_datastore_probe(
         goal_type=GoalType.TOOL_ABUSE,
         scenario_type=ScenarioType.DIRECT_DATASTORE_ACCESS,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI02 – Insecure Output Handling",
-        owasp_llm_ref="LLM04 – Model Denial of Service / Improper Input Handling",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM03:2026",
         steps=[
             # Step 1: ask for connection string disclosure
             ExploitStep(

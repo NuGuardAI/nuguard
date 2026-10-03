@@ -113,7 +113,7 @@ def build_env_var_probe(
             f"runtime secret values."
         ),
         steps=steps,
-        owasp_llm_ref="LLM02", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026, LLM04:2026", owasp_asi_ref="ASI04",
         pii_in_path=True,
     )
 
@@ -173,7 +173,7 @@ def build_ci_secret_probe(
             f"by the CI system into the runtime environment."
         ),
         steps=steps,
-        owasp_llm_ref="LLM02", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026, LLM04:2026", owasp_asi_ref="ASI04",
         pii_in_path=True,
     )
 
@@ -235,7 +235,7 @@ def build_cloud_metadata_ssrf(
             f"cloud credential endpoints is possible."
         ),
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM02:2026, LLM04:2026", owasp_asi_ref="ASI04",
         pii_in_path=True,
     )
 
@@ -300,7 +300,7 @@ def build_dependency_cve_probe(
             f"vulnerable code path in a detected dependency."
         ),
         steps=steps,
-        owasp_llm_ref="LLM05", owasp_asi_ref="ASI05",
+        owasp_llm_ref="LLM04:2026", owasp_asi_ref="ASI04",
     )
 
 
@@ -353,7 +353,7 @@ def build_quality_gate_inference(
             "are absent from this application's CI/CD pipeline."
         ),
         steps=steps,
-        owasp_llm_ref="LLM02", owasp_asi_ref="ASI05",
+        owasp_llm_ref="LLM04:2026", owasp_asi_ref="ASI04",
     )
 
 
@@ -415,7 +415,7 @@ def build_artifact_integrity_probe(
             f"testing for supply-chain substitution."
         ),
         steps=steps,
-        owasp_llm_ref="LLM05", owasp_asi_ref="ASI05",
+        owasp_llm_ref="LLM04:2026", owasp_asi_ref="ASI04",
     )
 
 
@@ -470,6 +470,6 @@ def build_cross_env_credential_reuse(
             f"({prod_url}), testing for cross-environment credential isolation failures."
         ),
         steps=steps,
-        owasp_llm_ref="LLM02", owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM02:2026, LLM04:2026", owasp_asi_ref="ASI03, ASI04",
         pii_in_path=False,
     )

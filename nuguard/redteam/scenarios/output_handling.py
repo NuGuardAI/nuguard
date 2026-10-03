@@ -69,8 +69,8 @@ def build_output_xss(
             f"HTML or Markdown that includes user-supplied values."
         ),
         steps,
-        owasp_asi_ref="ASI06",
-        owasp_llm_ref="LLM05",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM10:2026",
     )
 
 
@@ -126,8 +126,8 @@ def build_output_tool_arg_injection(
             f"when calling '{tool_name}'."
         ),
         steps,
-        owasp_asi_ref="ASI06",
-        owasp_llm_ref="LLM05",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM10:2026",
     )
 
 
@@ -198,8 +198,8 @@ def build_output_sql_tenant_bypass(
             f"crossing data boundaries via the model's query-generation output."
         ),
         steps,
-        owasp_asi_ref="ASI06",
-        owasp_llm_ref="LLM05",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM10:2026",
         pii_in_path=True,
     )
 
@@ -258,8 +258,8 @@ def build_output_ssrf(
             f"{target_url}) via its output or downstream HTTP client."
         ),
         steps,
-        owasp_asi_ref="ASI06",
-        owasp_llm_ref="LLM05",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM10:2026",
     )
 
 
@@ -317,8 +317,8 @@ def build_output_config_injection(
             f"adding remote script execution, or setting unsafe environment variables."
         ),
         steps,
-        owasp_asi_ref="ASI06",
-        owasp_llm_ref="LLM05",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM10:2026",
     )
 
 
@@ -375,6 +375,6 @@ def build_output_file_confusion(
             f"file, or file whose content-type causes unsafe execution."
         ),
         steps,
-        owasp_asi_ref="ASI06",
-        owasp_llm_ref="LLM05",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM10:2026",
     )

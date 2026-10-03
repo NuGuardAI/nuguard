@@ -72,7 +72,7 @@ def build_oauth_scope_escalation(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM03:2026",
     )
 
 
@@ -134,7 +134,7 @@ def build_token_replay(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM02",
+        owasp_llm_ref="LLM02:2026",
         pii_in_path=True,
     )
 
@@ -183,7 +183,7 @@ def build_ownerless_action(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM03:2026",
     )
 
 
@@ -246,7 +246,7 @@ def build_cross_agent_credential_bleed(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM02",
+        owasp_llm_ref="LLM02:2026",
         pii_in_path=True,
     )
 
@@ -309,7 +309,7 @@ def build_delegated_identity_confusion(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM03:2026",
     )
 
 
@@ -372,7 +372,7 @@ def build_credential_persistence(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM02",
+        owasp_llm_ref="LLM02:2026",
         pii_in_path=True,
     )
 
@@ -436,7 +436,7 @@ def build_scripted_identity_confusion(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM06:2026",
+        owasp_llm_ref="LLM03:2026",
     )
 
 
@@ -492,5 +492,5 @@ def build_scripted_role_confusion(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM06:2026",
+        owasp_llm_ref="LLM03:2026",
     )

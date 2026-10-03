@@ -129,7 +129,7 @@ def test_build_tool_scenarios_file_category():
     combined = s.chain.steps[0].payload + s.chain.steps[1].payload
     assert "IGNORE ALL PREVIOUS INSTRUCTIONS" in combined or "BEGIN DOCUMENT" in combined
     assert s.chain.owasp_asi_ref == "ASI02"
-    assert s.chain.owasp_llm_ref == "LLM02"
+    assert s.chain.owasp_llm_ref == "LLM02:2026"
     assert str(node.id) in s.target_node_ids
     assert "process_pdf" in s.title
 
@@ -202,7 +202,7 @@ def test_build_tool_scenarios_path_category():
     assert s.chain is not None
     assert "../../../etc/passwd" in s.chain.steps[0].payload
     assert s.chain.owasp_asi_ref == "ASI05"
-    assert s.chain.owasp_llm_ref == "LLM05"
+    assert s.chain.owasp_llm_ref == "LLM10:2026"
 
 
 def test_build_tool_scenarios_cmd_category():
@@ -229,7 +229,7 @@ def test_build_tool_scenarios_generic_fallback():
     assert s.chain is not None
     assert len(s.chain.steps) == 2
     assert s.chain.owasp_asi_ref == "ASI01"
-    assert s.chain.owasp_llm_ref == "LLM01"
+    assert s.chain.owasp_llm_ref == "LLM01:2026"
 
 
 def test_build_tool_scenarios_wires_sbom_path():
@@ -347,7 +347,7 @@ def test_build_guided_tool_redteam_structure():
     assert "agent-xyz" in s.guided_conversation.sbom_path
     assert s.guided_conversation.max_turns == 8
     assert s.guided_conversation.owasp_asi_ref == "ASI02"
-    assert s.guided_conversation.owasp_llm_ref == "LLM02"
+    assert s.guided_conversation.owasp_llm_ref == "LLM03:2026"
 
 
 def test_build_guided_tool_redteam_no_agent_id():

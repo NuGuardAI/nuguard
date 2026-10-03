@@ -102,8 +102,8 @@ def test_schema_probe_owasp_refs():
         datastore_name="db", table_names=["users"],
         primary_key_fields=[],
     )
-    assert s.chain.owasp_asi_ref == "ASI05"
-    assert s.chain.owasp_llm_ref == "LLM06"
+    assert s.chain.owasp_asi_ref == "ASI02"
+    assert s.chain.owasp_llm_ref == "LLM02:2026"
 
 
 def test_schema_probe_has_four_steps():
@@ -183,7 +183,7 @@ def test_sql_injection_owasp_refs():
         pii_fields=[],
     )
     assert s.chain.owasp_asi_ref == "ASI05"
-    assert s.chain.owasp_llm_ref == "LLM04"
+    assert s.chain.owasp_llm_ref == "LLM02:2026, LLM10:2026"
 
 
 def test_sql_injection_has_four_steps():
@@ -316,7 +316,7 @@ def test_cross_account_tool_abuse_owasp_refs():
         datastore_name="db", pii_fields=[],
     )
     assert s.chain.owasp_asi_ref == "ASI03"
-    assert s.chain.owasp_llm_ref == "LLM06"
+    assert s.chain.owasp_llm_ref == "LLM02:2026, LLM03:2026"
 
 
 def test_cross_account_tool_abuse_has_three_steps():

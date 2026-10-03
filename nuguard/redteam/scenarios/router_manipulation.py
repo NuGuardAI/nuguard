@@ -73,7 +73,7 @@ def build_router_keyword_seeding(
             "or just message content."
         ),
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI01",
     )
 
 
@@ -118,5 +118,5 @@ def build_router_privileged_probe(
             f"{target_tool} read tool via a benign pretext, non-destructive."
         ),
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI01",
     )

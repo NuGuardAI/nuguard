@@ -40,7 +40,7 @@ def build_goal_redirection(
         scenario_type=ScenarioType.MULTI_TURN_REDIRECTION,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -114,7 +114,7 @@ def build_system_prompt_extraction(
         scenario_type=ScenarioType.SYSTEM_PROMPT_EXTRACTION,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM08:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -178,7 +178,7 @@ def build_guardrail_bypass(
         scenario_type=ScenarioType.GUARDRAIL_BYPASS,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -250,7 +250,7 @@ def build_indirect_injection(
         scenario_type=ScenarioType.INDIRECT_INJECTION,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM02",
+        owasp_llm_ref="LLM01:2026, LLM05:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
