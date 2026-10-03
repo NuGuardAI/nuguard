@@ -2,6 +2,21 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## Unreleased - 2026-10-03
+
+### Added
+- **Container and deployment layer (AI-SBOM schema 1.7.0):** The SBOM now records what an attacker or analyst needs to know about how the application runs. Each Dockerfile produces an app-image node with its base image, OS name and version, entrypoint, ports, and the packages installed by `RUN` instructions. Each deployed service gets a workload with replicas and min/max autoscaling, ports and how far each is exposed, CPU and memory, identity, and environment variable and secret *names* (never values). Sources are docker-compose, Kubernetes (Services, autoscalers, Ingress), Helm values, Kustomize, Bicep with `azure.yaml`, Terraform, CloudFormation/SAM, Cloud Run YAML, and ECS task definitions. See [SBOM schema](sbom-schema.md) and [supported technologies](supported-technologies.md).
+- **Workload relationships:** New `RUNS`, `BUILT_FROM`, `HOSTS`, `EXPOSES`, `ROUTES_TO`, and `DEPENDS_ON` edges link workloads to images, the code in their build context, gateways, and each other. Endpoints, agents, and MCP servers gain `hosted_by` and `network_exposure` (`public`, `internal`, or `cluster`).
+- **Image scanning:** `nuguard sbom generate --scan-images` runs `syft` on pulled base images to record the real OS and package list. It is off by default and needs `syft` and registry access.
+
+### Improved
+- **CloudFormation:** YAML templates that use short-form tags such as `!Ref` and `!Sub` are now scanned instead of being skipped.
+- **Large compose and Bicep files:** Every service is kept; previously only the first three were retained.
+- **Dockerfile and nginx detection:** `Dockerfile.*` variants are scanned, and `proxy_pass` on the same line as a `location` block is detected.
+
+### Compatibility
+- Schema changes are additive. Code that switches exhaustively on edge `relationship_type` must handle the six new values.
+
 ## v0.9.14 - 2026-10-01
 
 ### Improved
