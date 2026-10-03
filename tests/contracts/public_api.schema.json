@@ -11084,12 +11084,12 @@
         "type": "string"
       },
       "AiSbomDocument": {
-        "$id": "https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json",
+        "$id": "https://nuguard.ai/schemas/aibom/1.6.0/aibom.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "description": "AI Bill of Materials document produced by NuGuard.\n\nThis is the canonical output format.  Use ``AiSbomSerializer.to_json()``\nto serialise and ``AiSbomDocument.model_validate()`` to parse and validate.",
         "properties": {
           "schema_version": {
-            "default": "1.5.0",
+            "default": "1.6.0",
             "description": "AIBOM schema version (semver); bump when format changes",
             "title": "Schema Version",
             "type": "string"
@@ -11352,6 +11352,27 @@
           }
         },
         "title": "AuthDetail",
+        "type": "object"
+      },
+      "CompensatingAction": {
+        "description": "A generic rollback recipe for a state-changing operation (pentest-proposal A3).",
+        "properties": {
+          "method": {
+            "description": "HTTP method of the compensating call, e.g. 'DELETE'",
+            "title": "Method",
+            "type": "string"
+          },
+          "path": {
+            "description": "Route template of the compensating call",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "path"
+        ],
+        "title": "CompensatingAction",
         "type": "object"
       },
       "ComponentType": {
@@ -11754,6 +11775,36 @@
             "default": null,
             "description": "Generic, SBOM-driven identity-field tag used by the redteam trust-context matrix (user_id/tenant_id/role-style fields) \u2014 'subject_id' for a caller/user identifier, 'tenant_id' for a tenant/org scope, 'role_hint' for a role/permission field. None when this parameter is not identity-related.",
             "title": "Identity Role"
+          },
+          "identity_role_evidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "name_match",
+                  "path_context"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How identity_role was derived, so confidence is auditable: 'name_match' (parameter name heuristic) or 'path_context' (a bare 'id' path parameter under a users/accounts/tenants-style segment). None when identity_role is unset.",
+            "title": "Identity Role Evidence"
+          },
+          "mass_assignment_risk": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a client-supplied 'role_hint' parameter is accepted on a write method (POST/PUT/PATCH) \u2014 a mass-assignment/privilege-escalation candidate. None when not applicable.",
+            "title": "Mass Assignment Risk"
           }
         },
         "required": [
@@ -11797,6 +11848,45 @@
           }
         },
         "title": "HttpRequestMetadata",
+        "type": "object"
+      },
+      "IngressDetail": {
+        "description": "One externally reachable ingress of a DEPLOYMENT (pentest-proposal A4).",
+        "properties": {
+          "role": {
+            "description": "'gateway' (reverse proxy/ingress), 'direct' (backend exposed itself), or 'static_frontend'",
+            "enum": [
+              "gateway",
+              "direct",
+              "static_frontend"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Ingress URL or host when statically known; never a secret",
+            "title": "Url"
+          },
+          "evidence": {
+            "description": "What proved it, e.g. 'nginx proxy_pass', 'ACA ingress', 'k8s Ingress'",
+            "title": "Evidence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "evidence"
+        ],
+        "title": "IngressDetail",
         "type": "object"
       },
       "InstrumentationDetail": {
@@ -11864,6 +11954,98 @@
           }
         },
         "title": "InstrumentationDetail",
+        "type": "object"
+      },
+      "MutationSemantics": {
+        "description": "State-effect facts for an API_ENDPOINT, used to gate destructive pentest scenarios.\n\n``unknown`` is the default everywhere and never blocks a scan \u2014 it only\nlimits destructive eligibility (pentest-proposal A3/B5).",
+        "properties": {
+          "mutation_kind": {
+            "default": "unknown",
+            "description": "'none' for reads; 'payment' for money movement; 'auth_state' for password/role/session changes",
+            "enum": [
+              "none",
+              "create",
+              "update",
+              "delete",
+              "payment",
+              "auth_state",
+              "unknown"
+            ],
+            "title": "Mutation Kind",
+            "type": "string"
+          },
+          "idempotency": {
+            "default": "unknown",
+            "description": "'idempotent' per HTTP semantics or an idempotency key; else 'non_idempotent'",
+            "enum": [
+              "unknown",
+              "idempotent",
+              "non_idempotent"
+            ],
+            "title": "Idempotency",
+            "type": "string"
+          },
+          "confirmation_required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a confirm token/field/two-phase step is observed; False when a payment/delete handler shows none (the absence is the finding signal)",
+            "title": "Confirmation Required"
+          },
+          "reversible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a compensating action exists in the endpoint set",
+            "title": "Reversible"
+          },
+          "compensating_action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CompensatingAction"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Rollback recipe when reversible is True"
+          },
+          "audit_logged": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when the handler writes an audit-log record",
+            "title": "Audit Logged"
+          },
+          "evidence": {
+            "description": "Short tags naming the signals used, e.g. ['http_method:POST', 'path_verb:transfer']",
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          }
+        },
+        "title": "MutationSemantics",
         "type": "object"
       },
       "Node": {
@@ -12807,6 +12989,89 @@
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
           },
+          "object_id_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ObjectIdSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Object-ID format/enumerability facts for authorization-replay testing"
+          },
+          "mutation_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MutationSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "State-effect facts (mutation kind, idempotency, rollback) for destructive-test gating"
+          },
+          "identity_binding": {
+            "anyOf": [
+              {
+                "enum": [
+                  "client_supplied",
+                  "credential_bound",
+                  "mixed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Where this endpoint's caller identity comes from: 'client_supplied' (an identity parameter the caller controls), 'credential_bound' (handler resolves it from the credential, e.g. Depends(get_current_user)), or 'mixed'. None when no identity signal was found.",
+            "title": "Identity Binding"
+          },
+          "response_echoes_input": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when the framework's validation errors echo the submitted input (framework-level fact, e.g. FastAPI 422 responses)",
+            "title": "Response Echoes Input"
+          },
+          "session_cookie_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/SessionCookieSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Whether handler code is expected to issue session cookies"
+          },
+          "ingresses": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/IngressDetail"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "DEPLOYMENT nodes: externally reachable ingresses (gateway/direct/static frontend)",
+            "title": "Ingresses"
+          },
           "http_request": {
             "anyOf": [
               {
@@ -13504,6 +13769,66 @@
           }
         },
         "title": "NodeMetadata",
+        "type": "object"
+      },
+      "ObjectIdSemantics": {
+        "description": "Object-ID facts for an API_ENDPOINT that addresses one object (pentest-proposal A2).\n\nStatic, best-effort and credential-free. Whether adjacent IDs actually exist\nis a runtime fact and is never recorded here.",
+        "properties": {
+          "param_name": {
+            "description": "Path/query/body parameter that carries the object ID",
+            "title": "Param Name",
+            "type": "string"
+          },
+          "id_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Best-effort ID format evidence: 'int', 'uuid', 'ulid', 'ACCT-{seq}', ...",
+            "title": "Id Format"
+          },
+          "sequential": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when evidence shows adjacent/ordered IDs (integer or sequence-string IDs)",
+            "title": "Sequential"
+          },
+          "enumerability": {
+            "default": "unknown",
+            "description": "'high' for guessable sequential IDs, 'low' for random IDs, else 'unknown'",
+            "enum": [
+              "high",
+              "low",
+              "unknown"
+            ],
+            "title": "Enumerability",
+            "type": "string"
+          },
+          "sibling_read_paths": {
+            "description": "Other endpoints that read the same object family",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sibling Read Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "param_name"
+        ],
+        "title": "ObjectIdSemantics",
         "type": "object"
       },
       "PackageDep": {
@@ -14163,6 +14488,21 @@
         "title": "SecurityHeaderDetail",
         "type": "object"
       },
+      "SessionCookieSemantics": {
+        "description": "Whether the application is expected to issue session cookies (pentest-proposal A6).",
+        "properties": {
+          "set_cookie_expected": {
+            "description": "True when handler code sets a cookie or uses a server-side session. False with identity carried in the request body means server-side session binding is impossible",
+            "title": "Set Cookie Expected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "set_cookie_expected"
+        ],
+        "title": "SessionCookieSemantics",
+        "type": "object"
+      },
       "SourceLocation": {
         "description": "File/line pointer for a piece of evidence.",
         "properties": {
@@ -14389,12 +14729,12 @@
         "type": "string"
       },
       "AiSbomDocument": {
-        "$id": "https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json",
+        "$id": "https://nuguard.ai/schemas/aibom/1.6.0/aibom.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "description": "AI Bill of Materials document produced by NuGuard.\n\nThis is the canonical output format.  Use ``AiSbomSerializer.to_json()``\nto serialise and ``AiSbomDocument.model_validate()`` to parse and validate.",
         "properties": {
           "schema_version": {
-            "default": "1.5.0",
+            "default": "1.6.0",
             "description": "AIBOM schema version (semver); bump when format changes",
             "title": "Schema Version",
             "type": "string"
@@ -14657,6 +14997,27 @@
           }
         },
         "title": "AuthDetail",
+        "type": "object"
+      },
+      "CompensatingAction": {
+        "description": "A generic rollback recipe for a state-changing operation (pentest-proposal A3).",
+        "properties": {
+          "method": {
+            "description": "HTTP method of the compensating call, e.g. 'DELETE'",
+            "title": "Method",
+            "type": "string"
+          },
+          "path": {
+            "description": "Route template of the compensating call",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "path"
+        ],
+        "title": "CompensatingAction",
         "type": "object"
       },
       "ComponentType": {
@@ -15059,6 +15420,36 @@
             "default": null,
             "description": "Generic, SBOM-driven identity-field tag used by the redteam trust-context matrix (user_id/tenant_id/role-style fields) \u2014 'subject_id' for a caller/user identifier, 'tenant_id' for a tenant/org scope, 'role_hint' for a role/permission field. None when this parameter is not identity-related.",
             "title": "Identity Role"
+          },
+          "identity_role_evidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "name_match",
+                  "path_context"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How identity_role was derived, so confidence is auditable: 'name_match' (parameter name heuristic) or 'path_context' (a bare 'id' path parameter under a users/accounts/tenants-style segment). None when identity_role is unset.",
+            "title": "Identity Role Evidence"
+          },
+          "mass_assignment_risk": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a client-supplied 'role_hint' parameter is accepted on a write method (POST/PUT/PATCH) \u2014 a mass-assignment/privilege-escalation candidate. None when not applicable.",
+            "title": "Mass Assignment Risk"
           }
         },
         "required": [
@@ -15102,6 +15493,45 @@
           }
         },
         "title": "HttpRequestMetadata",
+        "type": "object"
+      },
+      "IngressDetail": {
+        "description": "One externally reachable ingress of a DEPLOYMENT (pentest-proposal A4).",
+        "properties": {
+          "role": {
+            "description": "'gateway' (reverse proxy/ingress), 'direct' (backend exposed itself), or 'static_frontend'",
+            "enum": [
+              "gateway",
+              "direct",
+              "static_frontend"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Ingress URL or host when statically known; never a secret",
+            "title": "Url"
+          },
+          "evidence": {
+            "description": "What proved it, e.g. 'nginx proxy_pass', 'ACA ingress', 'k8s Ingress'",
+            "title": "Evidence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "evidence"
+        ],
+        "title": "IngressDetail",
         "type": "object"
       },
       "InstrumentationDetail": {
@@ -15169,6 +15599,98 @@
           }
         },
         "title": "InstrumentationDetail",
+        "type": "object"
+      },
+      "MutationSemantics": {
+        "description": "State-effect facts for an API_ENDPOINT, used to gate destructive pentest scenarios.\n\n``unknown`` is the default everywhere and never blocks a scan \u2014 it only\nlimits destructive eligibility (pentest-proposal A3/B5).",
+        "properties": {
+          "mutation_kind": {
+            "default": "unknown",
+            "description": "'none' for reads; 'payment' for money movement; 'auth_state' for password/role/session changes",
+            "enum": [
+              "none",
+              "create",
+              "update",
+              "delete",
+              "payment",
+              "auth_state",
+              "unknown"
+            ],
+            "title": "Mutation Kind",
+            "type": "string"
+          },
+          "idempotency": {
+            "default": "unknown",
+            "description": "'idempotent' per HTTP semantics or an idempotency key; else 'non_idempotent'",
+            "enum": [
+              "unknown",
+              "idempotent",
+              "non_idempotent"
+            ],
+            "title": "Idempotency",
+            "type": "string"
+          },
+          "confirmation_required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a confirm token/field/two-phase step is observed; False when a payment/delete handler shows none (the absence is the finding signal)",
+            "title": "Confirmation Required"
+          },
+          "reversible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a compensating action exists in the endpoint set",
+            "title": "Reversible"
+          },
+          "compensating_action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CompensatingAction"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Rollback recipe when reversible is True"
+          },
+          "audit_logged": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when the handler writes an audit-log record",
+            "title": "Audit Logged"
+          },
+          "evidence": {
+            "description": "Short tags naming the signals used, e.g. ['http_method:POST', 'path_verb:transfer']",
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          }
+        },
+        "title": "MutationSemantics",
         "type": "object"
       },
       "Node": {
@@ -16112,6 +16634,89 @@
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
           },
+          "object_id_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ObjectIdSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Object-ID format/enumerability facts for authorization-replay testing"
+          },
+          "mutation_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MutationSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "State-effect facts (mutation kind, idempotency, rollback) for destructive-test gating"
+          },
+          "identity_binding": {
+            "anyOf": [
+              {
+                "enum": [
+                  "client_supplied",
+                  "credential_bound",
+                  "mixed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Where this endpoint's caller identity comes from: 'client_supplied' (an identity parameter the caller controls), 'credential_bound' (handler resolves it from the credential, e.g. Depends(get_current_user)), or 'mixed'. None when no identity signal was found.",
+            "title": "Identity Binding"
+          },
+          "response_echoes_input": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when the framework's validation errors echo the submitted input (framework-level fact, e.g. FastAPI 422 responses)",
+            "title": "Response Echoes Input"
+          },
+          "session_cookie_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/SessionCookieSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Whether handler code is expected to issue session cookies"
+          },
+          "ingresses": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/IngressDetail"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "DEPLOYMENT nodes: externally reachable ingresses (gateway/direct/static frontend)",
+            "title": "Ingresses"
+          },
           "http_request": {
             "anyOf": [
               {
@@ -16811,6 +17416,66 @@
         "title": "NodeMetadata",
         "type": "object"
       },
+      "ObjectIdSemantics": {
+        "description": "Object-ID facts for an API_ENDPOINT that addresses one object (pentest-proposal A2).\n\nStatic, best-effort and credential-free. Whether adjacent IDs actually exist\nis a runtime fact and is never recorded here.",
+        "properties": {
+          "param_name": {
+            "description": "Path/query/body parameter that carries the object ID",
+            "title": "Param Name",
+            "type": "string"
+          },
+          "id_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Best-effort ID format evidence: 'int', 'uuid', 'ulid', 'ACCT-{seq}', ...",
+            "title": "Id Format"
+          },
+          "sequential": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when evidence shows adjacent/ordered IDs (integer or sequence-string IDs)",
+            "title": "Sequential"
+          },
+          "enumerability": {
+            "default": "unknown",
+            "description": "'high' for guessable sequential IDs, 'low' for random IDs, else 'unknown'",
+            "enum": [
+              "high",
+              "low",
+              "unknown"
+            ],
+            "title": "Enumerability",
+            "type": "string"
+          },
+          "sibling_read_paths": {
+            "description": "Other endpoints that read the same object family",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sibling Read Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "param_name"
+        ],
+        "title": "ObjectIdSemantics",
+        "type": "object"
+      },
       "PackageDep": {
         "description": "A single declared package dependency.",
         "properties": {
@@ -17395,6 +18060,21 @@
           }
         },
         "title": "SecurityHeaderDetail",
+        "type": "object"
+      },
+      "SessionCookieSemantics": {
+        "description": "Whether the application is expected to issue session cookies (pentest-proposal A6).",
+        "properties": {
+          "set_cookie_expected": {
+            "description": "True when handler code sets a cookie or uses a server-side session. False with identity carried in the request body means server-side session binding is impossible",
+            "title": "Set Cookie Expected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "set_cookie_expected"
+        ],
+        "title": "SessionCookieSemantics",
         "type": "object"
       },
       "SourceLocation": {
@@ -17909,12 +18589,12 @@
         "type": "string"
       },
       "AiSbomDocument": {
-        "$id": "https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json",
+        "$id": "https://nuguard.ai/schemas/aibom/1.6.0/aibom.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "description": "AI Bill of Materials document produced by NuGuard.\n\nThis is the canonical output format.  Use ``AiSbomSerializer.to_json()``\nto serialise and ``AiSbomDocument.model_validate()`` to parse and validate.",
         "properties": {
           "schema_version": {
-            "default": "1.5.0",
+            "default": "1.6.0",
             "description": "AIBOM schema version (semver); bump when format changes",
             "title": "Schema Version",
             "type": "string"
@@ -18177,6 +18857,27 @@
           }
         },
         "title": "AuthDetail",
+        "type": "object"
+      },
+      "CompensatingAction": {
+        "description": "A generic rollback recipe for a state-changing operation (pentest-proposal A3).",
+        "properties": {
+          "method": {
+            "description": "HTTP method of the compensating call, e.g. 'DELETE'",
+            "title": "Method",
+            "type": "string"
+          },
+          "path": {
+            "description": "Route template of the compensating call",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "path"
+        ],
+        "title": "CompensatingAction",
         "type": "object"
       },
       "ComponentType": {
@@ -18579,6 +19280,36 @@
             "default": null,
             "description": "Generic, SBOM-driven identity-field tag used by the redteam trust-context matrix (user_id/tenant_id/role-style fields) \u2014 'subject_id' for a caller/user identifier, 'tenant_id' for a tenant/org scope, 'role_hint' for a role/permission field. None when this parameter is not identity-related.",
             "title": "Identity Role"
+          },
+          "identity_role_evidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "name_match",
+                  "path_context"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How identity_role was derived, so confidence is auditable: 'name_match' (parameter name heuristic) or 'path_context' (a bare 'id' path parameter under a users/accounts/tenants-style segment). None when identity_role is unset.",
+            "title": "Identity Role Evidence"
+          },
+          "mass_assignment_risk": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a client-supplied 'role_hint' parameter is accepted on a write method (POST/PUT/PATCH) \u2014 a mass-assignment/privilege-escalation candidate. None when not applicable.",
+            "title": "Mass Assignment Risk"
           }
         },
         "required": [
@@ -18622,6 +19353,45 @@
           }
         },
         "title": "HttpRequestMetadata",
+        "type": "object"
+      },
+      "IngressDetail": {
+        "description": "One externally reachable ingress of a DEPLOYMENT (pentest-proposal A4).",
+        "properties": {
+          "role": {
+            "description": "'gateway' (reverse proxy/ingress), 'direct' (backend exposed itself), or 'static_frontend'",
+            "enum": [
+              "gateway",
+              "direct",
+              "static_frontend"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Ingress URL or host when statically known; never a secret",
+            "title": "Url"
+          },
+          "evidence": {
+            "description": "What proved it, e.g. 'nginx proxy_pass', 'ACA ingress', 'k8s Ingress'",
+            "title": "Evidence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "evidence"
+        ],
+        "title": "IngressDetail",
         "type": "object"
       },
       "InstrumentationDetail": {
@@ -18689,6 +19459,98 @@
           }
         },
         "title": "InstrumentationDetail",
+        "type": "object"
+      },
+      "MutationSemantics": {
+        "description": "State-effect facts for an API_ENDPOINT, used to gate destructive pentest scenarios.\n\n``unknown`` is the default everywhere and never blocks a scan \u2014 it only\nlimits destructive eligibility (pentest-proposal A3/B5).",
+        "properties": {
+          "mutation_kind": {
+            "default": "unknown",
+            "description": "'none' for reads; 'payment' for money movement; 'auth_state' for password/role/session changes",
+            "enum": [
+              "none",
+              "create",
+              "update",
+              "delete",
+              "payment",
+              "auth_state",
+              "unknown"
+            ],
+            "title": "Mutation Kind",
+            "type": "string"
+          },
+          "idempotency": {
+            "default": "unknown",
+            "description": "'idempotent' per HTTP semantics or an idempotency key; else 'non_idempotent'",
+            "enum": [
+              "unknown",
+              "idempotent",
+              "non_idempotent"
+            ],
+            "title": "Idempotency",
+            "type": "string"
+          },
+          "confirmation_required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a confirm token/field/two-phase step is observed; False when a payment/delete handler shows none (the absence is the finding signal)",
+            "title": "Confirmation Required"
+          },
+          "reversible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a compensating action exists in the endpoint set",
+            "title": "Reversible"
+          },
+          "compensating_action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CompensatingAction"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Rollback recipe when reversible is True"
+          },
+          "audit_logged": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when the handler writes an audit-log record",
+            "title": "Audit Logged"
+          },
+          "evidence": {
+            "description": "Short tags naming the signals used, e.g. ['http_method:POST', 'path_verb:transfer']",
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          }
+        },
+        "title": "MutationSemantics",
         "type": "object"
       },
       "Node": {
@@ -19632,6 +20494,89 @@
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
           },
+          "object_id_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ObjectIdSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Object-ID format/enumerability facts for authorization-replay testing"
+          },
+          "mutation_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MutationSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "State-effect facts (mutation kind, idempotency, rollback) for destructive-test gating"
+          },
+          "identity_binding": {
+            "anyOf": [
+              {
+                "enum": [
+                  "client_supplied",
+                  "credential_bound",
+                  "mixed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Where this endpoint's caller identity comes from: 'client_supplied' (an identity parameter the caller controls), 'credential_bound' (handler resolves it from the credential, e.g. Depends(get_current_user)), or 'mixed'. None when no identity signal was found.",
+            "title": "Identity Binding"
+          },
+          "response_echoes_input": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when the framework's validation errors echo the submitted input (framework-level fact, e.g. FastAPI 422 responses)",
+            "title": "Response Echoes Input"
+          },
+          "session_cookie_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/SessionCookieSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Whether handler code is expected to issue session cookies"
+          },
+          "ingresses": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/IngressDetail"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "DEPLOYMENT nodes: externally reachable ingresses (gateway/direct/static frontend)",
+            "title": "Ingresses"
+          },
           "http_request": {
             "anyOf": [
               {
@@ -20331,6 +21276,66 @@
         "title": "NodeMetadata",
         "type": "object"
       },
+      "ObjectIdSemantics": {
+        "description": "Object-ID facts for an API_ENDPOINT that addresses one object (pentest-proposal A2).\n\nStatic, best-effort and credential-free. Whether adjacent IDs actually exist\nis a runtime fact and is never recorded here.",
+        "properties": {
+          "param_name": {
+            "description": "Path/query/body parameter that carries the object ID",
+            "title": "Param Name",
+            "type": "string"
+          },
+          "id_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Best-effort ID format evidence: 'int', 'uuid', 'ulid', 'ACCT-{seq}', ...",
+            "title": "Id Format"
+          },
+          "sequential": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when evidence shows adjacent/ordered IDs (integer or sequence-string IDs)",
+            "title": "Sequential"
+          },
+          "enumerability": {
+            "default": "unknown",
+            "description": "'high' for guessable sequential IDs, 'low' for random IDs, else 'unknown'",
+            "enum": [
+              "high",
+              "low",
+              "unknown"
+            ],
+            "title": "Enumerability",
+            "type": "string"
+          },
+          "sibling_read_paths": {
+            "description": "Other endpoints that read the same object family",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sibling Read Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "param_name"
+        ],
+        "title": "ObjectIdSemantics",
+        "type": "object"
+      },
       "PackageDep": {
         "description": "A single declared package dependency.",
         "properties": {
@@ -20915,6 +21920,21 @@
           }
         },
         "title": "SecurityHeaderDetail",
+        "type": "object"
+      },
+      "SessionCookieSemantics": {
+        "description": "Whether the application is expected to issue session cookies (pentest-proposal A6).",
+        "properties": {
+          "set_cookie_expected": {
+            "description": "True when handler code sets a cookie or uses a server-side session. False with identity carried in the request body means server-side session binding is impossible",
+            "title": "Set Cookie Expected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "set_cookie_expected"
+        ],
+        "title": "SessionCookieSemantics",
         "type": "object"
       },
       "SourceLocation": {
@@ -21122,12 +22142,12 @@
         "type": "string"
       },
       "AiSbomDocument": {
-        "$id": "https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json",
+        "$id": "https://nuguard.ai/schemas/aibom/1.6.0/aibom.schema.json",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "description": "AI Bill of Materials document produced by NuGuard.\n\nThis is the canonical output format.  Use ``AiSbomSerializer.to_json()``\nto serialise and ``AiSbomDocument.model_validate()`` to parse and validate.",
         "properties": {
           "schema_version": {
-            "default": "1.5.0",
+            "default": "1.6.0",
             "description": "AIBOM schema version (semver); bump when format changes",
             "title": "Schema Version",
             "type": "string"
@@ -21390,6 +22410,27 @@
           }
         },
         "title": "AuthDetail",
+        "type": "object"
+      },
+      "CompensatingAction": {
+        "description": "A generic rollback recipe for a state-changing operation (pentest-proposal A3).",
+        "properties": {
+          "method": {
+            "description": "HTTP method of the compensating call, e.g. 'DELETE'",
+            "title": "Method",
+            "type": "string"
+          },
+          "path": {
+            "description": "Route template of the compensating call",
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "path"
+        ],
+        "title": "CompensatingAction",
         "type": "object"
       },
       "ComponentType": {
@@ -21792,6 +22833,36 @@
             "default": null,
             "description": "Generic, SBOM-driven identity-field tag used by the redteam trust-context matrix (user_id/tenant_id/role-style fields) \u2014 'subject_id' for a caller/user identifier, 'tenant_id' for a tenant/org scope, 'role_hint' for a role/permission field. None when this parameter is not identity-related.",
             "title": "Identity Role"
+          },
+          "identity_role_evidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "name_match",
+                  "path_context"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How identity_role was derived, so confidence is auditable: 'name_match' (parameter name heuristic) or 'path_context' (a bare 'id' path parameter under a users/accounts/tenants-style segment). None when identity_role is unset.",
+            "title": "Identity Role Evidence"
+          },
+          "mass_assignment_risk": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a client-supplied 'role_hint' parameter is accepted on a write method (POST/PUT/PATCH) \u2014 a mass-assignment/privilege-escalation candidate. None when not applicable.",
+            "title": "Mass Assignment Risk"
           }
         },
         "required": [
@@ -21835,6 +22906,45 @@
           }
         },
         "title": "HttpRequestMetadata",
+        "type": "object"
+      },
+      "IngressDetail": {
+        "description": "One externally reachable ingress of a DEPLOYMENT (pentest-proposal A4).",
+        "properties": {
+          "role": {
+            "description": "'gateway' (reverse proxy/ingress), 'direct' (backend exposed itself), or 'static_frontend'",
+            "enum": [
+              "gateway",
+              "direct",
+              "static_frontend"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Ingress URL or host when statically known; never a secret",
+            "title": "Url"
+          },
+          "evidence": {
+            "description": "What proved it, e.g. 'nginx proxy_pass', 'ACA ingress', 'k8s Ingress'",
+            "title": "Evidence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "evidence"
+        ],
+        "title": "IngressDetail",
         "type": "object"
       },
       "InstrumentationDetail": {
@@ -21902,6 +23012,98 @@
           }
         },
         "title": "InstrumentationDetail",
+        "type": "object"
+      },
+      "MutationSemantics": {
+        "description": "State-effect facts for an API_ENDPOINT, used to gate destructive pentest scenarios.\n\n``unknown`` is the default everywhere and never blocks a scan \u2014 it only\nlimits destructive eligibility (pentest-proposal A3/B5).",
+        "properties": {
+          "mutation_kind": {
+            "default": "unknown",
+            "description": "'none' for reads; 'payment' for money movement; 'auth_state' for password/role/session changes",
+            "enum": [
+              "none",
+              "create",
+              "update",
+              "delete",
+              "payment",
+              "auth_state",
+              "unknown"
+            ],
+            "title": "Mutation Kind",
+            "type": "string"
+          },
+          "idempotency": {
+            "default": "unknown",
+            "description": "'idempotent' per HTTP semantics or an idempotency key; else 'non_idempotent'",
+            "enum": [
+              "unknown",
+              "idempotent",
+              "non_idempotent"
+            ],
+            "title": "Idempotency",
+            "type": "string"
+          },
+          "confirmation_required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a confirm token/field/two-phase step is observed; False when a payment/delete handler shows none (the absence is the finding signal)",
+            "title": "Confirmation Required"
+          },
+          "reversible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when a compensating action exists in the endpoint set",
+            "title": "Reversible"
+          },
+          "compensating_action": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CompensatingAction"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Rollback recipe when reversible is True"
+          },
+          "audit_logged": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when the handler writes an audit-log record",
+            "title": "Audit Logged"
+          },
+          "evidence": {
+            "description": "Short tags naming the signals used, e.g. ['http_method:POST', 'path_verb:transfer']",
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          }
+        },
+        "title": "MutationSemantics",
         "type": "object"
       },
       "Node": {
@@ -22845,6 +24047,89 @@
             "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
             "title": "Path Param Sources"
           },
+          "object_id_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ObjectIdSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Object-ID format/enumerability facts for authorization-replay testing"
+          },
+          "mutation_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/MutationSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "State-effect facts (mutation kind, idempotency, rollback) for destructive-test gating"
+          },
+          "identity_binding": {
+            "anyOf": [
+              {
+                "enum": [
+                  "client_supplied",
+                  "credential_bound",
+                  "mixed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Where this endpoint's caller identity comes from: 'client_supplied' (an identity parameter the caller controls), 'credential_bound' (handler resolves it from the credential, e.g. Depends(get_current_user)), or 'mixed'. None when no identity signal was found.",
+            "title": "Identity Binding"
+          },
+          "response_echoes_input": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when the framework's validation errors echo the submitted input (framework-level fact, e.g. FastAPI 422 responses)",
+            "title": "Response Echoes Input"
+          },
+          "session_cookie_semantics": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/SessionCookieSemantics"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Whether handler code is expected to issue session cookies"
+          },
+          "ingresses": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/IngressDetail"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "DEPLOYMENT nodes: externally reachable ingresses (gateway/direct/static frontend)",
+            "title": "Ingresses"
+          },
           "http_request": {
             "anyOf": [
               {
@@ -23544,6 +24829,66 @@
         "title": "NodeMetadata",
         "type": "object"
       },
+      "ObjectIdSemantics": {
+        "description": "Object-ID facts for an API_ENDPOINT that addresses one object (pentest-proposal A2).\n\nStatic, best-effort and credential-free. Whether adjacent IDs actually exist\nis a runtime fact and is never recorded here.",
+        "properties": {
+          "param_name": {
+            "description": "Path/query/body parameter that carries the object ID",
+            "title": "Param Name",
+            "type": "string"
+          },
+          "id_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Best-effort ID format evidence: 'int', 'uuid', 'ulid', 'ACCT-{seq}', ...",
+            "title": "Id Format"
+          },
+          "sequential": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True when evidence shows adjacent/ordered IDs (integer or sequence-string IDs)",
+            "title": "Sequential"
+          },
+          "enumerability": {
+            "default": "unknown",
+            "description": "'high' for guessable sequential IDs, 'low' for random IDs, else 'unknown'",
+            "enum": [
+              "high",
+              "low",
+              "unknown"
+            ],
+            "title": "Enumerability",
+            "type": "string"
+          },
+          "sibling_read_paths": {
+            "description": "Other endpoints that read the same object family",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sibling Read Paths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "param_name"
+        ],
+        "title": "ObjectIdSemantics",
+        "type": "object"
+      },
       "PackageDep": {
         "description": "A single declared package dependency.",
         "properties": {
@@ -24128,6 +25473,21 @@
           }
         },
         "title": "SecurityHeaderDetail",
+        "type": "object"
+      },
+      "SessionCookieSemantics": {
+        "description": "Whether the application is expected to issue session cookies (pentest-proposal A6).",
+        "properties": {
+          "set_cookie_expected": {
+            "description": "True when handler code sets a cookie or uses a server-side session. False with identity carried in the request body means server-side session binding is impossible",
+            "title": "Set Cookie Expected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "set_cookie_expected"
+        ],
+        "title": "SessionCookieSemantics",
         "type": "object"
       },
       "SourceLocation": {

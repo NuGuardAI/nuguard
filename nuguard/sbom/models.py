@@ -120,6 +120,7 @@ HttpParameterLocation = Literal["path", "query", "header", "cookie", "json", "fo
 
 
 IdentityRole = Literal["none", "subject_id", "tenant_id", "role_hint"]
+IdentityRoleEvidence = Literal["name_match", "path_context"]
 
 
 class HttpParameterMetadata(BaseModel):
@@ -137,6 +138,23 @@ class HttpParameterMetadata(BaseModel):
             "'subject_id' for a caller/user identifier, 'tenant_id' for a "
             "tenant/org scope, 'role_hint' for a role/permission field. "
             "None when this parameter is not identity-related."
+        ),
+    )
+    identity_role_evidence: IdentityRoleEvidence | None = Field(
+        default=None,
+        description=(
+            "How identity_role was derived, so confidence is auditable: "
+            "'name_match' (parameter name heuristic) or 'path_context' (a bare "
+            "'id' path parameter under a users/accounts/tenants-style segment). "
+            "None when identity_role is unset."
+        ),
+    )
+    mass_assignment_risk: bool | None = Field(
+        default=None,
+        description=(
+            "True when a client-supplied 'role_hint' parameter is accepted on a "
+            "write method (POST/PUT/PATCH) — a mass-assignment/privilege-escalation "
+            "candidate. None when not applicable."
         ),
     )
 
@@ -220,6 +238,115 @@ class CorsPolicyDetail(BaseModel):
     wildcard_with_credentials: bool = Field(
         default=False,
         description="True when origin is wildcarded AND credentials are allowed — the dangerous combination",
+    )
+
+
+IdentityBinding = Literal["client_supplied", "credential_bound", "mixed"]
+
+MutationKind = Literal["none", "create", "update", "delete", "payment", "auth_state", "unknown"]
+Idempotency = Literal["unknown", "idempotent", "non_idempotent"]
+Enumerability = Literal["high", "low", "unknown"]
+IngressRole = Literal["gateway", "direct", "static_frontend"]
+
+
+class ObjectIdSemantics(BaseModel):
+    """Object-ID facts for an API_ENDPOINT that addresses one object (pentest-proposal A2).
+
+    Static, best-effort and credential-free. Whether adjacent IDs actually exist
+    is a runtime fact and is never recorded here.
+    """
+
+    param_name: str = Field(description="Path/query/body parameter that carries the object ID")
+    id_format: str | None = Field(
+        default=None,
+        description="Best-effort ID format evidence: 'int', 'uuid', 'ulid', 'ACCT-{seq}', ...",
+    )
+    sequential: bool | None = Field(
+        default=None,
+        description="True when evidence shows adjacent/ordered IDs (integer or sequence-string IDs)",
+    )
+    enumerability: Enumerability = Field(
+        default="unknown",
+        description="'high' for guessable sequential IDs, 'low' for random IDs, else 'unknown'",
+    )
+    sibling_read_paths: list[str] = Field(
+        default_factory=list,
+        description="Other endpoints that read the same object family",
+    )
+
+
+class CompensatingAction(BaseModel):
+    """A generic rollback recipe for a state-changing operation (pentest-proposal A3)."""
+
+    method: str = Field(description="HTTP method of the compensating call, e.g. 'DELETE'")
+    path: str = Field(description="Route template of the compensating call")
+
+
+class MutationSemantics(BaseModel):
+    """State-effect facts for an API_ENDPOINT, used to gate destructive pentest scenarios.
+
+    ``unknown`` is the default everywhere and never blocks a scan — it only
+    limits destructive eligibility (pentest-proposal A3/B5).
+    """
+
+    mutation_kind: MutationKind = Field(
+        default="unknown",
+        description=(
+            "'none' for reads; 'payment' for money movement; 'auth_state' for "
+            "password/role/session changes"
+        ),
+    )
+    idempotency: Idempotency = Field(
+        default="unknown",
+        description="'idempotent' per HTTP semantics or an idempotency key; else 'non_idempotent'",
+    )
+    confirmation_required: bool | None = Field(
+        default=None,
+        description=(
+            "True when a confirm token/field/two-phase step is observed; False when a "
+            "payment/delete handler shows none (the absence is the finding signal)"
+        ),
+    )
+    reversible: bool | None = Field(
+        default=None,
+        description="True when a compensating action exists in the endpoint set",
+    )
+    compensating_action: CompensatingAction | None = Field(
+        default=None, description="Rollback recipe when reversible is True"
+    )
+    audit_logged: bool | None = Field(
+        default=None, description="True when the handler writes an audit-log record"
+    )
+    evidence: list[str] = Field(
+        default_factory=list,
+        description="Short tags naming the signals used, e.g. ['http_method:POST', 'path_verb:transfer']",
+    )
+
+
+class IngressDetail(BaseModel):
+    """One externally reachable ingress of a DEPLOYMENT (pentest-proposal A4)."""
+
+    role: IngressRole = Field(
+        description="'gateway' (reverse proxy/ingress), 'direct' (backend exposed itself), "
+        "or 'static_frontend'"
+    )
+    url: str | None = Field(
+        default=None, description="Ingress URL or host when statically known; never a secret"
+    )
+    evidence: str = Field(
+        description="What proved it, e.g. 'nginx proxy_pass', 'ACA ingress', 'k8s Ingress'"
+    )
+
+
+class SessionCookieSemantics(BaseModel):
+    """Whether the application is expected to issue session cookies (pentest-proposal A6)."""
+
+    set_cookie_expected: bool = Field(
+        description=(
+            "True when handler code sets a cookie or uses a server-side session. "
+            "False with identity carried in the request body means server-side "
+            "session binding is impossible"
+        )
     )
 
 
@@ -702,6 +829,38 @@ class NodeMetadata(BaseModel):
             "{'id': '/chat/conversations'} for a chat endpoint at "
             "'/chat/conversations/:id/messages'"
         ),
+    )
+    object_id_semantics: ObjectIdSemantics | None = Field(
+        default=None,
+        description="Object-ID format/enumerability facts for authorization-replay testing",
+    )
+    mutation_semantics: MutationSemantics | None = Field(
+        default=None,
+        description="State-effect facts (mutation kind, idempotency, rollback) for destructive-test gating",
+    )
+    identity_binding: IdentityBinding | None = Field(
+        default=None,
+        description=(
+            "Where this endpoint's caller identity comes from: 'client_supplied' "
+            "(an identity parameter the caller controls), 'credential_bound' "
+            "(handler resolves it from the credential, e.g. Depends(get_current_user)), "
+            "or 'mixed'. None when no identity signal was found."
+        ),
+    )
+    response_echoes_input: bool | None = Field(
+        default=None,
+        description=(
+            "True when the framework's validation errors echo the submitted input "
+            "(framework-level fact, e.g. FastAPI 422 responses)"
+        ),
+    )
+    session_cookie_semantics: SessionCookieSemantics | None = Field(
+        default=None,
+        description="Whether handler code is expected to issue session cookies",
+    )
+    ingresses: list[IngressDetail] | None = Field(
+        default=None,
+        description="DEPLOYMENT nodes: externally reachable ingresses (gateway/direct/static frontend)",
     )
     # Discovered request/response schema (populated by framework adapters)
     http_request: HttpRequestMetadata | None = Field(
@@ -1299,12 +1458,12 @@ class AiSbomDocument(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json",
+            "$id": "https://nuguard.ai/schemas/aibom/1.6.0/aibom.schema.json",
         }
     )
 
     schema_version: str = Field(
-        default="1.5.0",
+        default="1.6.0",
         description="AIBOM schema version (semver); bump when format changes",
     )
     generated_at: datetime = Field(

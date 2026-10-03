@@ -27,6 +27,7 @@ from bisect import bisect_right
 
 from nuguard.common.logging import get_logger
 
+from ..ingress import ingress_entry
 from ..types import ComponentType
 from .base import ComponentDetection
 
@@ -135,6 +136,15 @@ class NginxAdapter:
                         "source": "nginx_proxy_pass",
                         "upstream_url": url,
                         "server_names": server_names or None,
+                        # The proxy is the public gateway; its upstream is the
+                        # backend it fronts (not itself an ingress).
+                        "ingresses": [
+                            ingress_entry(
+                                "gateway",
+                                "nginx proxy_pass",
+                                server_names[0] if server_names else None,
+                            )
+                        ],
                     },
                     file_path=rel_path,
                     line=line,
