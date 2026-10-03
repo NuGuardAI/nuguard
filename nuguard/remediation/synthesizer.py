@@ -453,6 +453,17 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "QUALITY_GATE_INFERENCE": "supply_chain_secrets",
     "ARTIFACT_INTEGRITY_PROBE": "supply_chain_secrets",
     "CROSS_ENV_CREDENTIAL_REUSE": "supply_chain_secrets",
+    # -- redteam-proposal.md W1/W4/W7/W10 additions (Phase 0 placeholders;
+    # builder logic lands in later phases, but the bucket must exist now so
+    # the exhaustiveness test stays green).
+    "SURFACE_EXPOSURE": "policy_violation_generic",       # W01-W04: same access-control-gap
+                                                           # bucket as DEBUG_ADMIN_EXPOSURE
+    "UNAUTHENTICATED_OBSERVATION": "policy_violation_generic",  # L01: same pattern
+    "CROSS_SESSION_LEAKAGE": "data_leak",                 # L02: matches CROSS_SESSION_LEAK
+    "DUAL_PATH_GATE_BYPASS": "privilege_escalation",      # X01-X02: a gate bypass
+    "IDENTITY_BINDING_CONFLICT": "privilege_escalation",  # A10: matches AUTH_BYPASS
+    "ROUTER_MANIPULATION": "agentic_trust_boundary",      # Q01-Q02: matches INTENT_ROUTING_CONFUSION
+    "ROUTING_SIDE_CHANNEL": "agentic_trust_boundary",     # Q03
 }
 
 # dtypes whose primary SYSTEM_PROMPT_PATCH artefact gets its patch_text

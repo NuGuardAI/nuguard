@@ -16,9 +16,11 @@ import ast
 import re
 from typing import Any
 
+from ...http_semantics import HANDLER_SIGNALS_KEY
 from ...models import HttpParameterLocation, HttpParameterMetadata, HttpRequestMetadata
 from ...types import ComponentType
 from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
+from ._handler_signals import handler_uses_sse, python_handler_signals
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -454,6 +456,14 @@ class FlaskAdapter(FrameworkAdapter):
                     metadata["context_payload_fields"] = ctx_fields
                 if not is_websocket:
                     metadata["http_request"] = _http_request(node, path_str, methods)
+                signals = python_handler_signals(node)
+                metadata[HANDLER_SIGNALS_KEY] = {
+                    k: v for k, v in signals.items() if k != "auth_checked_in_handler"
+                }
+                if handler_uses_sse(node):
+                    metadata["transport"] = "sse"
+                if is_websocket and (auth_decorator_names or signals["auth_checked_in_handler"]):
+                    metadata["auth_required"] = True
 
                 ep_detection = ComponentDetection(
                     component_type=ComponentType.API_ENDPOINT,

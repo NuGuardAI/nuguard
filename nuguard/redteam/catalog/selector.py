@@ -172,7 +172,9 @@ def select_scenarios(
             C.MCP_SERVER in spec.required_capabilities
             and builder_key in ("mcp_toxic_flow", "mcp_tool_injection", "mcp_output_poisoning")
         )
-        _needs_api = builder_key in ("mass_assignment", "auth_bypass", "idor")
+        _needs_api = builder_key in (
+            "mass_assignment", "auth_bypass", "idor", "dual_path_read", "identity_invalid_cred_spoof",
+        )
 
         # Build expanded context list with concrete node bindings
         expanded_contexts: list[BuilderContext] = []

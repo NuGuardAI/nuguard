@@ -352,6 +352,28 @@ redteam:
       expect: refused
       severity: critical
 
+  # Number of paraphrase variants generated per regression above (roleplay,
+  # extraction-between-markers, audit-evidence, encoded, second-person
+  # indirection) — catches the case where the literal configured message is
+  # refused but a trivially-similar paraphrase succeeds. Built-in templates
+  # work without an attack LLM; set 0 to evaluate only the literal message.
+  defence_regression_paraphrases: 5
+
+  # Agentic Surface Model (ASM) — live recon beyond the chat endpoint:
+  # unauthenticated tool/agent inventory disclosure, schema exposure
+  # (/openapi.json, /docs), observation-channel (WS/SSE) connectability,
+  # and CORS reflection. GET/OPTIONS only, capped by max_probe_requests.
+  asm:
+    max_probe_requests: 25
+    # extra_inventory_paths:
+    #   - /api/v2/tools
+
+  # Trust-context matrix (W2): re-executes identity_sensitive scenarios
+  # (A10/A11, D02/D03, G-series) under invalid/missing credentials plus a
+  # conflicting/spoofed identity — no LLM call, cheap round-trips only.
+  trust_context:
+    confirmation_cells: 1
+
   # Per-request HTTP timeout in seconds (default: 120)
   # Multi-agent pipelines with LLM calls can take 60–120 s; increase for slow apps
   request_timeout: 120

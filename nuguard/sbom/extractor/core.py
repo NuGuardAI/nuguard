@@ -111,6 +111,7 @@ from ..models import (
     EncryptionDetail,
     Evidence,
     HttpRequestMetadata,
+    IngressDetail,
     Node,
     NodeMetadata,
     RateLimitDetail,
@@ -879,7 +880,7 @@ class AiSbomExtractor:
                 _router_rel = str(_py_path.relative_to(root))
                 _all_py_rel_paths.add(_router_rel)
                 try:
-                    _py_src = _py_path.read_text(encoding="utf-8", errors="ignore")
+                    _py_src = _py_path.read_text(encoding="utf-8-sig", errors="ignore")
                     _py_tree = _ast.parse(_py_src)
                 except Exception:
                     continue
@@ -1011,7 +1012,7 @@ class AiSbomExtractor:
                 if names is not None and _ts_path.name not in names:
                     continue
                 try:
-                    _ts_src = _ts_path.read_text(encoding="utf-8", errors="ignore")
+                    _ts_src = _ts_path.read_text(encoding="utf-8-sig", errors="ignore")
                 except Exception:
                     continue
                 yield str(_ts_path.relative_to(root)), _ts_src
@@ -1090,7 +1091,7 @@ class AiSbomExtractor:
 
         for file_path, file_size in self._iter_files(root, config):
             try:
-                content = file_path.read_text(encoding="utf-8", errors="ignore")
+                content = file_path.read_text(encoding="utf-8-sig", errors="ignore")
             except OSError as exc:
                 _log.warning("skipping unreadable file %s: %s", file_path, exc)
                 continue
@@ -1916,6 +1917,9 @@ class AiSbomExtractor:
                 _rtk = acc.metadata.get("response_text_key")
                 if _rtk:
                     node.metadata.response_text_key = str(_rtk)
+                _rei = acc.metadata.get("response_echoes_input")
+                if _rei is not None:
+                    node.metadata.response_echoes_input = bool(_rei)
                 _http = acc.metadata.get("http_request")
                 if isinstance(_http, dict) and _http:
                     try:
@@ -2009,6 +2013,12 @@ class AiSbomExtractor:
                 _hnp = acc.metadata.get("has_network_policy")
                 if _hnp is not None:
                     node.metadata.has_network_policy = bool(_hnp)
+                _ing = acc.metadata.get("ingresses")
+                if isinstance(_ing, list) and _ing:
+                    try:
+                        node.metadata.ingresses = [IngressDetail.model_validate(i) for i in _ing]
+                    except ValueError:
+                        _log.debug("Ignoring malformed ingresses metadata on %s", node.name)
             # MODEL node typed fields (source_url, integrity_hash, checksum)
             if acc.component_type == ComponentType.MODEL:
                 _su = acc.metadata.get("source_url")
@@ -3585,7 +3595,10 @@ class AiSbomExtractor:
                 is_dockerfile = (
                     suffix in _DOCKERFILE_EXTENSIONS or path.name.lower() in _DOCKERFILE_NAMES
                 )
-                if suffix not in config.include_extensions and not is_dockerfile:
+                # nginx configs (nginx.conf, default.conf, *.nginx) carry the gateway
+                # ingress facts the pentest needs; ".conf" is not a source extension.
+                is_nginx = is_nginx_file(path.relative_to(root).as_posix())
+                if suffix not in config.include_extensions and not (is_dockerfile or is_nginx):
                     continue
                 # Skip common irrelevant directories
                 parts = path.parts

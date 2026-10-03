@@ -4,9 +4,9 @@ This document describes the canonical AI-SBOM document shape used by NuGuard. Th
 
 Use this as a reference when writing code that reads or generates AI-SBOMs directly (custom tooling, CI checks, framework adapters) — for running `nuguard sbom generate` itself, see the [Quick Start Guide](quick-start.md) instead.
 
-Current schema version: **1.5.0**
+Current schema version: **1.6.0**
 
-Schema URI: `https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json`
+Schema URI: `https://nuguard.ai/schemas/aibom/1.6.0/aibom.schema.json`
 
 The schema is language-neutral. Current extractors normalize Python, TypeScript/JavaScript, Go, C#, and Java application evidence into the same nodes, edges, dependencies, and summary fields.
 
@@ -25,7 +25,7 @@ Application source and manifests
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `schema_version` | string | - | AIBOM schema version (semver). Default: `"1.5.0"` |
+| `schema_version` | string | - | AIBOM schema version (semver). Default: `"1.6.0"` |
 | `generated_at` | string (ISO 8601) | yes | UTC timestamp of generation |
 | `generator` | string | - | Tool that produced the document. Default: `"nuguard"` |
 | `target` | string | **yes** | Repository URL or local path that was scanned |
@@ -38,7 +38,7 @@ Application source and manifests
 
 ```json
 {
-  "schema_version": "1.5.0",
+  "schema_version": "1.6.0",
   "generated_at": "2026-06-08T00:00:00Z",
   "generator": "nuguard",
   "target": "https://github.com/org/repo",
@@ -116,6 +116,7 @@ All fields are optional unless marked otherwise. Fields are populated by whichev
 | `system_prompt_excerpt` | string | First 500 chars of the agent's system prompt, instructions, or backstory. Used by red-team scenario generation. |
 | `injection_risk_score` | float [0, 1] | Pre-computed injection risk score set by the graph enricher. Derived from privileged tools, unauthenticated paths, reachable sensitive datastores, and unguarded HITL triggers. |
 | `model_name` | string | LLM or embedding model name, e.g. `"gpt-4o"`, `"gemini-2.0-flash"` |
+| `asm_summary` | AsmSummary | Summarized, credential-redacted Agentic Surface Model facts from the live red-team surface prober. Written onto AGENT nodes only by `nuguard redteam`; absent from a plain `sbom generate` |
 
 ### MODEL fields
 
@@ -202,6 +203,14 @@ The `name` shown in the AIBOM uses the detected handler name when it is unique. 
 | `context_payload_fields` | object | Non-chat context fields detected in POST body schemas. Values are `"identity"` for static user/tenant/account identifiers or `"session"` for per-conversation identifiers. |
 | `path_param_sources` | object | Maps each entry in `path_params` to the `API_ENDPOINT` path that creates the identified resource, e.g. `{"id": "/chat/conversations"}` for `/chat/conversations/:id/messages` |
 | `no_auth_required` | boolean | True when the endpoint is invocable without authentication |
+| `http_request.parameters[].identity_role` | string \| null | Identity-field tag on an HTTP input parameter: `"subject_id"` (caller/user identifier), `"tenant_id"` (tenant/org scope), `"role_hint"` (role/permission field), or `"none"`. Null when not identity-related. Consumed by the red-team trust-context matrix |
+| `http_request.parameters[].identity_role_evidence` | string \| null | How `identity_role` was derived: `"name_match"` (parameter-name heuristic) or `"path_context"` (a bare `id` path parameter under a `users`/`accounts`/`tenants`-style segment). Null when `identity_role` is unset |
+| `http_request.parameters[].mass_assignment_risk` | boolean \| null | True when a client-supplied `role_hint` parameter is accepted on a write method (POST/PUT/PATCH) |
+| `identity_binding` | string \| null | Where the caller's identity comes from: `"client_supplied"` (an identity parameter the caller controls), `"credential_bound"` (the handler resolves it from the credential, e.g. `Depends(get_current_user)`), or `"mixed"` |
+| `object_id_semantics` | ObjectIdSemantics | Object-ID format and enumerability facts for authorization-replay testing |
+| `mutation_semantics` | MutationSemantics | State-effect facts (mutation kind, idempotency, confirmation, rollback, audit) used to gate destructive pentest scenarios |
+| `response_echoes_input` | boolean \| null | True when the framework's validation errors echo the submitted input (framework-level fact; FastAPI 422 responses) |
+| `session_cookie_semantics` | SessionCookieSemantics | Whether handler code is expected to issue session cookies. Only set for frameworks whose handlers are analyzed (Python, NestJS, Spring, ASP.NET) |
 
 ### DATASTORE fields
 
@@ -246,6 +255,7 @@ The `name` shown in the AIBOM uses the detected handler name when it is unique. 
 | `encryption_detail` | EncryptionDetail | SBOM 1.5.0 structured encryption and redaction posture |
 | `ha_mode` | string | High-availability topology: `"multi-az"`, `"replicated"`, `"single"` |
 | `has_network_policy` | boolean | SBOM 1.5.0 Kubernetes workload flag. True when covered by a NetworkPolicy resource in the same namespace. |
+| `ingresses` | IngressDetail[] | Externally reachable ingresses declared in IaC: reverse proxy/gateway, a backend exposed directly, or a static frontend. A `gateway` plus a `direct` entry across the document means one logical surface with an origin-bypass path |
 
 ### CONTAINER_IMAGE fields
 
@@ -358,6 +368,58 @@ Populated by the supply-chain second pass for AI coding-agent and editor configs
 | `enforcement_strict` | boolean | True when auth is enforced on every request with no opt-out |
 | `auth_roles` | string[] | Roles or scopes required for access, e.g. `["admin", "read:users"]` |
 | `jwt_algorithm_restricted` | boolean \| null | True when a JWT verification call site pins an explicit expected algorithm (e.g. `algorithms: ["HS256"]`); false when a verify call was found with no such restriction, which admits alg-confusion attacks (a forged token can switch the algorithm, e.g. to `none`, and be accepted); null when no verification call site was found |
+
+### AsmSummary
+
+Booleans and counts only. The full probed surface (URLs, headers, status codes) is a runtime artifact of `nuguard redteam` and is never written to the SBOM.
+
+| Field | Type | Description |
+|---|---|---|
+| `sibling_endpoint_count` | integer \| null | Number of endpoints discovered beyond the primary chat route |
+| `unauthenticated_inventory_exposed` | boolean \| null | True when a tool/agent inventory endpoint (e.g. `/api/tools`) is reachable without auth |
+| `observation_channel_unauthenticated` | boolean \| null | True when a WebSocket/SSE observation channel accepted a connection without auth |
+| `cors_wildcard_with_credentials_live` | boolean \| null | True when a live `OPTIONS` probe reflected an attacker `Origin` with credentials allowed |
+| `direct_tool_endpoint_path` | string \| null | Path of a confirmed directly-invocable tool endpoint, when one was found |
+
+### ObjectIdSemantics
+
+Static and best-effort. Whether adjacent IDs actually exist is a runtime fact and is never recorded.
+
+| Field | Type | Description |
+|---|---|---|
+| `param_name` | string | Path/query/body parameter that carries the object ID |
+| `id_format` | string \| null | `"int"`, `"uuid"`, `"ulid"` when the name or declared type shows it; otherwise null (never guessed) |
+| `sequential` | boolean \| null | True for integer IDs, false for UUID/ULID, null when unknown |
+| `enumerability` | string | `"high"` (sequential), `"low"` (random), or `"unknown"` |
+| `sibling_read_paths` | string[] | Other read endpoints of the same object family |
+
+### MutationSemantics
+
+`unknown` is the default and never blocks a scan; it only limits destructive-test eligibility.
+
+| Field | Type | Description |
+|---|---|---|
+| `mutation_kind` | string | `"none"`, `"create"`, `"update"`, `"delete"`, `"payment"`, `"auth_state"`, or `"unknown"`. A state-changing `GET` (e.g. `GET /transfer`) is `"unknown"`, never `"none"` |
+| `idempotency` | string | `"idempotent"` (HTTP semantics or an idempotency-key parameter), `"non_idempotent"`, or `"unknown"` |
+| `confirmation_required` | boolean \| null | True when a confirm token/field or a sibling `…/confirm` route exists; false for a payment/delete whose inputs were fully resolved and show none (the absence is the signal); null otherwise |
+| `reversible` | boolean \| null | True when a compensating route exists in the endpoint set |
+| `compensating_action` | CompensatingAction \| null | Rollback recipe: `{method, path}` of the opposite-verb route (`freeze`↔`unfreeze`) or the `DELETE` of a created resource family. Payments never get one |
+| `audit_logged` | boolean \| null | True when the handler writes an audit-log record; null when the handler body was not analyzed |
+| `evidence` | string[] | Signals used, e.g. `["http_method:POST", "path_verb:transfer"]` |
+
+### IngressDetail
+
+| Field | Type | Description |
+|---|---|---|
+| `role` | string | `"gateway"`, `"direct"`, or `"static_frontend"` |
+| `url` | string \| null | Public host when statically declared (e.g. an nginx `server_name`); never a secret |
+| `evidence` | string | What proved it: `"nginx proxy_pass"`, `"ACA ingress"`, `"k8s Ingress"`, `"k8s Service LoadBalancer"`, `"SWA config"`, `"API Management"`, … |
+
+### SessionCookieSemantics
+
+| Field | Type | Description |
+|---|---|---|
+| `set_cookie_expected` | boolean | True when handler code sets a cookie or uses a server-side session anywhere in the analyzed app. False together with identity carried in the request body means server-side session binding is impossible |
 
 ### EncryptionDetail
 
