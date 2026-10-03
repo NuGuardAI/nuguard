@@ -43,7 +43,7 @@ def build_markdown_image_exfil(
         title=f"Markdown Image Pixel Exfil — {agent_name}",
         description="Covert exfil via markdown image URL containing encoded sensitive data",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026, LLM10:2026", owasp_asi_ref="ASI02",
         pii_in_path=True,
     )
 
@@ -76,7 +76,7 @@ def build_markdown_link_exfil(
         title=f"Markdown Reference Link Exfil — {agent_name}",
         description="Covert exfil via reference-style markdown link URL encoding",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026, LLM10:2026", owasp_asi_ref="ASI02",
         pii_in_path=True,
     )
 
@@ -108,7 +108,7 @@ def build_url_encoding_exfil(
         title=f"URL Query-Param Exfil — {agent_name}",
         description="Covert exfil via URL query parameters encoding sensitive data",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026, LLM10:2026", owasp_asi_ref="ASI02",
         pii_in_path=True,
     )
 
@@ -140,7 +140,7 @@ def build_invisible_unicode_exfil(
         title=f"Invisible Unicode Smuggling — {agent_name}",
         description="Covert exfil attempt via Unicode tag characters embedding sensitive data",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM01:2026, LLM02:2026", owasp_asi_ref="ASI02",
         pii_in_path=True,
     )
 
@@ -173,6 +173,6 @@ def build_telemetry_pretext_exfil(
         title=f"Telemetry Pretext Exfil — {agent_name}",
         description="Covert exfil via analytics/logging pretext to external endpoint",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026, LLM10:2026", owasp_asi_ref="ASI02",
         pii_in_path=True,
     )

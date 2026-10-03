@@ -2,6 +2,26 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## Unreleased - 2026-10-03
+
+### Added
+- **Red-team campaign mode (opt-in):** `redteam.mode: campaign` (or `nuguard redteam --mode campaign`) reuses conversations across related attacks instead of opening a fresh session per scenario, schedules one representative attempt per control before expanding techniques, cools down `429`/5xx retries outside the request path, and reproduces each finding in a brand-new conversation (`confirmed`, `not_reproduced`, `blocked`, `not_attempted`). Objectives that need a second account, a callback server, or a declared dry-run/sandbox fixture are reported as blocked instead of running. Reports add coverage-quality and efficiency sections and mark a no-findings run with untested controls as inconclusive. `concurrent` and `progressive` are unchanged. See the [red-team guide](redteam-guide.md#campaign-mode-opt-in).
+- **Red-team API endpoint scoping:** For apps with many API endpoints the redteam LLM now picks the relevant endpoints for each direct-HTTP probe (JWT tampering, reflected XSS, injection, IDOR, and so on), and the `ci` profile spot-checks three endpoints. Rate-limit tests are classified as destructive and the `ci` profile no longer runs destructive scenarios. Tune with `redteam.api_endpoint_threshold` and `redteam.ci_api_spot_checks`.
+- **Container and deployment layer (AI-SBOM schema 1.7.0):** The SBOM now records what an attacker or analyst needs to know about how the application runs. Each Dockerfile produces an app-image node with its base image, OS name and version, entrypoint, ports, and the packages installed by `RUN` instructions. Each deployed service gets a workload with replicas and min/max autoscaling, ports and how far each is exposed, CPU and memory, identity, and environment variable and secret *names* (never values). Sources are docker-compose, Kubernetes (Services, autoscalers, Ingress), Helm values, Kustomize, Bicep with `azure.yaml`, Terraform, CloudFormation/SAM, Cloud Run YAML, and ECS task definitions. See [SBOM schema](sbom-schema.md) and [supported technologies](supported-technologies.md).
+- **Workload relationships:** New `RUNS`, `BUILT_FROM`, `HOSTS`, `EXPOSES`, `ROUTES_TO`, and `DEPENDS_ON` edges link workloads to images, the code in their build context, gateways, and each other. Endpoints, agents, and MCP servers gain `hosted_by` and `network_exposure` (`public`, `internal`, or `cluster`).
+- **Image scanning:** `nuguard sbom generate --scan-images` runs `syft` on pulled base images to record the real OS and package list. It is off by default and needs `syft` and registry access.
+
+### Changed
+- **Red-team OWASP mappings:** Scenario catalog references now use the OWASP LLM Top 10 **2026** numbering. The catalog previously carried 2025-era numbers, so for example destructive tool actions were cited as `LLM06` and are now `LLM03` (Excessive Agency), hidden-context probes are `LLM08`, and vector/RAG scenarios are `LLM09`. Agentic references were corrected the same way (for example destructive actions map to `ASI02`, not `ASI06`). The per-scenario references set by the individual attack builders were also normalized to the same `LLM02:2026` / `ASI03` format and 2026 meanings (they previously mixed 2023, 2025 and 2026 numbers and free-text labels), so findings from legacy-builder scenarios now cite the same IDs as catalog scenarios. Reports and findings produced from catalog scenarios cite the new IDs; historical reports keep the 2025 numbers they were generated with.
+
+### Improved
+- **CloudFormation:** YAML templates that use short-form tags such as `!Ref` and `!Sub` are now scanned instead of being skipped.
+- **Large compose and Bicep files:** Every service is kept; previously only the first three were retained.
+- **Dockerfile and nginx detection:** `Dockerfile.*` variants are scanned, and `proxy_pass` on the same line as a `location` block is detected.
+
+### Compatibility
+- Schema changes are additive. Code that switches exhaustively on edge `relationship_type` must handle the six new values.
+
 ## v0.9.14 - 2026-10-01
 
 ### Improved

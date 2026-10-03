@@ -40,6 +40,16 @@ from nuguard.config import AppAuthConfig, RedteamFindingTriggers
 from nuguard.models.finding import Finding
 from nuguard.models.health_report import TargetHealthReport
 from nuguard.models.token_usage import TokenUsage
+from nuguard.redteam.campaign.config import CampaignConfig
+from nuguard.redteam.campaign.models import (
+    CampaignPlanSummary,
+    CapabilityObservation,
+    ConversationBranchSummary,
+    CoverageSummary,
+    EfficiencySummary,
+    ObjectiveExecutionRecord,
+    ReproductionRecord,
+)
 from nuguard.redteam.executor.orchestrator import (
     RedteamOrchestrator,
     _dedup_findings,
@@ -231,7 +241,8 @@ class RedteamRunRequest(BaseModel):
             normalized["auth_config"] = data["auth_config"].model_dump()
             return normalized
         return data
-    mode: str = "concurrent"
+    mode: Literal["concurrent", "progressive", "campaign"] = "concurrent"
+    campaign: CampaignConfig | None = None
     progressive_halt_on_severity: str = "none"
     probe_llm: bool = False
     resume_from: str | None = None
@@ -286,6 +297,15 @@ class RedteamRunResult(BaseModel):
     ``remediation_llm_client`` (falling back to ``eval_llm``) is supplied to
     :func:`run_redteam`. Empty when synthesis fails or no SBOM is available.
     """
+    campaign_coverage: CoverageSummary | None = None
+    """Coverage quality for ``mode: campaign`` (counts by status and by control, catalog ID,
+    technique, channel, identity boundary, level and OWASP version). ``None`` in other modes."""
+    campaign_plan: CampaignPlanSummary | None = None
+    objective_records: list[ObjectiveExecutionRecord] = Field(default_factory=list)
+    reproduction_records: list[ReproductionRecord] = Field(default_factory=list)
+    branch_summaries: list[ConversationBranchSummary] = Field(default_factory=list)
+    capability_observations: list[CapabilityObservation] = Field(default_factory=list)
+    efficiency: EfficiencySummary | None = None
     security_invariants: list[dict[str, Any]] = Field(default_factory=list)
     """Phase-0 pass/fail criteria derived from the Cognitive Policy (see
     nuguard.redteam.invariants.derive_security_invariants and
@@ -353,6 +373,32 @@ def _catalog_coverage_to_dict(report: "CoverageReport | None") -> dict[str, Any]
     return d
 
 
+def _campaign_fields(orchestrator: Any) -> dict[str, Any]:
+    """Additive campaign-mode result fields (empty/None for the legacy engines).
+
+    Only values of the expected model types are accepted, so an orchestrator
+    without campaign state (or a test double) can never inject foreign objects.
+    """
+
+    def one(name: str, typ: type) -> Any:
+        v = getattr(orchestrator, name, None)
+        return v if isinstance(v, typ) else None
+
+    def many(name: str, typ: type) -> list[Any]:
+        v = getattr(orchestrator, name, None)
+        return [x for x in v if isinstance(x, typ)] if isinstance(v, list) else []
+
+    return {
+        "campaign_coverage": one("campaign_coverage", CoverageSummary),
+        "campaign_plan": one("campaign_plan", CampaignPlanSummary),
+        "objective_records": many("campaign_objective_records", ObjectiveExecutionRecord),
+        "reproduction_records": many("campaign_reproduction_records", ReproductionRecord),
+        "branch_summaries": many("campaign_branch_summaries", ConversationBranchSummary),
+        "capability_observations": many("campaign_observations", CapabilityObservation),
+        "efficiency": one("campaign_efficiency", EfficiencySummary),
+    }
+
+
 def _build_partial_result(orchestrator: RedteamOrchestrator, exc: PartialRunError) -> RedteamRunResult:
     """Build a JSON-safe partial :class:`RedteamRunResult` from a :class:`PartialRunError`.
 
@@ -383,6 +429,7 @@ def _build_partial_result(orchestrator: RedteamOrchestrator, exc: PartialRunErro
         coverage_tracker=coverage_tracker.to_dict() if coverage_tracker is not None else None,
         remediation_plan=[],
         security_invariants=[i.model_dump() for i in getattr(orchestrator, "security_invariants", [])],
+        **_campaign_fields(orchestrator),
     )
 
 
@@ -427,7 +474,13 @@ async def run_redteam(
         if _resume_checkpoint is None:
             raise ValueError(f"--resume checkpoint not found or unreadable: {request.resume_from}")
 
-    orchestrator = RedteamOrchestrator(
+    if request.mode == "campaign":
+        from nuguard.redteam.campaign.orchestrator import CampaignOrchestrator
+
+        _orchestrator_cls: Any = CampaignOrchestrator
+    else:
+        _orchestrator_cls = RedteamOrchestrator
+    orchestrator = _orchestrator_cls(
         sbom=sbom,
         target_url=request.target_url,
         sbom_path=sbom_path,
@@ -588,6 +641,7 @@ async def run_redteam(
         coverage_tracker=coverage_tracker.to_dict() if coverage_tracker is not None else None,
         remediation_plan=remediation_plan,
         security_invariants=[i.model_dump() for i in getattr(orchestrator, "security_invariants", [])],
+        **_campaign_fields(orchestrator),
     )
 
 

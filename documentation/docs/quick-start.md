@@ -27,6 +27,7 @@ nuguard sbom generate --source . --output app.sbom.json
 ```
 
 This **Discover** step maps the application's AI assets and data paths in `app.sbom.json`. It needs no live target or LLM key. Use the annotated [`nuguard.yaml.example`](https://github.com/NuGuardAI/nuguard/blob/main/nuguard.yaml.example) to build an application-specific `nuguard.yaml` with your source, SBOM path, policy, target, and authentication settings. 
+The SBOM also describes how the application is deployed: container images with their OS and installed packages, each service's replicas, ports, and exposure (from docker-compose, Kubernetes, Helm, Bicep, Terraform, CloudFormation, and similar), and which endpoints and agents run in which service. Add `--scan-images` to read real package lists from pulled base images with `syft`.
 Keep secrets like LLM API Keys in environment variables. For supported languages and exported low-code workflows, see [supported technologies](supported-technologies.md).
 
 ## Define and validate

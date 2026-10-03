@@ -53,7 +53,7 @@ def build_profile_field_poisoning(
         title=f"Profile Field Poisoning — {agent_name}",
         description=f"Inject malicious instruction into {profile_field} field, trigger later",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI05",
+        owasp_llm_ref="LLM01:2026, LLM05:2026", owasp_asi_ref="ASI06",
     )
 
 
@@ -97,7 +97,7 @@ def build_cross_session_backdoor(
         title=f"Cross-Session Backdoor — {agent_name}",
         description="Backdoor instruction persisted in memory and triggered in subsequent session",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI05",
+        owasp_llm_ref="LLM01:2026, LLM05:2026", owasp_asi_ref="ASI06",
     )
 
 
@@ -142,7 +142,7 @@ def build_false_identity_memory(
         title=f"False Identity Memory — {agent_name}",
         description="Attacker stores false admin identity in agent memory to gain elevated access",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI05",
+        owasp_llm_ref="LLM01:2026, LLM05:2026", owasp_asi_ref="ASI06",
     )
 
 
@@ -185,7 +185,7 @@ def build_summary_poisoning(
         title=f"Malicious Summary Persistence — {agent_name}",
         description="Injected instruction survives session summarisation and affects future responses",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI05",
+        owasp_llm_ref="LLM01:2026, LLM05:2026", owasp_asi_ref="ASI06",
     )
 
 
@@ -228,7 +228,7 @@ def build_memory_auth_drift(
         title=f"Memory-Based Auth Drift — {agent_name}",
         description=f"Repeated benign turns normalize the restricted action: {restricted_action}",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI05",
+        owasp_llm_ref="LLM01:2026, LLM05:2026", owasp_asi_ref="ASI06",
     )
 
 
@@ -284,5 +284,5 @@ def build_document_memory_poisoning(
             f"imported claim as a real, authenticated authorization."
         ),
         steps=steps,
-        owasp_llm_ref="LLM04:2026", owasp_asi_ref="ASI07",
+        owasp_llm_ref="LLM05:2026", owasp_asi_ref="ASI06",
     )

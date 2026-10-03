@@ -1004,8 +1004,8 @@ class ScenarioGenerator:
                     goal_type=GoalType.DATA_EXFILTRATION,
                     scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
                     sbom_path=[str(agent_id), str(node.id)],
-                    owasp_asi_ref="ASI10",
-                    owasp_llm_ref="LLM06",
+                    owasp_asi_ref="ASI02",
+                    owasp_llm_ref="LLM02:2026",
                 )
                 chain.steps = [
                     ExploitStep(
@@ -1311,8 +1311,8 @@ class ScenarioGenerator:
                         goal_type=GoalType.DATA_EXFILTRATION,
                         scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
                         sbom_path=[str(node.id)],
-                        owasp_asi_ref="ASI10",
-                        owasp_llm_ref="LLM06",
+                        owasp_asi_ref="ASI02",
+                        owasp_llm_ref="LLM02:2026",
                     )
                     chain.steps = [
                         ExploitStep(

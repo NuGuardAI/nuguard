@@ -114,6 +114,10 @@ Request model:
 Response models:
 - `RedteamRunResult`
 - `RedteamExecutionResult` (stream final result type)
+- Campaign mode (`RedteamRunRequest.mode="campaign"`, config in `RedteamRunRequest.campaign`):
+  `CampaignConfig`, `CoverageSummary`, `ObjectiveExecutionRecord`, `ReproductionRecord`,
+  `ConversationBranchSummary`, `CapabilityObservation`, `CampaignPlan`, `EfficiencySummary` —
+  additive optional fields on `RedteamRunResult`; all frozen in the public schema contract.
 
 Entry points:
 - `await run_redteam(request, sbom=..., policy=..., redteam_llm=..., eval_llm=...)`
@@ -158,6 +162,15 @@ different inputs raises `CheckpointMismatchError` (also from `nuguard.common.run
 rather than silently combining incompatible results. Both errors should be imported from
 `nuguard.common.run_checkpoint`, not from `nuguard.redteam.public_api`.
 
+Campaign checkpoints also bind to the current authentication headers using a
+deterministic PBKDF2-HMAC-SHA-256 fingerprint (600,000 iterations, 256-bit output).
+Header order and capitalization do not change the fingerprint; credential changes do.
+The public salt identifies this fingerprint's purpose and stays fixed for resume across
+processes. The fingerprint is an identity label, not a stored password verifier.
+Authenticated campaign checkpoints containing the former truncated SHA-256 fingerprint
+raise `CheckpointMismatchError` on resume; start a new campaign after upgrading.
+Public request and result schemas are unchanged, and checkpoints contain no raw auth headers.
+
 ### Cognitive policy parsing
 
 Module: `nuguard.policy.public_api`
@@ -200,6 +213,17 @@ Enrichment validates input and output, operates copy-on-write, and writes only w
 platform-managed caching and excludes API keys and authorization values. Set the opaque
 `cache_version` to invalidate cached work when secret-dependent or external state changes.
 Computed and externally cached values use the same `SbomEnrichmentResult` schema.
+
+**Container and deployment layer (AIBOM schema 1.7.0, additive).** `SbomGenerateRequest.config`
+(`AiSbomConfig`) gains `scan_images` (default `false`; runs `syft` on pulled base images and needs
+`syft` plus registry access), `max_image_packages` (default `200`) and `image_scan_timeout`
+(default `120` s). The returned `AiSbomDocument` gains nested, optional `WorkloadDetail`,
+`PortDetail`, `ScalingDetail`, `ResourceDetail` and `ImagePackage` models on `NodeMetadata`
+(`workload`, `cloud_provider`, `os_name`/`os_version`/`os_family`/`os_evidence`, `image_role`,
+`image_packages`, `exposed_ports`, `hosted_by`, `network_exposure`, ...) and six `RelationshipType`
+values (`RUNS`, `BUILT_FROM`, `HOSTS`, `EXPOSES`, `ROUTES_TO`, `DEPENDS_ON`). Consumers that switch
+exhaustively on `RelationshipType` must handle the new values. Environment variables and secrets are
+recorded by **name only**; values are never serialized. See `sbom-schema.md` for field semantics.
 
 Supported render/export formats:
 - `json`

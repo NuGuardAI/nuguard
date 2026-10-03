@@ -106,7 +106,7 @@ def build_dual_path_read(
             "2xx on the other is a gate-bypass finding."
         ),
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI02",
     )
 
 
@@ -152,5 +152,5 @@ def build_identity_invalid_cred_spoof(
             "chat gate's LLM-level checks."
         ),
         steps=steps,
-        owasp_llm_ref="LLM02", owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI03",
     )

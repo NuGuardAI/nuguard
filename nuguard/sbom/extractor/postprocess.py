@@ -332,6 +332,12 @@ def _collapse_bulk_catalog_files(
         return
     groups: dict[tuple[str, str, ComponentType], list[tuple[ComponentType, str]]] = {}
     for key, acc in node_map.items():
+        # A compose file / Bicep module legitimately declares dozens of services; each
+        # workload (and its image) is a real deployed component, not catalog noise.
+        if acc.metadata.get("workload") or acc.metadata.get("fact_marker") or acc.metadata.get(
+            "image_role"
+        ):
+            continue
         paths = {ev.location.path for ev in acc.evidence if ev.location}
         if len(paths) != 1:
             continue

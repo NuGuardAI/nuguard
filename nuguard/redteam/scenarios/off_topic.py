@@ -70,8 +70,8 @@ def build_off_topic_probes(
                     f"with a request outside its declared scope."
                 ),
                 steps,
-                owasp_asi_ref="ASI09",
-                owasp_llm_ref="LLM09:2026",
+                owasp_asi_ref="ASI01",
+                owasp_llm_ref="LLM01:2026",
             )
         )
     return scenarios

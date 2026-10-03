@@ -338,6 +338,107 @@ class IngressDetail(BaseModel):
     )
 
 
+PortExposure = Literal["public", "internal", "cluster", "unknown"]
+Autoscaler = Literal["hpa", "aca_rule", "ecs_autoscaling", "cloud_run", "keda", "none"]
+OsEvidence = Literal["tag", "image_default", "syft"]
+ImageRole = Literal["base", "app"]
+
+
+class PortDetail(BaseModel):
+    """One network port of a workload or image."""
+
+    container_port: int | None = Field(default=None, description="Port the process listens on")
+    service_port: int | None = Field(
+        default=None, description="Port a Service/load balancer exposes, when different"
+    )
+    host_port: int | None = Field(default=None, description="Published host port (compose, ECS)")
+    protocol: str = Field(default="tcp", description="'tcp' or 'udp'")
+    exposure: PortExposure = Field(
+        default="unknown",
+        description="'public' (internet-reachable), 'internal' (VNet/private), "
+        "'cluster' (cluster-internal only) or 'unknown'",
+    )
+    source: str | None = Field(
+        default=None, description="What declared it, e.g. 'EXPOSE', 'k8s Service', 'aca ingress'"
+    )
+
+
+class ScalingDetail(BaseModel):
+    """Replica count and autoscaling bounds of a workload."""
+
+    replicas: int | None = Field(default=None, description="Static/desired replica count")
+    min_replicas: int | None = Field(default=None, description="Autoscaler lower bound")
+    max_replicas: int | None = Field(default=None, description="Autoscaler upper bound")
+    autoscaler: Autoscaler | None = Field(default=None, description="Autoscaling mechanism")
+    metric: str | None = Field(default=None, description="Scaling metric, e.g. 'cpu', 'http'")
+    target: str | None = Field(default=None, description="Scaling target value, as written")
+
+
+class ResourceDetail(BaseModel):
+    """CPU/memory requests and limits as written in the source (not normalised)."""
+
+    cpu_request: str | None = None
+    cpu_limit: str | None = None
+    memory_request: str | None = None
+    memory_limit: str | None = None
+
+
+class ImagePackage(BaseModel):
+    """A package installed in a container image (never a secret; name/version only)."""
+
+    name: str = Field(description="Package name")
+    version: str | None = Field(default=None, description="Pinned version, when known")
+    manager: str = Field(description="'apt', 'apk', 'yum', 'pip', 'npm' or 'syft:<type>'")
+    source: Literal["dockerfile_run", "syft"] = Field(description="How it was discovered")
+
+
+class WorkloadDetail(BaseModel):
+    """A deployed service: a compose service, K8s workload, container app, function, ..."""
+
+    service_name: str | None = Field(default=None, description="Service/resource name")
+    workload_kind: str | None = Field(
+        default=None,
+        description="e.g. 'compose_service', 'k8s_deployment', 'container_app', 'ecs_service', "
+        "'lambda', 'cloud_run', 'app_service'",
+    )
+    cloud_service: str | None = Field(
+        default=None, description="Managed service, e.g. 'azure_container_apps', 'aws_ecs'"
+    )
+    namespace: str | None = Field(default=None, description="K8s namespace")
+    image_refs: list[str] = Field(default_factory=list, description="Image references run")
+    build_context: str | None = Field(
+        default=None, description="Build context directory, relative to the repo root"
+    )
+    dockerfile: str | None = Field(default=None, description="Dockerfile path, repo-relative")
+    source_dir: str | None = Field(
+        default=None, description="Directory holding the code this workload runs"
+    )
+    ports: list[PortDetail] = Field(default_factory=list)
+    scaling: ScalingDetail | None = None
+    resources: ResourceDetail | None = None
+    identity_ref: str | None = Field(
+        default=None, description="Service account / managed identity name"
+    )
+    depends_on: list[str] = Field(
+        default_factory=list, description="Names of workloads this one depends on"
+    )
+    env_var_names: list[str] = Field(
+        default_factory=list, description="Environment variable NAMES only; values never stored"
+    )
+    secret_refs: list[str] = Field(
+        default_factory=list, description="Secret/Key Vault reference names; never values"
+    )
+    probes: list[str] = Field(
+        default_factory=list, description="Health probes, e.g. 'liveness:/healthz'"
+    )
+    internal_only: bool | None = Field(
+        default=None, description="True when no public ingress/port reaches the workload"
+    )
+    source_format: str | None = Field(
+        default=None, description="'compose', 'k8s', 'helm_values', 'bicep', 'terraform', ..."
+    )
+
+
 class SessionCookieSemantics(BaseModel):
     """Whether the application is expected to issue session cookies (pentest-proposal A6)."""
 
@@ -588,6 +689,46 @@ class NodeMetadata(BaseModel):
     )
     base_image: str | None = Field(
         default=None, description="Full base image reference, e.g. 'python:3.12-slim'"
+    )
+    image_role: ImageRole | None = Field(
+        default=None, description="CONTAINER_IMAGE: 'base' (a FROM ref) or 'app' (a built image)"
+    )
+    os_name: str | None = Field(default=None, description="Image OS, e.g. 'debian', 'alpine'")
+    os_version: str | None = Field(default=None, description="Image OS version, e.g. '12', '3.19'")
+    os_family: str | None = Field(
+        default=None, description="Image OS family: 'debian', 'rhel', 'alpine', 'distroless', ..."
+    )
+    os_evidence: OsEvidence | None = Field(
+        default=None, description="How the OS was determined: tag, image_default or syft"
+    )
+    stage_alias: str | None = Field(default=None, description="Final build stage alias (AS name)")
+    entrypoint: str | None = Field(default=None, description="Dockerfile ENTRYPOINT, as written")
+    cmd: str | None = Field(default=None, description="Dockerfile CMD, as written")
+    workdir: str | None = Field(default=None, description="Dockerfile WORKDIR")
+    image_packages: list[ImagePackage] | None = Field(
+        default=None, description="Packages installed in the image (RUN parsing or syft)"
+    )
+    dependency_manifests: list[str] | None = Field(
+        default=None, description="Dependency manifests COPY'd into the image"
+    )
+    has_dockerignore: bool | None = Field(
+        default=None, description="True when a .dockerignore sits beside the Dockerfile"
+    )
+    exposed_ports: list[PortDetail] | None = Field(
+        default=None, description="CONTAINER_IMAGE: ports declared with EXPOSE"
+    )
+    workload: WorkloadDetail | None = Field(
+        default=None, description="DEPLOYMENT nodes: the deployed service's runtime shape"
+    )
+    cloud_provider: str | None = Field(
+        default=None, description="DEPLOYMENT nodes: 'aws', 'azure', 'gcp', 'kubernetes', ..."
+    )
+    hosted_by: str | None = Field(
+        default=None, description="Name of the workload that hosts this component"
+    )
+    network_exposure: PortExposure | None = Field(
+        default=None,
+        description="How reachable this endpoint/agent is from outside, via its hosting workload",
     )
     # IaC security / resilience fields (populated by IaC adapters)
     cloud_region: str | None = Field(
@@ -1458,12 +1599,12 @@ class AiSbomDocument(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "https://nuguard.ai/schemas/aibom/1.6.0/aibom.schema.json",
+            "$id": "https://nuguard.ai/schemas/aibom/1.7.0/aibom.schema.json",
         }
     )
 
     schema_version: str = Field(
-        default="1.6.0",
+        default="1.7.0",
         description="AIBOM schema version (semver); bump when format changes",
     )
     generated_at: datetime = Field(

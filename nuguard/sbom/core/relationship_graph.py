@@ -75,6 +75,10 @@ _EDGE_LABEL: dict[str, str] = {
     "INVOKES":    "invokes",
     "DEPENDS_ON": "depends on",
     "ROUTES_TO":  "routes to",
+    "RUNS":       "runs",
+    "HOSTS":      "hosts",
+    "EXPOSES":    "exposes",
+    "BUILT_FROM": "built from",
 }
 
 _MERMAID_ID_RE = re.compile(r"[^A-Za-z0-9_]")

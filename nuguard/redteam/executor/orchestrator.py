@@ -807,6 +807,10 @@ class RedteamOrchestrator:
     # up the scan but increase load on the target app.
     DEFAULT_CONCURRENCY = 5
 
+    #: Eagerly LLM-enrich the whole scenario set before dispatch. Campaign mode
+    #: turns this off and enriches just in time for the objectives about to run.
+    _eager_enrichment: bool = True
+
     def __init__(
         self,
         sbom: AiSbomDocument,
@@ -1954,7 +1958,7 @@ class RedteamOrchestrator:
 
         # 3. LLM payload enrichment (opt-in — only enrich scenarios that will run)
         _llm_payloads: dict = {}
-        if self._redteam_llm and scenarios:
+        if self._eager_enrichment and self._redteam_llm and scenarios:
             from nuguard.redteam.llm_engine.prompt_cache import PromptCache
             from nuguard.redteam.llm_engine.prompt_generator import (
                 LLMPromptGenerator,
@@ -3086,8 +3090,15 @@ class RedteamOrchestrator:
         guided_executor: GuidedAttackExecutor,
         affected: str,
         variation_idx: int = 0,
+        session: "AttackSession | None" = None,
+        setup_done: bool = False,
     ) -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
-        """Execute a guided conversation scenario and convert to findings + record."""
+        """Execute a guided conversation scenario and convert to findings + record.
+
+        ``session`` / ``setup_done`` are campaign-mode hooks: run on a caller-owned
+        (warm) conversation branch and let the director skip happy-path/rapport
+        openers. Defaults keep the legacy behaviour exactly.
+        """
         from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
         from nuguard.redteam.target.session import AttackSession
 
@@ -3121,14 +3132,16 @@ class RedteamOrchestrator:
             allowed_topics=allowed_topics,
             variation_idx=variation_idx,
             stall_abort_threshold=self._stall_abort_threshold,
+            setup_done=setup_done,
         )
         guided_executor._director = director  # swap in scenario-specific director
 
-        session = AttackSession(
-            session_id=conv.conversation_id,
-            target_url=self._target_url,
-            chain_id=conv.conversation_id,
-        )
+        if session is None:
+            session = AttackSession(
+                session_id=conv.conversation_id,
+                target_url=self._target_url,
+                chain_id=conv.conversation_id,
+            )
         populated_conv = await guided_executor.run(conv, session)
 
         had_finding = populated_conv.succeeded

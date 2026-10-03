@@ -666,6 +666,50 @@
       "title": "HttpRequestMetadata",
       "type": "object"
     },
+    "ImagePackage": {
+      "description": "A package installed in a container image (never a secret; name/version only).",
+      "properties": {
+        "name": {
+          "description": "Package name",
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pinned version, when known",
+          "title": "Version"
+        },
+        "manager": {
+          "description": "'apt', 'apk', 'yum', 'pip', 'npm' or 'syft:<type>'",
+          "title": "Manager",
+          "type": "string"
+        },
+        "source": {
+          "description": "How it was discovered",
+          "enum": [
+            "dockerfile_run",
+            "syft"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "manager",
+        "source"
+      ],
+      "title": "ImagePackage",
+      "type": "object"
+    },
     "IngressDetail": {
       "description": "One externally reachable ingress of a DEPLOYMENT (pentest-proposal A4).",
       "properties": {
@@ -1169,6 +1213,250 @@
           "default": null,
           "description": "Full base image reference, e.g. 'python:3.12-slim'",
           "title": "Base Image"
+        },
+        "image_role": {
+          "anyOf": [
+            {
+              "enum": [
+                "base",
+                "app"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CONTAINER_IMAGE: 'base' (a FROM ref) or 'app' (a built image)",
+          "title": "Image Role"
+        },
+        "os_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image OS, e.g. 'debian', 'alpine'",
+          "title": "Os Name"
+        },
+        "os_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image OS version, e.g. '12', '3.19'",
+          "title": "Os Version"
+        },
+        "os_family": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image OS family: 'debian', 'rhel', 'alpine', 'distroless', ...",
+          "title": "Os Family"
+        },
+        "os_evidence": {
+          "anyOf": [
+            {
+              "enum": [
+                "tag",
+                "image_default",
+                "syft"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How the OS was determined: tag, image_default or syft",
+          "title": "Os Evidence"
+        },
+        "stage_alias": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Final build stage alias (AS name)",
+          "title": "Stage Alias"
+        },
+        "entrypoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dockerfile ENTRYPOINT, as written",
+          "title": "Entrypoint"
+        },
+        "cmd": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dockerfile CMD, as written",
+          "title": "Cmd"
+        },
+        "workdir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dockerfile WORKDIR",
+          "title": "Workdir"
+        },
+        "image_packages": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ImagePackage"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Packages installed in the image (RUN parsing or syft)",
+          "title": "Image Packages"
+        },
+        "dependency_manifests": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dependency manifests COPY'd into the image",
+          "title": "Dependency Manifests"
+        },
+        "has_dockerignore": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a .dockerignore sits beside the Dockerfile",
+          "title": "Has Dockerignore"
+        },
+        "exposed_ports": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/PortDetail"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CONTAINER_IMAGE: ports declared with EXPOSE",
+          "title": "Exposed Ports"
+        },
+        "workload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkloadDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "DEPLOYMENT nodes: the deployed service's runtime shape"
+        },
+        "cloud_provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "DEPLOYMENT nodes: 'aws', 'azure', 'gcp', 'kubernetes', ...",
+          "title": "Cloud Provider"
+        },
+        "hosted_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of the workload that hosts this component",
+          "title": "Hosted By"
+        },
+        "network_exposure": {
+          "anyOf": [
+            {
+              "enum": [
+                "public",
+                "internal",
+                "cluster",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How reachable this endpoint/agent is from outside, via its hosting workload",
+          "title": "Network Exposure"
         },
         "cloud_region": {
           "anyOf": [
@@ -2681,6 +2969,83 @@
       "title": "PackageDep",
       "type": "object"
     },
+    "PortDetail": {
+      "description": "One network port of a workload or image.",
+      "properties": {
+        "container_port": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Port the process listens on",
+          "title": "Container Port"
+        },
+        "service_port": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Port a Service/load balancer exposes, when different",
+          "title": "Service Port"
+        },
+        "host_port": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Published host port (compose, ECS)",
+          "title": "Host Port"
+        },
+        "protocol": {
+          "default": "tcp",
+          "description": "'tcp' or 'udp'",
+          "title": "Protocol",
+          "type": "string"
+        },
+        "exposure": {
+          "default": "unknown",
+          "description": "'public' (internet-reachable), 'internal' (VNet/private), 'cluster' (cluster-internal only) or 'unknown'",
+          "enum": [
+            "public",
+            "internal",
+            "cluster",
+            "unknown"
+          ],
+          "title": "Exposure",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What declared it, e.g. 'EXPOSE', 'k8s Service', 'aca ingress'",
+          "title": "Source"
+        }
+      },
+      "title": "PortDetail",
+      "type": "object"
+    },
     "RateLimitDetail": {
       "description": "Structured rate limit configuration extracted from code or IaC.",
       "properties": {
@@ -2774,10 +3139,164 @@
         "PROTECTS",
         "DEPLOYS",
         "DELEGATES_TO",
-        "CONTAINS"
+        "CONTAINS",
+        "RUNS",
+        "BUILT_FROM",
+        "HOSTS",
+        "EXPOSES",
+        "ROUTES_TO",
+        "DEPENDS_ON"
       ],
       "title": "RelationshipType",
       "type": "string"
+    },
+    "ResourceDetail": {
+      "description": "CPU/memory requests and limits as written in the source (not normalised).",
+      "properties": {
+        "cpu_request": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpu Request"
+        },
+        "cpu_limit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpu Limit"
+        },
+        "memory_request": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Request"
+        },
+        "memory_limit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Limit"
+        }
+      },
+      "title": "ResourceDetail",
+      "type": "object"
+    },
+    "ScalingDetail": {
+      "description": "Replica count and autoscaling bounds of a workload.",
+      "properties": {
+        "replicas": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Static/desired replica count",
+          "title": "Replicas"
+        },
+        "min_replicas": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Autoscaler lower bound",
+          "title": "Min Replicas"
+        },
+        "max_replicas": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Autoscaler upper bound",
+          "title": "Max Replicas"
+        },
+        "autoscaler": {
+          "anyOf": [
+            {
+              "enum": [
+                "hpa",
+                "aca_rule",
+                "ecs_autoscaling",
+                "cloud_run",
+                "keda",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Autoscaling mechanism",
+          "title": "Autoscaler"
+        },
+        "metric": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Scaling metric, e.g. 'cpu', 'http'",
+          "title": "Metric"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Scaling target value, as written",
+          "title": "Target"
+        }
+      },
+      "title": "ScalingDetail",
+      "type": "object"
     },
     "ScanSummary": {
       "description": "Deterministic scan-level summary populated on every extraction.",
@@ -3397,14 +3916,220 @@
       ],
       "title": "ToolParameter",
       "type": "object"
+    },
+    "WorkloadDetail": {
+      "description": "A deployed service: a compose service, K8s workload, container app, function, ...",
+      "properties": {
+        "service_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Service/resource name",
+          "title": "Service Name"
+        },
+        "workload_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "e.g. 'compose_service', 'k8s_deployment', 'container_app', 'ecs_service', 'lambda', 'cloud_run', 'app_service'",
+          "title": "Workload Kind"
+        },
+        "cloud_service": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Managed service, e.g. 'azure_container_apps', 'aws_ecs'",
+          "title": "Cloud Service"
+        },
+        "namespace": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "K8s namespace",
+          "title": "Namespace"
+        },
+        "image_refs": {
+          "description": "Image references run",
+          "items": {
+            "type": "string"
+          },
+          "title": "Image Refs",
+          "type": "array"
+        },
+        "build_context": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Build context directory, relative to the repo root",
+          "title": "Build Context"
+        },
+        "dockerfile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dockerfile path, repo-relative",
+          "title": "Dockerfile"
+        },
+        "source_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Directory holding the code this workload runs",
+          "title": "Source Dir"
+        },
+        "ports": {
+          "items": {
+            "$ref": "#/$defs/PortDetail"
+          },
+          "title": "Ports",
+          "type": "array"
+        },
+        "scaling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScalingDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "identity_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Service account / managed identity name",
+          "title": "Identity Ref"
+        },
+        "depends_on": {
+          "description": "Names of workloads this one depends on",
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "env_var_names": {
+          "description": "Environment variable NAMES only; values never stored",
+          "items": {
+            "type": "string"
+          },
+          "title": "Env Var Names",
+          "type": "array"
+        },
+        "secret_refs": {
+          "description": "Secret/Key Vault reference names; never values",
+          "items": {
+            "type": "string"
+          },
+          "title": "Secret Refs",
+          "type": "array"
+        },
+        "probes": {
+          "description": "Health probes, e.g. 'liveness:/healthz'",
+          "items": {
+            "type": "string"
+          },
+          "title": "Probes",
+          "type": "array"
+        },
+        "internal_only": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when no public ingress/port reaches the workload",
+          "title": "Internal Only"
+        },
+        "source_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "'compose', 'k8s', 'helm_values', 'bicep', 'terraform', ...",
+          "title": "Source Format"
+        }
+      },
+      "title": "WorkloadDetail",
+      "type": "object"
     }
   },
-  "$id": "https://nuguard.ai/schemas/aibom/1.6.0/aibom.schema.json",
+  "$id": "https://nuguard.ai/schemas/aibom/1.7.0/aibom.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "AI Bill of Materials document produced by NuGuard.\n\nThis is the canonical output format.  Use ``AiSbomSerializer.to_json()``\nto serialise and ``AiSbomDocument.model_validate()`` to parse and validate.",
   "properties": {
     "schema_version": {
-      "default": "1.6.0",
+      "default": "1.7.0",
       "description": "AIBOM schema version (semver); bump when format changes",
       "title": "Schema Version",
       "type": "string"

@@ -183,6 +183,20 @@ class AiSbomConfig(BaseModel):
         description="Glob patterns for files/directories to exclude from scanning, "
         "matched against the path relative to the scan root.",
     )
+    scan_images: bool = Field(
+        default=False,
+        description="Run `syft` against pulled base images to record their real OS and "
+        "installed packages. Needs syft on PATH and network/registry access; off by default.",
+    )
+    max_image_packages: int = Field(
+        default=200,
+        ge=1,
+        description="Cap on packages recorded per container image (Dockerfile RUN parsing "
+        "and syft scans).",
+    )
+    image_scan_timeout: int = Field(
+        default=120, ge=5, description="Seconds allowed for each `syft` image scan."
+    )
     honor_gitignore: bool = Field(
         default=True,
         description="When True, skip files matching .gitignore patterns in the repo root.",
