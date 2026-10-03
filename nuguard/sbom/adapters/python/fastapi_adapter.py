@@ -18,9 +18,11 @@ import ast
 import re
 from typing import Any
 
+from ...http_semantics import HANDLER_SIGNALS_KEY
 from ...models import HttpParameterLocation
 from ...types import ComponentType
 from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
+from ._handler_signals import file_uses_session_middleware, handler_uses_sse, python_handler_signals
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -635,6 +637,7 @@ class FastAPIAdapter(FrameworkAdapter):
         model_schemas = _collect_model_schemas(tree)
         # Local definitions take priority over cross-file global schemas
         _effective_external = {k: v for k, v in self._global_model_schemas.items() if k not in model_schemas}
+        _session_middleware = file_uses_session_middleware(tree)
 
         # First pass: top-level assignments (FastAPI/APIRouter and auth class instantiations)
         for node in ast.walk(tree):
@@ -818,6 +821,21 @@ class FastAPIAdapter(FrameworkAdapter):
                     metadata["http_request"] = _fastapi_http_request(
                         node, method, composed_path, schema or {}, model_schemas, _effective_external
                     )
+                    # Framework-level fact: FastAPI's 422 RequestValidationError
+                    # body echoes the submitted input verbatim.
+                    metadata["response_echoes_input"] = True
+                signals = python_handler_signals(node, session_middleware=_session_middleware)
+                metadata[HANDLER_SIGNALS_KEY] = {
+                    k: v for k, v in signals.items() if k != "auth_checked_in_handler"
+                }
+                if handler_uses_sse(node, decorator):
+                    metadata["transport"] = "sse"
+                if is_websocket and (ep_auth or signals["auth_checked_in_handler"]):
+                    # A WebSocket handler authenticates via Depends(...) or by
+                    # verifying a token inside the body; unauthenticated ones are
+                    # left to the graph enricher (explicit False would override
+                    # app-level AUTH matching).
+                    metadata["auth_required"] = True
 
                 # Convert snake_case function name to human-readable display name
                 _ep_display = func_name.replace("_", " ").title()

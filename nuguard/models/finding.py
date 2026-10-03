@@ -68,3 +68,33 @@ class Finding(BaseModel):
     # (content_filter, hitl_check, topic_guardrail, ...), i.e. "which control triggered".
     authorization_decision: str = ""
     guardrail_control: str = ""
+    # ── redteam-proposal.md evidence fields (additive; all optional/defaulted) ──
+    # True when the undecorated payload was refused but a W6 payload decorator
+    # (encoding/framing/structure) succeeded on retry — a direct measure that
+    # the control is a string filter rather than a policy ("plaintext refused,
+    # base64 succeeded").
+    evasion_differential: bool = False
+    # Name of the PayloadDecorator that produced the success recorded above
+    # (e.g. "base64", "rot13"); None when no decorator was involved.
+    decorator_name: str | None = None
+    # Structured hit metadata from the W8 egress-callback canary server
+    # (source_ip, headers, decoded_payload, role) — proof of an SSRF/exfil
+    # primitive rather than an inference from the chat answer alone.
+    callback_evidence: dict | None = None
+    # Which defence-regression paraphrase variant kind triggered this finding
+    # (e.g. "roleplay", "audit_evidence", "encoded") — set only for
+    # category="REGRESSION" findings produced by the paraphrase evaluator.
+    regression_paraphrase_kind: str | None = None
+    # W10 dual-path tool exposure verdict ("gate_bypass") — set only on
+    # findings produced by nuguard.redteam.scenarios.dual_path's comparison
+    # of a chat-mediated call against the same capability's direct-HTTP
+    # invocation. Always "gate_bypass" when set; the other two
+    # compare_dual_path outcomes never produce a finding.
+    dual_path_verdict: str | None = None
+    # W9 state-differential verification outcome ("hallucinated_action" |
+    # "verified_mutation" | "silent_mutation") — set only on findings built
+    # from nuguard.redteam.executor.state_diff.classify_state_outcome(). No
+    # catalog builder wires this automatically yet (see state_diff.py's
+    # module docstring); it's a primitive future write-path extensions call
+    # directly once they have a concrete read-back path for their resource.
+    state_diff_outcome: str | None = None

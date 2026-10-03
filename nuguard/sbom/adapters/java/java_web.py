@@ -6,12 +6,25 @@ import re
 from pathlib import PurePosixPath
 from typing import Any
 
+from ...http_semantics import HANDLER_SIGNALS_KEY
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from .._handler_signals_text import regex_handler_signals
 from ..base import ComponentDetection, RelationshipHint
 from ._http_params import build_http_request
 from ._java_base import JavaFrameworkAdapter
 from .java_ai import _agent_canonical, _method_contains_ai
+
+# Handler resolves the caller from the credential rather than the request.
+_JAVA_IDENTITY_PATTERNS = (
+    re.compile(r"@AuthenticationPrincipal\b|@CurrentUser\b|@RequestAttribute\b"),
+    re.compile(r"\b(?:Principal|Authentication|JwtAuthenticationToken)\s+\w+"),
+    re.compile(r"SecurityContextHolder\.getContext\(\)\.getAuthentication\(\)"),
+)
+_JAVA_COOKIE_PATTERNS = (
+    re.compile(r"\.addCookie\s*\(|\bResponseCookie\b|\bHttpSession\b|session\.setAttribute\s*\("),
+    re.compile(r"[\"']Set-Cookie[\"']", re.IGNORECASE),
+)
 
 
 class JavaWebAdapter(JavaFrameworkAdapter):
@@ -220,6 +233,11 @@ class JavaWebAdapter(JavaFrameworkAdapter):
                         "accepts_user_input": accepts_user_input,
                         "parameters": list(method.parameters),
                         "http_request": http_request.model_dump(mode="json"),
+                        HANDLER_SIGNALS_KEY: regex_handler_signals(
+                            "\n".join([*method.parameters, *method.annotations, method.body]),
+                            identity_patterns=_JAVA_IDENTITY_PATTERNS,
+                            cookie_patterns=_JAVA_COOKIE_PATTERNS,
+                        ),
                     },
                     file_path=file_path,
                     line=method.line,

@@ -302,6 +302,9 @@ public class ItemController {
         "location": "query",
         "type_hint": "int",
         "required": False,
+        "identity_role": None,
+        "identity_role_evidence": None,
+        "mass_assignment_risk": None,
     }
     assert ("X-Trace", "header") in params
     assert ("session", "cookie") in params

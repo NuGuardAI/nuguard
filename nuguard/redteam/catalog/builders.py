@@ -23,10 +23,12 @@ from typing import Callable, NamedTuple
 
 from nuguard.sbom.models import AiSbomDocument, Node
 
-from .capability import AppCapabilityProfile
+from .capability import AgentToolTier, AppCapabilityProfile
 from .spec import ScenarioSpec
 
-__all__ = ["AppCapabilityProfile", "BuilderContext", "BuilderFn", "BUILDER_FACTORIES"]
+__all__ = [
+    "AgentToolTier", "AppCapabilityProfile", "BuilderContext", "BuilderFn", "BUILDER_FACTORIES",
+]
 
 
 class BuilderContext(NamedTuple):
@@ -69,6 +71,10 @@ def _stamp(scenarios: list, ctx: BuilderContext) -> list:
             "safe_execution": spec.safe_execution,
             "required_capabilities": [c.value for c in spec.required_capabilities],
             "expected_control": spec.expected_control,
+            "identity_sensitive": spec.identity_sensitive,
+            "decorator_allowed": spec.decorator_allowed,
+            "dual_path": spec.dual_path,
+            "observation_parallel": spec.observation_parallel,
         }))
     return stamped
 
@@ -683,6 +689,80 @@ def _build_artifact_integrity_probe(ctx: BuilderContext) -> list:
     return _stamp([build_artifact_integrity_probe(str(agent.id), agent.name or "assistant", source_url, integrity_hash)], ctx)
 
 
+def _build_router_keyword_seed(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.router_manipulation import (
+        _most_privileged_tier,
+        build_router_keyword_seeding,
+    )
+    agent = ctx.target_agent
+    tier = _most_privileged_tier(ctx.profile.agent_tool_tiers)
+    if tier is None or tier.agent_id == str(agent.id):
+        return []  # entry agent is already the most privileged — no escalation story
+    result = build_router_keyword_seeding(str(agent.id), agent.name or "assistant", tier, ctx.sbom)
+    if result is None:
+        return []
+    return _stamp([result], ctx)
+
+
+def _build_router_privileged_probe(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.router_manipulation import (
+        _most_privileged_tier,
+        build_router_privileged_probe,
+    )
+    agent = ctx.target_agent
+    tier = _most_privileged_tier(ctx.profile.agent_tool_tiers)
+    if tier is None or tier.agent_id == str(agent.id):
+        return []
+    result = build_router_privileged_probe(str(agent.id), agent.name or "assistant", tier, ctx.sbom)
+    if result is None:
+        return []
+    return _stamp([result], ctx)
+
+
+def _build_identity_binding_conflict(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.authorization import build_identity_binding_conflict
+    agent = ctx.target_agent
+    object_hint = ctx.profile.pii_fields[0] if ctx.profile.pii_fields else "account"
+    results = build_identity_binding_conflict(str(agent.id), agent.name or "assistant", object_hint)
+    return _stamp([results], ctx)
+
+
+def _build_identity_invalid_cred_spoof(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.dual_path import build_identity_invalid_cred_spoof
+    agent = ctx.target_agent
+    endpoint = ctx.target_endpoint
+    if endpoint is None:
+        return []
+    path = (endpoint.metadata.endpoint if endpoint.metadata else None) or "/api/data"
+    method = (endpoint.metadata.method if endpoint.metadata else None) or "GET"
+    if method.upper() not in ("GET", "HEAD", "OPTIONS"):
+        return []  # read-only probe, same policy as X01
+    tool_name = (ctx.target_tool.name if ctx.target_tool else None) or endpoint.name or "endpoint"
+    results = build_identity_invalid_cred_spoof(
+        str(agent.id), agent.name or "assistant", tool_name, path, http_method=method,
+    )
+    return _stamp([results], ctx)
+
+
+def _build_dual_path_read(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.dual_path import build_dual_path_read
+    agent = ctx.target_agent
+    endpoint = ctx.target_endpoint
+    if endpoint is None:
+        return []
+    path = (endpoint.metadata.endpoint if endpoint.metadata else None) or "/api/data"
+    method = (endpoint.metadata.method if endpoint.metadata else None) or "GET"
+    if method.upper() not in ("GET", "HEAD", "OPTIONS"):
+        return []  # X01 is read-only; a write method belongs to X02 (destructive, disabled)
+    tool_name = (ctx.target_tool.name if ctx.target_tool else None) or endpoint.name or "endpoint"
+    sensitive_fields = list(ctx.profile.pii_fields[:3]) if ctx.profile.pii_fields else []
+    results = build_dual_path_read(
+        str(agent.id), agent.name or "assistant", tool_name, path,
+        http_method=method, sensitive_fields=sensitive_fields,
+    )
+    return _stamp([results], ctx)
+
+
 def _build_cross_env_credential_reuse(ctx: BuilderContext) -> list:
     from nuguard.redteam.scenarios.supply_chain_attacks import build_cross_env_credential_reuse
     staging_url = ""
@@ -833,4 +913,22 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "quality_gate_inference":     _build_quality_gate_inference,
     "artifact_integrity_probe":   _build_artifact_integrity_probe,
     "cross_env_credential_reuse": _build_cross_env_credential_reuse,
+    # ── Trust/identity-binding (A10-A11) — redteam-proposal.md W2 ─────────
+    "identity_binding_conflict":   _build_identity_binding_conflict,
+    "identity_invalid_cred_spoof": _build_identity_invalid_cred_spoof,
+    # ── Agentic Surface Exposure (W01-W04) — redteam-proposal.md W1 ───────
+    "surface_unauth_inventory":   _stub("surface_unauth_inventory"),
+    "surface_schema_exposure":    _stub("surface_schema_exposure"),
+    "surface_unauth_observation": _stub("surface_unauth_observation"),
+    "surface_cors_misconfig":     _stub("surface_cors_misconfig"),
+    # ── Dual-Path Tool Exposure (X01-X02) — redteam-proposal.md W10 ───────
+    "dual_path_read":             _build_dual_path_read,
+    "dual_path_write":            _stub("dual_path_write"),
+    # ── Router and Agent-Selection Abuse (Q01-Q03) — redteam-proposal.md W4 ─
+    "router_keyword_seed":        _build_router_keyword_seed,
+    "router_privileged_probe":    _build_router_privileged_probe,
+    "router_side_channel":        _stub("router_side_channel"),
+    # ── Observation and Side-Channel (L01-L02) — redteam-proposal.md W7 ───
+    "observation_unauth_connect":      _stub("observation_unauth_connect"),
+    "observation_cross_session_leak":  _stub("observation_cross_session_leak"),
 }

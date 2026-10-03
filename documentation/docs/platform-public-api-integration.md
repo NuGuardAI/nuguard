@@ -130,6 +130,16 @@ Note:
 - `RedteamRunResult.remediation_plan` follows the same error contract as analysis/behavior: `[]`
     only when there's no sbom/findings, otherwise a synthesis failure propagates.
 
+**Agentic-surface options (additive, all defaulted).** `RedteamRunRequest` also accepts
+`defence_regressions` / `defence_regression_paraphrases` (single-turn must-refuse pre-pass; `0`
+paraphrases evaluates only the literal message), `asm_max_probe_requests` (budget for the
+GET/OPTIONS-only surface prober; `0` disables it) with `asm_extra_inventory_paths`, and
+`trust_context_confirmation_cells` (extra identity-binding cells run after the first confirmed
+mismatch). `Finding` gains optional `evasion_differential`, `decorator_name`, `callback_evidence`,
+`regression_paraphrase_kind`, `dual_path_verdict`, and `state_diff_outcome`. The prober promotes
+only a redacted `AsmSummary` onto the SBOM `AGENT` node; raw probe headers and bodies are not
+serialized into results.
+
 **Resume (`RedteamRunRequest.resume_from`).** Set `resume_from` to the path of a checkpoint file
 from a previous aborted run; already-completed scenarios are skipped and the final result combines
 checkpointed and newly-run scenarios/findings. On a mid-run failure with at least one completed

@@ -5,9 +5,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ...http_semantics import HANDLER_SIGNALS_KEY
 from ...models import HttpParameterLocation, HttpParameterMetadata, HttpRequestMetadata
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from .._handler_signals_text import regex_handler_signals
 from ..base import ComponentDetection, RelationshipHint
 from ._csharp_base import CSharpFrameworkAdapter
 from ._source import (
@@ -19,6 +21,16 @@ from ._source import (
     split_top_level,
     statement_tail,
     string_constants,
+)
+
+# Handler resolves the caller from the credential rather than the request.
+_CSHARP_IDENTITY_PATTERNS = (
+    re.compile(r"\bClaimsPrincipal\s+\w+|\bICurrentUser\w*\s+\w+|\bIHttpContextAccessor\b"),
+    re.compile(r"\bUser\.(?:Identity|FindFirst|Claims)\b|\bHttpContext\.User\b"),
+)
+_CSHARP_COOKIE_PATTERNS = (
+    re.compile(r"\bResponse\.Cookies\.Append\s*\(|\bCookieOptions\b|\bHttpContext\.Session\b"),
+    re.compile(r"\bSignInAsync\s*\("),
 )
 
 _HTTP_ATTRIBUTES = {
@@ -372,6 +384,7 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                     http_request=_http_request(
                         list(method.parameters), http_method, route, request_schema
                     ),
+                    handler_text="\n".join([*method.parameters, *method.attributes, body]),
                 )
             )
 
@@ -469,6 +482,7 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                     http_request=_http_request(
                         list(_lambda_parameters(handler)), method, normalized_route, request_schema
                     ),
+                    handler_text=handler,
                 )
             )
 
@@ -491,6 +505,7 @@ def _endpoint_node(
     chat_key: str | None,
     response_key: str | None,
     http_request: dict[str, Any] | None = None,
+    handler_text: str | None = None,
 ) -> ComponentDetection:
     canonical = canonicalize_text(f"aspnet:endpoint:{http_method}:{route}")
     metadata: dict[str, Any] = {
@@ -506,6 +521,13 @@ def _endpoint_node(
 
     if http_request:
         metadata["http_request"] = http_request
+
+    if handler_text is not None:
+        metadata[HANDLER_SIGNALS_KEY] = regex_handler_signals(
+            handler_text,
+            identity_patterns=_CSHARP_IDENTITY_PATTERNS,
+            cookie_patterns=_CSHARP_COOKIE_PATTERNS,
+        )
 
     if response_schema:
         metadata["response_body_schema"] = response_schema

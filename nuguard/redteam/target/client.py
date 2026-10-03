@@ -1411,6 +1411,34 @@ class TargetAppClient:
 
         return 429, "[HTTP 429]", {}
 
+    async def probe_cors(self, path: str, origin: str) -> dict[str, str] | None:
+        """Send one unauthenticated OPTIONS preflight and return response headers.
+
+        Deliberately isolated from :meth:`invoke_endpoint`'s 429-retry and
+        circuit-breaker bookkeeping — a CORS reflection check is a single
+        best-effort auxiliary probe (W1 ASM), not an attack step whose
+        failure should count toward either breaker. Returns ``None`` on any
+        transport error (treated as "could not determine", never as a false
+        "not vulnerable").
+        """
+        try:
+            request = self._client.build_request(
+                method="OPTIONS", url=path,
+                headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
+            )
+            for name in self._auth_header_names:
+                if name in request.headers:
+                    del request.headers[name]
+            resp = await self._client.send(request)
+        except Exception as exc:  # noqa: BLE001 — best-effort auxiliary probe
+            _log.debug("probe_cors: OPTIONS %s failed: %s", path, exc)
+            return None
+        # Lowercase keys explicitly: httpx.Headers.get() is case-insensitive
+        # but a plain dict() conversion is not, and header name casing on
+        # the wire is server-dependent (Access-Control-Allow-Origin is the
+        # conventional casing, but not guaranteed).
+        return {k.lower(): v for k, v in resp.headers.items()}
+
     async def send_stream(
         self,
         payload: str,

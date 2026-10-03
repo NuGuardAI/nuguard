@@ -23,8 +23,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ...http_semantics import HANDLER_SIGNALS_KEY
 from ...models import HttpParameterLocation
 from ...types import ComponentType
+from .._handler_signals_text import regex_handler_signals
 from .._schema_utils import bare_type_name, flatten_one_level
 from ..base import ComponentDetection
 from ._class_scan import _CLASS_RE, _find_class_body_span
@@ -273,6 +275,16 @@ def _extract_global_prefix(content: str) -> tuple[str, list[str]] | None:
                     break
         exclude = _QUOTED_STRING_RE.findall(tail[start:end])
     return prefix, exclude
+
+
+_NEST_IDENTITY_PATTERNS = (
+    re.compile(r"@(?:User|CurrentUser|AuthUser|GetUser|AuthenticatedUser|Principal)\s*\("),
+    re.compile(r"\breq(?:uest)?\.user\b"),
+)
+_NEST_COOKIE_PATTERNS = (
+    re.compile(r"\b(?:res|response)\.cookie\s*\("),
+    re.compile(r"@Session\s*\(|\breq(?:uest)?\.session\b"),
+)
 
 
 def _nestjs_type_hint(type_str: str) -> str:
@@ -530,6 +542,11 @@ class NestJSAdapter(TSFrameworkAdapter):
                 )
                 if ctx_fields:
                     metadata["context_payload_fields"] = ctx_fields
+                metadata[HANDLER_SIGNALS_KEY] = regex_handler_signals(
+                    "\n".join(window + back_window),
+                    identity_patterns=_NEST_IDENTITY_PATTERNS,
+                    cookie_patterns=_NEST_COOKIE_PATTERNS,
+                )
 
                 ep_display = re.sub(r"([a-z])([A-Z])", r"\1 \2", func_name).title()
 

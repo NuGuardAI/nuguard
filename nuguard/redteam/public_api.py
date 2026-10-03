@@ -205,6 +205,21 @@ class RedteamRunRequest(BaseModel):
     golden_data: dict[str, Any] | None = None
     suppress_spa_html_auth_bypass: bool = True
     codegen_escalation_enabled: bool = True
+    defence_regressions: list[dict] | None = None
+    """Messages the app must always refuse (yaml: redteam.defence_regressions).
+    Evaluated in a single-turn pre-pass before scenario dispatch — see
+    :mod:`nuguard.redteam.defence_regressions`."""
+    defence_regression_paraphrases: int = 5
+    """Paraphrase variants generated per entry above; 0 evaluates only the
+    literal configured message (yaml: redteam.defence_regression_paraphrases)."""
+    asm_max_probe_requests: int = 25
+    """Request budget for the Agentic Surface Model prober; 0 disables it
+    entirely (yaml: redteam.asm.max_probe_requests)."""
+    asm_extra_inventory_paths: list[str] = Field(default_factory=list)
+    """Extra tool/agent-inventory paths to probe (yaml: redteam.asm.extra_inventory_paths)."""
+    trust_context_confirmation_cells: int = 1
+    """Extra W2 trust-context cells run after the first confirmed identity
+    mismatch before early-exiting (yaml: redteam.trust_context.confirmation_cells)."""
 
     @model_validator(mode="before")
     @classmethod
@@ -469,6 +484,11 @@ async def run_redteam(
         golden_data=request.golden_data,
         suppress_spa_html_auth_bypass=request.suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=request.codegen_escalation_enabled,
+        defence_regressions=request.defence_regressions,
+        defence_regression_paraphrases=request.defence_regression_paraphrases,
+        asm_max_probe_requests=request.asm_max_probe_requests,
+        asm_extra_inventory_paths=request.asm_extra_inventory_paths,
+        trust_context_confirmation_cells=request.trust_context_confirmation_cells,
         mode=request.mode,
         progressive_halt_on_severity=request.progressive_halt_on_severity,
         progress_sink=_progress_sink,

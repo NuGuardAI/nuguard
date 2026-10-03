@@ -4,7 +4,8 @@ from __future__ import annotations
 import asyncio
 import os
 import re as _re
-from typing import TYPE_CHECKING, Any
+import time
+from typing import TYPE_CHECKING, Any, Literal
 
 from nuguard.common.credentials import detect_confirmation_request, generate_contextual_reply
 from nuguard.common.llm_client import LLMClient
@@ -22,12 +23,14 @@ if TYPE_CHECKING:
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.target_client_builder import TargetClient
     from nuguard.redteam.llm_engine.judge_cache import JudgeCache
+    from nuguard.redteam.target.callback_canary import CallbackCanaryServer
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
 
 from nuguard.common.response_data_check import DataExposureResult, check_response_for_data_exposure
 from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, ExploitStep, GoalType
 from nuguard.models.policy import CognitivePolicy
+from nuguard.redteam.decorators import select_decorator
 from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
 from nuguard.redteam.llm_engine.happy_path import generate_happy_path_opener
 from nuguard.redteam.llm_engine.refusal_patterns import (
@@ -277,6 +280,16 @@ class StepResult:
         self.artifact_hit: bool = False
         # Egress-trap hits (set by orchestrator after scenario completes)
         self.egress_trap_hits: list[str] = []
+        # W8: structured hit metadata (role, source_ip, headers) when this
+        # step's callback_canary_role matched a confirmed inbound callback.
+        self.callback_hit: dict[str, Any] | None = None
+        # W6: name of the PayloadDecorator that produced a success where the
+        # undecorated payload failed (e.g. "base64", "rot13"); None when no
+        # decorator was tried or none succeeded. A confirmed value here is
+        # itself a finding (evasion_differential) — the control is a string
+        # filter, not a policy, if the plaintext refused and the encoded
+        # variant got through.
+        self.decorator_used: str | None = None
         # Set for direct-HTTP (target_path) steps: whether the response body
         # actually shows evidence of exposed data (PII-shaped values, a bulk
         # record list, or SBOM-declared sensitive field names) — see
@@ -382,10 +395,13 @@ class AttackExecutor:
         suppress_spa_html_auth_bypass: bool = True,
         judge_cache: "JudgeCache | None" = None,
         credentials: dict[str, str] | None = None,
+        callback_canary: "CallbackCanaryServer | None" = None,
     ) -> None:
         self._client = client
         self._evaluator = PolicyEvaluator(policy) if policy else None
         self._canary = canary
+        # W8 egress-callback canary — see callback_canary_role on ExploitStep.
+        self._callback_canary = callback_canary
         self._logger = logger or ActionLogger()
         self._response_evaluator = (
             LLMResponseEvaluator(eval_llm, cache=judge_cache) if eval_llm else None
@@ -437,6 +453,13 @@ class AttackExecutor:
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
         self._suppress_spa_html = suppress_spa_html_auth_bypass
         self._credentials: dict[str, str] = credentials or {}
+
+    @property
+    def client(self) -> "TargetClient":
+        """The target client this executor sends through — read-only access
+        for callers that need to issue their own requests against the same
+        target (e.g. :class:`nuguard.redteam.trust_context.TrustContextRunner`)."""
+        return self._client
 
     async def run(
         self, chain: ExploitChain
@@ -655,7 +678,48 @@ class AttackExecutor:
                 # Multi-turn escalation: use adaptive LLM mutations when available,
                 # fall back to static variants.
                 last_response = result.response
-                for attempt in range(self.MAX_MUTATIONS):
+
+                # W6 payload decorators (redteam-proposal.md): try at most one
+                # deterministic encoding/framing/structure transform BEFORE
+                # free-form LLM paraphrase. Runs even with no attack LLM
+                # configured (unlike the mutation loop below), and a success
+                # here is itself evidence the control is a string filter, not
+                # a policy — recorded on the StepResult for _build_findings.
+                _decorator_succeeded = False
+                if chain.decorator_allowed and not getattr(step, "_decorator_tried", False):
+                    step._decorator_tried = True  # type: ignore[attr-defined]
+                    decorator = select_decorator(chain, step)
+                    if decorator is not None:
+                        decorated_payload = decorator.decorate(step.payload)
+                        if not hasattr(step, "_sent_payloads"):
+                            step._sent_payloads = {step.payload}  # type: ignore[attr-defined]
+                        if decorated_payload not in step._sent_payloads:  # type: ignore[attr-defined]
+                            step._sent_payloads.add(decorated_payload)  # type: ignore[attr-defined]
+                            try:
+                                decorated_result = await self._execute_step_with_payload(
+                                    step, decorated_payload, session, chain
+                                )
+                            except TargetUnavailableError:
+                                _log.warning(
+                                    "Chain %s: target unavailable during decorator "
+                                    "attempt (%s) — aborting chain and propagating",
+                                    chain.chain_id, decorator.name,
+                                )
+                                chain.status = "aborted"
+                                raise
+                            last_response = decorated_result.response
+                            if decorated_result.success_signal_found:
+                                decorated_result.decorator_used = decorator.name
+                                session.add_evidence(step.step_id, decorated_result.response)
+                                results.append(decorated_result)
+                                _decorator_succeeded = True
+                                _log.info(
+                                    "Chain %s step %s: decorator %r succeeded where "
+                                    "the undecorated payload failed (evasion_differential)",
+                                    chain.chain_id, step.step_id, decorator.name,
+                                )
+
+                for attempt in range(0 if _decorator_succeeded else self.MAX_MUTATIONS):
                     if detect_confirmation_request(last_response):
                         # The target offered to proceed pending an answer
                         # (e.g. "I can send an OTP — let me know if you'd
@@ -926,6 +990,9 @@ class AttackExecutor:
             if self._app_log_reader:
                 self._app_log_reader.mark()
             _extra_headers = step.extra_headers or None
+            # W8: capture the send time so a post-send canary poll only
+            # matches hits caused by THIS step, not an earlier scenario's.
+            _send_t0 = time.monotonic()
             response, tool_calls = await self._client.send(
                 payload, session, _extra_headers, retry_transient=True
             )
@@ -972,6 +1039,22 @@ class AttackExecutor:
             result = StepResult(step=step, response=response, tool_calls=tool_calls)
             result.resolved_payload = _resolved_payload
             result.raw_request_body = session.last_request_body
+            # W8 egress-callback canary: a confirmed inbound hit is hard
+            # evidence — overrides keyword/LLM judgment for this step.
+            if step.callback_canary_role and self._callback_canary is not None:
+                _role_map: dict[str, Literal["ssrf", "exfil", "beacon"]] = {
+                    "ssrf_proof": "ssrf", "exfil_proof": "exfil", "beacon": "beacon",
+                }
+                _canary_role = _role_map[step.callback_canary_role]
+                _hit = await self._callback_canary.poll_for_hit(_send_t0, _canary_role)
+                if _hit is not None:
+                    result.success_signal_found = True
+                    result.callback_hit = _hit.to_dict()
+                    result.egress_trap_hits = [_hit.raw_request]
+                    _log.info(
+                        "Chain %s step %s: egress-callback canary hit (role=%s, source_ip=%s)",
+                        chain.chain_id, step.step_id, _canary_role, _hit.source_ip,
+                    )
             if step.success_requires_new_tool_disclosure:
                 from nuguard.redteam.executor.tool_trace_judge import (
                     new_tool_call_disclosure,

@@ -38,6 +38,7 @@ from typing import Any
 
 from nuguard.common.logging import get_logger
 
+from ..ingress import ingress_entry
 from ..types import ComponentType
 from .base import ComponentDetection
 
@@ -138,6 +139,81 @@ def _make_det(
         snippet=snippet[:120],
         evidence_kind="iac",
     )
+
+
+# ---------------------------------------------------------------------------
+# Ingress facts (pentest-proposal A4) — shared by Bicep / Terraform / k8s
+# ---------------------------------------------------------------------------
+
+#: IaC resource type fragment -> (role, evidence). Matched case-insensitively on
+#: the resource type; ``direct`` types additionally need an "externally exposed"
+#: flag (see ``_BICEP_EXTERNAL_RE`` / ``_TF_EXTERNAL_RE``).
+_INGRESS_GATEWAY_TYPES: dict[str, str] = {
+    "microsoft.apimanagement/service": "API Management",
+    "microsoft.network/applicationgateways": "Application Gateway",
+    "microsoft.network/frontdoors": "Front Door",
+    "microsoft.cdn/profiles": "CDN / Front Door",
+    "azurerm_api_management": "API Management",
+    "azurerm_application_gateway": "Application Gateway",
+    "azurerm_frontdoor": "Front Door",
+    "aws_api_gateway_rest_api": "API Gateway",
+    "aws_apigatewayv2_api": "API Gateway",
+    "aws_lb": "load balancer",
+    "aws_alb": "load balancer",
+    "google_api_gateway_gateway": "API Gateway",
+}
+_INGRESS_STATIC_TYPES: dict[str, str] = {
+    "microsoft.web/staticsites": "SWA config",
+    "azurerm_static_web_app": "SWA config",
+    "azurerm_static_site": "SWA config",
+}
+_INGRESS_DIRECT_TYPES: dict[str, str] = {
+    "microsoft.app/containerapps": "ACA ingress",
+    "azurerm_container_app": "ACA ingress",
+}
+_BICEP_EXTERNAL_RE = re.compile(r"ingress\s*:\s*\{[^}]*?external\s*:\s*true", re.DOTALL | re.IGNORECASE)
+_TF_EXTERNAL_RE = re.compile(r"external_enabled\s*=\s*true", re.IGNORECASE)
+
+
+def _classify_ingress(resource_type: str, body: str, external_re: re.Pattern[str]) -> dict[str, Any] | None:
+    """Ingress entry for one IaC resource, or ``None`` when it is not an exposure point."""
+    rtype = resource_type.lower().split("@")[0]
+    for table, role in (
+        (_INGRESS_GATEWAY_TYPES, "gateway"),
+        (_INGRESS_STATIC_TYPES, "static_frontend"),
+    ):
+        for fragment, evidence in table.items():
+            if rtype == fragment:
+                return ingress_entry(role, evidence)
+    for fragment, evidence in _INGRESS_DIRECT_TYPES.items():
+        if rtype == fragment and external_re.search(body):
+            return ingress_entry("direct", evidence)
+    return None
+
+
+def _brace_block(content: str, open_index: int) -> str:
+    """Text from the ``{`` at *open_index* to its matching ``}`` (string-unaware, bounded)."""
+    depth = 0
+    for index in range(open_index, min(len(content), open_index + 20000)):
+        char = content[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return content[open_index : index + 1]
+    return content[open_index : open_index + 20000]
+
+
+def _dedupe_ingresses(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[Any, ...]] = set()
+    result: list[dict[str, Any]] = []
+    for entry in entries:
+        key = (entry["role"], entry["url"], entry["evidence"])
+        if key not in seen:
+            seen.add(key)
+            result.append(entry)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +359,8 @@ class K8sAdapter:
                 results.extend(workload_dets)
             elif kind in _K8S_IAM_KINDS:
                 results.extend(self._rbac(doc, content, file_path))
+            elif kind in ("Ingress", "Service"):
+                results.extend(self._exposure(doc, kind, file_path))
 
         # Emit a lightweight marker node for each NetworkPolicy namespace so that
         # extract_iac_security_context() can aggregate cross-file coverage.
@@ -307,6 +385,43 @@ class K8sAdapter:
             )
 
         return results
+
+    # ------------------------------------------------------------------
+    # Ingress / externally exposed Service → DEPLOYMENT with ingress facts
+    # ------------------------------------------------------------------
+
+    def _exposure(self, data: dict[str, Any], kind: str, file_path: str) -> list[ComponentDetection]:
+        """An ``Ingress`` is a gateway; a ``LoadBalancer``/``NodePort`` Service exposes a backend directly."""
+        spec = data.get("spec") or {}
+        name, namespace = _k8s_name(data), _k8s_namespace(data) or "default"
+        if kind == "Ingress":
+            hosts = [
+                str(r["host"]) for r in spec.get("rules") or [] if isinstance(r, dict) and r.get("host")
+            ]
+            entries = [ingress_entry("gateway", "k8s Ingress", host) for host in hosts] or [
+                ingress_entry("gateway", "k8s Ingress")
+            ]
+        elif str(spec.get("type", "")) in ("LoadBalancer", "NodePort"):
+            entries = [ingress_entry("direct", f"k8s Service {spec['type']}")]
+        else:
+            return []
+        return [
+            _make_det(
+                component_type=ComponentType.DEPLOYMENT,
+                canonical_name=f"ingress:k8s:{namespace}:{kind}:{name}".lower()[:128],
+                display_name=f"{kind}:{name}",
+                adapter_name=self.name,
+                confidence=0.85,
+                metadata={
+                    "iac_format": "kubernetes",
+                    "k8s_namespace": namespace,
+                    "ingresses": _dedupe_ingresses(entries),
+                },
+                file_path=file_path,
+                line=1,
+                snippet=f"{kind} {name}",
+            )
+        ]
 
     # ------------------------------------------------------------------
     # Workload → DEPLOYMENT
@@ -569,6 +684,8 @@ class K8sAdapter:
 # Terraform adapter
 # ---------------------------------------------------------------------------
 
+_TF_RESOURCE_BLOCK_RE = re.compile(r'resource\s+"([^"]+)"\s+"[^"]+"\s*\{')
+
 # Provider detection
 _TF_PROVIDER_RE = re.compile(r'provider\s+"(aws|azurerm|google|vault|kubernetes)"', re.IGNORECASE)
 
@@ -797,6 +914,20 @@ class TerraformAdapter:
             meta["rate_limited"] = True
         if _dh:
             meta["data_handling"] = _dh
+        tf_ingresses = _dedupe_ingresses(
+            [
+                entry
+                for res_m in _TF_RESOURCE_BLOCK_RE.finditer(content)
+                if (
+                    entry := _classify_ingress(
+                        res_m.group(1), _brace_block(content, res_m.end() - 1), _TF_EXTERNAL_RE
+                    )
+                )
+                is not None
+            ]
+        )
+        if tf_ingresses:
+            meta["ingresses"] = tf_ingresses
         display = f"terraform:{target_display}:{cloud_region or 'unknown-region'}"
         return [
             _make_det(
@@ -1298,6 +1429,20 @@ class BicepAdapter:
             "encryption_key_ref": enc_key_ref,
             "secret_store": secret_store,
         }
+        ingresses = _dedupe_ingresses(
+            [
+                entry
+                for res_m in _BICEP_RESOURCE_RE.finditer(content)
+                if (
+                    entry := _classify_ingress(
+                        res_m.group(2), _brace_block(content, res_m.end() - 1), _BICEP_EXTERNAL_RE
+                    )
+                )
+                is not None
+            ]
+        )
+        if ingresses:
+            meta["ingresses"] = ingresses
         return [
             _make_det(
                 component_type=ComponentType.DEPLOYMENT,
