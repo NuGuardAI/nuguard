@@ -162,6 +162,15 @@ different inputs raises `CheckpointMismatchError` (also from `nuguard.common.run
 rather than silently combining incompatible results. Both errors should be imported from
 `nuguard.common.run_checkpoint`, not from `nuguard.redteam.public_api`.
 
+Campaign checkpoints also bind to the current authentication headers using a
+deterministic PBKDF2-HMAC-SHA-256 fingerprint (600,000 iterations, 256-bit output).
+Header order and capitalization do not change the fingerprint; credential changes do.
+The public salt identifies this fingerprint's purpose and stays fixed for resume across
+processes. The fingerprint is an identity label, not a stored password verifier.
+Authenticated campaign checkpoints containing the former truncated SHA-256 fingerprint
+raise `CheckpointMismatchError` on resume; start a new campaign after upgrading.
+Public request and result schemas are unchanged, and checkpoints contain no raw auth headers.
+
 ### Cognitive policy parsing
 
 Module: `nuguard.policy.public_api`
