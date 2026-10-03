@@ -1407,6 +1407,15 @@ class NuGuardConfig(BaseSettings):
     redteam_campaign_campaign_warmup: bool | None = Field(
         default=None, description="(yaml: redteam.campaign.campaign_warmup)."
     )
+    redteam_campaign_max_concurrent_requests: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_concurrent_requests)."
+    )
+    redteam_campaign_declared_fixtures: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.declared_fixtures)."
+    )
+    redteam_campaign_fixture_version: str | None = Field(
+        default=None, description="(yaml: redteam.campaign.fixture_version)."
+    )
     redteam_campaign_confirmation_reserve_fraction: float | None = Field(
         default=None, description="(yaml: redteam.campaign.confirmation_reserve_fraction)."
     )
@@ -2095,6 +2104,10 @@ class NuGuardConfig(BaseSettings):
             for k, v in self.model_dump().items()
             if k.startswith("redteam_campaign_") and v is not None
         }
+        # The (previously unwired) legacy limit now feeds the campaign target limiter.
+        explicit.setdefault(
+            "redteam_campaign_max_concurrent_requests", self.redteam_max_concurrent_requests
+        )
         return CampaignConfig.from_flat(explicit)
 
     @model_validator(mode="after")

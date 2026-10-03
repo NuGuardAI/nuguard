@@ -8,10 +8,8 @@ from pydantic import ValidationError
 
 from nuguard.config import load_config
 from nuguard.redteam.campaign.config import CampaignConfig
-from nuguard.redteam.campaign.orchestrator import (
-    CampaignModeUnavailableError,
-    CampaignOrchestrator,
-)
+from nuguard.redteam.campaign.orchestrator import CampaignOrchestrator
+from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 
 
 def _cfg(tmp_path: Path, body: str):
@@ -63,6 +61,14 @@ def test_legacy_warmup_conflicts_with_campaign_warmup(tmp_path: Path) -> None:
     _cfg(tmp_path, "redteam:\n  mode: concurrent\n  pre_run_warmup: 2\n")
 
 
-def test_campaign_mode_never_falls_back_silently() -> None:
-    with pytest.raises(CampaignModeUnavailableError):
-        CampaignOrchestrator()
+def test_campaign_orchestrator_reuses_legacy_preparation_but_enriches_just_in_time() -> None:
+    assert issubclass(CampaignOrchestrator, RedteamOrchestrator)
+    assert CampaignOrchestrator._eager_enrichment is False
+    assert RedteamOrchestrator._eager_enrichment is True
+
+
+def test_legacy_concurrency_limit_feeds_campaign_target_limiter(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, "redteam:\n  mode: campaign\n  max_concurrent_requests: 3\n")
+    assert cfg.resolved_redteam_campaign_config().max_concurrent_requests == 3
+    cfg2 = _cfg(tmp_path, "redteam:\n  mode: campaign\n  campaign:\n    max_concurrent_requests: 2\n")
+    assert cfg2.resolved_redteam_campaign_config().max_concurrent_requests == 2

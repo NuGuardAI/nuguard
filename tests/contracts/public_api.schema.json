@@ -8836,6 +8836,25 @@
             "title": "Campaign Warmup",
             "type": "boolean"
           },
+          "max_concurrent_requests": {
+            "default": 1,
+            "description": "Maximum in-flight requests to the target (0 = unlimited). Defaults to one at a time; mapped from redteam.max_concurrent_requests in nuguard.yaml.",
+            "minimum": 0,
+            "title": "Max Concurrent Requests",
+            "type": "integer"
+          },
+          "declared_fixtures": {
+            "default": false,
+            "description": "Operator declares that dry-run / sandbox / emulated tool fixtures exist for write-capable objectives; without this they are blocked_fixture.",
+            "title": "Declared Fixtures",
+            "type": "boolean"
+          },
+          "fixture_version": {
+            "default": "",
+            "description": "Opaque fixture version; a change invalidates resumed campaign state.",
+            "title": "Fixture Version",
+            "type": "string"
+          },
           "confirmation_reserve_fraction": {
             "default": 0.2,
             "description": "Share of a finite run budget reserved for confirmation/recovery.",

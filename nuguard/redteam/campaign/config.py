@@ -59,6 +59,24 @@ class CampaignConfig(BaseModel):
         default=True,
         description="Run one benign warm-up per compatible branch (campaign-managed).",
     )
+    max_concurrent_requests: int = Field(
+        default=1, ge=0,
+        description=(
+            "Maximum in-flight requests to the target (0 = unlimited). Defaults to one "
+            "at a time; mapped from redteam.max_concurrent_requests in nuguard.yaml."
+        ),
+    )
+    declared_fixtures: bool = Field(
+        default=False,
+        description=(
+            "Operator declares that dry-run / sandbox / emulated tool fixtures exist "
+            "for write-capable objectives; without this they are blocked_fixture."
+        ),
+    )
+    fixture_version: str = Field(
+        default="",
+        description="Opaque fixture version; a change invalidates resumed campaign state.",
+    )
     confirmation_reserve_fraction: float = Field(
         default=0.2, ge=0.0, le=0.9,
         description="Share of a finite run budget reserved for confirmation/recovery.",

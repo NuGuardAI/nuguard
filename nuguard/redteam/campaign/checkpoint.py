@@ -118,6 +118,48 @@ def _branch_to_dict(b: Branch) -> dict[str, Any]:
     }
 
 
+def build_payload(
+    *,
+    sbom: Any,
+    policy: Any | None,
+    target_fp: str,
+    auth_fps: dict[str, str],
+    fixture_version: str,
+    ledger: CoverageLedger,
+    branches: BranchManager,
+    store: KnowledgeStore,
+    budget: BudgetTracker,
+    completed: set[str],
+    deferred: list[DeferredObjective],
+    pending_reproductions: list[dict[str, Any]],
+    write_objectives: set[str],
+    plan_cache: dict[tuple[str, str, str], list[list[str]]] | None = None,
+    status: str = "running",
+) -> dict[str, Any]:
+    """JSON-safe campaign state (no credentials). Embeddable in the legacy checkpoint."""
+    return {
+        "campaign_checkpoint_version": CAMPAIGN_CHECKPOINT_VERSION,
+        "cache_key": fingerprint(sbom, policy),
+        "target_fingerprint": target_fp,
+        "auth_fingerprints": auth_fps,          # principal ref -> auth-scope fingerprint
+        "fixture_version": fixture_version,
+        "status": status,
+        "ledger": [{**asdict(e), "status": e.status.value} for e in ledger.entries.values()],
+        "branches": [_branch_to_dict(b) for b in branches.branches.values()],
+        "knowledge": [_item_to_dict(i) for i in store._items.values()],
+        "budget": {
+            "requests_used": budget.requests_used,
+            "llm_cost_used": budget.llm_cost_used,
+            "elapsed_seconds": budget.clock() - budget._t0,
+        },
+        "completed_signatures": sorted(completed),
+        "deferred": [asdict(d) for d in deferred],
+        "pending_reproductions": pending_reproductions,
+        "write_objectives": sorted(write_objectives),
+        "plan_cache": [{"k": list(k), "v": v} for k, v in (plan_cache or {}).items()],
+    }
+
+
 class CampaignCheckpointStore:
     """Save/restore campaign state under a ``prompt_cache_dir``-style directory."""
 
@@ -128,52 +170,8 @@ class CampaignCheckpointStore:
     def path_for(self, key: str) -> Path:
         return self._dir / f"redteam-campaign-checkpoint-{key}.json"
 
-    def save(
-        self,
-        key: str,
-        *,
-        sbom: Any,
-        policy: Any | None,
-        target_fp: str,
-        auth_fps: dict[str, str],
-        fixture_version: str,
-        ledger: CoverageLedger,
-        branches: BranchManager,
-        store: KnowledgeStore,
-        budget: BudgetTracker,
-        completed: set[str],
-        deferred: list[DeferredObjective],
-        pending_reproductions: list[dict[str, Any]],
-        write_objectives: set[str],
-        plan_cache: dict[tuple[str, str, str], list[list[str]]] | None = None,
-        status: str = "running",
-    ) -> Path:
-        payload: dict[str, Any] = {
-            "campaign_checkpoint_version": CAMPAIGN_CHECKPOINT_VERSION,
-            "cache_key": fingerprint(sbom, policy),
-            "target_fingerprint": target_fp,
-            "auth_fingerprints": auth_fps,          # principal ref -> auth-scope fingerprint
-            "fixture_version": fixture_version,
-            "status": status,
-            "ledger": [
-                {**asdict(e), "status": e.status.value} for e in ledger.entries.values()
-            ],
-            "branches": [_branch_to_dict(b) for b in branches.branches.values()],
-            "knowledge": [_item_to_dict(i) for i in store._items.values()],
-            "budget": {
-                "requests_used": budget.requests_used,
-                "llm_cost_used": budget.llm_cost_used,
-                "elapsed_seconds": budget.clock() - budget._t0,
-            },
-            "completed_signatures": sorted(completed),
-            "deferred": [asdict(d) for d in deferred],
-            "pending_reproductions": pending_reproductions,
-            "write_objectives": sorted(write_objectives),
-            "plan_cache": [
-                {"k": list(k), "v": v} for k, v in (plan_cache or {}).items()
-            ],
-        }
-        return self._store.save(self.path_for(key), payload)
+    def save(self, key: str, **state: Any) -> Path:
+        return self._store.save(self.path_for(key), build_payload(**state))
 
     def load(self, path: Path) -> dict[str, Any] | None:
         data = self._store.load(path)

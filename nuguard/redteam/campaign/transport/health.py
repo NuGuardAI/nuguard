@@ -128,6 +128,10 @@ class HealthRegistry:
         t = self.clock() if now is None else now
         return self._groups.get(key.dep_group, _GroupState()).paused_until > t
 
+    def resume_at(self, key: HealthKey) -> float:
+        """When the key's dependency group becomes eligible again (0.0 = now)."""
+        return self._groups.get(key.dep_group, _GroupState()).paused_until
+
     def blocked_reason(self, key: HealthKey) -> str | None:
         """Why *key* must not run (route/auth blocked), or ``None``."""
         route = (key.origin, key.route, key.method)
