@@ -40,7 +40,7 @@ def build_agent_impersonation(
         title=f"Agent Impersonation — {agent_name}",
         description="User impersonates system orchestrator/supervisor to bypass safety restrictions",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026", owasp_asi_ref="ASI07",
     )
 
 
@@ -82,7 +82,7 @@ def build_approval_spoof(
         title=f"Supervisor Approval Spoof — {agent_name}",
         description=f"Forge conversational approval from manager to bypass HITL for: {restricted_action}",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI07",
     )
 
 
@@ -113,7 +113,7 @@ def build_subagent_output_injection(
         title=f"Sub-Agent Output Injection — {agent_name}",
         description="Inject malicious instruction into simulated sub-agent output for orchestrator to follow",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026", owasp_asi_ref="ASI07",
     )
 
 
@@ -158,7 +158,7 @@ def build_handoff_privilege_escalation(
         title=f"Handoff Privilege Escalation — {agent_name}",
         description="Attacker claims elevated privileges were granted upstream in handoff chain",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI03, ASI07",
     )
 
 
@@ -202,5 +202,5 @@ def build_planner_executor_mismatch(
         title=f"Planner/Executor Mismatch — {agent_name}",
         description="Executor performs policy-violating action beyond the planner's authorized scope",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI03, ASI07",
     )

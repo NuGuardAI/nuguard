@@ -408,6 +408,61 @@
             "default": null,
             "title": "Verified"
           },
+          "catalog_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Catalog Id"
+          },
+          "reproduction_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reproduction Status"
+          },
+          "evidence_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Evidence Kind"
+          },
+          "effect_verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Effect Verified"
+          },
+          "framework_versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Framework Versions",
+            "type": "array"
+          },
           "ngrs_score": {
             "anyOf": [
               {
@@ -7525,6 +7580,572 @@
     "title": "CognitivePolicyParseResult",
     "type": "object"
   },
+  "redteam.CampaignConfig": {
+    "additionalProperties": false,
+    "description": "Bounds and policy knobs for a campaign run.\n\nRun-level budgets default to ``None`` (no hidden cap); per-objective and\nper-branch limits are always bounded.\n\nExample:\n    >>> CampaignConfig(max_turns_per_branch=12).max_turns_per_branch\n    12",
+    "properties": {
+      "max_turns_per_branch": {
+        "default": 24,
+        "description": "Rotate a conversation branch after this many turns.",
+        "maximum": 200,
+        "minimum": 1,
+        "title": "Max Turns Per Branch",
+        "type": "integer"
+      },
+      "max_branch_tokens": {
+        "default": 8000,
+        "description": "Rotate a conversation branch after this many estimated tokens.",
+        "minimum": 500,
+        "title": "Max Branch Tokens",
+        "type": "integer"
+      },
+      "max_objective_turns": {
+        "default": 12,
+        "description": "Maximum turns spent on a single objective.",
+        "maximum": 100,
+        "minimum": 1,
+        "title": "Max Objective Turns",
+        "type": "integer"
+      },
+      "max_retries_per_incident": {
+        "default": 2,
+        "description": "Retries allowed per transport incident within the retry window.",
+        "maximum": 10,
+        "minimum": 0,
+        "title": "Max Retries Per Incident",
+        "type": "integer"
+      },
+      "retry_window_seconds": {
+        "default": 120.0,
+        "description": "Window over which max_retries_per_incident is counted.",
+        "exclusiveMinimum": 0.0,
+        "title": "Retry Window Seconds",
+        "type": "number"
+      },
+      "confirm_in_fresh_sessions": {
+        "default": true,
+        "description": "Reproduce candidate findings in a fresh conversation.",
+        "title": "Confirm In Fresh Sessions",
+        "type": "boolean"
+      },
+      "target_supports_session_reset": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Operator claim about the target: True = a fresh session can be created, False = no reset/isolation possible, None = detect.",
+        "title": "Target Supports Session Reset"
+      },
+      "campaign_warmup": {
+        "default": true,
+        "description": "Run one benign warm-up per compatible branch (campaign-managed).",
+        "title": "Campaign Warmup",
+        "type": "boolean"
+      },
+      "max_concurrent_requests": {
+        "default": 1,
+        "description": "Maximum in-flight requests to the target (0 = unlimited). Defaults to one at a time; mapped from redteam.max_concurrent_requests in nuguard.yaml.",
+        "minimum": 0,
+        "title": "Max Concurrent Requests",
+        "type": "integer"
+      },
+      "declared_fixtures": {
+        "default": false,
+        "description": "Operator declares that dry-run / sandbox / emulated tool fixtures exist for write-capable objectives; without this they are blocked_fixture.",
+        "title": "Declared Fixtures",
+        "type": "boolean"
+      },
+      "fixture_version": {
+        "default": "",
+        "description": "Opaque fixture version; a change invalidates resumed campaign state.",
+        "title": "Fixture Version",
+        "type": "string"
+      },
+      "confirmation_reserve_fraction": {
+        "default": 0.2,
+        "description": "Share of a finite run budget reserved for confirmation/recovery.",
+        "maximum": 0.9,
+        "minimum": 0.0,
+        "title": "Confirmation Reserve Fraction",
+        "type": "number"
+      },
+      "max_run_target_requests": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Run-wide target request budget (None = unlimited).",
+        "title": "Max Run Target Requests"
+      },
+      "max_run_seconds": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0.0,
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Run-wide wall-clock budget (None = unlimited).",
+        "title": "Max Run Seconds"
+      },
+      "max_run_llm_cost_usd": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0.0,
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Run-wide attacker-LLM cost budget (None = unlimited).",
+        "title": "Max Run Llm Cost Usd"
+      }
+    },
+    "title": "CampaignConfig",
+    "type": "object"
+  },
+  "redteam.CampaignPlan": {
+    "description": "Which objectives were grouped into campaigns and what fit the budget.",
+    "properties": {
+      "campaigns": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Campaigns",
+        "type": "array"
+      },
+      "breadth_selected": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Breadth Selected",
+        "type": "array"
+      },
+      "breadth_deferred": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Breadth Deferred",
+        "type": "array"
+      },
+      "fits_budget": {
+        "default": true,
+        "title": "Fits Budget",
+        "type": "boolean"
+      }
+    },
+    "title": "CampaignPlanSummary",
+    "type": "object"
+  },
+  "redteam.CapabilityObservation": {
+    "description": "A capability/knowledge item with its provenance and trust level.",
+    "properties": {
+      "kind": {
+        "title": "Kind",
+        "type": "string"
+      },
+      "key": {
+        "title": "Key",
+        "type": "string"
+      },
+      "trust": {
+        "enum": [
+          "declared",
+          "claimed",
+          "observed",
+          "verified"
+        ],
+        "title": "Trust",
+        "type": "string"
+      },
+      "channel": {
+        "enum": [
+          "baseline",
+          "adversarial"
+        ],
+        "title": "Channel",
+        "type": "string"
+      },
+      "principal_ref": {
+        "default": "",
+        "title": "Principal Ref",
+        "type": "string"
+      },
+      "confidence": {
+        "default": 0.0,
+        "title": "Confidence",
+        "type": "number"
+      },
+      "source_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Source Refs",
+        "type": "array"
+      },
+      "objective_ref": {
+        "default": "",
+        "title": "Objective Ref",
+        "type": "string"
+      }
+    },
+    "required": [
+      "kind",
+      "key",
+      "trust",
+      "channel"
+    ],
+    "title": "CapabilityObservation",
+    "type": "object"
+  },
+  "redteam.ConversationBranchSummary": {
+    "description": "One conversation branch's lifecycle (no transcript, headers or cookies).",
+    "properties": {
+      "branch_id": {
+        "title": "Branch Id",
+        "type": "string"
+      },
+      "parent_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Parent Id"
+      },
+      "generation": {
+        "default": 0,
+        "title": "Generation",
+        "type": "integer"
+      },
+      "principal_ref": {
+        "default": "",
+        "title": "Principal Ref",
+        "type": "string"
+      },
+      "state": {
+        "default": "",
+        "title": "State",
+        "type": "string"
+      },
+      "turns": {
+        "default": 0,
+        "title": "Turns",
+        "type": "integer"
+      },
+      "baseline_done": {
+        "default": false,
+        "title": "Baseline Done",
+        "type": "boolean"
+      },
+      "contamination": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Contamination",
+        "type": "array"
+      },
+      "retire_reason": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Retire Reason"
+      },
+      "objectives": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Objectives",
+        "type": "array"
+      }
+    },
+    "required": [
+      "branch_id"
+    ],
+    "title": "ConversationBranchSummary",
+    "type": "object"
+  },
+  "redteam.CoverageSummary": {
+    "description": "Coverage quality, kept separate from findings (spec \u00a710).\n\n``counts`` keeps planned / applicable / attempted / meaningfully_completed /\nconfirmed / blocked / redundant / disabled / budget_deferred separate. A reused\nwarm-up never counts as a completed objective.",
+    "properties": {
+      "counts": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "title": "Counts",
+        "type": "object"
+      },
+      "by_control": {
+        "additionalProperties": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "title": "By Control",
+        "type": "object"
+      },
+      "by_catalog_id": {
+        "additionalProperties": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "title": "By Catalog Id",
+        "type": "object"
+      },
+      "by_technique": {
+        "additionalProperties": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "title": "By Technique",
+        "type": "object"
+      },
+      "by_channel": {
+        "additionalProperties": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "title": "By Channel",
+        "type": "object"
+      },
+      "by_identity_boundary": {
+        "additionalProperties": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "title": "By Identity Boundary",
+        "type": "object"
+      },
+      "by_level": {
+        "additionalProperties": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "title": "By Level",
+        "type": "object"
+      },
+      "by_owasp_version": {
+        "additionalProperties": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "title": "By Owasp Version",
+        "type": "object"
+      },
+      "unresolved": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Unresolved",
+        "type": "array"
+      },
+      "blocked_reasons": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "title": "Blocked Reasons",
+        "type": "object"
+      },
+      "framework_versions": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Framework Versions",
+        "type": "array"
+      },
+      "inconclusive": {
+        "default": false,
+        "title": "Inconclusive",
+        "type": "boolean"
+      }
+    },
+    "title": "CoverageSummary",
+    "type": "object"
+  },
+  "redteam.EfficiencySummary": {
+    "description": "What the run cost per unit of coverage.",
+    "properties": {
+      "target_requests": {
+        "default": 0,
+        "title": "Target Requests",
+        "type": "integer"
+      },
+      "llm_calls": {
+        "default": 0,
+        "title": "Llm Calls",
+        "type": "integer"
+      },
+      "llm_est_tokens": {
+        "default": 0,
+        "title": "Llm Est Tokens",
+        "type": "integer"
+      },
+      "llm_by_purpose": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "title": "Llm By Purpose",
+        "type": "object"
+      },
+      "branches_created": {
+        "default": 0,
+        "title": "Branches Created",
+        "type": "integer"
+      },
+      "baselines_run": {
+        "default": 0,
+        "title": "Baselines Run",
+        "type": "integer"
+      },
+      "objectives_on_reused_branch": {
+        "default": 0,
+        "title": "Objectives On Reused Branch",
+        "type": "integer"
+      },
+      "avoided_setup_requests_est": {
+        "default": 0,
+        "title": "Avoided Setup Requests Est",
+        "type": "integer"
+      },
+      "retry_delay_seconds": {
+        "default": 0.0,
+        "title": "Retry Delay Seconds",
+        "type": "number"
+      },
+      "time_to_first_finding_s": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Time To First Finding S"
+      },
+      "time_to_representative_coverage_s": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Time To Representative Coverage S"
+      },
+      "meaningful_objectives_per_100_requests": {
+        "default": 0.0,
+        "title": "Meaningful Objectives Per 100 Requests",
+        "type": "number"
+      }
+    },
+    "title": "EfficiencySummary",
+    "type": "object"
+  },
+  "redteam.ObjectiveExecutionRecord": {
+    "description": "What one catalog objective did, with its own turn range and setup attribution.",
+    "properties": {
+      "catalog_id": {
+        "title": "Catalog Id",
+        "type": "string"
+      },
+      "scenario_id": {
+        "title": "Scenario Id",
+        "type": "string"
+      },
+      "branch_id": {
+        "title": "Branch Id",
+        "type": "string"
+      },
+      "status": {
+        "title": "Status",
+        "type": "string"
+      },
+      "turn_start": {
+        "default": 0,
+        "title": "Turn Start",
+        "type": "integer"
+      },
+      "turn_end": {
+        "default": 0,
+        "title": "Turn End",
+        "type": "integer"
+      },
+      "ancestor_setup_refs": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Ancestor Setup Refs",
+        "type": "array"
+      },
+      "attack_accepted": {
+        "default": false,
+        "title": "Attack Accepted",
+        "type": "boolean"
+      },
+      "tool_trace_count": {
+        "default": 0,
+        "title": "Tool Trace Count",
+        "type": "integer"
+      },
+      "defer_reason": {
+        "default": "",
+        "title": "Defer Reason",
+        "type": "string"
+      }
+    },
+    "required": [
+      "catalog_id",
+      "scenario_id",
+      "branch_id",
+      "status"
+    ],
+    "title": "ObjectiveExecutionRecord",
+    "type": "object"
+  },
   "redteam.RedteamAuthConfig": {
     "$defs": {
       "RedteamLoginFlowConfig": {
@@ -7636,6 +8257,288 @@
   },
   "redteam.RedteamExecutionResult": {
     "$defs": {
+      "CampaignPlanSummary": {
+        "description": "Which objectives were grouped into campaigns and what fit the budget.",
+        "properties": {
+          "campaigns": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Campaigns",
+            "type": "array"
+          },
+          "breadth_selected": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Breadth Selected",
+            "type": "array"
+          },
+          "breadth_deferred": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Breadth Deferred",
+            "type": "array"
+          },
+          "fits_budget": {
+            "default": true,
+            "title": "Fits Budget",
+            "type": "boolean"
+          }
+        },
+        "title": "CampaignPlanSummary",
+        "type": "object"
+      },
+      "CapabilityObservation": {
+        "description": "A capability/knowledge item with its provenance and trust level.",
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "trust": {
+            "enum": [
+              "declared",
+              "claimed",
+              "observed",
+              "verified"
+            ],
+            "title": "Trust",
+            "type": "string"
+          },
+          "channel": {
+            "enum": [
+              "baseline",
+              "adversarial"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "principal_ref": {
+            "default": "",
+            "title": "Principal Ref",
+            "type": "string"
+          },
+          "confidence": {
+            "default": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "objective_ref": {
+            "default": "",
+            "title": "Objective Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "trust",
+          "channel"
+        ],
+        "title": "CapabilityObservation",
+        "type": "object"
+      },
+      "ConversationBranchSummary": {
+        "description": "One conversation branch's lifecycle (no transcript, headers or cookies).",
+        "properties": {
+          "branch_id": {
+            "title": "Branch Id",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parent Id"
+          },
+          "generation": {
+            "default": 0,
+            "title": "Generation",
+            "type": "integer"
+          },
+          "principal_ref": {
+            "default": "",
+            "title": "Principal Ref",
+            "type": "string"
+          },
+          "state": {
+            "default": "",
+            "title": "State",
+            "type": "string"
+          },
+          "turns": {
+            "default": 0,
+            "title": "Turns",
+            "type": "integer"
+          },
+          "baseline_done": {
+            "default": false,
+            "title": "Baseline Done",
+            "type": "boolean"
+          },
+          "contamination": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Contamination",
+            "type": "array"
+          },
+          "retire_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Retire Reason"
+          },
+          "objectives": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Objectives",
+            "type": "array"
+          }
+        },
+        "required": [
+          "branch_id"
+        ],
+        "title": "ConversationBranchSummary",
+        "type": "object"
+      },
+      "CoverageSummary": {
+        "description": "Coverage quality, kept separate from findings (spec \u00a710).\n\n``counts`` keeps planned / applicable / attempted / meaningfully_completed /\nconfirmed / blocked / redundant / disabled / budget_deferred separate. A reused\nwarm-up never counts as a completed objective.",
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "by_control": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Control",
+            "type": "object"
+          },
+          "by_catalog_id": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Catalog Id",
+            "type": "object"
+          },
+          "by_technique": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Technique",
+            "type": "object"
+          },
+          "by_channel": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Channel",
+            "type": "object"
+          },
+          "by_identity_boundary": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Identity Boundary",
+            "type": "object"
+          },
+          "by_level": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Level",
+            "type": "object"
+          },
+          "by_owasp_version": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Owasp Version",
+            "type": "object"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unresolved",
+            "type": "array"
+          },
+          "blocked_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Blocked Reasons",
+            "type": "object"
+          },
+          "framework_versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Framework Versions",
+            "type": "array"
+          },
+          "inconclusive": {
+            "default": false,
+            "title": "Inconclusive",
+            "type": "boolean"
+          }
+        },
+        "title": "CoverageSummary",
+        "type": "object"
+      },
       "CredentialCheckResult": {
         "description": "Result of one credential verification attempt against the target.",
         "properties": {
@@ -7724,6 +8627,89 @@
           "status"
         ],
         "title": "CredentialCheckResult",
+        "type": "object"
+      },
+      "EfficiencySummary": {
+        "description": "What the run cost per unit of coverage.",
+        "properties": {
+          "target_requests": {
+            "default": 0,
+            "title": "Target Requests",
+            "type": "integer"
+          },
+          "llm_calls": {
+            "default": 0,
+            "title": "Llm Calls",
+            "type": "integer"
+          },
+          "llm_est_tokens": {
+            "default": 0,
+            "title": "Llm Est Tokens",
+            "type": "integer"
+          },
+          "llm_by_purpose": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Llm By Purpose",
+            "type": "object"
+          },
+          "branches_created": {
+            "default": 0,
+            "title": "Branches Created",
+            "type": "integer"
+          },
+          "baselines_run": {
+            "default": 0,
+            "title": "Baselines Run",
+            "type": "integer"
+          },
+          "objectives_on_reused_branch": {
+            "default": 0,
+            "title": "Objectives On Reused Branch",
+            "type": "integer"
+          },
+          "avoided_setup_requests_est": {
+            "default": 0,
+            "title": "Avoided Setup Requests Est",
+            "type": "integer"
+          },
+          "retry_delay_seconds": {
+            "default": 0.0,
+            "title": "Retry Delay Seconds",
+            "type": "number"
+          },
+          "time_to_first_finding_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time To First Finding S"
+          },
+          "time_to_representative_coverage_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time To Representative Coverage S"
+          },
+          "meaningful_objectives_per_100_requests": {
+            "default": 0.0,
+            "title": "Meaningful Objectives Per 100 Requests",
+            "type": "number"
+          }
+        },
+        "title": "EfficiencySummary",
         "type": "object"
       },
       "Finding": {
@@ -8009,6 +8995,61 @@
             "default": null,
             "title": "Verified"
           },
+          "catalog_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Catalog Id"
+          },
+          "reproduction_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reproduction Status"
+          },
+          "evidence_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Evidence Kind"
+          },
+          "effect_verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Effect Verified"
+          },
+          "framework_versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Framework Versions",
+            "type": "array"
+          },
           "ngrs_score": {
             "anyOf": [
               {
@@ -8117,6 +9158,67 @@
           "description"
         ],
         "title": "Finding",
+        "type": "object"
+      },
+      "ObjectiveExecutionRecord": {
+        "description": "What one catalog objective did, with its own turn range and setup attribution.",
+        "properties": {
+          "catalog_id": {
+            "title": "Catalog Id",
+            "type": "string"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "string"
+          },
+          "branch_id": {
+            "title": "Branch Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "turn_start": {
+            "default": 0,
+            "title": "Turn Start",
+            "type": "integer"
+          },
+          "turn_end": {
+            "default": 0,
+            "title": "Turn End",
+            "type": "integer"
+          },
+          "ancestor_setup_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ancestor Setup Refs",
+            "type": "array"
+          },
+          "attack_accepted": {
+            "default": false,
+            "title": "Attack Accepted",
+            "type": "boolean"
+          },
+          "tool_trace_count": {
+            "default": 0,
+            "title": "Tool Trace Count",
+            "type": "integer"
+          },
+          "defer_reason": {
+            "default": "",
+            "title": "Defer Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalog_id",
+          "scenario_id",
+          "branch_id",
+          "status"
+        ],
+        "title": "ObjectiveExecutionRecord",
         "type": "object"
       },
       "RemediationArtefact": {
@@ -8363,6 +9465,80 @@
         ],
         "title": "RemediationArtefactType",
         "type": "string"
+      },
+      "ReproductionRecord": {
+        "description": "Fresh-session reproduction outcome for one candidate finding.",
+        "properties": {
+          "objective_id": {
+            "title": "Objective Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "confirmed",
+              "not_reproduced",
+              "blocked",
+              "not_attempted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "minimal_turn_count": {
+            "default": 0,
+            "title": "Minimal Turn Count",
+            "type": "integer"
+          },
+          "setup_replayed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Setup Replayed",
+            "type": "array"
+          },
+          "setup_skipped_writes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Setup Skipped Writes",
+            "type": "array"
+          },
+          "trials": {
+            "default": 0,
+            "title": "Trials",
+            "type": "integer"
+          },
+          "judge_calls": {
+            "default": 0,
+            "title": "Judge Calls",
+            "type": "integer"
+          },
+          "context_dependent": {
+            "default": false,
+            "title": "Context Dependent",
+            "type": "boolean"
+          },
+          "evidence_kind": {
+            "default": "",
+            "title": "Evidence Kind",
+            "type": "string"
+          },
+          "effect_verified": {
+            "default": false,
+            "title": "Effect Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "objective_id",
+          "status"
+        ],
+        "title": "ReproductionRecord",
+        "type": "object"
       },
       "RuntimeRemediationContext": {
         "additionalProperties": false,
@@ -8694,6 +9870,67 @@
         "title": "Remediation Plan",
         "type": "array"
       },
+      "campaign_coverage": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/CoverageSummary"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "campaign_plan": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/CampaignPlanSummary"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "objective_records": {
+        "items": {
+          "$ref": "#/$defs/ObjectiveExecutionRecord"
+        },
+        "title": "Objective Records",
+        "type": "array"
+      },
+      "reproduction_records": {
+        "items": {
+          "$ref": "#/$defs/ReproductionRecord"
+        },
+        "title": "Reproduction Records",
+        "type": "array"
+      },
+      "branch_summaries": {
+        "items": {
+          "$ref": "#/$defs/ConversationBranchSummary"
+        },
+        "title": "Branch Summaries",
+        "type": "array"
+      },
+      "capability_observations": {
+        "items": {
+          "$ref": "#/$defs/CapabilityObservation"
+        },
+        "title": "Capability Observations",
+        "type": "array"
+      },
+      "efficiency": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/EfficiencySummary"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "security_invariants": {
         "items": {
           "additionalProperties": true,
@@ -8769,6 +10006,146 @@
   },
   "redteam.RedteamRunRequest": {
     "$defs": {
+      "CampaignConfig": {
+        "additionalProperties": false,
+        "description": "Bounds and policy knobs for a campaign run.\n\nRun-level budgets default to ``None`` (no hidden cap); per-objective and\nper-branch limits are always bounded.\n\nExample:\n    >>> CampaignConfig(max_turns_per_branch=12).max_turns_per_branch\n    12",
+        "properties": {
+          "max_turns_per_branch": {
+            "default": 24,
+            "description": "Rotate a conversation branch after this many turns.",
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Max Turns Per Branch",
+            "type": "integer"
+          },
+          "max_branch_tokens": {
+            "default": 8000,
+            "description": "Rotate a conversation branch after this many estimated tokens.",
+            "minimum": 500,
+            "title": "Max Branch Tokens",
+            "type": "integer"
+          },
+          "max_objective_turns": {
+            "default": 12,
+            "description": "Maximum turns spent on a single objective.",
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Max Objective Turns",
+            "type": "integer"
+          },
+          "max_retries_per_incident": {
+            "default": 2,
+            "description": "Retries allowed per transport incident within the retry window.",
+            "maximum": 10,
+            "minimum": 0,
+            "title": "Max Retries Per Incident",
+            "type": "integer"
+          },
+          "retry_window_seconds": {
+            "default": 120.0,
+            "description": "Window over which max_retries_per_incident is counted.",
+            "exclusiveMinimum": 0.0,
+            "title": "Retry Window Seconds",
+            "type": "number"
+          },
+          "confirm_in_fresh_sessions": {
+            "default": true,
+            "description": "Reproduce candidate findings in a fresh conversation.",
+            "title": "Confirm In Fresh Sessions",
+            "type": "boolean"
+          },
+          "target_supports_session_reset": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Operator claim about the target: True = a fresh session can be created, False = no reset/isolation possible, None = detect.",
+            "title": "Target Supports Session Reset"
+          },
+          "campaign_warmup": {
+            "default": true,
+            "description": "Run one benign warm-up per compatible branch (campaign-managed).",
+            "title": "Campaign Warmup",
+            "type": "boolean"
+          },
+          "max_concurrent_requests": {
+            "default": 1,
+            "description": "Maximum in-flight requests to the target (0 = unlimited). Defaults to one at a time; mapped from redteam.max_concurrent_requests in nuguard.yaml.",
+            "minimum": 0,
+            "title": "Max Concurrent Requests",
+            "type": "integer"
+          },
+          "declared_fixtures": {
+            "default": false,
+            "description": "Operator declares that dry-run / sandbox / emulated tool fixtures exist for write-capable objectives; without this they are blocked_fixture.",
+            "title": "Declared Fixtures",
+            "type": "boolean"
+          },
+          "fixture_version": {
+            "default": "",
+            "description": "Opaque fixture version; a change invalidates resumed campaign state.",
+            "title": "Fixture Version",
+            "type": "string"
+          },
+          "confirmation_reserve_fraction": {
+            "default": 0.2,
+            "description": "Share of a finite run budget reserved for confirmation/recovery.",
+            "maximum": 0.9,
+            "minimum": 0.0,
+            "title": "Confirmation Reserve Fraction",
+            "type": "number"
+          },
+          "max_run_target_requests": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Run-wide target request budget (None = unlimited).",
+            "title": "Max Run Target Requests"
+          },
+          "max_run_seconds": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Run-wide wall-clock budget (None = unlimited).",
+            "title": "Max Run Seconds"
+          },
+          "max_run_llm_cost_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Run-wide attacker-LLM cost budget (None = unlimited).",
+            "title": "Max Run Llm Cost Usd"
+          }
+        },
+        "title": "CampaignConfig",
+        "type": "object"
+      },
       "CanaryConfig": {
         "properties": {
           "global_watch_values": {
@@ -9332,8 +10709,24 @@
       },
       "mode": {
         "default": "concurrent",
+        "enum": [
+          "concurrent",
+          "progressive",
+          "campaign"
+        ],
         "title": "Mode",
         "type": "string"
+      },
+      "campaign": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/CampaignConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       },
       "progressive_halt_on_severity": {
         "default": "none",
@@ -9366,6 +10759,288 @@
   },
   "redteam.RedteamRunResult": {
     "$defs": {
+      "CampaignPlanSummary": {
+        "description": "Which objectives were grouped into campaigns and what fit the budget.",
+        "properties": {
+          "campaigns": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Campaigns",
+            "type": "array"
+          },
+          "breadth_selected": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Breadth Selected",
+            "type": "array"
+          },
+          "breadth_deferred": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Breadth Deferred",
+            "type": "array"
+          },
+          "fits_budget": {
+            "default": true,
+            "title": "Fits Budget",
+            "type": "boolean"
+          }
+        },
+        "title": "CampaignPlanSummary",
+        "type": "object"
+      },
+      "CapabilityObservation": {
+        "description": "A capability/knowledge item with its provenance and trust level.",
+        "properties": {
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "trust": {
+            "enum": [
+              "declared",
+              "claimed",
+              "observed",
+              "verified"
+            ],
+            "title": "Trust",
+            "type": "string"
+          },
+          "channel": {
+            "enum": [
+              "baseline",
+              "adversarial"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "principal_ref": {
+            "default": "",
+            "title": "Principal Ref",
+            "type": "string"
+          },
+          "confidence": {
+            "default": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "objective_ref": {
+            "default": "",
+            "title": "Objective Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "key",
+          "trust",
+          "channel"
+        ],
+        "title": "CapabilityObservation",
+        "type": "object"
+      },
+      "ConversationBranchSummary": {
+        "description": "One conversation branch's lifecycle (no transcript, headers or cookies).",
+        "properties": {
+          "branch_id": {
+            "title": "Branch Id",
+            "type": "string"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parent Id"
+          },
+          "generation": {
+            "default": 0,
+            "title": "Generation",
+            "type": "integer"
+          },
+          "principal_ref": {
+            "default": "",
+            "title": "Principal Ref",
+            "type": "string"
+          },
+          "state": {
+            "default": "",
+            "title": "State",
+            "type": "string"
+          },
+          "turns": {
+            "default": 0,
+            "title": "Turns",
+            "type": "integer"
+          },
+          "baseline_done": {
+            "default": false,
+            "title": "Baseline Done",
+            "type": "boolean"
+          },
+          "contamination": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Contamination",
+            "type": "array"
+          },
+          "retire_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Retire Reason"
+          },
+          "objectives": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Objectives",
+            "type": "array"
+          }
+        },
+        "required": [
+          "branch_id"
+        ],
+        "title": "ConversationBranchSummary",
+        "type": "object"
+      },
+      "CoverageSummary": {
+        "description": "Coverage quality, kept separate from findings (spec \u00a710).\n\n``counts`` keeps planned / applicable / attempted / meaningfully_completed /\nconfirmed / blocked / redundant / disabled / budget_deferred separate. A reused\nwarm-up never counts as a completed objective.",
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "by_control": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Control",
+            "type": "object"
+          },
+          "by_catalog_id": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Catalog Id",
+            "type": "object"
+          },
+          "by_technique": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Technique",
+            "type": "object"
+          },
+          "by_channel": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Channel",
+            "type": "object"
+          },
+          "by_identity_boundary": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Identity Boundary",
+            "type": "object"
+          },
+          "by_level": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Level",
+            "type": "object"
+          },
+          "by_owasp_version": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "title": "By Owasp Version",
+            "type": "object"
+          },
+          "unresolved": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unresolved",
+            "type": "array"
+          },
+          "blocked_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Blocked Reasons",
+            "type": "object"
+          },
+          "framework_versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Framework Versions",
+            "type": "array"
+          },
+          "inconclusive": {
+            "default": false,
+            "title": "Inconclusive",
+            "type": "boolean"
+          }
+        },
+        "title": "CoverageSummary",
+        "type": "object"
+      },
       "CredentialCheckResult": {
         "description": "Result of one credential verification attempt against the target.",
         "properties": {
@@ -9454,6 +11129,89 @@
           "status"
         ],
         "title": "CredentialCheckResult",
+        "type": "object"
+      },
+      "EfficiencySummary": {
+        "description": "What the run cost per unit of coverage.",
+        "properties": {
+          "target_requests": {
+            "default": 0,
+            "title": "Target Requests",
+            "type": "integer"
+          },
+          "llm_calls": {
+            "default": 0,
+            "title": "Llm Calls",
+            "type": "integer"
+          },
+          "llm_est_tokens": {
+            "default": 0,
+            "title": "Llm Est Tokens",
+            "type": "integer"
+          },
+          "llm_by_purpose": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Llm By Purpose",
+            "type": "object"
+          },
+          "branches_created": {
+            "default": 0,
+            "title": "Branches Created",
+            "type": "integer"
+          },
+          "baselines_run": {
+            "default": 0,
+            "title": "Baselines Run",
+            "type": "integer"
+          },
+          "objectives_on_reused_branch": {
+            "default": 0,
+            "title": "Objectives On Reused Branch",
+            "type": "integer"
+          },
+          "avoided_setup_requests_est": {
+            "default": 0,
+            "title": "Avoided Setup Requests Est",
+            "type": "integer"
+          },
+          "retry_delay_seconds": {
+            "default": 0.0,
+            "title": "Retry Delay Seconds",
+            "type": "number"
+          },
+          "time_to_first_finding_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time To First Finding S"
+          },
+          "time_to_representative_coverage_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Time To Representative Coverage S"
+          },
+          "meaningful_objectives_per_100_requests": {
+            "default": 0.0,
+            "title": "Meaningful Objectives Per 100 Requests",
+            "type": "number"
+          }
+        },
+        "title": "EfficiencySummary",
         "type": "object"
       },
       "Finding": {
@@ -9739,6 +11497,61 @@
             "default": null,
             "title": "Verified"
           },
+          "catalog_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Catalog Id"
+          },
+          "reproduction_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reproduction Status"
+          },
+          "evidence_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Evidence Kind"
+          },
+          "effect_verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Effect Verified"
+          },
+          "framework_versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Framework Versions",
+            "type": "array"
+          },
           "ngrs_score": {
             "anyOf": [
               {
@@ -9847,6 +11660,67 @@
           "description"
         ],
         "title": "Finding",
+        "type": "object"
+      },
+      "ObjectiveExecutionRecord": {
+        "description": "What one catalog objective did, with its own turn range and setup attribution.",
+        "properties": {
+          "catalog_id": {
+            "title": "Catalog Id",
+            "type": "string"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "string"
+          },
+          "branch_id": {
+            "title": "Branch Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "turn_start": {
+            "default": 0,
+            "title": "Turn Start",
+            "type": "integer"
+          },
+          "turn_end": {
+            "default": 0,
+            "title": "Turn End",
+            "type": "integer"
+          },
+          "ancestor_setup_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ancestor Setup Refs",
+            "type": "array"
+          },
+          "attack_accepted": {
+            "default": false,
+            "title": "Attack Accepted",
+            "type": "boolean"
+          },
+          "tool_trace_count": {
+            "default": 0,
+            "title": "Tool Trace Count",
+            "type": "integer"
+          },
+          "defer_reason": {
+            "default": "",
+            "title": "Defer Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalog_id",
+          "scenario_id",
+          "branch_id",
+          "status"
+        ],
+        "title": "ObjectiveExecutionRecord",
         "type": "object"
       },
       "RemediationArtefact": {
@@ -10093,6 +11967,80 @@
         ],
         "title": "RemediationArtefactType",
         "type": "string"
+      },
+      "ReproductionRecord": {
+        "description": "Fresh-session reproduction outcome for one candidate finding.",
+        "properties": {
+          "objective_id": {
+            "title": "Objective Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "confirmed",
+              "not_reproduced",
+              "blocked",
+              "not_attempted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "minimal_turn_count": {
+            "default": 0,
+            "title": "Minimal Turn Count",
+            "type": "integer"
+          },
+          "setup_replayed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Setup Replayed",
+            "type": "array"
+          },
+          "setup_skipped_writes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Setup Skipped Writes",
+            "type": "array"
+          },
+          "trials": {
+            "default": 0,
+            "title": "Trials",
+            "type": "integer"
+          },
+          "judge_calls": {
+            "default": 0,
+            "title": "Judge Calls",
+            "type": "integer"
+          },
+          "context_dependent": {
+            "default": false,
+            "title": "Context Dependent",
+            "type": "boolean"
+          },
+          "evidence_kind": {
+            "default": "",
+            "title": "Evidence Kind",
+            "type": "string"
+          },
+          "effect_verified": {
+            "default": false,
+            "title": "Effect Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "objective_id",
+          "status"
+        ],
+        "title": "ReproductionRecord",
+        "type": "object"
       },
       "RuntimeRemediationContext": {
         "additionalProperties": false,
@@ -10424,6 +12372,67 @@
         "title": "Remediation Plan",
         "type": "array"
       },
+      "campaign_coverage": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/CoverageSummary"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "campaign_plan": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/CampaignPlanSummary"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "objective_records": {
+        "items": {
+          "$ref": "#/$defs/ObjectiveExecutionRecord"
+        },
+        "title": "Objective Records",
+        "type": "array"
+      },
+      "reproduction_records": {
+        "items": {
+          "$ref": "#/$defs/ReproductionRecord"
+        },
+        "title": "Reproduction Records",
+        "type": "array"
+      },
+      "branch_summaries": {
+        "items": {
+          "$ref": "#/$defs/ConversationBranchSummary"
+        },
+        "title": "Branch Summaries",
+        "type": "array"
+      },
+      "capability_observations": {
+        "items": {
+          "$ref": "#/$defs/CapabilityObservation"
+        },
+        "title": "Capability Observations",
+        "type": "array"
+      },
+      "efficiency": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/EfficiencySummary"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "security_invariants": {
         "items": {
           "additionalProperties": true,
@@ -10442,6 +12451,80 @@
       "resolved_chat_path_source"
     ],
     "title": "RedteamRunResult",
+    "type": "object"
+  },
+  "redteam.ReproductionRecord": {
+    "description": "Fresh-session reproduction outcome for one candidate finding.",
+    "properties": {
+      "objective_id": {
+        "title": "Objective Id",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "confirmed",
+          "not_reproduced",
+          "blocked",
+          "not_attempted"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "reason": {
+        "default": "",
+        "title": "Reason",
+        "type": "string"
+      },
+      "minimal_turn_count": {
+        "default": 0,
+        "title": "Minimal Turn Count",
+        "type": "integer"
+      },
+      "setup_replayed": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Setup Replayed",
+        "type": "array"
+      },
+      "setup_skipped_writes": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Setup Skipped Writes",
+        "type": "array"
+      },
+      "trials": {
+        "default": 0,
+        "title": "Trials",
+        "type": "integer"
+      },
+      "judge_calls": {
+        "default": 0,
+        "title": "Judge Calls",
+        "type": "integer"
+      },
+      "context_dependent": {
+        "default": false,
+        "title": "Context Dependent",
+        "type": "boolean"
+      },
+      "evidence_kind": {
+        "default": "",
+        "title": "Evidence Kind",
+        "type": "string"
+      },
+      "effect_verified": {
+        "default": false,
+        "title": "Effect Verified",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "objective_id",
+      "status"
+    ],
+    "title": "ReproductionRecord",
     "type": "object"
   },
   "remediation.PentestRemediationFinding": {

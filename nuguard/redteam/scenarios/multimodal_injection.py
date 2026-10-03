@@ -96,8 +96,8 @@ def build_image_embedded_injection(
         goal_type=GoalType.PROMPT_DRIVEN_THREAT,
         scenario_type=ScenarioType.MULTIMODAL_INJECTION,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI01 – Prompt Injection",
-        owasp_llm_ref="LLM01 – Prompt Injection",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             # Step 1: test image comprehension normally (confirm vision capability)
@@ -189,8 +189,8 @@ def build_pdf_instruction_injection(
         goal_type=GoalType.PROMPT_DRIVEN_THREAT,
         scenario_type=ScenarioType.MULTIMODAL_INJECTION,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI01 – Prompt Injection",
-        owasp_llm_ref="LLM01 – Prompt Injection",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             ExploitStep(

@@ -79,6 +79,10 @@ def redteam(
     profile: str = typer.Option(
         "ci", "--profile", help="Scan profile: ci | full."
     ),
+    mode: Optional[str] = typer.Option(
+        None, "--mode",
+        help="Engine mode: concurrent | progressive | campaign (yaml: redteam.mode).",
+    ),
     scenarios: Optional[str] = typer.Option(
         None, "--scenarios", help="Comma-separated: destructive, non-destructive (default: both)."
     ),
@@ -164,6 +168,18 @@ def redteam(
     _source_path_val = getattr(cfg, "source_path", None)
     source_dir = source or (Path(str(_source_path_val)) if _source_path_val else None)
     effective_profile = profile if profile != "ci" else cfg.redteam_profile
+    effective_mode = mode if mode is not None else cfg.redteam_mode
+    if effective_mode not in ("concurrent", "progressive", "campaign"):
+        typer.echo(
+            f"Error: --mode must be concurrent, progressive or campaign (got {mode!r})",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    effective_campaign = (
+        cfg.resolved_redteam_campaign_config().model_dump()
+        if effective_mode == "campaign"
+        else None
+    )
     effective_min_impact = (
         min_impact_score if min_impact_score != 0.0 else cfg.min_impact_score
     )
@@ -336,7 +352,8 @@ def redteam(
         golden_data=cfg.redteam_golden_data or None,
         suppress_spa_html_auth_bypass=cfg.redteam_suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=cfg.redteam_codegen_escalation_enabled,
-        mode=cfg.redteam_mode,
+        mode=effective_mode,
+        campaign=effective_campaign,
         progressive_halt_on_severity=cfg.redteam_progressive_halt_on_severity,
         probe_llm=cfg.probe_llm_enabled,
         resume=effective_resume,
@@ -643,6 +660,7 @@ async def _run_redteam(
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
     mode: str = "concurrent",
+    campaign: dict | None = None,
     progressive_halt_on_severity: str = "none",
     probe_llm: bool = False,
     resume: str | None = None,
@@ -805,6 +823,7 @@ async def _run_redteam(
                 suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
                 codegen_escalation_enabled=codegen_escalation_enabled,
                 mode=mode,
+                campaign=campaign,
                 progressive_halt_on_severity=progressive_halt_on_severity,
                 probe_llm=probe_llm,
                 resume=resume,
@@ -877,6 +896,7 @@ async def _run_redteam(
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=codegen_escalation_enabled,
         mode=mode,
+        campaign=campaign,
         progressive_halt_on_severity=progressive_halt_on_severity,
         probe_llm=probe_llm,
     )
@@ -942,6 +962,7 @@ async def _run_orchestrator(  # noqa: C901
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
     mode: str = "concurrent",
+    campaign: dict | None = None,
     progressive_halt_on_severity: str = "none",
     probe_llm: bool = False,
     resume: str | None = None,
@@ -954,6 +975,7 @@ async def _run_orchestrator(  # noqa: C901
     from pydantic import SecretStr
 
     from nuguard.common.llm_client import LLMClient
+    from nuguard.redteam.campaign.config import CampaignConfig
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
     from nuguard.redteam.public_api import RedteamAuthConfig, RedteamRunRequest, run_redteam
 
@@ -1036,7 +1058,8 @@ async def _run_orchestrator(  # noqa: C901
         golden_data=golden_data,
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=codegen_escalation_enabled,
-        mode=mode,
+        mode=mode,  # type: ignore[arg-type]  # validated by the request model
+        campaign=CampaignConfig.model_validate(campaign) if campaign else None,
         progressive_halt_on_severity=progressive_halt_on_severity,
         probe_llm=probe_llm,
         resume_from=resume,

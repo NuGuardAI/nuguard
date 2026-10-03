@@ -110,7 +110,7 @@ def build_context_flood(
         scenario_type=ScenarioType.CONTEXT_FLOODING,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -203,7 +203,7 @@ def build_structural_injection(
         scenario_type=ScenarioType.STRUCTURAL_INJECTION,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",

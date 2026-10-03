@@ -287,7 +287,7 @@ def build_restricted_topic(agent_id: str, topic: str) -> AttackScenario:
         sbom_path=[agent_id],
         policy_clauses=[topic],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
     )
     chain.steps = [
         ExploitStep(
@@ -352,7 +352,7 @@ def _build_implicit_topic_probe(
         sbom_path=[agent_id],
         policy_clauses=[topic],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
     )
     chain.steps = [
         ExploitStep(
@@ -500,7 +500,7 @@ def build_rate_limit_burst(agent_id: str, limit_key: str, limit_value: int) -> A
         scenario_type=ScenarioType.RESTRICTED_ACTION,
         sbom_path=[agent_id],
         policy_clauses=[f"rate_limits:{limit_key}"],
-        owasp_asi_ref="ASI05",
+        owasp_asi_ref="ASI08",
     )
     chain.steps = [
         ExploitStep(

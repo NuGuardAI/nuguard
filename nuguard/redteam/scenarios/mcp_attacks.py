@@ -55,7 +55,7 @@ def build_mcp_tool_injection(
         scenario_type=ScenarioType.MCP_TOOL_INJECTION,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI04",
-        owasp_llm_ref="LLM02",
+        owasp_llm_ref="LLM01:2026, LLM04:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -143,7 +143,7 @@ def build_mcp_output_poisoning(
         scenario_type=ScenarioType.MCP_TOOL_INJECTION,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI04",
-        owasp_llm_ref="LLM02",
+        owasp_llm_ref="LLM01:2026, LLM04:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -213,7 +213,7 @@ def build_mcp_toxic_flow(
         scenario_type=ScenarioType.MCP_WEB_FETCH,
         sbom_path=[source_id, sink_id],
         owasp_asi_ref="ASI04",
-        owasp_llm_ref="LLM02",
+        owasp_llm_ref="LLM01:2026, LLM04:2026",
     )
     chain.steps = [
         ExploitStep(
@@ -297,7 +297,7 @@ def build_mcp_shadow_tool(
         title=f"MCP Shadow Tool — {agent_name}",
         description=f"Attacker registers a lookalike of '{legitimate_tool}' to intercept calls",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI04",
+        owasp_llm_ref="LLM01:2026, LLM04:2026", owasp_asi_ref="ASI04",
     )
 
 
@@ -340,7 +340,7 @@ def build_credential_overreach(
         title=f"Credential Scope Overreach — {agent_name}",
         description="MCP tool reaches resources beyond its declared privilege scope",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI03",
     )
 
 
@@ -406,7 +406,7 @@ def build_ssrf_via_agent(
         title=f"SSRF via Agent Tool — {agent_name}",
         description="Agent's web-fetch tool used to probe internal/cloud-metadata endpoints",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI02",
     )
 
 
@@ -450,7 +450,7 @@ def build_tool_discovery_leak(
         title=f"Tool Discovery Leakage — {agent_name}",
         description="Agent discloses hidden tool names, schemas, or embedded credentials",
         steps=steps,
-        owasp_llm_ref="LLM07", owasp_asi_ref="ASI04",
+        owasp_llm_ref="LLM08:2026", owasp_asi_ref="ASI04",
     )
 
 
@@ -495,5 +495,5 @@ def build_mcp_cross_server_exfil(
         title=f"Cross-Server MCP Exfiltration — {agent_name}",
         description="Data from trusted MCP server is relayed to malicious server via context sharing",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI04",
+        owasp_llm_ref="LLM01:2026, LLM04:2026", owasp_asi_ref="ASI04",
     )

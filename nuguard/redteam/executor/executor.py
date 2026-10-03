@@ -887,6 +887,24 @@ class AttackExecutor:
         )
         return StepResult(step=warmup_step, response=response, tool_calls=tool_calls)
 
+    async def run_step(
+        self,
+        step: ExploitStep,
+        session: AttackSession,
+        chain: ExploitChain,
+        payload: str | None = None,
+    ) -> StepResult:
+        """Execute exactly one step on a caller-owned *session*.
+
+        Public entry point for the campaign executor: no warm-up, no DISCOVER
+        injection, no inter-turn sleeping and no retry loop — the caller owns
+        session lifecycle and scheduling. *payload* overrides ``step.payload``
+        (e.g. a mutated variant).
+        """
+        return await self._execute_step_with_payload(
+            step, step.payload if payload is None else payload, session, chain
+        )
+
     async def _execute_step(
         self,
         step: ExploitStep,

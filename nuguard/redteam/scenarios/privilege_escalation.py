@@ -30,7 +30,7 @@ def build_privilege_chain(
         scenario_type=ScenarioType.PRIVILEGE_CHAIN,
         sbom_path=[entry_tool_id, pivot_tool_id],
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM05",
+        owasp_llm_ref="LLM03:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
