@@ -10,12 +10,14 @@ DISCOVER steps are cheap cache hits.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
+from nuguard.common.auth import AuthConfig
 from nuguard.common.id_extractor import (
     extract_customer_name,
     extract_entity_map,
@@ -90,9 +92,65 @@ class DiscoveredProfile(BaseModel):
         return not self.customer_name and not self.ids
 
 
-def cached_discovery_profile(sbom: Any) -> "DiscoveredProfile | None":
+def auth_identity_string(auth_config: "AuthConfig | None") -> str:
+    """Stable string identifying *auth_config*'s configured credential.
+
+    Shared building block for every target/auth cache fingerprint in this
+    codebase (see :func:`profile_cache_fingerprint` and
+    :func:`nuguard.common.endpoint_preflight.endpoint_cache_fingerprint`) —
+    factored out so both fingerprints apply the identical, type-aware rule
+    rather than maintaining two copies of it.
+
+    Deliberately type-aware per auth type rather than a blind reuse of
+    ``AuthConfig.header`` (the approach
+    :func:`nuguard.common.auto_sbom_enricher._enrichment_cache_key` already
+    uses for structural-enrichment caching): ``header`` is empty for
+    ``login_flow`` auth, so reusing it here would make the fingerprint
+    unable to distinguish two different login_flow identities against the
+    same target — exactly the scenario these fingerprints exist to catch.
+
+    Built only from the *static configured* credential (header string,
+    username, login_flow payload/endpoint, cookie_file path) — never a
+    dynamically acquired session token — so the same configured identity
+    produces the same string across separate runs/processes.
+    """
+    identity = "none"
+    if auth_config is not None:
+        auth_type = auth_config.type
+        if auth_type in ("bearer", "api_key"):
+            identity = f"{auth_type}:{auth_config.header}"
+        elif auth_type == "basic":
+            identity = f"basic:{auth_config.username}"
+        elif auth_type == "login_flow" and auth_config.login_flow is not None:
+            identity = (
+                f"login_flow:{auth_config.login_flow.endpoint}:"
+                f"{json.dumps(auth_config.login_flow.payload, sort_keys=True, default=str)}"
+            )
+        elif auth_type == "cookie_file":
+            identity = f"cookie_file:{auth_config.cookie_file}"
+        elif auth_type != "none":
+            identity = auth_type
+    return identity
+
+
+def profile_cache_fingerprint(target_url: str, auth_config: "AuthConfig | None") -> str:
+    """Stable fingerprint of (target_url, auth identity) a cached
+    ``discovered_profile`` is captured against — used to detect when a
+    cached profile no longer applies because the target or identity changed
+    (see :func:`cached_discovery_profile`).
+    """
+    identity = auth_identity_string(auth_config)
+    return hashlib.sha256(f"{target_url}|{identity}".encode()).hexdigest()
+
+
+def cached_discovery_profile(
+    sbom: Any,
+    target_url: str = "",
+    auth_config: "AuthConfig | None" = None,
+) -> "DiscoveredProfile | None":
     """Return a previously-persisted, non-empty pre-scan profile from
-    *sbom*'s ``discovered_profile`` field, or ``None`` if absent/empty/invalid.
+    *sbom*'s ``discovered_profile`` field, or ``None`` if absent/empty/invalid
+    or captured against a different target/auth identity than the current run.
 
     Shared by ``behavior`` and ``redteam`` so a run of either package against
     an already-enriched SBOM can reuse a profile the other one discovered
@@ -100,8 +158,22 @@ def cached_discovery_profile(sbom: Any) -> "DiscoveredProfile | None":
     ``raw_response``/``ids`` — with it, since :attr:`DiscoveredProfile.raw_response`
     already *is* the verbatim golden-data text consumed by
     :mod:`nuguard.redteam.executor.golden_data_filter`).
+
+    *target_url*/*auth_config* should always be the current run's real
+    values: the cached profile is only trusted when
+    ``sbom.discovered_profile_fingerprint`` matches
+    :func:`profile_cache_fingerprint` computed from them — a profile
+    captured against a different target or identity is a cache miss (falls
+    back to live discovery), not silently reused. An SBOM with
+    ``discovered_profile`` set but no fingerprint (persisted before this
+    field existed) is always a miss too — there is nothing safe to compare.
     """
     if sbom is None or getattr(sbom, "discovered_profile", None) is None:
+        return None
+    stored_fingerprint = getattr(sbom, "discovered_profile_fingerprint", None)
+    if stored_fingerprint is None:
+        return None
+    if stored_fingerprint != profile_cache_fingerprint(target_url, auth_config):
         return None
     try:
         profile = DiscoveredProfile.model_validate(sbom.discovered_profile)

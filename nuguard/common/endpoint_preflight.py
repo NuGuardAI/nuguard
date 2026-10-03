@@ -17,13 +17,17 @@ scan if none of the SBOM candidates work either.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field
 
+from nuguard.common.discovery import auth_identity_string
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
+    from nuguard.common.auth import AuthConfig
     from nuguard.common.target_client_builder import TargetClient
     from nuguard.sbom.models import AiSbomDocument
 
@@ -76,6 +80,133 @@ class PreflightOutcome(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class CachedEndpointResolution(BaseModel):
+    """A live-validated chat endpoint resolution cached on the SBOM (see
+    :func:`cached_endpoint_resolution` / :func:`persist_endpoint_resolution`),
+    so Target Verify/Behavior/Redteam can share one validated resolution
+    instead of each re-probing the target live.
+    """
+
+    chat_path: str
+    chat_payload_key: str = "message"
+    chat_payload_list: bool = False
+    chat_response_key: str | None = None
+    endpoint_source: str | None = None
+
+
+def _path_param_sources_for(sbom: "AiSbomDocument", chat_path: str) -> dict[str, str]:
+    """The SBOM node declaring *chat_path*'s ``path_param_sources``, or ``{}``."""
+    for n in sbom.nodes:
+        if n.metadata and (n.metadata.endpoint or "") == chat_path:
+            return dict(n.metadata.path_param_sources or {})
+    return {}
+
+
+def endpoint_cache_fingerprint(
+    target_url: str,
+    auth_config: "AuthConfig | None",
+    chat_path: str,
+    path_param_sources: "dict[str, str] | None",
+) -> str:
+    """Stable fingerprint of (target_url, auth identity, resolved chat_path,
+    that path's currently-declared ``path_param_sources``) a cached
+    :class:`CachedEndpointResolution` is captured against — used to detect
+    when a cached resolution no longer applies (see
+    :func:`cached_endpoint_resolution`).
+
+    Extends :func:`nuguard.common.discovery.profile_cache_fingerprint`'s
+    target/auth identity half with the endpoint's own declared shape, since
+    endpoint resolution also depends on SBOM-declared candidates — which can
+    change independently of target/auth (e.g. a regenerated SBOM moving
+    where a templated endpoint's creation route lives).
+    """
+    identity = auth_identity_string(auth_config)
+    sources_part = json.dumps(dict(path_param_sources or {}), sort_keys=True)
+    return hashlib.sha256(f"{target_url}|{identity}|{chat_path}|{sources_part}".encode()).hexdigest()
+
+
+def cached_endpoint_resolution(
+    sbom: "AiSbomDocument | None",
+    target_url: str,
+    auth_config: "AuthConfig | None",
+    *,
+    required_chat_path: str | None = None,
+) -> "tuple[CachedEndpointResolution, dict[str, str]] | None":
+    """Return a previously-validated chat-endpoint resolution cached on
+    *sbom*, or ``None`` if absent/stale/inapplicable.
+
+    When *required_chat_path* is given (the caller has an explicitly
+    configured endpoint), the cached entry is only used when it resolved to
+    that exact path — a cached SBOM/probe-rotated resolution for a
+    *different* path must never silently override an explicit config
+    endpoint (config-wins precedence is non-negotiable; see
+    ``documentation/docs/endpoint-resolution-precedence-plan.md``). When
+    *required_chat_path* is ``None`` (no explicit endpoint configured), any
+    fingerprint-valid cached resolution is reused regardless of which path
+    it resolved to.
+    """
+    if sbom is None:
+        return None
+    data = getattr(sbom, "resolved_chat_endpoint", None)
+    if data is None:
+        return None
+    stored_fingerprint = getattr(sbom, "resolved_chat_endpoint_fingerprint", None)
+    if stored_fingerprint is None:
+        return None
+    try:
+        resolved = CachedEndpointResolution.model_validate(data)
+    except Exception as exc:
+        _log.warning("endpoint cache: could not parse cached resolution: %s", exc)
+        return None
+    if required_chat_path is not None and resolved.chat_path != required_chat_path:
+        return None
+    sources = _path_param_sources_for(sbom, resolved.chat_path)
+    if stored_fingerprint != endpoint_cache_fingerprint(target_url, auth_config, resolved.chat_path, sources):
+        return None
+    raw_params = getattr(sbom, "resolved_path_param_values", None)
+    path_param_values = dict(raw_params) if isinstance(raw_params, dict) else {}
+    return resolved, path_param_values
+
+
+def persist_endpoint_resolution(
+    sbom: "AiSbomDocument | None",
+    target_url: str,
+    auth_config: "AuthConfig | None",
+    *,
+    chat_path: str,
+    chat_payload_key: str,
+    chat_payload_list: bool,
+    chat_response_key: str | None,
+    endpoint_source: str | None,
+    path_param_values: "dict[str, str]",
+) -> None:
+    """Cache a freshly-validated chat-endpoint resolution onto *sbom*
+    in-memory, so later runs against the same SBOM — by any of Target
+    Verify/Behavior/Redteam, in any order, even within the same process with
+    no backing file — can reuse it instead of re-probing live.
+
+    In-memory only: callers persist to disk themselves via
+    :func:`~nuguard.common.auto_sbom_enricher.persist_endpoint_resolution_sbom`
+    when a ``sbom_path`` is available, mirroring
+    :func:`nuguard.common.discovery.cached_discovery_profile`'s split write.
+    """
+    if sbom is None:
+        return
+    resolved = CachedEndpointResolution(
+        chat_path=chat_path,
+        chat_payload_key=chat_payload_key,
+        chat_payload_list=chat_payload_list,
+        chat_response_key=chat_response_key,
+        endpoint_source=endpoint_source,
+    )
+    sources = _path_param_sources_for(sbom, chat_path)
+    sbom.resolved_chat_endpoint = resolved.model_dump(mode="json")
+    sbom.resolved_path_param_values = dict(path_param_values or {})
+    sbom.resolved_chat_endpoint_fingerprint = endpoint_cache_fingerprint(
+        target_url, auth_config, chat_path, sources
+    )
+
+
 async def _bootstrap_path_params(
     client: "TargetClient",
     sbom: "AiSbomDocument",
@@ -99,11 +230,7 @@ async def _bootstrap_path_params(
         return status, data
 
     values = await resolve_path_param_values(_post, sbom, chat_path)
-    sources = {}
-    for n in sbom.nodes:
-        if n.metadata and (n.metadata.endpoint or "") == chat_path:
-            sources = n.metadata.path_param_sources or {}
-            break
+    sources = _path_param_sources_for(sbom, chat_path)
     for param, resolved_id in values.items():
         client.set_path_param(param, resolved_id)
         notes.append(

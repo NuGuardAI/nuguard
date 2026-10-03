@@ -5369,6 +5369,12 @@
         "default": 3,
         "title": "Discovery Max Turns",
         "type": "integer"
+      },
+      "preflight_candidates": {
+        "default": 3,
+        "description": "How many alternative SBOM candidates to test when the resolved chat endpoint's reply isn't clearly conversational, before running pre-scan discovery \u2014 mirrors redteam.preflight_candidates / behavior.preflight_candidates so Target Verify validates the same endpoint candidate pool a subsequent Behavior/Redteam run would.",
+        "title": "Preflight Candidates",
+        "type": "integer"
       }
     },
     "required": [
@@ -5509,6 +5515,7 @@
         "type": "object"
       }
     },
+    "description": "``all_ok`` is False both when a credential check fails and when every\ncredential checks out but no working chat endpoint could be validated\n(see ``checks`` for an entry with ``identity=\"endpoint\"`` in that case \u2014\nendpoint-preflight failure is always structurally visible there, not\nonly in ``discovery_notes``).",
     "properties": {
       "all_ok": {
         "title": "All Ok",
@@ -13277,8 +13284,64 @@
               }
             ],
             "default": null,
-            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery. Only trusted when discovered_profile_fingerprint matches the current run's target_url/auth identity \u2014 see nuguard.common.discovery.cached_discovery_profile.",
             "title": "Discovered Profile"
+          },
+          "discovered_profile_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of the target_url + auth identity discovered_profile was captured against (see nuguard.common.discovery.profile_cache_fingerprint). A cached discovered_profile is only reused when this matches the current run's target/auth \u2014 otherwise it's treated as a cache miss and live discovery runs again. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Discovered Profile Fingerprint"
+          },
+          "resolved_chat_endpoint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached result of a live-validated chat-endpoint preflight (a serialized nuguard.common.endpoint_preflight.CachedEndpointResolution: chat_path, chat_payload_key, chat_payload_list, chat_response_key, endpoint_source), persisted here after Target Verify/Behavior/Redteam successfully validates (and possibly rotates to) a chat endpoint. Later runs \u2014 by any of the three tools, in any order \u2014 reuse it instead of re-probing the target live. Delete or regenerate the enriched SBOM file to force fresh validation. Only trusted when resolved_chat_endpoint_fingerprint matches the current run's target_url/auth identity and this path's currently-declared path_param_sources \u2014 see nuguard.common.endpoint_preflight.cached_endpoint_resolution.",
+            "title": "Resolved Chat Endpoint"
+          },
+          "resolved_path_param_values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path param values (e.g. a bootstrapped conversation :id obtained by POSTing to a declared path_param_sources creation endpoint) bound onto resolved_chat_endpoint's chat_path during preflight. Reused alongside resolved_chat_endpoint whenever resolved_chat_endpoint_fingerprint matches the current run.",
+            "title": "Resolved Path Param Values"
+          },
+          "resolved_chat_endpoint_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of target_url + auth identity + resolved_chat_endpoint's chat_path + that path's current path_param_sources declaration (see nuguard.common.endpoint_preflight.endpoint_cache_fingerprint). A cached resolved_chat_endpoint/resolved_path_param_values pair is only reused when this matches \u2014 a target/auth change, or the SBOM being regenerated with a different path_param_sources declaration for this path, is treated as a cache miss and preflight re-runs live. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Resolved Chat Endpoint Fingerprint"
           }
         },
         "required": [
@@ -17647,8 +17710,64 @@
               }
             ],
             "default": null,
-            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery. Only trusted when discovered_profile_fingerprint matches the current run's target_url/auth identity \u2014 see nuguard.common.discovery.cached_discovery_profile.",
             "title": "Discovered Profile"
+          },
+          "discovered_profile_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of the target_url + auth identity discovered_profile was captured against (see nuguard.common.discovery.profile_cache_fingerprint). A cached discovered_profile is only reused when this matches the current run's target/auth \u2014 otherwise it's treated as a cache miss and live discovery runs again. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Discovered Profile Fingerprint"
+          },
+          "resolved_chat_endpoint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached result of a live-validated chat-endpoint preflight (a serialized nuguard.common.endpoint_preflight.CachedEndpointResolution: chat_path, chat_payload_key, chat_payload_list, chat_response_key, endpoint_source), persisted here after Target Verify/Behavior/Redteam successfully validates (and possibly rotates to) a chat endpoint. Later runs \u2014 by any of the three tools, in any order \u2014 reuse it instead of re-probing the target live. Delete or regenerate the enriched SBOM file to force fresh validation. Only trusted when resolved_chat_endpoint_fingerprint matches the current run's target_url/auth identity and this path's currently-declared path_param_sources \u2014 see nuguard.common.endpoint_preflight.cached_endpoint_resolution.",
+            "title": "Resolved Chat Endpoint"
+          },
+          "resolved_path_param_values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path param values (e.g. a bootstrapped conversation :id obtained by POSTing to a declared path_param_sources creation endpoint) bound onto resolved_chat_endpoint's chat_path during preflight. Reused alongside resolved_chat_endpoint whenever resolved_chat_endpoint_fingerprint matches the current run.",
+            "title": "Resolved Path Param Values"
+          },
+          "resolved_chat_endpoint_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of target_url + auth identity + resolved_chat_endpoint's chat_path + that path's current path_param_sources declaration (see nuguard.common.endpoint_preflight.endpoint_cache_fingerprint). A cached resolved_chat_endpoint/resolved_path_param_values pair is only reused when this matches \u2014 a target/auth change, or the SBOM being regenerated with a different path_param_sources declaration for this path, is treated as a cache miss and preflight re-runs live. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Resolved Chat Endpoint Fingerprint"
           }
         },
         "required": [
@@ -22252,8 +22371,64 @@
               }
             ],
             "default": null,
-            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery. Only trusted when discovered_profile_fingerprint matches the current run's target_url/auth identity \u2014 see nuguard.common.discovery.cached_discovery_profile.",
             "title": "Discovered Profile"
+          },
+          "discovered_profile_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of the target_url + auth identity discovered_profile was captured against (see nuguard.common.discovery.profile_cache_fingerprint). A cached discovered_profile is only reused when this matches the current run's target/auth \u2014 otherwise it's treated as a cache miss and live discovery runs again. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Discovered Profile Fingerprint"
+          },
+          "resolved_chat_endpoint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached result of a live-validated chat-endpoint preflight (a serialized nuguard.common.endpoint_preflight.CachedEndpointResolution: chat_path, chat_payload_key, chat_payload_list, chat_response_key, endpoint_source), persisted here after Target Verify/Behavior/Redteam successfully validates (and possibly rotates to) a chat endpoint. Later runs \u2014 by any of the three tools, in any order \u2014 reuse it instead of re-probing the target live. Delete or regenerate the enriched SBOM file to force fresh validation. Only trusted when resolved_chat_endpoint_fingerprint matches the current run's target_url/auth identity and this path's currently-declared path_param_sources \u2014 see nuguard.common.endpoint_preflight.cached_endpoint_resolution.",
+            "title": "Resolved Chat Endpoint"
+          },
+          "resolved_path_param_values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path param values (e.g. a bootstrapped conversation :id obtained by POSTing to a declared path_param_sources creation endpoint) bound onto resolved_chat_endpoint's chat_path during preflight. Reused alongside resolved_chat_endpoint whenever resolved_chat_endpoint_fingerprint matches the current run.",
+            "title": "Resolved Path Param Values"
+          },
+          "resolved_chat_endpoint_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of target_url + auth identity + resolved_chat_endpoint's chat_path + that path's current path_param_sources declaration (see nuguard.common.endpoint_preflight.endpoint_cache_fingerprint). A cached resolved_chat_endpoint/resolved_path_param_values pair is only reused when this matches \u2014 a target/auth change, or the SBOM being regenerated with a different path_param_sources declaration for this path, is treated as a cache miss and preflight re-runs live. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Resolved Chat Endpoint Fingerprint"
           }
         },
         "required": [
@@ -26530,8 +26705,64 @@
               }
             ],
             "default": null,
-            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery. Only trusted when discovered_profile_fingerprint matches the current run's target_url/auth identity \u2014 see nuguard.common.discovery.cached_discovery_profile.",
             "title": "Discovered Profile"
+          },
+          "discovered_profile_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of the target_url + auth identity discovered_profile was captured against (see nuguard.common.discovery.profile_cache_fingerprint). A cached discovered_profile is only reused when this matches the current run's target/auth \u2014 otherwise it's treated as a cache miss and live discovery runs again. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Discovered Profile Fingerprint"
+          },
+          "resolved_chat_endpoint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached result of a live-validated chat-endpoint preflight (a serialized nuguard.common.endpoint_preflight.CachedEndpointResolution: chat_path, chat_payload_key, chat_payload_list, chat_response_key, endpoint_source), persisted here after Target Verify/Behavior/Redteam successfully validates (and possibly rotates to) a chat endpoint. Later runs \u2014 by any of the three tools, in any order \u2014 reuse it instead of re-probing the target live. Delete or regenerate the enriched SBOM file to force fresh validation. Only trusted when resolved_chat_endpoint_fingerprint matches the current run's target_url/auth identity and this path's currently-declared path_param_sources \u2014 see nuguard.common.endpoint_preflight.cached_endpoint_resolution.",
+            "title": "Resolved Chat Endpoint"
+          },
+          "resolved_path_param_values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path param values (e.g. a bootstrapped conversation :id obtained by POSTing to a declared path_param_sources creation endpoint) bound onto resolved_chat_endpoint's chat_path during preflight. Reused alongside resolved_chat_endpoint whenever resolved_chat_endpoint_fingerprint matches the current run.",
+            "title": "Resolved Path Param Values"
+          },
+          "resolved_chat_endpoint_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of target_url + auth identity + resolved_chat_endpoint's chat_path + that path's current path_param_sources declaration (see nuguard.common.endpoint_preflight.endpoint_cache_fingerprint). A cached resolved_chat_endpoint/resolved_path_param_values pair is only reused when this matches \u2014 a target/auth change, or the SBOM being regenerated with a different path_param_sources declaration for this path, is treated as a cache miss and preflight re-runs live. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Resolved Chat Endpoint Fingerprint"
           }
         },
         "required": [
