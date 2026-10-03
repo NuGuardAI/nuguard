@@ -383,6 +383,13 @@ redteam:
   # 0 disables the timeout.
   scenario_timeout: 600
 
+  # Apps with many API endpoints: above this count the redteam LLM picks only the
+  # relevant endpoints per direct-HTTP probe (JWT tampering, XSS, ...). (default: 25)
+  api_endpoint_threshold: 25
+
+  # ci profile: number of API endpoints spot-checked per probe family. (default: 3)
+  ci_api_spot_checks: 3
+
   # Maximum number of redteam scenarios to run in parallel (default: 5, max: 20)
   # Lower for rate-limited or quota-sensitive targets.
   concurrency: 5

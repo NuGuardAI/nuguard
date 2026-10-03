@@ -363,6 +363,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_request_timeout"] = float(redteam["request_timeout"])
     if "scenario_timeout" in redteam:
         flat["redteam_scenario_timeout"] = float(redteam["scenario_timeout"])
+    if "api_endpoint_threshold" in redteam:
+        flat["redteam_api_endpoint_threshold"] = int(redteam["api_endpoint_threshold"])
+    if "ci_api_spot_checks" in redteam:
+        flat["redteam_ci_api_spot_checks"] = int(redteam["ci_api_spot_checks"])
     if "similar_miss_threshold" in redteam:
         flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
     if "hard_refusal_abort_turns" in redteam:
@@ -1406,6 +1410,23 @@ class NuGuardConfig(BaseSettings):
             "Scenarios that exceed this limit are cancelled and recorded as 'timeout'. "
             "0 disables the timeout. Default is 600 s to accommodate in-semaphore "
             "transient-retry loops for slow cold-starting targets."
+        ),
+    )
+    redteam_api_endpoint_threshold: int = Field(
+        default=25,
+        ge=1,
+        description=(
+            "API endpoint count above which the redteam LLM narrows each direct-HTTP "
+            "probe family (JWT tampering, XSS, ...) to relevant endpoints "
+            "(yaml: redteam.api_endpoint_threshold)."
+        ),
+    )
+    redteam_ci_api_spot_checks: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Number of API endpoints spot-checked per probe family in the ci "
+            "profile (yaml: redteam.ci_api_spot_checks)."
         ),
     )
     redteam_similar_miss_threshold: int = Field(
