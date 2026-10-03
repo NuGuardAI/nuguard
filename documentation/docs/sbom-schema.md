@@ -4,9 +4,9 @@ This document describes the canonical AI-SBOM document shape used by NuGuard. Th
 
 Use this as a reference when writing code that reads or generates AI-SBOMs directly (custom tooling, CI checks, framework adapters) — for running `nuguard sbom generate` itself, see the [Quick Start Guide](quick-start.md) instead.
 
-Current schema version: **1.6.0**
+Current schema version: **1.7.0**
 
-Schema URI: `https://nuguard.ai/schemas/aibom/1.6.0/aibom.schema.json`
+Schema URI: `https://nuguard.ai/schemas/aibom/1.7.0/aibom.schema.json`
 
 The schema is language-neutral. Current extractors normalize Python, TypeScript/JavaScript, Go, C#, and Java application evidence into the same nodes, edges, dependencies, and summary fields.
 
@@ -25,7 +25,7 @@ Application source and manifests
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `schema_version` | string | - | AIBOM schema version (semver). Default: `"1.6.0"` |
+| `schema_version` | string | - | AIBOM schema version (semver). Default: `"1.7.0"` |
 | `generated_at` | string (ISO 8601) | yes | UTC timestamp of generation |
 | `generator` | string | - | Tool that produced the document. Default: `"nuguard"` |
 | `target` | string | **yes** | Repository URL or local path that was scanned |
@@ -38,7 +38,7 @@ Application source and manifests
 
 ```json
 {
-  "schema_version": "1.6.0",
+  "schema_version": "1.7.0",
   "generated_at": "2026-06-08T00:00:00Z",
   "generator": "nuguard",
   "target": "https://github.com/org/repo",
@@ -212,6 +212,13 @@ The `name` shown in the AIBOM uses the detected handler name when it is unique. 
 | `response_echoes_input` | boolean \| null | True when the framework's validation errors echo the submitted input (framework-level fact; FastAPI 422 responses) |
 | `session_cookie_semantics` | SessionCookieSemantics | Whether handler code is expected to issue session cookies. Only set for frameworks whose handlers are analyzed (Python, NestJS, Spring, ASP.NET) |
 
+### Hosting fields (API_ENDPOINT, AGENT, MCP_SERVER, TOOL)
+
+| Field | Type | Description |
+|---|---|---|
+| `hosted_by` | string | SBOM 1.7.0 name of the workload (or workloads, comma-separated) whose source directory contains this component, from a `HOSTS` edge |
+| `network_exposure` | string | SBOM 1.7.0 `API_ENDPOINT`, `AGENT` and `MCP_SERVER` only: `"public"` (an internet-reachable port or ingress), `"internal"` (VNet/private ingress or loopback publish), `"cluster"` (cluster/compose-network only) or `"unknown"`. The most exposed hosting workload wins; `extras.exposure_by_host` keeps the per-workload value |
+
 ### DATASTORE fields
 
 | Field | Type | Description |
@@ -256,6 +263,8 @@ The `name` shown in the AIBOM uses the detected handler name when it is unique. 
 | `ha_mode` | string | High-availability topology: `"multi-az"`, `"replicated"`, `"single"` |
 | `has_network_policy` | boolean | SBOM 1.5.0 Kubernetes workload flag. True when covered by a NetworkPolicy resource in the same namespace. |
 | `ingresses` | IngressDetail[] | Externally reachable ingresses declared in IaC: reverse proxy/gateway, a backend exposed directly, or a static frontend. A `gateway` plus a `direct` entry across the document means one logical surface with an origin-bypass path |
+| `workload` | WorkloadDetail | SBOM 1.7.0 runtime shape of one deployed service: compose service, Kubernetes workload, container app, ECS service, Lambda, Cloud Run service, App Service. Present on per-workload `DEPLOYMENT` nodes; the per-file node keeps provider, region and posture |
+| `cloud_provider` | string | SBOM 1.7.0 provider of the workload: `"aws"`, `"azure"`, `"gcp"`, `"kubernetes"` |
 
 ### CONTAINER_IMAGE fields
 
@@ -269,6 +278,15 @@ The `name` shown in the AIBOM uses the detected handler name when it is unique. 
 | `runs_as_root` | boolean | True when the container is configured to run as root (UID 0) |
 | `has_health_check` | boolean | True when a HEALTHCHECK instruction or liveness/readiness probe is present |
 | `has_resource_limits` | boolean | True when Kubernetes resource limits are defined for the container |
+| `image_role` | string | SBOM 1.7.0. `"base"` for a `FROM`/`image:` reference, `"app"` for the image a Dockerfile builds (one per Dockerfile, final stage) |
+| `os_name` / `os_version` / `os_family` | string | SBOM 1.7.0 operating system of the image, e.g. `debian` / `12` / `debian`. Inferred from the base image reference, or read from `syft` when `--scan-images` is on |
+| `os_evidence` | string | How the OS was determined: `"tag"` (the tag names it), `"image_default"` (the image's documented default distro; version may be unknown) or `"syft"` |
+| `stage_alias` | string | Final build stage alias (`AS name`) |
+| `entrypoint` / `cmd` / `workdir` | string | Final-stage `ENTRYPOINT`, `CMD` and `WORKDIR` as written, truncated; `key=value` secrets are redacted |
+| `image_packages` | ImagePackage[] | Packages installed in the image: parsed from `RUN apt/apk/yum/pip/npm` (names and pinned versions only), or the full list from `syft`. Capped by `max_image_packages` |
+| `dependency_manifests` | string[] | Dependency manifests `COPY`'d into the image, e.g. `requirements.txt` |
+| `has_dockerignore` | boolean | True when a `.dockerignore` sits beside the Dockerfile |
+| `exposed_ports` | PortDetail[] | Ports declared with `EXPOSE` |
 
 ### IAM fields
 
@@ -415,6 +433,66 @@ Static and best-effort. Whether adjacent IDs actually exist is a runtime fact an
 | `url` | string \| null | Public host when statically declared (e.g. an nginx `server_name`); never a secret |
 | `evidence` | string | What proved it: `"nginx proxy_pass"`, `"ACA ingress"`, `"k8s Ingress"`, `"k8s Service LoadBalancer"`, `"SWA config"`, `"API Management"`, … |
 
+### WorkloadDetail
+
+SBOM 1.7.0. One deployed service. Only **names** are recorded for environment variables and secrets, never values.
+
+| Field | Type | Description |
+|---|---|---|
+| `service_name` | string | Service or resource name |
+| `workload_kind` | string | `"compose_service"`, `"k8s_deployment"` (also `k8s_statefulset`, `k8s_daemonset`, `k8s_job`, `k8s_cronjob`), `"helm_chart"`, `"container_app"`, `"app_service"`, `"aks_cluster"`, `"container_instance"`, `"ecs_service"`, `"ecs_task_definition"`, `"lambda"`, `"cloud_run"`, `"k8s_cluster"` |
+| `cloud_service` | string | Managed service, e.g. `"azure_container_apps"`, `"aws_ecs"`, `"aws_lambda"`, `"gcp_cloud_run"` |
+| `namespace` | string | Kubernetes namespace |
+| `image_refs` | string[] | Image references the workload runs. Placeholder images (for example the `azd` hello-world image) are left out |
+| `build_context` / `dockerfile` | string | Compose build context and Dockerfile path, repo-relative |
+| `source_dir` | string | Directory holding the code the workload runs. Resolved from the build context, an `azure.yaml` project, or (heuristically) a matching Dockerfile directory |
+| `ports` | PortDetail[] | Container/service ports and how far each is exposed |
+| `scaling` | ScalingDetail | Replica count and autoscaling bounds |
+| `resources` | ResourceDetail | CPU and memory requests/limits as written |
+| `identity_ref` | string | Service account or managed identity (`"system-assigned"` or a name) |
+| `depends_on` | string[] | Names of workloads this one depends on (compose `depends_on`, service names referenced from env values) |
+| `env_var_names` | string[] | Environment variable names only |
+| `secret_refs` | string[] | Secret / Key Vault reference names only |
+| `probes` | string[] | Health probes, e.g. `"liveness:/healthz"` |
+| `internal_only` | boolean | True when no public ingress or published port reaches the workload |
+| `source_format` | string | `"compose"`, `"k8s"`, `"helm_values"`, `"bicep"`, `"terraform"`, `"cloudformation"`, `"cloud-run-yaml"`, `"ecs-task-definition"` |
+
+### PortDetail
+
+| Field | Type | Description |
+|---|---|---|
+| `container_port` | integer | Port the process listens on |
+| `service_port` | integer | Port a Service or load balancer exposes, when different |
+| `host_port` | integer | Published host port (compose, ECS) |
+| `protocol` | string | `"tcp"` or `"udp"` |
+| `exposure` | string | `"public"`, `"internal"`, `"cluster"` or `"unknown"` |
+| `source` | string | What declared it: `"EXPOSE"`, `"compose ports"`, `"k8s Service"`, `"aca ingress"`, `"ecs portMappings"`, ... |
+
+### ScalingDetail
+
+| Field | Type | Description |
+|---|---|---|
+| `replicas` | integer | Static or desired replica count |
+| `min_replicas` / `max_replicas` | integer | Autoscaler bounds (HPA, KEDA, ACA scale rules, ECS autoscaling, Cloud Run) |
+| `autoscaler` | string | `"hpa"`, `"keda"`, `"aca_rule"`, `"ecs_autoscaling"`, `"cloud_run"` or `"none"` |
+| `metric` / `target` | string | Scaling metric and target, e.g. `"cpu"` / `"70%"` |
+
+### ResourceDetail
+
+| Field | Type | Description |
+|---|---|---|
+| `cpu_request` / `cpu_limit` | string | As written, e.g. `"500m"`, `"0.5"` |
+| `memory_request` / `memory_limit` | string | As written, e.g. `"512Mi"`, `"1Gi"` |
+
+### ImagePackage
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Package name |
+| `version` | string \| null | Pinned version when known |
+| `manager` | string | `"apt"`, `"apk"`, `"yum"`, `"pip"`, `"npm"` or `"syft:<type>"` |
+| `source` | string | `"dockerfile_run"` or `"syft"` |
+
 ### SessionCookieSemantics
 
 | Field | Type | Description |
@@ -556,6 +634,12 @@ A directed relationship between two nodes.
 | `DEPLOYS` | A deployment resource hosts a container or service |
 | `DELEGATES_TO` | An agent hands off a conversation or task to another agent |
 | `CONTAINS` | A parent component contains a child component; used for `DEVELOPER_TOOL_CONFIG → MCP_SERVER` and `DEVELOPER_TOOL_CONFIG → LIFECYCLE_SCRIPT` relationships |
+| `RUNS` | SBOM 1.7.0. A workload runs a container image (`DEPLOYMENT → CONTAINER_IMAGE`): from its `image:`/`containers[].image`, or from its build context to the Dockerfile's app image |
+| `BUILT_FROM` | SBOM 1.7.0. A Dockerfile's app image is built from a base image (`CONTAINER_IMAGE → CONTAINER_IMAGE`) |
+| `HOSTS` | SBOM 1.7.0. A workload hosts a component found in its source directory (`DEPLOYMENT → AGENT / API_ENDPOINT / MCP_SERVER / TOOL`). Declared by a compose build context or `azure.yaml` project (`derivation: "hint"`); otherwise a name/path guess (`fallback_heuristic`) |
+| `EXPOSES` | SBOM 1.7.0. A workload with a public port exposes a hosted `API_ENDPOINT` or `MCP_SERVER` |
+| `ROUTES_TO` | SBOM 1.7.0. A gateway (K8s Ingress, nginx `proxy_pass`) routes to a backend workload |
+| `DEPENDS_ON` | SBOM 1.7.0. A workload depends on another workload (compose `depends_on`, service names referenced from environment values) |
 
 `AGENT --ACCESSES--> DATASTORE` is inferred when an agent calls a tool that accesses the datastore, when a single agent and datastore are detected in the same source file, or when a single agent's Python file imports and uses a detected datastore client. These inferred edges carry `derivation: "fallback_heuristic"` and a confidence score.
 

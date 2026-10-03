@@ -201,6 +201,17 @@ platform-managed caching and excludes API keys and authorization values. Set the
 `cache_version` to invalidate cached work when secret-dependent or external state changes.
 Computed and externally cached values use the same `SbomEnrichmentResult` schema.
 
+**Container and deployment layer (AIBOM schema 1.7.0, additive).** `SbomGenerateRequest.config`
+(`AiSbomConfig`) gains `scan_images` (default `false`; runs `syft` on pulled base images and needs
+`syft` plus registry access), `max_image_packages` (default `200`) and `image_scan_timeout`
+(default `120` s). The returned `AiSbomDocument` gains nested, optional `WorkloadDetail`,
+`PortDetail`, `ScalingDetail`, `ResourceDetail` and `ImagePackage` models on `NodeMetadata`
+(`workload`, `cloud_provider`, `os_name`/`os_version`/`os_family`/`os_evidence`, `image_role`,
+`image_packages`, `exposed_ports`, `hosted_by`, `network_exposure`, ...) and six `RelationshipType`
+values (`RUNS`, `BUILT_FROM`, `HOSTS`, `EXPOSES`, `ROUTES_TO`, `DEPENDS_ON`). Consumers that switch
+exhaustively on `RelationshipType` must handle the new values. Environment variables and secrets are
+recorded by **name only**; values are never serialized. See `sbom-schema.md` for field semantics.
+
 Supported render/export formats:
 - `json`
 - `cyclonedx`

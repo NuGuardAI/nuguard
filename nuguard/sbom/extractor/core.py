@@ -42,6 +42,7 @@ from nuguard.common.url_sanitization import (
     sanitize_repository_url,
 )
 
+from ..adapters.azure_yaml import AzureYamlAdapter, is_azure_yaml
 from ..adapters.base import (
     AdapterMatch,
     ComponentDetection,
@@ -49,6 +50,8 @@ from ..adapters.base import (
     FrameworkAdapter,
     RelationshipHint,
 )
+from ..adapters.cloud_workloads import ServiceDescriptorAdapter
+from ..adapters.compose import ComposeAdapter, is_compose_file
 from ..adapters.csharp._csharp_base import CSharpFrameworkAdapter
 from ..adapters.data_classification import DataClassificationSQLAdapter
 from ..adapters.dockerfile import DockerfileAdapter
@@ -102,6 +105,7 @@ from ..core.application_summary import build_scan_summary
 from ..core.ts_parser import TSParseResult
 from ..core.ts_parser import parse_typescript as _parse_ts_impl
 from ..deps import DependencyScanner
+from ..image_scan import scan_images
 from ..models import (
     AiSbomDocument,
     AuthDetail,
@@ -120,6 +124,7 @@ from ..models import (
 )
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
+from ..workload import promote_image_fields, promote_workload_fields
 from .endpoint_names import disambiguate_endpoint_names
 from .git_safety import SAFE_REF_RE, SAFE_URL_RE, validate_ref, validate_url
 from .github_clone import clone_github_subfolder, resolve_and_clone
@@ -153,6 +158,18 @@ _JAVA_EXTENSIONS = {".java"}
 # Dockerfile: extensionless file named "Dockerfile" or suffixed ".dockerfile"
 _DOCKERFILE_EXTENSIONS = {".dockerfile"}
 _DOCKERFILE_NAMES = {"dockerfile"}  # lower-cased stem match
+
+
+def _is_dockerfile_name(name: str) -> bool:
+    """``Dockerfile``, ``Dockerfile.dev``, ``Dockerfile-api`` and ``api.dockerfile``."""
+    lower = name.lower()
+    if lower.endswith((".dockerignore", ".md", ".txt")):
+        return False
+    return (
+        lower in _DOCKERFILE_NAMES
+        or lower.startswith(("dockerfile.", "dockerfile-", "dockerfile_"))
+        or lower.endswith(".dockerfile")
+    )
 
 # ---------------------------------------------------------------------------
 # Source-tier constants for dedup precedence: CODE > IAC > DOCS
@@ -719,6 +736,8 @@ class AiSbomExtractor:
         yaml_adapters: tuple[Any, ...] | None = None,
         json_adapters: tuple[Any, ...] | None = None,
         nginx_adapter: NginxAdapter | None = None,
+        compose_adapter: ComposeAdapter | None = None,
+        azure_yaml_adapter: AzureYamlAdapter | None = None,
         prompt_file_adapter: PromptFileAdapter | None = None,
         iac_adapters: tuple[Any, ...] | None = None,
         load_plugins: bool = False,
@@ -776,6 +795,10 @@ class AiSbomExtractor:
             )
         )
         self.nginx_adapter = nginx_adapter if nginx_adapter is not None else NginxAdapter()
+        self.compose_adapter = compose_adapter if compose_adapter is not None else ComposeAdapter()
+        self.azure_yaml_adapter = (
+            azure_yaml_adapter if azure_yaml_adapter is not None else AzureYamlAdapter()
+        )
         self.prompt_file_adapter = (
             prompt_file_adapter if prompt_file_adapter is not None else PromptFileAdapter()
         )
@@ -789,6 +812,7 @@ class AiSbomExtractor:
                 BicepAdapter(),
                 GcpDeploymentManagerAdapter(),
                 GitHubActionsAdapter(),
+                ServiceDescriptorAdapter(),
             )
         )
 
@@ -1131,9 +1155,7 @@ class AiSbomExtractor:
             is_csharp = suffix in _CSHARP_EXTENSIONS
             is_java = suffix in _JAVA_EXTENSIONS
             is_sql = suffix in _SQL_EXTENSIONS
-            is_dockerfile = (
-                suffix in _DOCKERFILE_EXTENSIONS or file_path.name.lower() in _DOCKERFILE_NAMES
-            )
+            is_dockerfile = _is_dockerfile_name(file_path.name)
             is_nginx_conf = is_nginx_file(rel_path)
 
             # Phase 0a: Prompt file detection (before docs-tier skip)
@@ -1381,10 +1403,31 @@ class AiSbomExtractor:
             if is_dockerfile:
                 _log.debug("running dockerfile adapter on %s", rel_path)
                 try:
+                    _has_ignore = (file_path.parent / ".dockerignore").is_file()
+                    self.dockerfile_adapter.max_packages = config.max_image_packages
                     for det in self.dockerfile_adapter.scan(content, rel_path):
+                        if det.metadata.get("image_role") == "app":
+                            det.metadata["has_dockerignore"] = _has_ignore
                         self._merge_detection(node_map, det)
                 except Exception as exc:
                     _log.warning("dockerfile adapter failed on %s: %s", rel_path, exc)
+
+            # Phase 1e: docker-compose — one workload per service
+            if suffix in {".yml", ".yaml"} and is_compose_file(rel_path):
+                _log.debug("running compose adapter on %s", rel_path)
+                try:
+                    for det in self.compose_adapter.scan(content, rel_path):
+                        self._merge_detection(node_map, det)
+                except Exception as exc:
+                    _log.warning("compose adapter failed on %s: %s", rel_path, exc)
+
+            # Phase 1e2: azure.yaml (azd) — service → source project mapping
+            if suffix in {".yml", ".yaml"} and is_azure_yaml(rel_path):
+                try:
+                    for det in self.azure_yaml_adapter.scan(content, rel_path):
+                        self._merge_detection(node_map, det)
+                except Exception as exc:
+                    _log.warning("azure.yaml adapter failed on %s: %s", rel_path, exc)
 
             # Phase 1f: Nginx config — deployment and auth extraction
             if is_nginx_conf:
@@ -1447,7 +1490,8 @@ class AiSbomExtractor:
                         # also handles .github/workflows/**/*.yml naming convention
                         adapter_handles = suffix in {".yaml", ".yml"}
                     else:
-                        # K8sAdapter + CloudFormationAdapter handle YAML and JSON
+                        # K8sAdapter, CloudFormationAdapter and ServiceDescriptorAdapter
+                        # handle YAML and JSON
                         adapter_handles = suffix in {".yaml", ".yml", ".json"}
                     if not adapter_handles:
                         continue
@@ -1972,6 +2016,7 @@ class AiSbomExtractor:
                 node.metadata.image_digest = acc.metadata.get("image_digest")
                 node.metadata.registry = acc.metadata.get("registry")
                 node.metadata.base_image = acc.metadata.get("base_image")
+                promote_image_fields(node.metadata, acc.metadata)
                 # Security signals annotated by DockerfileAdapter
                 _rar = acc.metadata.get("runs_as_root")
                 if _rar is not None:
@@ -1981,6 +2026,7 @@ class AiSbomExtractor:
                     node.metadata.has_health_check = bool(_hc)
             # IaC security / resilience metadata (DEPLOYMENT nodes from IaC adapters)
             if acc.component_type == ComponentType.DEPLOYMENT:
+                promote_workload_fields(node.metadata, acc.metadata)
                 if acc.metadata.get("deployment_target"):
                     node.metadata.deployment_target = str(acc.metadata["deployment_target"])
                 _cr = acc.metadata.get("cloud_region")
@@ -2261,6 +2307,13 @@ class AiSbomExtractor:
                     )
             except Exception as _lf_exc:
                 _log.debug("lockfile summary population failed (non-fatal): %s", _lf_exc)
+
+        # Phase 2d: optional syft scan of pulled base images (OS + installed packages)
+        if config.scan_images:
+            try:
+                scan_images(doc, max_packages=config.max_image_packages, timeout=config.image_scan_timeout)
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("image scan failed, continuing without it: %s", exc)
 
         # Phase 3: LLM enrichment (skipped unless enable_llm=True)
         if config.enable_llm:
@@ -2753,6 +2806,13 @@ class AiSbomExtractor:
             "PROTECTS": RelationshipType.PROTECTS,
             "DEPLOYS": RelationshipType.DEPLOYS,
             "DELEGATES_TO": RelationshipType.DELEGATES_TO,
+            # Container / workload topology hints
+            "RUNS": RelationshipType.RUNS,
+            "BUILT_FROM": RelationshipType.BUILT_FROM,
+            "HOSTS": RelationshipType.HOSTS,
+            "EXPOSES": RelationshipType.EXPOSES,
+            "ROUTES_TO": RelationshipType.ROUTES_TO,
+            "DEPENDS_ON": RelationshipType.DEPENDS_ON,
         }
 
         # Process explicit relationship hints
@@ -2958,7 +3018,11 @@ class AiSbomExtractor:
         # when several unrelated DEPLOYMENT keyword nodes and CONTAINER_IMAGE
         # nodes coexist in the same scan.
         for dep in by_type.get(ComponentType.DEPLOYMENT, []):
+            if dep.metadata.workload is not None:
+                continue  # workloads link to their image precisely (RUNS), not by proximity
             for img in by_type.get(ComponentType.CONTAINER_IMAGE, []):
+                if img.metadata.image_role == "app":
+                    continue  # built images are reached through RUNS / BUILT_FROM
                 if not self._structural_edge_related(dep, img):
                     continue
                 key = (dep.id, img.id, "DEPLOYS")
@@ -3592,9 +3656,7 @@ class AiSbomExtractor:
                 path = Path(dirpath) / filename
                 suffix = path.suffix.lower()
                 # Always include Dockerfile* files (extensionless or .dockerfile suffix)
-                is_dockerfile = (
-                    suffix in _DOCKERFILE_EXTENSIONS or path.name.lower() in _DOCKERFILE_NAMES
-                )
+                is_dockerfile = _is_dockerfile_name(path.name)
                 # nginx configs (nginx.conf, default.conf, *.nginx) carry the gateway
                 # ingress facts the pentest needs; ".conf" is not a source extension.
                 is_nginx = is_nginx_file(path.relative_to(root).as_posix())

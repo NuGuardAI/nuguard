@@ -39,7 +39,7 @@ _log = get_logger(__name__)
 
 # proxy_pass http://127.0.0.1:8420;  or  proxy_pass https://backend:8000/api/;
 _PROXY_PASS_RE = re.compile(
-    r"^\s*proxy_pass\s+(?P<url>https?://[^\s;]+)",
+    r"(?:^|(?<=[{;]))\s*proxy_pass\s+(?P<url>https?://[^\s;]+)",
     re.IGNORECASE | re.MULTILINE,
 )
 

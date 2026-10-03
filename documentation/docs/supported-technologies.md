@@ -92,13 +92,18 @@ Cloud support means NuGuard extracts declared configuration and source evidence.
 
 | Area | Coverage |
 |---|---|
-| Workloads | `Deployment`, `StatefulSet`, `DaemonSet`, `Job`, and `CronJob` manifests |
-| Helm | `Chart.yaml` metadata and resolvable resources under `templates/` |
+| Workloads | `Deployment`, `StatefulSet`, `DaemonSet`, `Job`, and `CronJob` manifests, with replicas, images, container ports, resource values, service account, probes, and env/secret names |
+| Services and routing | `Service` (name, ports, selector), `Ingress` host/path → backend rules, `HorizontalPodAutoscaler` and KEDA `ScaledObject` min/max replicas |
+| Helm | `Chart.yaml` metadata, resolvable resources under `templates/`, and `values.yaml` (replicas, image, service port, autoscaling, resources, ingress) |
+| Kustomize | `kustomization.yaml` namespace, image and replica overrides |
+| docker-compose | One workload per service: image or build context, published/exposed ports, `depends_on`, replicas and limits, health checks, privileged/host-network/docker-socket misconfigurations, env and secret names |
 | Identity and RBAC | `ServiceAccount`, `Role`, `ClusterRole`, `RoleBinding`, and `ClusterRoleBinding` |
 | Network isolation | `NetworkPolicy` coverage by namespace |
 | Pod hardening | Root/non-root execution, liveness/readiness probes, resource limits, replicas, affinity, and topology spread |
 | Secrets | Kubernetes Secret references plus Vault, AWS Secrets Manager, and Azure Key Vault annotations |
-| Containers | Docker/OCI image, tag/digest, registry, base image, health check, root user, and resource-limit evidence |
+| Containers | `Dockerfile`, `Dockerfile.*` and `*.dockerfile`: base image, tag/digest, registry, OS name and version, per-stage USER/HEALTHCHECK, `ENTRYPOINT`/`CMD`/`WORKDIR`, `EXPOSE`, installed packages from `RUN` (apt, apk, yum, pip, npm), dependency manifests, and `.dockerignore`. Optional `--scan-images` runs `syft` for the real OS and package list |
+| Cloud workloads | Azure Container Apps / App Service / AKS / ACI (Bicep, Terraform, `azure.yaml`), AWS ECS / Lambda / SAM (Terraform, CloudFormation), GCP Cloud Run (Terraform, Knative YAML), ECS task-definition JSON: replicas and autoscaling bounds, ports and ingress exposure, CPU/memory, identity, env and secret names |
+| Relationships | `RUNS`, `BUILT_FROM`, `HOSTS`, `EXPOSES`, `ROUTES_TO` and `DEPENDS_ON` edges link workloads to images, code, gateways and each other |
 
 NuGuard statically analyzes manifests and Helm source. It does not query a live Kubernetes API server.
 

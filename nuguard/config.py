@@ -199,6 +199,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["sbom_llm_enabled"] = bool(sbom_gen["llm"])
     if "llm_concurrency" in sbom_gen:
         flat["sbom_llm_concurrency"] = int(sbom_gen["llm_concurrency"])
+    if "scan_images" in sbom_gen:
+        flat["sbom_scan_images"] = bool(sbom_gen["scan_images"])
+    if "max_image_packages" in sbom_gen:
+        flat["sbom_max_image_packages"] = int(sbom_gen["max_image_packages"])
 
     gap_fill = sbom_gen.get("gap_fill", {}) or {}
     if "max_calls" in gap_fill:
@@ -1199,6 +1203,21 @@ class NuGuardConfig(BaseSettings):
             "Max in-flight LLM calls during SBOM enrichment (yaml: "
             "sbom_generation.llm_concurrency, issue #197). When None, the "
             "AiSbomConfig default (5) is used."
+        ),
+    )
+    sbom_scan_images: bool = Field(
+        default=False,
+        description=(
+            "Scan pulled container images with syft for OS and installed packages "
+            "(yaml: sbom_generation.scan_images; CLI: --scan-images). Requires syft and "
+            "registry access."
+        ),
+    )
+    sbom_max_image_packages: int = Field(
+        default=200,
+        ge=1,
+        description=(
+            "Max packages recorded per container image (yaml: sbom_generation.max_image_packages)."
         ),
     )
     sbom_gap_fill_max_calls: int | None = Field(
