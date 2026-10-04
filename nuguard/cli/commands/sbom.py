@@ -82,6 +82,15 @@ _OPT_LLM_CONCURRENCY = typer.Option(
 )
 
 
+_OPT_SCAN_IMAGES = typer.Option(
+    None, "--scan-images/--no-scan-images",
+    help=(
+        "Scan pulled container images with syft to record real OS and installed packages "
+        "(needs syft on PATH and registry access). Overrides sbom_generation.scan_images."
+    ),
+)
+
+
 _VALID_FORMATS = {"json", "cyclonedx", "cyclonedx-ext", "markdown"}
 
 # GitHub token prefixes (classic PAT, OAuth, fine-grained PAT, GitHub Apps)
@@ -307,6 +316,7 @@ def _do_generate(
     format: str,
     config_file: Optional[Path],
     llm_concurrency: Optional[int] = None,
+    scan_images: Optional[bool] = None,
 ) -> None:
     """Core generate logic shared by the callback and the explicit subcommand."""
     # Run all pre-flight checks before touching the filesystem or network
@@ -380,6 +390,8 @@ def _do_generate(
         "auth_schema_inference_enabled": cfg.sbom_auth_schema_inference_enabled,
         "auth_schema_inference_max_calls": cfg.sbom_auth_schema_inference_max_calls,
         "auth_schema_inference_max_cost_usd": cfg.sbom_auth_schema_inference_max_cost_usd,
+        "scan_images": scan_images if scan_images is not None else cfg.sbom_scan_images,
+        "max_image_packages": cfg.sbom_max_image_packages,
     }
     if cfg.sbom_gap_fill_max_calls is not None:
         config_kwargs["gap_fill_max_calls"] = cfg.sbom_gap_fill_max_calls
@@ -467,6 +479,7 @@ def sbom_default(
     format: str = _OPT_FORMAT,
     config_file: Optional[Path] = _OPT_CONFIG,
     llm_concurrency: Optional[int] = _OPT_LLM_CONCURRENCY,
+    scan_images: Optional[bool] = _OPT_SCAN_IMAGES,
 ) -> None:
     """Generate an AI-SBOM (default) or run a sub-command.
 
@@ -474,7 +487,9 @@ def sbom_default(
     """
     if ctx.invoked_subcommand is not None:
         return
-    _do_generate(source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency)
+    _do_generate(
+        source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency, scan_images
+    )
 
 
 @sbom_app.command("generate")
@@ -488,9 +503,12 @@ def generate(
     format: str = _OPT_FORMAT,
     config_file: Optional[Path] = _OPT_CONFIG,
     llm_concurrency: Optional[int] = _OPT_LLM_CONCURRENCY,
+    scan_images: Optional[bool] = _OPT_SCAN_IMAGES,
 ) -> None:
     """Generate an AI-SBOM by scanning SOURCE or cloning --from-repo."""
-    _do_generate(source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency)
+    _do_generate(
+        source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency, scan_images
+    )
 
 
 @sbom_app.command("validate")

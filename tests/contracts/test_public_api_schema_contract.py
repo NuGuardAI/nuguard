@@ -55,6 +55,17 @@ from nuguard.policy.public_api import (
     CognitivePolicyParseRequest,
     CognitivePolicyParseResult,
 )
+from nuguard.redteam.campaign.config import CampaignConfig
+from nuguard.redteam.campaign.models import (
+    CampaignPlan,
+    CapabilityObservation,
+    ConversationBranchSummary,
+    CoverageSummary,
+    EfficiencySummary,
+    ObjectiveExecutionRecord,
+    ReproductionRecord,
+)
+from nuguard.redteam.defence_regressions.models import DefenceRegressionRunSummary
 from nuguard.redteam.public_api import (
     RedteamAuthConfig,
     RedteamExecutionResult,
@@ -130,9 +141,18 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "policy.CognitivePolicyParseRequest": CognitivePolicyParseRequest,
     "policy.CognitivePolicyParseResult": CognitivePolicyParseResult,
     "redteam.RedteamAuthConfig": RedteamAuthConfig,
+    "redteam.CampaignConfig": CampaignConfig,
+    "redteam.CampaignPlan": CampaignPlan,
+    "redteam.CapabilityObservation": CapabilityObservation,
+    "redteam.ConversationBranchSummary": ConversationBranchSummary,
+    "redteam.CoverageSummary": CoverageSummary,
+    "redteam.EfficiencySummary": EfficiencySummary,
+    "redteam.ObjectiveExecutionRecord": ObjectiveExecutionRecord,
+    "redteam.ReproductionRecord": ReproductionRecord,
     "redteam.RedteamExecutionResult": RedteamExecutionResult,
     "redteam.RedteamLoginFlowConfig": RedteamLoginFlowConfig,
     "redteam.RedteamRunRequest": RedteamRunRequest,
+    "redteam.DefenceRegressionRunSummary": DefenceRegressionRunSummary,
     "redteam.RedteamRunResult": RedteamRunResult,
     "sbom.SbomEnrichmentLlmConfig": SbomEnrichmentLlmConfig,
     "sbom.SbomEnrichmentRequest": SbomEnrichmentRequest,

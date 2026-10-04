@@ -113,8 +113,8 @@ def build_guided_phi_extraction(
         target_node_id=agent_node_id,
         max_turns=12,
         impact_score=9.0,
-        owasp_asi_ref="ASI04 – Data and Model Poisoning",
-        owasp_llm_ref="LLM02 – Sensitive Information Disclosure",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         mitre_atlas_technique="AML.T0048 – Exfiltration via Cyber Means",
     )
 
@@ -155,8 +155,8 @@ def build_guided_pfi_extraction(
         target_node_id=agent_node_id,
         max_turns=12,
         impact_score=9.0,
-        owasp_asi_ref="ASI10 – Sensitive Data Exposure",
-        owasp_llm_ref="LLM06 – Sensitive Information Disclosure",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         mitre_atlas_technique="AML.T0048 – Exfiltration via Cyber Means",
     )
 
@@ -197,8 +197,8 @@ def build_guided_pii_aggregation(
         target_node_id=agent_node_id,
         max_turns=10,
         impact_score=8.5,
-        owasp_asi_ref="ASI10 – Sensitive Data Exposure",
-        owasp_llm_ref="LLM06 – Sensitive Information Disclosure",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         mitre_atlas_technique="AML.T0048 – Exfiltration via Cyber Means",
     )
 
@@ -231,8 +231,8 @@ def build_guided_system_prompt_leak(
         target_node_id=agent_node_id,
         max_turns=10,
         impact_score=7.5,
-        owasp_asi_ref="ASI01 – Prompt Injection",
-        owasp_llm_ref="LLM07 – System Prompt Leakage",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM08:2026",
         tree_exploration=True,   # TAP: branching search significantly improves SPE ASR (RT-016)
     )
 
@@ -268,8 +268,8 @@ def build_guided_role_override(
         target_node_id=agent_node_id,
         max_turns=10,
         impact_score=7.0,
-        owasp_asi_ref="ASI01 – Prompt Injection",
-        owasp_llm_ref="LLM01 – Prompt Injection",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026",
     )
 
 
@@ -302,8 +302,8 @@ def build_guided_tool_coercion(
         target_node_id=agent_node_id,
         max_turns=10,
         impact_score=8.0,
-        owasp_asi_ref="ASI06 – Excessive Agency",
-        owasp_llm_ref="LLM06 – Excessive Agency",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM03:2026",
     )
 
 
@@ -336,8 +336,8 @@ def build_guided_data_store_probe(
         target_node_id=agent_node_id,
         max_turns=12,
         impact_score=8.5,
-        owasp_asi_ref="ASI04 – Data and Model Poisoning",
-        owasp_llm_ref="LLM02 – Sensitive Information Disclosure",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
     )
 
 
@@ -395,7 +395,7 @@ def build_guided_tool_redteam(
         max_turns=max_turns,
         impact_score=7.5,
         owasp_asi_ref="ASI02",
-        owasp_llm_ref="LLM02",
+        owasp_llm_ref="LLM03:2026",
     )
     if scenario.guided_conversation is not None:
         scenario.guided_conversation.sbom_path = sbom_path
@@ -475,7 +475,7 @@ def build_grouped_tool_redteam(
         max_turns=max_turns,
         impact_score=7.5,
         owasp_asi_ref="ASI02",
-        owasp_llm_ref="LLM02",
+        owasp_llm_ref="LLM03:2026",
     )
     if scenario.guided_conversation is not None:
         scenario.guided_conversation.sbom_path = sbom_path
@@ -511,8 +511,8 @@ def build_guided_privilege_escalation(
         target_node_id=agent_node_id,
         max_turns=10,
         impact_score=8.5,
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
-        owasp_llm_ref="LLM06 – Excessive Agency",
+        owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM03:2026",
         mitre_atlas_technique="AML.T0043 – Craft Adversarial Data",
     )
 
@@ -599,8 +599,8 @@ def build_user_data_discovery(
         target_node_id=agent_node_id,
         max_turns=12,
         impact_score=9.0,
-        owasp_asi_ref="ASI10 – Sensitive Data Exposure",
-        owasp_llm_ref="LLM06 – Sensitive Information Disclosure",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         mitre_atlas_technique="AML.T0048 – Exfiltration via Cyber Means",
     )
 
@@ -683,8 +683,8 @@ def build_constrained_cs_narrative_attack(
         target_node_id=agent_node_id,
         max_turns=8,   # 5-turn chain + buffer for recoveries
         impact_score=8.5,
-        owasp_asi_ref="ASI01 – Prompt Injection",
-        owasp_llm_ref="LLM01 – Prompt Injection",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0051 – LLM Prompt Injection",
         profile=profile,
     )

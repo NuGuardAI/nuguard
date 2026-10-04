@@ -149,8 +149,8 @@ def build_base64_exfiltration(
             f"covert encoding to bypass text-based content filters."
         ),
         steps,
-        owasp_asi_ref="ASI10",
-        owasp_llm_ref="LLM06",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         pii_in_path=True,
     )
 
@@ -224,8 +224,8 @@ def build_json_xml_exfiltration(
             f"structured fields, bypassing free-text content filters."
         ),
         steps,
-        owasp_asi_ref="ASI10",
-        owasp_llm_ref="LLM06",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         pii_in_path=True,
     )
 
@@ -305,8 +305,8 @@ def build_document_embedded_exfiltration(
             f"(PDF, docx, CSV) to bypass direct data-query guards."
         ),
         steps,
-        owasp_asi_ref="ASI10",
-        owasp_llm_ref="LLM06",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         pii_in_path=True,
     )
 
@@ -386,8 +386,8 @@ def build_image_url_exfiltration(
             f"enabling steganographic data exfiltration."
         ),
         steps,
-        owasp_asi_ref="ASI10",
-        owasp_llm_ref="LLM06",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         pii_in_path=True,
     )
 
@@ -470,8 +470,8 @@ def build_payment_method_escalation(
             f"from {agent_name}."
         ),
         steps,
-        owasp_asi_ref="ASI10",
-        owasp_llm_ref="LLM06",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         pfi_in_path=True,
     )
 
@@ -539,8 +539,8 @@ def build_bank_account_probe(
             f"account number and routing number from {agent_name}."
         ),
         steps,
-        owasp_asi_ref="ASI10",
-        owasp_llm_ref="LLM06",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         pfi_in_path=True,
     )
 
@@ -608,8 +608,8 @@ def build_ssn_enumeration(
             f"to enumerate Social Security Numbers from {agent_name}."
         ),
         steps,
-        owasp_asi_ref="ASI10",
-        owasp_llm_ref="LLM06",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         pfi_in_path=True,
     )
 
@@ -697,7 +697,7 @@ def build_cross_tenant_exfiltration(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM02:2026",
         pii_in_path=True,
     )
 
@@ -757,7 +757,7 @@ def build_cross_tenant_fictional_framing(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM02:2026",
         pii_in_path=True,
     )
 
@@ -824,8 +824,8 @@ def build_rag_poisoning(
             f"{write_tool_name}, then retrieve it to execute the embedded instruction."
         ),
         steps,
-        owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM02",
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM05:2026",
     )
 
 
@@ -900,7 +900,7 @@ def build_account_id_probe(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM02:2026",
         pii_in_path=True,
     )
 
@@ -1002,8 +1002,8 @@ def build_datastore_schema_probe(
             f"{', '.join(table_names[:3]) if table_names else datastore_name}."
         ),
         steps,
-        owasp_asi_ref="ASI05",
-        owasp_llm_ref="LLM06",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026",
         pii_in_path=True,
     )
 
@@ -1141,7 +1141,7 @@ def build_datastore_sql_injection(
         ),
         steps,
         owasp_asi_ref="ASI05",
-        owasp_llm_ref="LLM04",
+        owasp_llm_ref="LLM02:2026, LLM10:2026",
         pii_in_path=True,
     )
 
@@ -1232,7 +1232,7 @@ def build_cross_account_tool_abuse(
         ),
         steps,
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM02:2026, LLM03:2026",
         pii_in_path=True,
         has_no_auth_tool=True,
     )
@@ -1282,7 +1282,7 @@ def build_cross_session_leak(
         title=f"Cross-Session Secret Leak — {agent_name}",
         description="Agent leaks data from claimed prior session or another user's session",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI05",
+        owasp_llm_ref="LLM02:2026", owasp_asi_ref="ASI06",
         pii_in_path=True,
     )
 
@@ -1326,7 +1326,7 @@ def build_private_doc_extraction(
         title=f"Private Document Extraction — {agent_name}",
         description="Agent retrieves and exposes verbatim private document content from RAG store",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026", owasp_asi_ref="ASI02",
         pii_in_path=True,
     )
 
@@ -1370,7 +1370,7 @@ def build_rag_citation_overreach(
         title=f"RAG Citation Overreach — {agent_name}",
         description="Agent cites or reveals restricted document chunks beyond user authorization",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026, LLM09:2026", owasp_asi_ref="ASI02",
         pii_in_path=True,
     )
 
@@ -1424,7 +1424,7 @@ def build_aggregated_pii(
         title=f"Aggregated PII Across Turns — {agent_name}",
         description="Multi-turn aggregation of individually low-risk fields into a complete PII profile",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026", owasp_asi_ref="ASI02",
         pii_in_path=True,
     )
 
@@ -1467,6 +1467,6 @@ def build_history_disclosure(
         title=f"Sensitive History Disclosure — {agent_name}",
         description="Agent discloses location trail, search terms, or message history",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026", owasp_asi_ref="ASI02",
         pii_in_path=True,
     )

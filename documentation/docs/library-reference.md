@@ -170,6 +170,10 @@ result = await run_analysis(
 
 `AnalysisRunResult` includes `findings`, `tool_status`, `nga_audit`, `sc_audit`, `token_usage`, and `remediation_plan`.
 
+`AnalysisRunRequest` accepts `checkov_timeout` and `semgrep_timeout` (120 seconds per process), plus `checkov_total_timeout` and `semgrep_total_timeout` (300 seconds per scanner across all paths). Values must be finite and positive. `StaticAnalyzer` accepts the same arguments. CLI flags use hyphens, for example `--checkov-total-timeout 180`; YAML places these keys under `analyze`.
+
+Timeouts terminate scanner workers and reap the parent, with bounded cleanup beyond the scan deadline. Launch, exit, output, and scanner-reported parsing errors set the tool's status to `error`; partial findings remain available. The CLI writes the report and exits with code 2 for incomplete Checkov or Semgrep scans. Missing binaries or paths are `skipped`. Logs identify each path, duration, return code, and outcome, with a heartbeat every 15 seconds during execution. Raw scanner output is omitted from error logs. Cancelling the async caller does not immediately cancel scanner threads; their configured deadlines still apply.
+
 ## Behavior APIs
 
 Module: `nuguard.behavior.public_api`
@@ -255,12 +259,26 @@ result = await run_redteam(
 )
 ```
 
+`RedteamRunRequest` additively exposes `defence_regressions`, `defence_regression_paraphrases`,
+`asm_max_probe_requests`, `asm_extra_inventory_paths`, and `trust_context_confirmation_cells`;
+see the agentic-surface notes in the platform integration guide. Findings carry optional
+`evasion_differential`, `decorator_name`, `callback_evidence`, `regression_paraphrase_kind`,
+`dual_path_verdict`, and `state_diff_outcome` evidence fields.
+
 `RedteamRunRequest.auth_config` uses the secret-safe public `RedteamAuthConfig` and remains
 compatible with internal `AuthConfig` and application `AppAuthConfig` inputs. Bearer, API-key,
 basic, login-flow, cookie-file, and no-auth configurations are normalized without placing
 resolved credentials in serialized requests or result models. Request JSON dumps are redacted
 diagnostic representations and must not be persisted or replayed as executable credential
 transport. Platforms should resolve secret references server-side before constructing a request.
+
+`RedteamRunRequest.mode` is `concurrent`, `progressive` or `campaign`; `campaign` accepts a
+`CampaignConfig` (turn/token limits, retry budget, fresh-session confirmation, optional run
+budgets). `RedteamRunResult` additively carries `campaign_coverage`, `campaign_plan`,
+`objective_records`, `reproduction_records`, `branch_summaries`, `capability_observations` and
+`efficiency` (all empty/`None` outside campaign mode); `Finding` gains `catalog_id`,
+`reproduction_status`, `evidence_kind`, `effect_verified` and `framework_versions`. These models
+carry counts, ids and statuses only — never headers, cookies or raw transcripts.
 
 `RedteamRunResult.scan_outcome` is one of:
 

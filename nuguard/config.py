@@ -32,6 +32,7 @@ from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
+    from nuguard.redteam.campaign.config import CampaignConfig
 
 _log = get_logger(__name__)
 
@@ -199,6 +200,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["sbom_llm_enabled"] = bool(sbom_gen["llm"])
     if "llm_concurrency" in sbom_gen:
         flat["sbom_llm_concurrency"] = int(sbom_gen["llm_concurrency"])
+    if "scan_images" in sbom_gen:
+        flat["sbom_scan_images"] = bool(sbom_gen["scan_images"])
+    if "max_image_packages" in sbom_gen:
+        flat["sbom_max_image_packages"] = int(sbom_gen["max_image_packages"])
 
     gap_fill = sbom_gen.get("gap_fill", {}) or {}
     if "max_calls" in gap_fill:
@@ -340,6 +345,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_profile"] = redteam["profile"]
     if "mode" in redteam:
         flat["redteam_mode"] = str(redteam["mode"])
+    if "campaign" in redteam and isinstance(redteam["campaign"], dict):
+        for _ck, _cv in redteam["campaign"].items():
+            flat[f"redteam_campaign_{_ck}"] = _cv
     if "progressive" in redteam and isinstance(redteam["progressive"], dict):
         _prog = redteam["progressive"]
         if "halt_on_severity" in _prog:
@@ -363,6 +371,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_request_timeout"] = float(redteam["request_timeout"])
     if "scenario_timeout" in redteam:
         flat["redteam_scenario_timeout"] = float(redteam["scenario_timeout"])
+    if "api_endpoint_threshold" in redteam:
+        flat["redteam_api_endpoint_threshold"] = int(redteam["api_endpoint_threshold"])
+    if "ci_api_spot_checks" in redteam:
+        flat["redteam_ci_api_spot_checks"] = int(redteam["ci_api_spot_checks"])
     if "similar_miss_threshold" in redteam:
         flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
     if "hard_refusal_abort_turns" in redteam:
@@ -470,6 +482,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         if "tool_trace_hits" in finding_triggers:
             flat["redteam_trigger_tool_trace_hits"] = bool(
                 finding_triggers["tool_trace_hits"]
+            )
+        if "identity_mismatch_hits" in finding_triggers:
+            flat["redteam_trigger_identity_mismatch_hits"] = bool(
+                finding_triggers["identity_mismatch_hits"]
             )
 
     # Redteam LLM section — skip keys whose env-var interpolation produced None
@@ -590,11 +606,32 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 flat["redteam_auth_password"] = _recovery_password
 
     # Redteam defence_regressions
+    for key in ("defence_regression_timeout", "defence_regression_probe_timeout"):
+        if isinstance(redteam, dict) and key in redteam:
+            flat[f"redteam_{key}"] = redteam[key]
     if isinstance(redteam, dict) and "defence_regressions" in redteam:
         flat["redteam_defence_regressions"] = redteam["defence_regressions"]
+    if isinstance(redteam, dict) and "defence_regression_paraphrases" in redteam:
+        flat["redteam_defence_regression_paraphrases"] = redteam["defence_regression_paraphrases"]
+
+    # Redteam ASM (Agentic Surface Model) probing budget/paths
+    _asm = redteam.get("asm", {}) if isinstance(redteam, dict) else {}
+    if isinstance(_asm, dict):
+        if "max_probe_requests" in _asm:
+            flat["redteam_asm_max_probe_requests"] = _asm["max_probe_requests"]
+        if "extra_inventory_paths" in _asm:
+            flat["redteam_asm_extra_inventory_paths"] = _asm["extra_inventory_paths"]
+
+    # Redteam trust-context matrix (W2)
+    _trust_context = redteam.get("trust_context", {}) if isinstance(redteam, dict) else {}
+    if isinstance(_trust_context, dict) and "confirmation_cells" in _trust_context:
+        flat["redteam_trust_context_confirmation_cells"] = _trust_context["confirmation_cells"]
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
+    for key in ("checkov_timeout", "checkov_total_timeout", "semgrep_timeout", "semgrep_total_timeout"):
+        if key in analyze:
+            flat[f"analyze_{key}"] = analyze[key]
     if "min_severity" in analyze:
         flat["analyze_min_severity"] = analyze["min_severity"]
     if "nga_only" in analyze:
@@ -1073,6 +1110,10 @@ class RedteamFindingTriggers(BaseModel):
     any_inject_success: bool = False
     # Phase 3 catalog evidence layers
     tool_trace_hits: bool = True
+    # W2 trust-context matrix (redteam-proposal.md) — top-priority tier,
+    # checked ahead of canary_hits: a confirmed identity mismatch is
+    # deterministic data-membership proof, not LLM-judged.
+    identity_mismatch_hits: bool = True
 
     def any_enabled(self) -> bool:
         """Return True when at least one trigger is enabled."""
@@ -1083,6 +1124,7 @@ class RedteamFindingTriggers(BaseModel):
                 self.critical_success_hits,
                 self.any_inject_success,
                 self.tool_trace_hits,
+                self.identity_mismatch_hits,
             ]
         )
 
@@ -1171,6 +1213,21 @@ class NuGuardConfig(BaseSettings):
             "Max in-flight LLM calls during SBOM enrichment (yaml: "
             "sbom_generation.llm_concurrency, issue #197). When None, the "
             "AiSbomConfig default (5) is used."
+        ),
+    )
+    sbom_scan_images: bool = Field(
+        default=False,
+        description=(
+            "Scan pulled container images with syft for OS and installed packages "
+            "(yaml: sbom_generation.scan_images; CLI: --scan-images). Requires syft and "
+            "registry access."
+        ),
+    )
+    sbom_max_image_packages: int = Field(
+        default=200,
+        ge=1,
+        description=(
+            "Max packages recorded per container image (yaml: sbom_generation.max_image_packages)."
         ),
     )
     sbom_gap_fill_max_calls: int | None = Field(
@@ -1322,13 +1379,60 @@ class NuGuardConfig(BaseSettings):
             "or 'full' (all scenarios, ≥50 on rich SBOMs) (yaml: redteam.profile)."
         ),
     )
-    redteam_mode: str = Field(
+    redteam_mode: Literal["concurrent", "progressive", "campaign"] = Field(
         default="concurrent",
         description=(
             "'concurrent' (default, existing behavior — phase-gated with intra-phase "
-            "parallelism) or 'progressive' (strictly sequential named 0-12 phase "
-            "engagement, see docs/claude-redteam-3.md) (yaml: redteam.mode)."
+            "parallelism), 'progressive' (strictly sequential named 0-12 phase "
+            "engagement, see docs/claude-redteam-3.md) or 'campaign' (opt-in "
+            "conversation-reuse campaigns, see documentation/developer-specs/redteam-v5.md) "
+            "(yaml: redteam.mode)."
         ),
+    )
+    redteam_campaign_max_turns_per_branch: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_turns_per_branch)."
+    )
+    redteam_campaign_max_branch_tokens: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_branch_tokens)."
+    )
+    redteam_campaign_max_objective_turns: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_objective_turns)."
+    )
+    redteam_campaign_max_retries_per_incident: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_retries_per_incident)."
+    )
+    redteam_campaign_retry_window_seconds: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.retry_window_seconds)."
+    )
+    redteam_campaign_confirm_in_fresh_sessions: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.confirm_in_fresh_sessions)."
+    )
+    redteam_campaign_target_supports_session_reset: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.target_supports_session_reset)."
+    )
+    redteam_campaign_campaign_warmup: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.campaign_warmup)."
+    )
+    redteam_campaign_max_concurrent_requests: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_concurrent_requests)."
+    )
+    redteam_campaign_declared_fixtures: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.declared_fixtures)."
+    )
+    redteam_campaign_fixture_version: str | None = Field(
+        default=None, description="(yaml: redteam.campaign.fixture_version)."
+    )
+    redteam_campaign_confirmation_reserve_fraction: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.confirmation_reserve_fraction)."
+    )
+    redteam_campaign_max_run_target_requests: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_run_target_requests)."
+    )
+    redteam_campaign_max_run_seconds: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_run_seconds)."
+    )
+    redteam_campaign_max_run_llm_cost_usd: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_run_llm_cost_usd)."
     )
     redteam_progressive_halt_on_severity: str = Field(
         default="none",
@@ -1382,6 +1486,23 @@ class NuGuardConfig(BaseSettings):
             "Scenarios that exceed this limit are cancelled and recorded as 'timeout'. "
             "0 disables the timeout. Default is 600 s to accommodate in-semaphore "
             "transient-retry loops for slow cold-starting targets."
+        ),
+    )
+    redteam_api_endpoint_threshold: int = Field(
+        default=25,
+        ge=1,
+        description=(
+            "API endpoint count above which the redteam LLM narrows each direct-HTTP "
+            "probe family (JWT tampering, XSS, ...) to relevant endpoints "
+            "(yaml: redteam.api_endpoint_threshold)."
+        ),
+    )
+    redteam_ci_api_spot_checks: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Number of API endpoints spot-checked per probe family in the ci "
+            "profile (yaml: redteam.ci_api_spot_checks)."
         ),
     )
     redteam_similar_miss_threshold: int = Field(
@@ -1710,6 +1831,14 @@ class NuGuardConfig(BaseSettings):
             "(yaml: redteam.finding_triggers.tool_trace_hits)."
         ),
     )
+    redteam_trigger_identity_mismatch_hits: bool = Field(
+        default=True,
+        description=(
+            "Emit findings when the W2 trust-context matrix confirms a request "
+            "with conflicting/invalid identity returned another identity's data "
+            "(yaml: redteam.finding_triggers.identity_mismatch_hits)."
+        ),
+    )
     redteam_pre_run_warmup: int = Field(
         default=0,
         ge=0,
@@ -1801,6 +1930,10 @@ class NuGuardConfig(BaseSettings):
     )
 
     # ------------------------------------------------------- Analyze
+    analyze_checkov_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds (yaml: analyze.checkov_timeout).")
+    analyze_checkov_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.checkov_total_timeout).")
+    analyze_semgrep_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds (yaml: analyze.semgrep_timeout).")
+    analyze_semgrep_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.semgrep_total_timeout).")
     analyze_min_severity: str = Field(
         default="medium",
         description=(
@@ -1897,6 +2030,52 @@ class NuGuardConfig(BaseSettings):
         default_factory=list,
         description="Defence regression scenarios declared in nuguard.yaml redteam.defence_regressions.",
     )
+    redteam_defence_regression_timeout: float = Field(
+        default=180.0, gt=0,
+        description="Wall-clock deadline for the entire defence-regression pre-pass, including variant generation (yaml: redteam.defence_regression_timeout).",
+    )
+    redteam_defence_regression_probe_timeout: float = Field(
+        default=30.0, gt=0,
+        description="Wall-clock deadline per defence-regression probe, including retries (yaml: redteam.defence_regression_probe_timeout).",
+    )
+    redteam_defence_regression_paraphrases: int = Field(
+        default=5,
+        description=(
+            "Number of paraphrase variants generated per defence_regressions entry "
+            "(roleplay, extraction-between-markers, audit-evidence, encoded, "
+            "second-person indirection). 0 disables paraphrase expansion and "
+            "evaluates only the literal configured message "
+            "(yaml: redteam.defence_regression_paraphrases)."
+        ),
+    )
+
+    # ----------------------------------------- Agentic Surface Model (W1)
+    redteam_asm_max_probe_requests: int = Field(
+        default=25,
+        description=(
+            "Request budget for the Agentic Surface Model prober (openapi/schema "
+            "exposure, tool/agent inventory disclosure, observation-channel "
+            "connectability, CORS reflection) — GET/OPTIONS only "
+            "(yaml: redteam.asm.max_probe_requests)."
+        ),
+    )
+    redteam_asm_extra_inventory_paths: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra tool/agent-inventory paths to probe alongside the built-in "
+            "heuristic list (yaml: redteam.asm.extra_inventory_paths)."
+        ),
+    )
+
+    # ----------------------------------------- Trust-context matrix (W2)
+    redteam_trust_context_confirmation_cells: int = Field(
+        default=1,
+        description=(
+            "Extra trust-context cells to run after the first confirmed identity "
+            "mismatch before early-exiting the matrix "
+            "(yaml: redteam.trust_context.confirmation_cells)."
+        ),
+    )
 
     def resolved_auth_config(self) -> "AuthConfig":
         """Build an AuthConfig from the resolved *redteam* auth settings.
@@ -1934,6 +2113,35 @@ class NuGuardConfig(BaseSettings):
             )
         return AuthConfig(type="none")
 
+    def resolved_redteam_campaign_config(self) -> "CampaignConfig":
+        """Return the validated campaign config (explicit keys over defaults)."""
+        from nuguard.redteam.campaign.config import CampaignConfig
+
+        explicit = {
+            k: v
+            for k, v in self.model_dump().items()
+            if k.startswith("redteam_campaign_") and v is not None
+        }
+        # The (previously unwired) legacy limit now feeds the campaign target limiter.
+        explicit.setdefault(
+            "redteam_campaign_max_concurrent_requests", self.redteam_max_concurrent_requests
+        )
+        return CampaignConfig.from_flat(explicit)
+
+    @model_validator(mode="after")
+    def _validate_campaign_mode(self) -> "NuGuardConfig":
+        """Reject inconsistent campaign settings at load time (campaign mode only)."""
+        if self.redteam_mode != "campaign":
+            return self
+        campaign = self.resolved_redteam_campaign_config()
+        if self.redteam_pre_run_warmup > 0 and campaign.campaign_warmup:
+            raise ValueError(
+                "redteam.pre_run_warmup conflicts with redteam.campaign.campaign_warmup: "
+                "campaign mode manages its own warm-up. Set pre_run_warmup: 0 or "
+                "campaign.campaign_warmup: false."
+            )
+        return self
+
     def resolved_redteam_finding_triggers(self) -> RedteamFindingTriggers:
         """Build trigger controls from resolved redteam configuration."""
         return RedteamFindingTriggers(
@@ -1942,6 +2150,7 @@ class NuGuardConfig(BaseSettings):
             critical_success_hits=self.redteam_trigger_critical_success_hits,
             any_inject_success=self.redteam_trigger_any_inject_success,
             tool_trace_hits=self.redteam_trigger_tool_trace_hits,
+            identity_mismatch_hits=self.redteam_trigger_identity_mismatch_hits,
         )
 
     model_config = SettingsConfigDict(

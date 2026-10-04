@@ -17,6 +17,7 @@ import hashlib
 from collections import defaultdict
 
 from nuguard.common.logging import get_logger
+from nuguard.models.exploit_chain import ScenarioType
 from nuguard.sbom.models import AiSbomDocument
 
 from .builders import BUILDER_FACTORIES, AppCapabilityProfile, BuilderContext
@@ -138,6 +139,14 @@ def select_scenarios(
             skipped.append((spec.id, spec.category.value, "profile_capped"))
             continue
 
+        # --- destructive specs are out of CI scope ----
+        if scan_profile == "ci" and (
+            spec.category == ScenarioCategory.DESTRUCTIVE_ACTION
+            or spec.scenario_type == ScenarioType.RESOURCE_EXHAUSTION
+        ):
+            skipped.append((spec.id, spec.category.value, "destructive_not_in_ci"))
+            continue
+
         # --- explicitly disabled ----
         if not spec.enabled:
             skipped.append((spec.id, spec.category.value, "spec_disabled"))
@@ -163,7 +172,9 @@ def select_scenarios(
             C.MCP_SERVER in spec.required_capabilities
             and builder_key in ("mcp_toxic_flow", "mcp_tool_injection", "mcp_output_poisoning")
         )
-        _needs_api = builder_key in ("mass_assignment", "auth_bypass", "idor")
+        _needs_api = builder_key in (
+            "mass_assignment", "auth_bypass", "idor", "dual_path_read", "identity_invalid_cred_spoof",
+        )
 
         # Build expanded context list with concrete node bindings
         expanded_contexts: list[BuilderContext] = []

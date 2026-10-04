@@ -1154,6 +1154,9 @@ public class ChatController : ControllerBase
         "location": "query",
         "type_hint": "int",
         "required": False,
+        "identity_role": None,
+        "identity_role_evidence": None,
+        "mass_assignment_risk": None,
     }
     assert ("Message", "json") in params
     assert not any(name == "cancellationToken" for name, _ in params)

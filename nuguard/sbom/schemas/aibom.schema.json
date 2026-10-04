@@ -10,6 +10,78 @@
       "title": "AccessType",
       "type": "string"
     },
+    "AsmSummary": {
+      "description": "Summarized, credential-redacted Agentic Surface Model facts (W1).\n\nThe full live-probed :class:`~nuguard.redteam.enrichment.asm_models.\nAgenticSurfaceModel` (every probed URL, header, status, timestamp) is a\n*runtime* artifact \u2014 not persisted here, same treatment as\n``chat_payload_extras``. Only booleans/counts safe to commit to the SBOM\nJSON are promoted, written onto the AGENT node by\n``apply_asm_to_sbom()``. Never set directly from a raw header value.",
+      "properties": {
+        "sibling_endpoint_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of endpoints discovered beyond the primary chat route",
+          "title": "Sibling Endpoint Count"
+        },
+        "unauthenticated_inventory_exposed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a tool/agent inventory endpoint (e.g. /api/tools) is reachable without auth",
+          "title": "Unauthenticated Inventory Exposed"
+        },
+        "observation_channel_unauthenticated": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a WS/SSE observation channel accepted a connection without auth",
+          "title": "Observation Channel Unauthenticated"
+        },
+        "cors_wildcard_with_credentials_live": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a live OPTIONS probe reflected an attacker Origin with credentials allowed",
+          "title": "Cors Wildcard With Credentials Live"
+        },
+        "direct_tool_endpoint_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path of a confirmed directly-invocable tool endpoint, when one was found",
+          "title": "Direct Tool Endpoint Path"
+        }
+      },
+      "title": "AsmSummary",
+      "type": "object"
+    },
     "AuthDetail": {
       "description": "Detailed authentication and authorization posture for a component.",
       "properties": {
@@ -96,6 +168,27 @@
         }
       },
       "title": "AuthDetail",
+      "type": "object"
+    },
+    "CompensatingAction": {
+      "description": "A generic rollback recipe for a state-changing operation (pentest-proposal A3).",
+      "properties": {
+        "method": {
+          "description": "HTTP method of the compensating call, e.g. 'DELETE'",
+          "title": "Method",
+          "type": "string"
+        },
+        "path": {
+          "description": "Route template of the compensating call",
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "path"
+      ],
+      "title": "CompensatingAction",
       "type": "object"
     },
     "ComponentType": {
@@ -479,6 +572,55 @@
           "description": "True when the handler requires the input",
           "title": "Required",
           "type": "boolean"
+        },
+        "identity_role": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "subject_id",
+                "tenant_id",
+                "role_hint"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Generic, SBOM-driven identity-field tag used by the redteam trust-context matrix (user_id/tenant_id/role-style fields) \u2014 'subject_id' for a caller/user identifier, 'tenant_id' for a tenant/org scope, 'role_hint' for a role/permission field. None when this parameter is not identity-related.",
+          "title": "Identity Role"
+        },
+        "identity_role_evidence": {
+          "anyOf": [
+            {
+              "enum": [
+                "name_match",
+                "path_context"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How identity_role was derived, so confidence is auditable: 'name_match' (parameter name heuristic) or 'path_context' (a bare 'id' path parameter under a users/accounts/tenants-style segment). None when identity_role is unset.",
+          "title": "Identity Role Evidence"
+        },
+        "mass_assignment_risk": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a client-supplied 'role_hint' parameter is accepted on a write method (POST/PUT/PATCH) \u2014 a mass-assignment/privilege-escalation candidate. None when not applicable.",
+          "title": "Mass Assignment Risk"
         }
       },
       "required": [
@@ -522,6 +664,89 @@
         }
       },
       "title": "HttpRequestMetadata",
+      "type": "object"
+    },
+    "ImagePackage": {
+      "description": "A package installed in a container image (never a secret; name/version only).",
+      "properties": {
+        "name": {
+          "description": "Package name",
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Pinned version, when known",
+          "title": "Version"
+        },
+        "manager": {
+          "description": "'apt', 'apk', 'yum', 'pip', 'npm' or 'syft:<type>'",
+          "title": "Manager",
+          "type": "string"
+        },
+        "source": {
+          "description": "How it was discovered",
+          "enum": [
+            "dockerfile_run",
+            "syft"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "manager",
+        "source"
+      ],
+      "title": "ImagePackage",
+      "type": "object"
+    },
+    "IngressDetail": {
+      "description": "One externally reachable ingress of a DEPLOYMENT (pentest-proposal A4).",
+      "properties": {
+        "role": {
+          "description": "'gateway' (reverse proxy/ingress), 'direct' (backend exposed itself), or 'static_frontend'",
+          "enum": [
+            "gateway",
+            "direct",
+            "static_frontend"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Ingress URL or host when statically known; never a secret",
+          "title": "Url"
+        },
+        "evidence": {
+          "description": "What proved it, e.g. 'nginx proxy_pass', 'ACA ingress', 'k8s Ingress'",
+          "title": "Evidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "evidence"
+      ],
+      "title": "IngressDetail",
       "type": "object"
     },
     "InstrumentationDetail": {
@@ -589,6 +814,98 @@
         }
       },
       "title": "InstrumentationDetail",
+      "type": "object"
+    },
+    "MutationSemantics": {
+      "description": "State-effect facts for an API_ENDPOINT, used to gate destructive pentest scenarios.\n\n``unknown`` is the default everywhere and never blocks a scan \u2014 it only\nlimits destructive eligibility (pentest-proposal A3/B5).",
+      "properties": {
+        "mutation_kind": {
+          "default": "unknown",
+          "description": "'none' for reads; 'payment' for money movement; 'auth_state' for password/role/session changes",
+          "enum": [
+            "none",
+            "create",
+            "update",
+            "delete",
+            "payment",
+            "auth_state",
+            "unknown"
+          ],
+          "title": "Mutation Kind",
+          "type": "string"
+        },
+        "idempotency": {
+          "default": "unknown",
+          "description": "'idempotent' per HTTP semantics or an idempotency key; else 'non_idempotent'",
+          "enum": [
+            "unknown",
+            "idempotent",
+            "non_idempotent"
+          ],
+          "title": "Idempotency",
+          "type": "string"
+        },
+        "confirmation_required": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a confirm token/field/two-phase step is observed; False when a payment/delete handler shows none (the absence is the finding signal)",
+          "title": "Confirmation Required"
+        },
+        "reversible": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a compensating action exists in the endpoint set",
+          "title": "Reversible"
+        },
+        "compensating_action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompensatingAction"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Rollback recipe when reversible is True"
+        },
+        "audit_logged": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the handler writes an audit-log record",
+          "title": "Audit Logged"
+        },
+        "evidence": {
+          "description": "Short tags naming the signals used, e.g. ['http_method:POST', 'path_verb:transfer']",
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "title": "MutationSemantics",
       "type": "object"
     },
     "Node": {
@@ -896,6 +1213,250 @@
           "default": null,
           "description": "Full base image reference, e.g. 'python:3.12-slim'",
           "title": "Base Image"
+        },
+        "image_role": {
+          "anyOf": [
+            {
+              "enum": [
+                "base",
+                "app"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CONTAINER_IMAGE: 'base' (a FROM ref) or 'app' (a built image)",
+          "title": "Image Role"
+        },
+        "os_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image OS, e.g. 'debian', 'alpine'",
+          "title": "Os Name"
+        },
+        "os_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image OS version, e.g. '12', '3.19'",
+          "title": "Os Version"
+        },
+        "os_family": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image OS family: 'debian', 'rhel', 'alpine', 'distroless', ...",
+          "title": "Os Family"
+        },
+        "os_evidence": {
+          "anyOf": [
+            {
+              "enum": [
+                "tag",
+                "image_default",
+                "syft"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How the OS was determined: tag, image_default or syft",
+          "title": "Os Evidence"
+        },
+        "stage_alias": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Final build stage alias (AS name)",
+          "title": "Stage Alias"
+        },
+        "entrypoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dockerfile ENTRYPOINT, as written",
+          "title": "Entrypoint"
+        },
+        "cmd": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dockerfile CMD, as written",
+          "title": "Cmd"
+        },
+        "workdir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dockerfile WORKDIR",
+          "title": "Workdir"
+        },
+        "image_packages": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ImagePackage"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Packages installed in the image (RUN parsing or syft)",
+          "title": "Image Packages"
+        },
+        "dependency_manifests": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dependency manifests COPY'd into the image",
+          "title": "Dependency Manifests"
+        },
+        "has_dockerignore": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a .dockerignore sits beside the Dockerfile",
+          "title": "Has Dockerignore"
+        },
+        "exposed_ports": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/PortDetail"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CONTAINER_IMAGE: ports declared with EXPOSE",
+          "title": "Exposed Ports"
+        },
+        "workload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WorkloadDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "DEPLOYMENT nodes: the deployed service's runtime shape"
+        },
+        "cloud_provider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "DEPLOYMENT nodes: 'aws', 'azure', 'gcp', 'kubernetes', ...",
+          "title": "Cloud Provider"
+        },
+        "hosted_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Name of the workload that hosts this component",
+          "title": "Hosted By"
+        },
+        "network_exposure": {
+          "anyOf": [
+            {
+              "enum": [
+                "public",
+                "internal",
+                "cluster",
+                "unknown"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How reachable this endpoint/agent is from outside, via its hosting workload",
+          "title": "Network Exposure"
         },
         "cloud_region": {
           "anyOf": [
@@ -1532,6 +2093,89 @@
           "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
           "title": "Path Param Sources"
         },
+        "object_id_semantics": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ObjectIdSemantics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Object-ID format/enumerability facts for authorization-replay testing"
+        },
+        "mutation_semantics": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MutationSemantics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "State-effect facts (mutation kind, idempotency, rollback) for destructive-test gating"
+        },
+        "identity_binding": {
+          "anyOf": [
+            {
+              "enum": [
+                "client_supplied",
+                "credential_bound",
+                "mixed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Where this endpoint's caller identity comes from: 'client_supplied' (an identity parameter the caller controls), 'credential_bound' (handler resolves it from the credential, e.g. Depends(get_current_user)), or 'mixed'. None when no identity signal was found.",
+          "title": "Identity Binding"
+        },
+        "response_echoes_input": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the framework's validation errors echo the submitted input (framework-level fact, e.g. FastAPI 422 responses)",
+          "title": "Response Echoes Input"
+        },
+        "session_cookie_semantics": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionCookieSemantics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether handler code is expected to issue session cookies"
+        },
+        "ingresses": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/IngressDetail"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "DEPLOYMENT nodes: externally reachable ingresses (gateway/direct/static frontend)",
+          "title": "Ingresses"
+        },
         "http_request": {
           "anyOf": [
             {
@@ -1710,6 +2354,18 @@
           ],
           "default": null,
           "description": "CORS configuration extracted from code or IaC"
+        },
+        "asm_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AsmSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Summarized, credential-redacted Agentic Surface Model facts (redteam-proposal.md W1) \u2014 set on AGENT nodes by nuguard.redteam.enrichment.asm_prober.apply_asm_to_sbom()"
         },
         "debug_error_leak": {
           "anyOf": [
@@ -2219,6 +2875,66 @@
       "title": "NodeMetadata",
       "type": "object"
     },
+    "ObjectIdSemantics": {
+      "description": "Object-ID facts for an API_ENDPOINT that addresses one object (pentest-proposal A2).\n\nStatic, best-effort and credential-free. Whether adjacent IDs actually exist\nis a runtime fact and is never recorded here.",
+      "properties": {
+        "param_name": {
+          "description": "Path/query/body parameter that carries the object ID",
+          "title": "Param Name",
+          "type": "string"
+        },
+        "id_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Best-effort ID format evidence: 'int', 'uuid', 'ulid', 'ACCT-{seq}', ...",
+          "title": "Id Format"
+        },
+        "sequential": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when evidence shows adjacent/ordered IDs (integer or sequence-string IDs)",
+          "title": "Sequential"
+        },
+        "enumerability": {
+          "default": "unknown",
+          "description": "'high' for guessable sequential IDs, 'low' for random IDs, else 'unknown'",
+          "enum": [
+            "high",
+            "low",
+            "unknown"
+          ],
+          "title": "Enumerability",
+          "type": "string"
+        },
+        "sibling_read_paths": {
+          "description": "Other endpoints that read the same object family",
+          "items": {
+            "type": "string"
+          },
+          "title": "Sibling Read Paths",
+          "type": "array"
+        }
+      },
+      "required": [
+        "param_name"
+      ],
+      "title": "ObjectIdSemantics",
+      "type": "object"
+    },
     "PackageDep": {
       "description": "A single declared package dependency.",
       "properties": {
@@ -2251,6 +2967,83 @@
         "source_file"
       ],
       "title": "PackageDep",
+      "type": "object"
+    },
+    "PortDetail": {
+      "description": "One network port of a workload or image.",
+      "properties": {
+        "container_port": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Port the process listens on",
+          "title": "Container Port"
+        },
+        "service_port": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Port a Service/load balancer exposes, when different",
+          "title": "Service Port"
+        },
+        "host_port": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Published host port (compose, ECS)",
+          "title": "Host Port"
+        },
+        "protocol": {
+          "default": "tcp",
+          "description": "'tcp' or 'udp'",
+          "title": "Protocol",
+          "type": "string"
+        },
+        "exposure": {
+          "default": "unknown",
+          "description": "'public' (internet-reachable), 'internal' (VNet/private), 'cluster' (cluster-internal only) or 'unknown'",
+          "enum": [
+            "public",
+            "internal",
+            "cluster",
+            "unknown"
+          ],
+          "title": "Exposure",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What declared it, e.g. 'EXPOSE', 'k8s Service', 'aca ingress'",
+          "title": "Source"
+        }
+      },
+      "title": "PortDetail",
       "type": "object"
     },
     "RateLimitDetail": {
@@ -2346,10 +3139,164 @@
         "PROTECTS",
         "DEPLOYS",
         "DELEGATES_TO",
-        "CONTAINS"
+        "CONTAINS",
+        "RUNS",
+        "BUILT_FROM",
+        "HOSTS",
+        "EXPOSES",
+        "ROUTES_TO",
+        "DEPENDS_ON"
       ],
       "title": "RelationshipType",
       "type": "string"
+    },
+    "ResourceDetail": {
+      "description": "CPU/memory requests and limits as written in the source (not normalised).",
+      "properties": {
+        "cpu_request": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpu Request"
+        },
+        "cpu_limit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpu Limit"
+        },
+        "memory_request": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Request"
+        },
+        "memory_limit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Limit"
+        }
+      },
+      "title": "ResourceDetail",
+      "type": "object"
+    },
+    "ScalingDetail": {
+      "description": "Replica count and autoscaling bounds of a workload.",
+      "properties": {
+        "replicas": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Static/desired replica count",
+          "title": "Replicas"
+        },
+        "min_replicas": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Autoscaler lower bound",
+          "title": "Min Replicas"
+        },
+        "max_replicas": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Autoscaler upper bound",
+          "title": "Max Replicas"
+        },
+        "autoscaler": {
+          "anyOf": [
+            {
+              "enum": [
+                "hpa",
+                "aca_rule",
+                "ecs_autoscaling",
+                "cloud_run",
+                "keda",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Autoscaling mechanism",
+          "title": "Autoscaler"
+        },
+        "metric": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Scaling metric, e.g. 'cpu', 'http'",
+          "title": "Metric"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Scaling target value, as written",
+          "title": "Target"
+        }
+      },
+      "title": "ScalingDetail",
+      "type": "object"
     },
     "ScanSummary": {
       "description": "Deterministic scan-level summary populated on every extraction.",
@@ -2805,6 +3752,21 @@
       "title": "SecurityHeaderDetail",
       "type": "object"
     },
+    "SessionCookieSemantics": {
+      "description": "Whether the application is expected to issue session cookies (pentest-proposal A6).",
+      "properties": {
+        "set_cookie_expected": {
+          "description": "True when handler code sets a cookie or uses a server-side session. False with identity carried in the request body means server-side session binding is impossible",
+          "title": "Set Cookie Expected",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "set_cookie_expected"
+      ],
+      "title": "SessionCookieSemantics",
+      "type": "object"
+    },
     "SourceLocation": {
       "description": "File/line pointer for a piece of evidence.",
       "properties": {
@@ -2954,14 +3916,220 @@
       ],
       "title": "ToolParameter",
       "type": "object"
+    },
+    "WorkloadDetail": {
+      "description": "A deployed service: a compose service, K8s workload, container app, function, ...",
+      "properties": {
+        "service_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Service/resource name",
+          "title": "Service Name"
+        },
+        "workload_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "e.g. 'compose_service', 'k8s_deployment', 'container_app', 'ecs_service', 'lambda', 'cloud_run', 'app_service'",
+          "title": "Workload Kind"
+        },
+        "cloud_service": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Managed service, e.g. 'azure_container_apps', 'aws_ecs'",
+          "title": "Cloud Service"
+        },
+        "namespace": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "K8s namespace",
+          "title": "Namespace"
+        },
+        "image_refs": {
+          "description": "Image references run",
+          "items": {
+            "type": "string"
+          },
+          "title": "Image Refs",
+          "type": "array"
+        },
+        "build_context": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Build context directory, relative to the repo root",
+          "title": "Build Context"
+        },
+        "dockerfile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dockerfile path, repo-relative",
+          "title": "Dockerfile"
+        },
+        "source_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Directory holding the code this workload runs",
+          "title": "Source Dir"
+        },
+        "ports": {
+          "items": {
+            "$ref": "#/$defs/PortDetail"
+          },
+          "title": "Ports",
+          "type": "array"
+        },
+        "scaling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScalingDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "identity_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Service account / managed identity name",
+          "title": "Identity Ref"
+        },
+        "depends_on": {
+          "description": "Names of workloads this one depends on",
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "env_var_names": {
+          "description": "Environment variable NAMES only; values never stored",
+          "items": {
+            "type": "string"
+          },
+          "title": "Env Var Names",
+          "type": "array"
+        },
+        "secret_refs": {
+          "description": "Secret/Key Vault reference names; never values",
+          "items": {
+            "type": "string"
+          },
+          "title": "Secret Refs",
+          "type": "array"
+        },
+        "probes": {
+          "description": "Health probes, e.g. 'liveness:/healthz'",
+          "items": {
+            "type": "string"
+          },
+          "title": "Probes",
+          "type": "array"
+        },
+        "internal_only": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when no public ingress/port reaches the workload",
+          "title": "Internal Only"
+        },
+        "source_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "'compose', 'k8s', 'helm_values', 'bicep', 'terraform', ...",
+          "title": "Source Format"
+        }
+      },
+      "title": "WorkloadDetail",
+      "type": "object"
     }
   },
-  "$id": "https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json",
+  "$id": "https://nuguard.ai/schemas/aibom/1.7.0/aibom.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "AI Bill of Materials document produced by NuGuard.\n\nThis is the canonical output format.  Use ``AiSbomSerializer.to_json()``\nto serialise and ``AiSbomDocument.model_validate()`` to parse and validate.",
   "properties": {
     "schema_version": {
-      "default": "1.5.0",
+      "default": "1.7.0",
       "description": "AIBOM schema version (semver); bump when format changes",
       "title": "Schema Version",
       "type": "string"

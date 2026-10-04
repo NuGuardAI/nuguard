@@ -38,8 +38,23 @@ from typing import Any
 
 from nuguard.common.logging import get_logger
 
+from ..ingress import ingress_entry
 from ..types import ComponentType
+from ._image_nodes import attach_images
 from .base import ComponentDetection
+from .bicep_workloads import bicep_workloads
+from .cloud_workloads import cfn_workloads, terraform_workloads
+from .k8s_workload import (
+    helm_values_workload,
+    hpa_fact,
+    ingress_rules,
+    is_helm_values,
+    kustomize_fact,
+    pod_labels_of,
+    pod_spec_of,
+    service_fact,
+    workload_facts,
+)
 
 _log = get_logger(__name__)
 
@@ -49,11 +64,34 @@ _log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _intrinsic_loader() -> Any:
+    """SafeLoader that accepts CloudFormation short-form tags (``!Ref x``, ``!Sub ...``).
+
+    Plain ``safe_load`` raises on them, which made every real-world CloudFormation YAML
+    template invisible to the adapters. Scalar tags resolve to their plain string
+    (``!Ref TD`` → ``"TD"``, ``!Sub "${AWS::StackName}-x"`` → ``"${AWS::StackName}-x"``) so
+    existing code that expects strings keeps working; structured tags (``!Join``, ``!If``)
+    become an opaque ``"<Fn::Join>"`` placeholder rather than a nested value.
+    """
+    import yaml  # type: ignore[import-untyped]
+
+    class _Loader(yaml.SafeLoader):
+        pass
+
+    def construct(loader: Any, suffix: str, node: Any) -> Any:
+        if isinstance(node, yaml.ScalarNode):
+            return str(loader.construct_scalar(node))
+        return f"<Fn::{suffix}>"
+
+    _Loader.add_multi_constructor("!", construct)
+    return _Loader
+
+
 def _try_load_yaml(content: str) -> Any:
     try:
         import yaml  # type: ignore[import-untyped]
 
-        return yaml.safe_load(content)
+        return yaml.load(content, Loader=_intrinsic_loader())  # noqa: S506 — SafeLoader subclass
     except Exception:  # noqa: BLE001
         return None
 
@@ -63,7 +101,9 @@ def _try_load_yaml_all(content: str) -> list[Any]:
     try:
         import yaml  # type: ignore[import-untyped]
 
-        return [d for d in yaml.safe_load_all(content) if isinstance(d, dict)]
+        return [
+            d for d in yaml.load_all(content, Loader=_intrinsic_loader()) if isinstance(d, dict)  # noqa: S506
+        ]
     except Exception:  # noqa: BLE001
         return []
 
@@ -138,6 +178,81 @@ def _make_det(
         snippet=snippet[:120],
         evidence_kind="iac",
     )
+
+
+# ---------------------------------------------------------------------------
+# Ingress facts (pentest-proposal A4) — shared by Bicep / Terraform / k8s
+# ---------------------------------------------------------------------------
+
+#: IaC resource type fragment -> (role, evidence). Matched case-insensitively on
+#: the resource type; ``direct`` types additionally need an "externally exposed"
+#: flag (see ``_BICEP_EXTERNAL_RE`` / ``_TF_EXTERNAL_RE``).
+_INGRESS_GATEWAY_TYPES: dict[str, str] = {
+    "microsoft.apimanagement/service": "API Management",
+    "microsoft.network/applicationgateways": "Application Gateway",
+    "microsoft.network/frontdoors": "Front Door",
+    "microsoft.cdn/profiles": "CDN / Front Door",
+    "azurerm_api_management": "API Management",
+    "azurerm_application_gateway": "Application Gateway",
+    "azurerm_frontdoor": "Front Door",
+    "aws_api_gateway_rest_api": "API Gateway",
+    "aws_apigatewayv2_api": "API Gateway",
+    "aws_lb": "load balancer",
+    "aws_alb": "load balancer",
+    "google_api_gateway_gateway": "API Gateway",
+}
+_INGRESS_STATIC_TYPES: dict[str, str] = {
+    "microsoft.web/staticsites": "SWA config",
+    "azurerm_static_web_app": "SWA config",
+    "azurerm_static_site": "SWA config",
+}
+_INGRESS_DIRECT_TYPES: dict[str, str] = {
+    "microsoft.app/containerapps": "ACA ingress",
+    "azurerm_container_app": "ACA ingress",
+}
+_BICEP_EXTERNAL_RE = re.compile(r"ingress\s*:\s*\{[^}]*?external\s*:\s*true", re.DOTALL | re.IGNORECASE)
+_TF_EXTERNAL_RE = re.compile(r"external_enabled\s*=\s*true", re.IGNORECASE)
+
+
+def _classify_ingress(resource_type: str, body: str, external_re: re.Pattern[str]) -> dict[str, Any] | None:
+    """Ingress entry for one IaC resource, or ``None`` when it is not an exposure point."""
+    rtype = resource_type.lower().split("@")[0]
+    for table, role in (
+        (_INGRESS_GATEWAY_TYPES, "gateway"),
+        (_INGRESS_STATIC_TYPES, "static_frontend"),
+    ):
+        for fragment, evidence in table.items():
+            if rtype == fragment:
+                return ingress_entry(role, evidence)
+    for fragment, evidence in _INGRESS_DIRECT_TYPES.items():
+        if rtype == fragment and external_re.search(body):
+            return ingress_entry("direct", evidence)
+    return None
+
+
+def _brace_block(content: str, open_index: int) -> str:
+    """Text from the ``{`` at *open_index* to its matching ``}`` (string-unaware, bounded)."""
+    depth = 0
+    for index in range(open_index, min(len(content), open_index + 20000)):
+        char = content[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return content[open_index : index + 1]
+    return content[open_index : open_index + 20000]
+
+
+def _dedupe_ingresses(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[Any, ...]] = set()
+    result: list[dict[str, Any]] = []
+    for entry in entries:
+        key = (entry["role"], entry["url"], entry["evidence"])
+        if key not in seen:
+            seen.add(key)
+            result.append(entry)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +357,11 @@ class K8sAdapter:
     name = "k8s"
 
     def scan(self, content: str, file_path: str) -> list[ComponentDetection]:
+        base_name = file_path.replace("\\", "/").rsplit("/", 1)[-1].lower()
+        if base_name in ("kustomization.yaml", "kustomization.yml"):
+            return self._kustomization(content, file_path)
+        if base_name in ("values.yaml", "values.yml"):
+            return self._helm_values(content, file_path)
         if _is_helm_chart_yaml(file_path):
             return self._helm_chart(content, file_path)
         if _helm_chart_dir(file_path) is not None:
@@ -283,6 +403,10 @@ class K8sAdapter:
                 results.extend(workload_dets)
             elif kind in _K8S_IAM_KINDS:
                 results.extend(self._rbac(doc, content, file_path))
+            elif kind in ("Ingress", "Service"):
+                results.extend(self._exposure(doc, kind, file_path))
+            elif kind in ("HorizontalPodAutoscaler", "ScaledObject"):
+                results.extend(self._autoscaler(doc, file_path))
 
         # Emit a lightweight marker node for each NetworkPolicy namespace so that
         # extract_iac_security_context() can aggregate cross-file coverage.
@@ -309,6 +433,140 @@ class K8sAdapter:
         return results
 
     # ------------------------------------------------------------------
+    # Ingress / externally exposed Service → DEPLOYMENT with ingress facts
+    # ------------------------------------------------------------------
+
+    def _exposure(self, data: dict[str, Any], kind: str, file_path: str) -> list[ComponentDetection]:
+        """Ingress / Service facts.
+
+        An ``Ingress`` is a gateway; a ``LoadBalancer``/``NodePort`` Service exposes a backend
+        directly. Both become DEPLOYMENT nodes carrying ``ingresses``. Every Service (including
+        ClusterIP) also carries a ``k8s_service`` fact — ports and selector — that the topology
+        pass joins to the workload it selects; a ClusterIP Service is only that fact (a marker
+        node the topology pass drops once merged).
+        """
+        spec = data.get("spec") or {}
+        name, namespace = _k8s_name(data), _k8s_namespace(data) or "default"
+        meta: dict[str, Any] = {"iac_format": "kubernetes", "k8s_namespace": namespace}
+        if kind == "Ingress":
+            hosts = [
+                str(r["host"]) for r in spec.get("rules") or [] if isinstance(r, dict) and r.get("host")
+            ]
+            entries = [ingress_entry("gateway", "k8s Ingress", host) for host in hosts] or [
+                ingress_entry("gateway", "k8s Ingress")
+            ]
+            meta["ingresses"] = _dedupe_ingresses(entries)
+            rules = ingress_rules(data)
+            if rules:
+                meta["k8s_ingress_rules"] = rules
+        else:
+            meta["k8s_service"] = service_fact(data)
+            if str(spec.get("type", "")) in ("LoadBalancer", "NodePort"):
+                meta["ingresses"] = _dedupe_ingresses(
+                    [ingress_entry("direct", f"k8s Service {spec['type']}")]
+                )
+            else:
+                return [
+                    _make_det(
+                        component_type=ComponentType.DEPLOYMENT,
+                        canonical_name=f"fact:k8s:service:{namespace}:{name}".lower()[:128],
+                        display_name=f"Service:{name}",
+                        adapter_name=self.name,
+                        confidence=0.85,
+                        metadata={**meta, "fact_marker": True},
+                        file_path=file_path,
+                        line=1,
+                        snippet=f"Service {name}",
+                    )
+                ]
+        return [
+            _make_det(
+                component_type=ComponentType.DEPLOYMENT,
+                canonical_name=f"ingress:k8s:{namespace}:{kind}:{name}".lower()[:128],
+                display_name=f"{kind}:{name}",
+                adapter_name=self.name,
+                confidence=0.85,
+                metadata=meta,
+                file_path=file_path,
+                line=1,
+                snippet=f"{kind} {name}",
+            )
+        ]
+
+    def _autoscaler(self, data: dict[str, Any], file_path: str) -> list[ComponentDetection]:
+        """HPA / KEDA ScaledObject → a ``k8s_hpa`` fact marker joined to its target workload."""
+        fact = hpa_fact(data)
+        if fact is None:
+            return []
+        return [
+            _make_det(
+                component_type=ComponentType.DEPLOYMENT,
+                canonical_name=f"fact:k8s:hpa:{fact['namespace']}:{fact['name']}".lower()[:128],
+                display_name=f"HPA:{fact['name']}",
+                adapter_name=self.name,
+                confidence=0.85,
+                metadata={
+                    "iac_format": "kubernetes",
+                    "k8s_namespace": fact["namespace"],
+                    "k8s_hpa": fact,
+                    "fact_marker": True,
+                },
+                file_path=file_path,
+                line=1,
+                snippet=f"{data.get('kind')} {fact['name']} -> {fact['target_name']}",
+            )
+        ]
+
+    def _kustomization(self, content: str, file_path: str) -> list[ComponentDetection]:
+        data = _try_load_yaml(content)
+        if not isinstance(data, dict):
+            return []
+        directory = file_path.replace("\\", "/").rsplit("/", 1)[0] if "/" in file_path else "."
+        fact = kustomize_fact(data, directory)
+        if not (fact["images"] or fact["replicas"] or fact["namespace"]):
+            return []
+        return [
+            _make_det(
+                component_type=ComponentType.DEPLOYMENT,
+                canonical_name=f"fact:k8s:kustomize:{directory}".lower()[:128],
+                display_name=f"Kustomize:{directory}",
+                adapter_name=self.name,
+                confidence=0.8,
+                metadata={"iac_format": "kustomize", "kustomize": fact, "fact_marker": True},
+                file_path=file_path,
+                line=1,
+                snippet="kustomization.yaml",
+            )
+        ]
+
+    def _helm_values(self, content: str, file_path: str) -> list[ComponentDetection]:
+        """``values.yaml`` → workload facts on the chart's DEPLOYMENT node."""
+        data = _try_load_yaml(_HELM_TEMPLATE_EXPR_RE.sub("", content))
+        if not is_helm_values(data):
+            return []
+        norm = file_path.replace("\\", "/")
+        chart_dir = norm.rsplit("/", 1)[0] if "/" in norm else "."
+        chart_name = chart_dir.rsplit("/", 1)[-1] if chart_dir != "." else "helm-chart"
+        meta: dict[str, Any] = {
+            "iac_format": "helm",
+            "deployment_target": "kubernetes",
+            "workload": helm_values_workload(data, chart_name),
+        }
+        det = _make_det(
+            component_type=ComponentType.DEPLOYMENT,
+            canonical_name=f"deployment:helm:{chart_dir}".lower(),
+            display_name=chart_name,
+            adapter_name=self.name,
+            confidence=0.8,
+            metadata=meta,
+            file_path=file_path,
+            line=1,
+            snippet="values.yaml",
+        )
+        refs = list(meta["workload"].get("image_refs") or [])
+        return [det, *attach_images(det, refs, adapter_name=self.name, file_path=file_path)]
+
+    # ------------------------------------------------------------------
     # Workload → DEPLOYMENT
     # ------------------------------------------------------------------
 
@@ -318,7 +576,7 @@ class K8sAdapter:
         name = _k8s_name(data)
         namespace = _k8s_namespace(data) or "default"
         spec = data.get("spec") or {}
-        pod_spec = (spec.get("template") or {}).get("spec") or {}
+        pod_spec = pod_spec_of(data)
         security_ctx = pod_spec.get("securityContext") or {}
         containers = pod_spec.get("containers") or []
 
@@ -406,21 +664,24 @@ class K8sAdapter:
             "has_health_check": has_health_check,
             "has_resource_limits": has_resource_limits,
             "secret_store": secret_store,
+            "cloud_provider": "kubernetes",
+            "workload": workload_facts(data, namespace),
+            "k8s_pod_labels": pod_labels_of(data),
         }
         _log.debug("k8s_adapter: DEPLOYMENT %s in %s", name, file_path)
-        return [
-            _make_det(
-                component_type=ComponentType.DEPLOYMENT,
-                canonical_name=canonical,
-                display_name=name,
-                adapter_name=self.name,
-                confidence=0.95,
-                metadata=meta,
-                file_path=file_path,
-                line=1,
-                snippet=f"{data.get('kind')}: {name}",
-            )
-        ]
+        det = _make_det(
+            component_type=ComponentType.DEPLOYMENT,
+            canonical_name=canonical,
+            display_name=name,
+            adapter_name=self.name,
+            confidence=0.95,
+            metadata=meta,
+            file_path=file_path,
+            line=1,
+            snippet=f"{data.get('kind')}: {name}",
+        )
+        refs = list(meta["workload"].get("image_refs") or [])
+        return [det, *attach_images(det, refs, adapter_name=self.name, file_path=file_path)]
 
     # ------------------------------------------------------------------
     # RBAC → IAM
@@ -569,6 +830,8 @@ class K8sAdapter:
 # Terraform adapter
 # ---------------------------------------------------------------------------
 
+_TF_RESOURCE_BLOCK_RE = re.compile(r'resource\s+"([^"]+)"\s+"[^"]+"\s*\{')
+
 # Provider detection
 _TF_PROVIDER_RE = re.compile(r'provider\s+"(aws|azurerm|google|vault|kubernetes)"', re.IGNORECASE)
 
@@ -666,6 +929,7 @@ class TerraformAdapter:
         results: list[ComponentDetection] = []
         results.extend(self._deployment(content, file_path))
         results.extend(self._iam(content, file_path))
+        results.extend(terraform_workloads(content, file_path, self.name))
         return results
 
     def _deployment(self, content: str, file_path: str) -> list[ComponentDetection]:
@@ -797,6 +1061,20 @@ class TerraformAdapter:
             meta["rate_limited"] = True
         if _dh:
             meta["data_handling"] = _dh
+        tf_ingresses = _dedupe_ingresses(
+            [
+                entry
+                for res_m in _TF_RESOURCE_BLOCK_RE.finditer(content)
+                if (
+                    entry := _classify_ingress(
+                        res_m.group(1), _brace_block(content, res_m.end() - 1), _TF_EXTERNAL_RE
+                    )
+                )
+                is not None
+            ]
+        )
+        if tf_ingresses:
+            meta["ingresses"] = tf_ingresses
         display = f"terraform:{target_display}:{cloud_region or 'unknown-region'}"
         return [
             _make_det(
@@ -986,6 +1264,7 @@ class CloudFormationAdapter:
         results: list[ComponentDetection] = []
         results.extend(self._deployment(data, content, file_path))
         results.extend(self._iam(data, file_path))
+        results.extend(cfn_workloads(data, file_path, self.name))
         return results
 
     def _deployment(
@@ -1226,6 +1505,7 @@ class BicepAdapter:
         results: list[ComponentDetection] = []
         results.extend(self._deployment(content, file_path))
         results.extend(self._iam(content, file_path))
+        results.extend(bicep_workloads(content, file_path, self.name))
         return results
 
     def _deployment(self, content: str, file_path: str) -> list[ComponentDetection]:
@@ -1298,6 +1578,20 @@ class BicepAdapter:
             "encryption_key_ref": enc_key_ref,
             "secret_store": secret_store,
         }
+        ingresses = _dedupe_ingresses(
+            [
+                entry
+                for res_m in _BICEP_RESOURCE_RE.finditer(content)
+                if (
+                    entry := _classify_ingress(
+                        res_m.group(2), _brace_block(content, res_m.end() - 1), _BICEP_EXTERNAL_RE
+                    )
+                )
+                is not None
+            ]
+        )
+        if ingresses:
+            meta["ingresses"] = ingresses
         return [
             _make_det(
                 component_type=ComponentType.DEPLOYMENT,

@@ -21,12 +21,14 @@ from nuguard.common.errors import (
 from nuguard.common.http import quota_exhausted_detail
 from nuguard.common.logging import get_logger
 from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KEYS
-from nuguard.common.transport import strip_known_boilerplate
+from nuguard.common.transport import is_provider_blocked, strip_known_boilerplate
+from nuguard.redteam.campaign.transport.context import RetryDeferred
 
 from .session import AttackSession
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
+    from nuguard.redteam.campaign.transport.context import BranchTransport
 
     from .framework_adapters import FrameworkAdapter
 
@@ -640,7 +642,11 @@ class TargetAppClient:
         self._consecutive_endpoint_errors = 0
 
     async def _attempt_schema_heal(
-        self, sent_body: dict, error_body_text: str, status: int
+        self,
+        sent_body: dict,
+        error_body_text: str,
+        status: int,
+        transport: "BranchTransport | None" = None,
     ) -> bool:
         """Ask the LLM to infer missing/invalid field(s) from a schema-error body.
 
@@ -685,12 +691,16 @@ class TargetAppClient:
             return False
         new_fields = {
             k: v for k, v in extra_fields.items()
-            if k not in sent_body and k not in self._chat_payload_extras
+            if k not in sent_body and k not in self._effective_extras(transport)
         }
         if not new_fields:
             return False
 
-        self._chat_payload_extras.update(new_fields)
+        # Branch sends heal into the branch overlay so one branch's inferred
+        # fields never leak into another conversation's request shape.
+        (transport.extras_overlay if transport is not None else self._chat_payload_extras).update(
+            new_fields
+        )
         _log.info(
             "Schema self-heal: inferred missing field(s) %s for %s (HTTP %d, "
             "attempt %d/%d) — retrying and reusing for subsequent requests",
@@ -775,6 +785,12 @@ class TargetAppClient:
         """
         self._path_param_values[name] = value
 
+    def _effective_extras(self, transport: "BranchTransport | None") -> dict[str, Any]:
+        """``chat_payload_extras`` with the branch overlay applied (if any)."""
+        if transport is None or not transport.extras_overlay:
+            return self._chat_payload_extras
+        return {**self._chat_payload_extras, **transport.extras_overlay}
+
     def update_default_headers(self, headers: dict[str, str] | None) -> None:
         """Merge headers into the default client headers for subsequent requests."""
         if not headers:
@@ -788,23 +804,24 @@ class TargetAppClient:
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
         retry_transient: bool = False,
+        transport: "BranchTransport | None" = None,
     ) -> tuple[str, list[dict]]:
         """Send a prompt payload to the target and return (response_text, tool_calls).
+
+        ``transport`` (campaign mode) supplies per-branch session context, path
+        params, payload-extras overlay, headers and cookies, and makes retriable
+        conditions raise :class:`~nuguard.redteam.campaign.transport.RetryDeferred`
+        instead of sleeping inside the request slot. ``None`` keeps the legacy
+        client-wide behaviour exactly.
 
         ``extra_headers`` (e.g. ``{"Cookie": "show_tool_calls=true"}``) is merged
         on top of the client's default headers for this request only — used to
         test client-controlled debug/observability toggles.
 
-        When ``max_concurrent_requests`` is set (semaphore mode), transient app
-        errors ("having difficulty connecting") are retried **inside** the semaphore
-        scope so no other concurrent chain can send while the target is recovering.
-        This prevents the thundering-herd pattern where multiple chains hammer a
-        cold-starting Azure Container App during the retry window.
-
-        ``retry_transient=True`` opts into the same classify+backoff retry loop
-        without requiring a semaphore — for single-shot pre-scenario callers
-        (warmup pings, health checks) that want cold-start absorption but run
-        sequentially, so there's no other concurrent chain to protect.
+        Semaphore mode and ``retry_transient=True`` enable bounded retries.
+        Request slots are released during backoff. Ambiguous app fallback text
+        gets one short retry; explicit gateway failures get two. Structured
+        provider policy blocks are non-retryable.
 
         Raises:
             TargetUnavailableError: after MAX_CONSECUTIVE_ERRORS consecutive 5xx
@@ -812,9 +829,10 @@ class TargetAppClient:
                 errors, auth rejections, rate limits) do not count — the target is
                 alive and responding; it simply rejected our specific payload.
         """
-        if self._request_sem is not None:
-            async with self._request_sem:
-                text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
+        if transport is not None:
+            text, calls = await self._send_branch(payload, session, extra_headers, transport)
+        elif self._request_sem is not None:
+            text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
         elif retry_transient:
             text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
         else:
@@ -825,33 +843,49 @@ class TargetAppClient:
         # detection, policy detectors, report rendering) sees clean text.
         return strip_known_boilerplate(text), calls
 
+    async def _send_branch(
+        self,
+        payload: str,
+        session: AttackSession,
+        extra_headers: dict[str, str] | None,
+        transport: "BranchTransport",
+    ) -> tuple[str, list[dict]]:
+        """Single branch send; retriable outcomes defer to the campaign cooldown queue."""
+        from nuguard.common.transport import (  # noqa: PLC0415
+            RETRIABLE_OUTCOMES,
+            classify_transport,
+        )
+
+        text, calls = await self._send_impl(
+            payload,
+            session,
+            extra_headers,
+            _deferred_gateway_accounting=True,
+            transport=transport,
+        )
+        outcome = classify_transport(text)
+        if transport.defer_retries and outcome in RETRIABLE_OUTCOMES:
+            from nuguard.common.rate_limit import TRANSIENT_ERROR_RETRY_DELAYS  # noqa: PLC0415
+
+            delay = float(TRANSIENT_ERROR_RETRY_DELAYS[0]) if TRANSIENT_ERROR_RETRY_DELAYS else 5.0
+            raise RetryDeferred(delay, reason=str(outcome), status_text=text)
+        return text, calls
+
     async def _send_with_transient_retry(
         self,
         payload: str,
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
     ) -> tuple[str, list[dict]]:
-        """Send with in-semaphore transient-error retries (holds the semaphore during waits).
+        """Send with bounded retries, releasing request slots during backoff.
 
-        Retries :data:`~nuguard.common.transport.RETRIABLE_OUTCOMES` (app-transient
-        phrases AND HTTP 502/503/504 gateway errors) with capped backoff, all while
-        holding the semaphore.  Retrying stops when:
-
-        * The target returns a non-retriable response → ``return``.
-        * ``_max_transient_hold_seconds`` of total wait time has elapsed → releases
-          the semaphore so other chains can proceed (prevents one chain from blocking
-          all others for the full objective timeout when the cause is systemic, e.g.
-          shared Azure OpenAI quota contention between nuguard and the target app).
-        * The objective timeout fires (``asyncio.CancelledError``) → re-raised so the
-          scheduler records the objective as ``"timeout"``.
-
-        The backoff schedule is :data:`~nuguard.common.rate_limit.TRANSIENT_ERROR_RETRY_DELAYS`
-        for the first N attempts, then the last (largest) delay caps all subsequent waits.
+        Gateway failures use short capped backoff; ambiguous app fallback
+        responses get one short retry. The configured transient-hold limit is
+        a wall-clock deadline including requests, slot acquisition and sleeps.
+        A non-positive legacy limit disables only the deadline, not attempt caps.
+        Cancellation propagates to the caller.
         """
-        from nuguard.common.rate_limit import (  # noqa: PLC0415
-            GATEWAY_ERROR_RETRY_DELAYS,
-            TRANSIENT_ERROR_RETRY_DELAYS,
-        )
+        from nuguard.common.rate_limit import GATEWAY_ERROR_RETRY_DELAYS  # noqa: PLC0415
         from nuguard.common.transport import (  # noqa: PLC0415
             RETRIABLE_OUTCOMES,
             TransportOutcome,
@@ -859,92 +893,77 @@ class TargetAppClient:
         )
 
         attempt = 0
-        total_waited = 0.0
+        started = time.monotonic()
         text: str = ""
         calls: list[dict] = []
 
-        while True:
-            text, calls = await self._send_impl(
-                payload, session, extra_headers, _deferred_gateway_accounting=True
+        async def send_attempt() -> tuple[str, list[dict]]:
+            if self._request_sem is not None:
+                async with self._request_sem:
+                    return await self._send_impl(
+                        payload, session, extra_headers, _deferred_gateway_accounting=True,
+                    )
+            return await self._send_impl(
+                payload, session, extra_headers, _deferred_gateway_accounting=True,
             )
+
+        while True:
+            remaining = self._max_transient_hold_seconds - (time.monotonic() - started)
+            if self._max_transient_hold_seconds > 0:
+                try:
+                    async with asyncio.timeout(max(0.0, remaining)):
+                        text, calls = await send_attempt()
+                except TimeoutError:
+                    _log.warning("Target retry deadline reached: session=%s attempts=%d elapsed=%.2fs",
+                                 session.session_id, attempt + 1, time.monotonic() - started)
+                    self._record_chat_error("Retry deadline reached")
+                    return "[REQUEST_ERROR: retry_deadline]", []
+            else:
+                text, calls = await send_attempt()
             outcome = classify_transport(text)
             if outcome not in RETRIABLE_OUTCOMES:
                 return text, calls
 
-            # Choose the retry schedule based on the error type:
-            # - HTTP_GATEWAY_ERROR (502/503/504): short delays (2 s, 5 s) for Azure quota
-            #   blips that typically resolve in under 3 seconds.
-            # - APP_TRANSIENT (cold-start friendly text): long delays (60 s, 120 s) to
-            #   allow Azure Container Apps (minReplicas=0) time to spin up.
             is_gateway = outcome == TransportOutcome.HTTP_GATEWAY_ERROR
-            delays = list(GATEWAY_ERROR_RETRY_DELAYS if is_gateway else TRANSIENT_ERROR_RETRY_DELAYS)
-            cap_delay = delays[-1] if delays else 5.0
+            # A friendly HTTP-200 fallback is ambiguous: one short retry is
+            # enough. Only explicit gateway failures receive the full schedule.
+            delays = list(GATEWAY_ERROR_RETRY_DELAYS if is_gateway else GATEWAY_ERROR_RETRY_DELAYS[:1])
 
-            # For gateway errors: enforce a hard retry cap (len(delays)) so we don’t
-            # hold the semaphore indefinitely on a persistently broken endpoint.
-            # For app-transient errors: the existing max_transient_hold_seconds gate
-            # applies (cold-start can take minutes).
-            if is_gateway and attempt >= len(delays):
+            if attempt >= len(delays):
                 _log.warning(
-                    "HTTP gateway error persisted after %d retry attempt(s) — "
-                    "incrementing circuit breaker and releasing.",
-                    attempt,
-                )
-                self._record_chat_error(f"HTTP gateway (after {attempt} retries)")
-                return text, calls
-
-            # If the session already has prior turns, the target backend is up
-            # and responding — the transient is either a quota-induced blip or a
-            # content-filter block on this specific adversarial payload.  Allow
-            # one retry (attempt 0 → 1) so a momentary quota spike can recover;
-            # after that, stop retrying since the same payload will keep being
-            # blocked by the content filter.
-            if session.turns and attempt >= 1:
-                _log.debug(
-                    "Transient response on turn %d (retry #%d) — treating as content-filter "
-                    "block (backend is healthy); stopping retry.",
-                    len(session.turns) + 1,
-                    attempt,
+                    "Target retry exhausted: session=%s outcome=%s retries=%d elapsed=%.2fs",
+                    session.session_id, outcome.value, attempt, time.monotonic() - started,
                 )
                 if is_gateway:
-                    self._record_chat_error(f"HTTP gateway (turn {len(session.turns) + 1})")
+                    self._record_chat_error(f"HTTP gateway (after {attempt} retries)")
                 return text, calls
 
-            # Release the semaphore after holding it for too long.  Systemic issues
-            # (e.g. shared Azure OpenAI quota contention) will not resolve with more
-            # retries from this chain; other chains deserve a chance to make progress.
-            if self._max_transient_hold_seconds > 0 and total_waited >= self._max_transient_hold_seconds:
-                _log.warning(
-                    "Transient errors persisted after %.0fs of in-semaphore retries "
-                    "(max_transient_hold=%.0fs) — releasing semaphore so other chains "
-                    "can proceed. Last response was retriable but target did not recover.",
-                    total_waited, self._max_transient_hold_seconds,
-                )
-                if is_gateway:
-                    self._record_chat_error(f"HTTP gateway (transient hold {total_waited:.0f}s)")
-                return text, calls
-
-            delay = delays[attempt] if attempt < len(delays) else cap_delay
+            delay = delays[attempt]
+            if self._max_transient_hold_seconds > 0:
+                delay = min(delay, max(0.0, self._max_transient_hold_seconds - (time.monotonic() - started)))
             attempt += 1
             _log.info(
-                "Retriable transport error — waiting %.0fs before retry #%d "
-                "[semaphore held; no other chains will send during this window]",
-                delay, attempt,
+                "Target retry: session=%s outcome=%s delay=%.2fs retry=%d/%d elapsed=%.2fs [request slot released]",
+                session.session_id, outcome.value, delay, attempt, len(delays), time.monotonic() - started,
             )
             try:
                 await asyncio.sleep(delay)
-                total_waited += delay
             except asyncio.CancelledError:
                 # Objective timeout fired during the sleep — release the semaphore
                 # and propagate so the scheduler records this as "timeout".
                 _log.warning(
-                    "In-semaphore transient retry cancelled (objective timeout) "
+                    "Target transient retry cancelled "
                     "after %d attempt(s); target may still be recovering.",
                     attempt,
                 )
                 raise
 
-    def _build_templated_chat_payload(self, payload: str, session: AttackSession) -> Any:
+    def _build_templated_chat_payload(
+        self,
+        payload: str,
+        session: AttackSession,
+        transport: "BranchTransport | None" = None,
+    ) -> Any:
         """Render ``self._chat_payload_extras`` as a literal token template.
 
         Only called once :func:`_contains_message_token` confirms the extras
@@ -964,12 +983,13 @@ class TargetAppClient:
             history.append({"role": "user", "content": turn.prompt})
             if turn.response:
                 history.append({"role": "assistant", "content": turn.response})
+        ctx = transport.session_context if transport is not None else self._session_context
         return _render_payload_template(
-            self._chat_payload_extras,
+            self._effective_extras(transport),
             message=payload,
             history=json.dumps(history),
-            session_id=str(session.session_id or self._session_context.get("session_id", "")),
-            conversation_id=str(self._session_context.get("conversation_id", "")),
+            session_id=str(session.session_id or ctx.get("session_id", "")),
+            conversation_id=str(ctx.get("conversation_id", "")),
         )
 
     def _build_chat_payload_value(self, payload: str, session: AttackSession) -> Any:
@@ -1018,8 +1038,12 @@ class TargetAppClient:
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
         _deferred_gateway_accounting: bool = False,
+        transport: "BranchTransport | None" = None,
     ) -> tuple[str, list[dict]]:
         """Inner send implementation (called with or without the request semaphore).
+
+        When ``transport`` is given, all conversation state is read from and
+        written to the branch rather than the client (see :meth:`send`).
 
         ``_deferred_gateway_accounting`` is set only by
         :meth:`_send_with_transient_retry` — it means that caller, not this
@@ -1028,6 +1052,18 @@ class TargetAppClient:
         """
         data: dict | list | str = {}
         body: dict | None = None
+        _ctx: dict[str, Any] = (
+            transport.session_context if transport is not None else self._session_context
+        )
+        _extras = self._effective_extras(transport)
+        _path_values = (
+            {**self._path_param_values, **transport.path_params}
+            if transport is not None
+            else self._path_param_values
+        )
+        _req_headers = (
+            transport.request_headers(extra_headers) if transport is not None else extra_headers
+        )
         # Bounded to max_429_retries + MAX_SCHEMA_HEAL_ATTEMPTS so a schema-heal
         # retry doesn't eat into the 429 backoff budget (and vice versa).
         for attempt in range(self._max_429_retries + MAX_SCHEMA_HEAL_ATTEMPTS + 1):
@@ -1037,7 +1073,11 @@ class TargetAppClient:
                     # Framework-aware path: delegate body construction + session mgmt.
                     # Pass the AttackSession's ID as the scenario key so concurrent
                     # scenarios each maintain their own server-side ADK session.
-                    scenario_key = str(session.session_id) if session.session_id else ""
+                    scenario_key = (
+                        transport.branch_id
+                        if transport is not None
+                        else (str(session.session_id) if session.session_id else "")
+                    )
                     try:
                         session_id = await self._framework_adapter.ensure_session(
                             self._client, scenario_key
@@ -1084,28 +1124,26 @@ class TargetAppClient:
                     chat_path = self._framework_adapter.run_path
                 else:
                     value: Any
-                    if self._chat_payload_extras and _contains_message_token(
-                        self._chat_payload_extras
-                    ):
+                    if _extras and _contains_message_token(_extras):
                         # Custom payload shape with {{message}} (and optionally
                         # {{history}}/{{session_id}}/{{conversation_id}}) tokens:
                         # the extras dict IS the body, tokens substituted in place.
                         value = payload
-                        body = self._build_templated_chat_payload(payload, session)
+                        body = self._build_templated_chat_payload(payload, session, transport)
                     else:
                         # Generic path: flat key/value body
                         value = self._build_chat_payload_value(payload, session)
                         body = {self._chat_payload_key: value}
                         # Merge any previously extracted session/conversation context so the
                         # server can correlate subsequent turns within the same conversation.
-                        if self._session_context:
-                            body.update(self._session_context)
+                        if _ctx:
+                            body.update(_ctx)
                         # Merge static extra fields (e.g. vehicleState, language) declared in
                         # chat_payload_extras — the message key always takes precedence.
-                        if self._chat_payload_extras:
-                            body = {**self._chat_payload_extras, **body}
+                        if _extras:
+                            body = {**_extras, **body}
                     chat_path, _missing_params = _substitute_path_params(
-                        self._chat_path, self._path_param_values
+                        self._chat_path, _path_values
                     )
                     if _missing_params:
                         _log.warning(
@@ -1125,13 +1163,18 @@ class TargetAppClient:
                     chat_path, json.dumps(body, default=str),
                 )
                 if self._chat_payload_format == "form":
-                    resp = await self._client.post(chat_path, data=body, headers=extra_headers)
+                    resp = await self._client.post(chat_path, data=body, headers=_req_headers)
                 else:
-                    resp = await self._client.post(chat_path, json=body, headers=extra_headers)
-                _log.debug(
-                    "Target HTTP Response status=%s body=%s",
-                    resp.status_code, resp.text,
-                )
+                    resp = await self._client.post(chat_path, json=body, headers=_req_headers)
+                if transport is not None:
+                    transport.absorb_response_cookies(resp.cookies)
+                if is_provider_blocked(resp.text):
+                    _log.debug("Target HTTP Response status=%s outcome=provider_blocked", resp.status_code)
+                else:
+                    _log.debug(
+                        "Target HTTP Response status=%s body=%s",
+                        resp.status_code, resp.text,
+                    )
                 resp.raise_for_status()
                 _content_type = resp.headers.get("content-type", "")
                 if "text/event-stream" in _content_type and self._framework_adapter is None:
@@ -1178,6 +1221,10 @@ class TargetAppClient:
                 break
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
+                if is_provider_blocked(exc.response.text):
+                    _log.info("Target HTTP %s outcome=provider_blocked; retry disabled", status)
+                    self._record_chat_success()
+                    return f"[HTTP {status}] [PROVIDER_BLOCKED]", []
                 body_preview = exc.response.text[:300] if exc.response.text else ""
                 _log.warning(
                     "Target HTTP %s  url=%s  body=%r",
@@ -1186,6 +1233,11 @@ class TargetAppClient:
                 _raise_if_quota_exhausted(exc.response, str(exc.request.url))
                 if status == 429 and attempt < self._max_429_retries:
                     delay = self._retry_delay_seconds(exc.response.headers, exc.response.text or "", attempt)
+                    if transport is not None and transport.defer_retries:
+
+                        raise RetryDeferred(
+                            delay, reason="http_429", status_text=f"[HTTP {status}]"
+                        ) from exc
                     _log.warning(
                         "Rate limited (429) on %s — retrying in %.2fs (%d/%d)",
                         exc.request.url,
@@ -1199,7 +1251,9 @@ class TargetAppClient:
                     status in (400, 422)
                     and self._framework_adapter is None
                     and body is not None
-                    and await self._attempt_schema_heal(body, exc.response.text or "", status)
+                    and await self._attempt_schema_heal(
+                        body, exc.response.text or "", status, transport
+                    )
                 ):
                     continue
                 # 4xx responses mean the target IS reachable — it actively rejected our
@@ -1243,6 +1297,9 @@ class TargetAppClient:
         # Extract response text and tool calls.
         # When a framework adapter is present, delegate to its specialised parsers.
         self.last_raw_response = data
+        if isinstance(data, dict) and is_provider_blocked(json.dumps(data)):
+            self._record_chat_success()
+            return "[PROVIDER_BLOCKED]", []
         tool_calls: list[dict] = []
         text = ""
         if self._framework_adapter is not None:
@@ -1308,7 +1365,7 @@ class TargetAppClient:
         if isinstance(data, dict):
             for key in _SESSION_ID_KEYS:
                 if key in data and data[key] is not None:
-                    self._session_context[key] = data[key]
+                    _ctx[key] = data[key]
 
         self._record_chat_success()
         return str(text), tool_calls
@@ -1321,8 +1378,13 @@ class TargetAppClient:
         params: dict[str, str] | None = None,
         extra_headers: dict[str, str] | None = None,
         strip_auth: bool = False,
+        transport: "BranchTransport | None" = None,
     ) -> tuple[int, str, dict]:
         """Send a direct HTTP request to a specific path.
+
+        With a campaign ``transport`` the branch's own headers/cookies are sent
+        (unless *strip_auth*), response cookies are stored on the branch, and a
+        429 raises ``RetryDeferred`` instead of sleeping.
 
         Returns (status_code, response_text, response_json).  Does NOT raise on
         4xx/5xx — callers inspect the status code to determine attack success.
@@ -1334,6 +1396,11 @@ class TargetAppClient:
         cannot be done by passing ``headers={...}`` alone — the request must
         be built first and the auth headers deleted from it directly.
         """
+        _hdrs = (
+            transport.request_headers(extra_headers)
+            if transport is not None and not strip_auth
+            else extra_headers
+        )
         for attempt in range(self._max_429_retries + 1):
             try:
                 if strip_auth and self._auth_header_names:
@@ -1366,10 +1433,15 @@ class TargetAppClient:
                         url=path,
                         json=body,
                         params=params,
-                        headers=extra_headers or {},
+                        headers=_hdrs or {},
                     )
+                    if transport is not None:
+                        transport.absorb_response_cookies(resp.cookies)
                 if resp.status_code == 429 and attempt < self._max_429_retries:
                     delay = self._retry_delay_seconds(resp.headers, resp.text or "", attempt)
+                    if transport is not None and transport.defer_retries:
+
+                        raise RetryDeferred(delay, reason="http_429", status_text="[HTTP 429]")
                     _log.warning(
                         "Rate limited (429) on %s %s — retrying in %.2fs (%d/%d)",
                         method.upper(),
@@ -1389,6 +1461,8 @@ class TargetAppClient:
                 # path is reachable; reset the endpoint-probe circuit breaker.
                 self._record_endpoint_success()
                 return resp.status_code, strip_known_boilerplate(resp.text), json_body
+            except RetryDeferred:
+                raise
             except Exception as exc:
                 label = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
                 # httpx transport errors carry the request that failed (e.g. the
@@ -1411,10 +1485,39 @@ class TargetAppClient:
 
         return 429, "[HTTP 429]", {}
 
+    async def probe_cors(self, path: str, origin: str) -> dict[str, str] | None:
+        """Send one unauthenticated OPTIONS preflight and return response headers.
+
+        Deliberately isolated from :meth:`invoke_endpoint`'s 429-retry and
+        circuit-breaker bookkeeping — a CORS reflection check is a single
+        best-effort auxiliary probe (W1 ASM), not an attack step whose
+        failure should count toward either breaker. Returns ``None`` on any
+        transport error (treated as "could not determine", never as a false
+        "not vulnerable").
+        """
+        try:
+            request = self._client.build_request(
+                method="OPTIONS", url=path,
+                headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
+            )
+            for name in self._auth_header_names:
+                if name in request.headers:
+                    del request.headers[name]
+            resp = await self._client.send(request)
+        except Exception as exc:  # noqa: BLE001 — best-effort auxiliary probe
+            _log.debug("probe_cors: OPTIONS %s failed: %s", path, exc)
+            return None
+        # Lowercase keys explicitly: httpx.Headers.get() is case-insensitive
+        # but a plain dict() conversion is not, and header name casing on
+        # the wire is server-dependent (Access-Control-Allow-Origin is the
+        # conventional casing, but not guaranteed).
+        return {k.lower(): v for k, v in resp.headers.items()}
+
     async def send_stream(
         self,
         payload: str,
         session: "AttackSession",
+        transport: "BranchTransport | None" = None,
     ) -> AsyncGenerator[tuple[str, list[dict]], None]:
         """Yield ``(partial_text, tool_calls_so_far)`` chunks as the agent responds.
 
@@ -1434,6 +1537,7 @@ class TargetAppClient:
         Args:
             payload: The user message to send.
             session: Current :class:`~.session.AttackSession`.
+            transport: Optional campaign branch state (see :meth:`send`).
 
         Yields:
             ``(partial_text, tool_calls_so_far)`` tuples.  The *tool_calls*
@@ -1442,9 +1546,23 @@ class TargetAppClient:
         """
         from nuguard.redteam.target.sse import iter_sse_events
 
+        _ctx: dict[str, Any] = (
+            transport.session_context if transport is not None else self._session_context
+        )
+        _extras = self._effective_extras(transport)
+        _path_values = (
+            {**self._path_param_values, **transport.path_params}
+            if transport is not None
+            else self._path_param_values
+        )
+
         try:
             if self._framework_adapter is not None:
-                scenario_key = str(session.session_id) if session.session_id else ""
+                scenario_key = (
+                    transport.branch_id
+                    if transport is not None
+                    else (str(session.session_id) if session.session_id else "")
+                )
                 session_id = await self._framework_adapter.ensure_session(
                     self._client, scenario_key
                 )
@@ -1469,20 +1587,18 @@ class TargetAppClient:
                 chat_path = self._framework_adapter.run_path
             else:
                 value: Any
-                if self._chat_payload_extras and _contains_message_token(
-                    self._chat_payload_extras
-                ):
+                if _extras and _contains_message_token(_extras):
                     value = payload
-                    body = self._build_templated_chat_payload(payload, session)
+                    body = self._build_templated_chat_payload(payload, session, transport)
                 else:
                     value = self._build_chat_payload_value(payload, session)
                     body = {self._chat_payload_key: value}
-                    if self._session_context:
-                        body.update(self._session_context)
-                    if self._chat_payload_extras:
-                        body = {**self._chat_payload_extras, **body}
+                    if _ctx:
+                        body.update(_ctx)
+                    if _extras:
+                        body = {**_extras, **body}
                 chat_path, _missing_params = _substitute_path_params(
-                    self._chat_path, self._path_param_values
+                    self._chat_path, _path_values
                 )
                 if _missing_params:
                     _log.warning(
@@ -1502,6 +1618,8 @@ class TargetAppClient:
                 "Target HTTP POST (stream) url=%s body=%s",
                 chat_path, json.dumps(body, default=str),
             )
+            if transport is not None:
+                _stream_kwargs["headers"] = transport.request_headers()
             async with self._client.stream("POST", chat_path, **_stream_kwargs) as resp:
                 resp.raise_for_status()
                 content_type = resp.headers.get("content-type", "")

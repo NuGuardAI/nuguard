@@ -764,12 +764,15 @@ def build_target_app_client_from_session(
     heal_llm: "LLMClient | None" = None,
     ws_auth_message: "dict[str, Any] | None" = None,
     ws_response_complete_key: str | None = None,
+    framework_adapter: "Any | None" = None,
 ) -> "TargetClient":
     """Construct a target client from an already resolved session contract.
 
     This deliberately skips all URL, adapter, and endpoint discovery so each
     caller can retain its own live-client lifecycle after sharing connection
-    resolution.
+    resolution. ``framework_adapter`` is opt-in: a resolved session contract
+    carries no adapter, so callers that need ADK/CES session semantics (campaign
+    mode) build one with ``make_framework_adapter`` and pass it here.
     """
     from nuguard.redteam.target.client import TargetAppClient
 
@@ -803,6 +806,7 @@ def build_target_app_client_from_session(
         chat_payload_extras=session.chat_payload_extras or None,
         heal_llm=heal_llm,
         chat_payload_value_template=session.chat_payload_value_template,
+        framework_adapter=framework_adapter,
     )
     client.resolution_notes = list(session.resolution_notes)
     return client

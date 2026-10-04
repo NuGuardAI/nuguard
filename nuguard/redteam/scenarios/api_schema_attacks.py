@@ -88,7 +88,7 @@ def build_schema_identity_override(
             f"body-carried identity over the auth token."
         ),
         steps=steps,
-        owasp_llm_ref="LLM02", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026", owasp_asi_ref="ASI03",
         pii_in_path=True,
     )
 
@@ -135,7 +135,7 @@ def build_schema_mass_assignment(
             "request_body_schema alongside a legitimate preference update."
         ),
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI03",
     )
 
 
@@ -184,7 +184,7 @@ def build_response_schema_probe(
             f"({field_list}) that should not be exposed to unprivileged users."
         ),
         steps=steps,
-        owasp_llm_ref="LLM02", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026", owasp_asi_ref="ASI02",
         pii_in_path=True,
     )
 
@@ -235,7 +235,7 @@ def build_streaming_exfil(
             f"testing whether chunked delivery bypasses complete-response content filters."
         ),
         steps=steps,
-        owasp_llm_ref="LLM02", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026", owasp_asi_ref="ASI02",
         pii_in_path=True,
     )
 
@@ -295,7 +295,7 @@ def build_param_confusion_injection(
             f"the declared chat_payload_key."
         ),
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026", owasp_asi_ref="ASI01",
     )
 
 
@@ -344,7 +344,7 @@ def build_session_fixation(
             f"authenticated user's token."
         ),
         steps=steps,
-        owasp_llm_ref="LLM02", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026", owasp_asi_ref="ASI03",
     )
 
 
@@ -389,7 +389,7 @@ def build_structured_output_coercion(
             f"sanitized before being consumed by downstream components."
         ),
         steps=steps,
-        owasp_llm_ref="LLM02", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM10:2026", owasp_asi_ref="ASI01",
     )
 
 
@@ -432,5 +432,5 @@ def build_schema_type_confusion(
             f"testing whether error responses leak internal module paths or type info."
         ),
         steps=steps,
-        owasp_llm_ref="LLM02", owasp_asi_ref="ASI05",
+        owasp_llm_ref="LLM02:2026", owasp_asi_ref="ASI05",
     )

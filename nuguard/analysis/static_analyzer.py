@@ -181,7 +181,17 @@ class StaticAnalyzer:
         supply_chain_profile: str = "standard",
         supply_chain_verify_artifacts: str = "off",
         supply_chain_threat_intel_feeds: list[str] | None = None,
+        checkov_timeout: float = 120.0,
+        checkov_total_timeout: float = 300.0,
+        semgrep_timeout: float = 120.0,
+        semgrep_total_timeout: float = 300.0,
     ) -> None:
+        from nuguard.analysis.plugins.scanner_runtime import positive_timeout
+
+        self.checkov_timeout = positive_timeout(checkov_timeout)
+        self.checkov_total_timeout = positive_timeout(checkov_total_timeout)
+        self.semgrep_timeout = positive_timeout(semgrep_timeout)
+        self.semgrep_total_timeout = positive_timeout(semgrep_total_timeout)
         self.enable_atlas   = enable_atlas
         self.enable_osv     = enable_osv
         self.enable_grype   = enable_grype
@@ -234,6 +244,10 @@ class StaticAnalyzer:
         # Config dict forwarded to all M1 plugins so they can fall back to
         # source_path even when SBOM nodes don't carry it explicitly.
         m1_config: dict[str, Any] = {}
+        m1_config["checkov_timeout"] = self.checkov_timeout
+        m1_config["checkov_total_timeout"] = self.checkov_total_timeout
+        m1_config["semgrep_timeout"] = self.semgrep_timeout
+        m1_config["semgrep_total_timeout"] = self.semgrep_total_timeout
         if self.source_path:
             m1_config["source_path"] = str(self.source_path)
         m1_config["supply_chain_profile"] = self.supply_chain_profile
@@ -474,10 +488,9 @@ class StaticAnalyzer:
             if result.status == "error":
                 self.tool_status[tool] = {
                     "status": "error",
-                    "findings": "0",
+                    "findings": str(len(result.findings or [])),
                     "reason": result.message or "error",
                 }
-                return []
             raw_list = list(result.findings or [])
             findings = [_raw_to_finding(r, tool) for r in raw_list]
             _log.info("%s: %d finding(s)", tool, len(findings))

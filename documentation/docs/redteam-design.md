@@ -1129,6 +1129,30 @@ and tool parameter injection.
 
 ---
 
+## 12a. Campaign mode
+
+`redteam.mode: campaign` (`nuguard/redteam/campaign/`) is an opt-in engine. `CampaignOrchestrator`
+subclasses `RedteamOrchestrator` and replaces only dispatch (`_run_scenarios`), so auth, endpoint
+resolution, discovery, scenario generation, finding construction, reporting and partial-run
+salvage are shared. Design: `documentation/developer-specs/redteam-v5.md`.
+
+| Module | Role |
+|---|---|
+| `transport/` | `BranchTransport` (per-branch session ids, cookies, headers), `BranchSender`, `Principal`, `HealthRegistry` / `CooldownQueue` / `RetryBudget`, target capability classification and isolation verification |
+| `branches.py` | Branch lifecycle (`new → ready → probing → tainted → retired`) and rotation rules |
+| `executor.py` | `CampaignExecutor`: one turn at a time per branch via `AttackExecutor.run_step` / the guided executor, bound through a branch-scoped client |
+| `knowledge.py`, `discovery.py` | Identity-scoped knowledge with trust levels; benign baseline kept apart from adversarial probing |
+| `ledger.py`, `scheduler.py`, `planner.py` | Coverage ledger, breadth/depth passes, budgets, redundancy suppression, campaign grouping, just-in-time payload generation |
+| `confirmation.py` | Fresh-session reproduction, causal minimization, recovery control |
+| `checkpoint.py` | Campaign state embedded in the standard checkpoint; safe resume (never replays writes) |
+| `catalog/scheduling.py` | Sidecar: complexity level, session policy, contamination tags, required fixture per catalog ID |
+
+`TargetAppClient.send` / `send_stream` / `invoke_endpoint` accept an opt-in `transport=` argument
+that moves conversation state onto the branch and raises `RetryDeferred` instead of sleeping.
+Without it, behaviour is unchanged.
+
+---
+
 ## 13. Tests
 
 - Unit tests colocated under `nuguard/redteam/tests/` cover action logging,

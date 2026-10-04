@@ -119,6 +119,10 @@ class ToolParameter(BaseModel):
 HttpParameterLocation = Literal["path", "query", "header", "cookie", "json", "form", "multipart"]
 
 
+IdentityRole = Literal["none", "subject_id", "tenant_id", "role_hint"]
+IdentityRoleEvidence = Literal["name_match", "path_context"]
+
+
 class HttpParameterMetadata(BaseModel):
     """One named input point of an HTTP API_ENDPOINT, independent of language/framework."""
 
@@ -126,6 +130,33 @@ class HttpParameterMetadata(BaseModel):
     location: HttpParameterLocation = Field(description="Where the value is carried in the request")
     type_hint: str = Field(default="string", description="Best-effort source type, e.g. 'int'")
     required: bool = Field(default=False, description="True when the handler requires the input")
+    identity_role: IdentityRole | None = Field(
+        default=None,
+        description=(
+            "Generic, SBOM-driven identity-field tag used by the redteam "
+            "trust-context matrix (user_id/tenant_id/role-style fields) — "
+            "'subject_id' for a caller/user identifier, 'tenant_id' for a "
+            "tenant/org scope, 'role_hint' for a role/permission field. "
+            "None when this parameter is not identity-related."
+        ),
+    )
+    identity_role_evidence: IdentityRoleEvidence | None = Field(
+        default=None,
+        description=(
+            "How identity_role was derived, so confidence is auditable: "
+            "'name_match' (parameter name heuristic) or 'path_context' (a bare "
+            "'id' path parameter under a users/accounts/tenants-style segment). "
+            "None when identity_role is unset."
+        ),
+    )
+    mass_assignment_risk: bool | None = Field(
+        default=None,
+        description=(
+            "True when a client-supplied 'role_hint' parameter is accepted on a "
+            "write method (POST/PUT/PATCH) — a mass-assignment/privilege-escalation "
+            "candidate. None when not applicable."
+        ),
+    )
 
 
 class HttpRequestMetadata(BaseModel):
@@ -207,6 +238,248 @@ class CorsPolicyDetail(BaseModel):
     wildcard_with_credentials: bool = Field(
         default=False,
         description="True when origin is wildcarded AND credentials are allowed — the dangerous combination",
+    )
+
+
+IdentityBinding = Literal["client_supplied", "credential_bound", "mixed"]
+
+MutationKind = Literal["none", "create", "update", "delete", "payment", "auth_state", "unknown"]
+Idempotency = Literal["unknown", "idempotent", "non_idempotent"]
+Enumerability = Literal["high", "low", "unknown"]
+IngressRole = Literal["gateway", "direct", "static_frontend"]
+
+
+class ObjectIdSemantics(BaseModel):
+    """Object-ID facts for an API_ENDPOINT that addresses one object (pentest-proposal A2).
+
+    Static, best-effort and credential-free. Whether adjacent IDs actually exist
+    is a runtime fact and is never recorded here.
+    """
+
+    param_name: str = Field(description="Path/query/body parameter that carries the object ID")
+    id_format: str | None = Field(
+        default=None,
+        description="Best-effort ID format evidence: 'int', 'uuid', 'ulid', 'ACCT-{seq}', ...",
+    )
+    sequential: bool | None = Field(
+        default=None,
+        description="True when evidence shows adjacent/ordered IDs (integer or sequence-string IDs)",
+    )
+    enumerability: Enumerability = Field(
+        default="unknown",
+        description="'high' for guessable sequential IDs, 'low' for random IDs, else 'unknown'",
+    )
+    sibling_read_paths: list[str] = Field(
+        default_factory=list,
+        description="Other endpoints that read the same object family",
+    )
+
+
+class CompensatingAction(BaseModel):
+    """A generic rollback recipe for a state-changing operation (pentest-proposal A3)."""
+
+    method: str = Field(description="HTTP method of the compensating call, e.g. 'DELETE'")
+    path: str = Field(description="Route template of the compensating call")
+
+
+class MutationSemantics(BaseModel):
+    """State-effect facts for an API_ENDPOINT, used to gate destructive pentest scenarios.
+
+    ``unknown`` is the default everywhere and never blocks a scan — it only
+    limits destructive eligibility (pentest-proposal A3/B5).
+    """
+
+    mutation_kind: MutationKind = Field(
+        default="unknown",
+        description=(
+            "'none' for reads; 'payment' for money movement; 'auth_state' for "
+            "password/role/session changes"
+        ),
+    )
+    idempotency: Idempotency = Field(
+        default="unknown",
+        description="'idempotent' per HTTP semantics or an idempotency key; else 'non_idempotent'",
+    )
+    confirmation_required: bool | None = Field(
+        default=None,
+        description=(
+            "True when a confirm token/field/two-phase step is observed; False when a "
+            "payment/delete handler shows none (the absence is the finding signal)"
+        ),
+    )
+    reversible: bool | None = Field(
+        default=None,
+        description="True when a compensating action exists in the endpoint set",
+    )
+    compensating_action: CompensatingAction | None = Field(
+        default=None, description="Rollback recipe when reversible is True"
+    )
+    audit_logged: bool | None = Field(
+        default=None, description="True when the handler writes an audit-log record"
+    )
+    evidence: list[str] = Field(
+        default_factory=list,
+        description="Short tags naming the signals used, e.g. ['http_method:POST', 'path_verb:transfer']",
+    )
+
+
+class IngressDetail(BaseModel):
+    """One externally reachable ingress of a DEPLOYMENT (pentest-proposal A4)."""
+
+    role: IngressRole = Field(
+        description="'gateway' (reverse proxy/ingress), 'direct' (backend exposed itself), "
+        "or 'static_frontend'"
+    )
+    url: str | None = Field(
+        default=None, description="Ingress URL or host when statically known; never a secret"
+    )
+    evidence: str = Field(
+        description="What proved it, e.g. 'nginx proxy_pass', 'ACA ingress', 'k8s Ingress'"
+    )
+
+
+PortExposure = Literal["public", "internal", "cluster", "unknown"]
+Autoscaler = Literal["hpa", "aca_rule", "ecs_autoscaling", "cloud_run", "keda", "none"]
+OsEvidence = Literal["tag", "image_default", "syft"]
+ImageRole = Literal["base", "app"]
+
+
+class PortDetail(BaseModel):
+    """One network port of a workload or image."""
+
+    container_port: int | None = Field(default=None, description="Port the process listens on")
+    service_port: int | None = Field(
+        default=None, description="Port a Service/load balancer exposes, when different"
+    )
+    host_port: int | None = Field(default=None, description="Published host port (compose, ECS)")
+    protocol: str = Field(default="tcp", description="'tcp' or 'udp'")
+    exposure: PortExposure = Field(
+        default="unknown",
+        description="'public' (internet-reachable), 'internal' (VNet/private), "
+        "'cluster' (cluster-internal only) or 'unknown'",
+    )
+    source: str | None = Field(
+        default=None, description="What declared it, e.g. 'EXPOSE', 'k8s Service', 'aca ingress'"
+    )
+
+
+class ScalingDetail(BaseModel):
+    """Replica count and autoscaling bounds of a workload."""
+
+    replicas: int | None = Field(default=None, description="Static/desired replica count")
+    min_replicas: int | None = Field(default=None, description="Autoscaler lower bound")
+    max_replicas: int | None = Field(default=None, description="Autoscaler upper bound")
+    autoscaler: Autoscaler | None = Field(default=None, description="Autoscaling mechanism")
+    metric: str | None = Field(default=None, description="Scaling metric, e.g. 'cpu', 'http'")
+    target: str | None = Field(default=None, description="Scaling target value, as written")
+
+
+class ResourceDetail(BaseModel):
+    """CPU/memory requests and limits as written in the source (not normalised)."""
+
+    cpu_request: str | None = None
+    cpu_limit: str | None = None
+    memory_request: str | None = None
+    memory_limit: str | None = None
+
+
+class ImagePackage(BaseModel):
+    """A package installed in a container image (never a secret; name/version only)."""
+
+    name: str = Field(description="Package name")
+    version: str | None = Field(default=None, description="Pinned version, when known")
+    manager: str = Field(description="'apt', 'apk', 'yum', 'pip', 'npm' or 'syft:<type>'")
+    source: Literal["dockerfile_run", "syft"] = Field(description="How it was discovered")
+
+
+class WorkloadDetail(BaseModel):
+    """A deployed service: a compose service, K8s workload, container app, function, ..."""
+
+    service_name: str | None = Field(default=None, description="Service/resource name")
+    workload_kind: str | None = Field(
+        default=None,
+        description="e.g. 'compose_service', 'k8s_deployment', 'container_app', 'ecs_service', "
+        "'lambda', 'cloud_run', 'app_service'",
+    )
+    cloud_service: str | None = Field(
+        default=None, description="Managed service, e.g. 'azure_container_apps', 'aws_ecs'"
+    )
+    namespace: str | None = Field(default=None, description="K8s namespace")
+    image_refs: list[str] = Field(default_factory=list, description="Image references run")
+    build_context: str | None = Field(
+        default=None, description="Build context directory, relative to the repo root"
+    )
+    dockerfile: str | None = Field(default=None, description="Dockerfile path, repo-relative")
+    source_dir: str | None = Field(
+        default=None, description="Directory holding the code this workload runs"
+    )
+    ports: list[PortDetail] = Field(default_factory=list)
+    scaling: ScalingDetail | None = None
+    resources: ResourceDetail | None = None
+    identity_ref: str | None = Field(
+        default=None, description="Service account / managed identity name"
+    )
+    depends_on: list[str] = Field(
+        default_factory=list, description="Names of workloads this one depends on"
+    )
+    env_var_names: list[str] = Field(
+        default_factory=list, description="Environment variable NAMES only; values never stored"
+    )
+    secret_refs: list[str] = Field(
+        default_factory=list, description="Secret/Key Vault reference names; never values"
+    )
+    probes: list[str] = Field(
+        default_factory=list, description="Health probes, e.g. 'liveness:/healthz'"
+    )
+    internal_only: bool | None = Field(
+        default=None, description="True when no public ingress/port reaches the workload"
+    )
+    source_format: str | None = Field(
+        default=None, description="'compose', 'k8s', 'helm_values', 'bicep', 'terraform', ..."
+    )
+
+
+class SessionCookieSemantics(BaseModel):
+    """Whether the application is expected to issue session cookies (pentest-proposal A6)."""
+
+    set_cookie_expected: bool = Field(
+        description=(
+            "True when handler code sets a cookie or uses a server-side session. "
+            "False with identity carried in the request body means server-side "
+            "session binding is impossible"
+        )
+    )
+
+
+class AsmSummary(BaseModel):
+    """Summarized, credential-redacted Agentic Surface Model facts (W1).
+
+    The full live-probed :class:`~nuguard.redteam.enrichment.asm_models.
+    AgenticSurfaceModel` (every probed URL, header, status, timestamp) is a
+    *runtime* artifact — not persisted here, same treatment as
+    ``chat_payload_extras``. Only booleans/counts safe to commit to the SBOM
+    JSON are promoted, written onto the AGENT node by
+    ``apply_asm_to_sbom()``. Never set directly from a raw header value.
+    """
+
+    sibling_endpoint_count: int | None = Field(
+        default=None, description="Number of endpoints discovered beyond the primary chat route"
+    )
+    unauthenticated_inventory_exposed: bool | None = Field(
+        default=None,
+        description="True when a tool/agent inventory endpoint (e.g. /api/tools) is reachable without auth",
+    )
+    observation_channel_unauthenticated: bool | None = Field(
+        default=None,
+        description="True when a WS/SSE observation channel accepted a connection without auth",
+    )
+    cors_wildcard_with_credentials_live: bool | None = Field(
+        default=None,
+        description="True when a live OPTIONS probe reflected an attacker Origin with credentials allowed",
+    )
+    direct_tool_endpoint_path: str | None = Field(
+        default=None,
+        description="Path of a confirmed directly-invocable tool endpoint, when one was found",
     )
 
 
@@ -416,6 +689,46 @@ class NodeMetadata(BaseModel):
     )
     base_image: str | None = Field(
         default=None, description="Full base image reference, e.g. 'python:3.12-slim'"
+    )
+    image_role: ImageRole | None = Field(
+        default=None, description="CONTAINER_IMAGE: 'base' (a FROM ref) or 'app' (a built image)"
+    )
+    os_name: str | None = Field(default=None, description="Image OS, e.g. 'debian', 'alpine'")
+    os_version: str | None = Field(default=None, description="Image OS version, e.g. '12', '3.19'")
+    os_family: str | None = Field(
+        default=None, description="Image OS family: 'debian', 'rhel', 'alpine', 'distroless', ..."
+    )
+    os_evidence: OsEvidence | None = Field(
+        default=None, description="How the OS was determined: tag, image_default or syft"
+    )
+    stage_alias: str | None = Field(default=None, description="Final build stage alias (AS name)")
+    entrypoint: str | None = Field(default=None, description="Dockerfile ENTRYPOINT, as written")
+    cmd: str | None = Field(default=None, description="Dockerfile CMD, as written")
+    workdir: str | None = Field(default=None, description="Dockerfile WORKDIR")
+    image_packages: list[ImagePackage] | None = Field(
+        default=None, description="Packages installed in the image (RUN parsing or syft)"
+    )
+    dependency_manifests: list[str] | None = Field(
+        default=None, description="Dependency manifests COPY'd into the image"
+    )
+    has_dockerignore: bool | None = Field(
+        default=None, description="True when a .dockerignore sits beside the Dockerfile"
+    )
+    exposed_ports: list[PortDetail] | None = Field(
+        default=None, description="CONTAINER_IMAGE: ports declared with EXPOSE"
+    )
+    workload: WorkloadDetail | None = Field(
+        default=None, description="DEPLOYMENT nodes: the deployed service's runtime shape"
+    )
+    cloud_provider: str | None = Field(
+        default=None, description="DEPLOYMENT nodes: 'aws', 'azure', 'gcp', 'kubernetes', ..."
+    )
+    hosted_by: str | None = Field(
+        default=None, description="Name of the workload that hosts this component"
+    )
+    network_exposure: PortExposure | None = Field(
+        default=None,
+        description="How reachable this endpoint/agent is from outside, via its hosting workload",
     )
     # IaC security / resilience fields (populated by IaC adapters)
     cloud_region: str | None = Field(
@@ -658,6 +971,38 @@ class NodeMetadata(BaseModel):
             "'/chat/conversations/:id/messages'"
         ),
     )
+    object_id_semantics: ObjectIdSemantics | None = Field(
+        default=None,
+        description="Object-ID format/enumerability facts for authorization-replay testing",
+    )
+    mutation_semantics: MutationSemantics | None = Field(
+        default=None,
+        description="State-effect facts (mutation kind, idempotency, rollback) for destructive-test gating",
+    )
+    identity_binding: IdentityBinding | None = Field(
+        default=None,
+        description=(
+            "Where this endpoint's caller identity comes from: 'client_supplied' "
+            "(an identity parameter the caller controls), 'credential_bound' "
+            "(handler resolves it from the credential, e.g. Depends(get_current_user)), "
+            "or 'mixed'. None when no identity signal was found."
+        ),
+    )
+    response_echoes_input: bool | None = Field(
+        default=None,
+        description=(
+            "True when the framework's validation errors echo the submitted input "
+            "(framework-level fact, e.g. FastAPI 422 responses)"
+        ),
+    )
+    session_cookie_semantics: SessionCookieSemantics | None = Field(
+        default=None,
+        description="Whether handler code is expected to issue session cookies",
+    )
+    ingresses: list[IngressDetail] | None = Field(
+        default=None,
+        description="DEPLOYMENT nodes: externally reachable ingresses (gateway/direct/static frontend)",
+    )
     # Discovered request/response schema (populated by framework adapters)
     http_request: HttpRequestMetadata | None = Field(
         default=None,
@@ -745,6 +1090,14 @@ class NodeMetadata(BaseModel):
     cors_policy: CorsPolicyDetail | None = Field(
         default=None,
         description="CORS configuration extracted from code or IaC",
+    )
+    asm_summary: AsmSummary | None = Field(
+        default=None,
+        description=(
+            "Summarized, credential-redacted Agentic Surface Model facts "
+            "(redteam-proposal.md W1) — set on AGENT nodes by "
+            "nuguard.redteam.enrichment.asm_prober.apply_asm_to_sbom()"
+        ),
     )
     debug_error_leak: bool | None = Field(
         default=None,
@@ -1246,12 +1599,12 @@ class AiSbomDocument(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json",
+            "$id": "https://nuguard.ai/schemas/aibom/1.7.0/aibom.schema.json",
         }
     )
 
     schema_version: str = Field(
-        default="1.5.0",
+        default="1.7.0",
         description="AIBOM schema version (semver); bump when format changes",
     )
     generated_at: datetime = Field(

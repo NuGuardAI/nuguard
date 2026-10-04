@@ -90,6 +90,12 @@ _REL_TYPES: dict[RelationshipType, str] = {
     RelationshipType.ACCESSES: "dataFile",
     RelationshipType.DEPLOYS: "generates",
     RelationshipType.PROTECTS: "other",
+    RelationshipType.DEPENDS_ON: "dependsOn",
+    RelationshipType.HOSTS: "contains",
+    RelationshipType.RUNS: "other",
+    RelationshipType.BUILT_FROM: "other",
+    RelationshipType.EXPOSES: "other",
+    RelationshipType.ROUTES_TO: "other",
 }
 
 

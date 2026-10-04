@@ -40,6 +40,17 @@ from nuguard.config import AppAuthConfig, RedteamFindingTriggers
 from nuguard.models.finding import Finding
 from nuguard.models.health_report import TargetHealthReport
 from nuguard.models.token_usage import TokenUsage
+from nuguard.redteam.campaign.config import CampaignConfig
+from nuguard.redteam.campaign.models import (
+    CampaignPlanSummary,
+    CapabilityObservation,
+    ConversationBranchSummary,
+    CoverageSummary,
+    EfficiencySummary,
+    ObjectiveExecutionRecord,
+    ReproductionRecord,
+)
+from nuguard.redteam.defence_regressions.models import DefenceRegressionRunSummary
 from nuguard.redteam.executor.orchestrator import (
     RedteamOrchestrator,
     _dedup_findings,
@@ -184,6 +195,8 @@ class RedteamRunRequest(BaseModel):
     verbose: bool = False
     credentials: dict[str, SecretStr] | None = None
     scenario_timeout: float = 180.0
+    api_endpoint_threshold: int = 25
+    ci_api_spot_checks: int = 3
     turn_delay_seconds: float = 5.0
     scenario_delay_seconds: float = 0.0
     similar_miss_threshold: int = 4
@@ -203,6 +216,29 @@ class RedteamRunRequest(BaseModel):
     golden_data: dict[str, Any] | None = None
     suppress_spa_html_auth_bypass: bool = True
     codegen_escalation_enabled: bool = True
+    defence_regressions: list[dict] | None = None
+    """Messages the app must always refuse (yaml: redteam.defence_regressions).
+    Evaluated in a single-turn pre-pass before scenario dispatch — see
+    :mod:`nuguard.redteam.defence_regressions`."""
+    defence_regression_paraphrases: int = 5
+    """Paraphrase variants generated per entry above; 0 evaluates only the
+    literal configured message (yaml: redteam.defence_regression_paraphrases)."""
+    defence_regression_timeout: float = Field(
+        default=180.0, gt=0,
+        description="Wall-clock deadline for the defence-regression pre-pass, including variant generation.",
+    )
+    defence_regression_probe_timeout: float = Field(
+        default=30.0, gt=0,
+        description="Wall-clock deadline per defence-regression probe, including retries.",
+    )
+    asm_max_probe_requests: int = 25
+    """Request budget for the Agentic Surface Model prober; 0 disables it
+    entirely (yaml: redteam.asm.max_probe_requests)."""
+    asm_extra_inventory_paths: list[str] = Field(default_factory=list)
+    """Extra tool/agent-inventory paths to probe (yaml: redteam.asm.extra_inventory_paths)."""
+    trust_context_confirmation_cells: int = 1
+    """Extra W2 trust-context cells run after the first confirmed identity
+    mismatch before early-exiting (yaml: redteam.trust_context.confirmation_cells)."""
 
     @model_validator(mode="before")
     @classmethod
@@ -214,7 +250,8 @@ class RedteamRunRequest(BaseModel):
             normalized["auth_config"] = data["auth_config"].model_dump()
             return normalized
         return data
-    mode: str = "concurrent"
+    mode: Literal["concurrent", "progressive", "campaign"] = "concurrent"
+    campaign: CampaignConfig | None = None
     progressive_halt_on_severity: str = "none"
     probe_llm: bool = False
     resume_from: str | None = None
@@ -248,6 +285,7 @@ class RedteamRunResult(BaseModel):
         "partial",
     ]
     config_notes: list[str] = Field(default_factory=list)
+    defence_regression_summary: DefenceRegressionRunSummary | None = None
     llm_executive_summary: str | None = None
     llm_coding_brief: str | None = None
     scenarios_run: int = 0
@@ -269,6 +307,15 @@ class RedteamRunResult(BaseModel):
     ``remediation_llm_client`` (falling back to ``eval_llm``) is supplied to
     :func:`run_redteam`. Empty when synthesis fails or no SBOM is available.
     """
+    campaign_coverage: CoverageSummary | None = None
+    """Coverage quality for ``mode: campaign`` (counts by status and by control, catalog ID,
+    technique, channel, identity boundary, level and OWASP version). ``None`` in other modes."""
+    campaign_plan: CampaignPlanSummary | None = None
+    objective_records: list[ObjectiveExecutionRecord] = Field(default_factory=list)
+    reproduction_records: list[ReproductionRecord] = Field(default_factory=list)
+    branch_summaries: list[ConversationBranchSummary] = Field(default_factory=list)
+    capability_observations: list[CapabilityObservation] = Field(default_factory=list)
+    efficiency: EfficiencySummary | None = None
     security_invariants: list[dict[str, Any]] = Field(default_factory=list)
     """Phase-0 pass/fail criteria derived from the Cognitive Policy (see
     nuguard.redteam.invariants.derive_security_invariants and
@@ -336,6 +383,38 @@ def _catalog_coverage_to_dict(report: "CoverageReport | None") -> dict[str, Any]
     return d
 
 
+def _campaign_fields(orchestrator: Any) -> dict[str, Any]:
+    """Additive campaign-mode result fields (empty/None for the legacy engines).
+
+    Only values of the expected model types are accepted, so an orchestrator
+    without campaign state (or a test double) can never inject foreign objects.
+    """
+
+    def one(name: str, typ: type) -> Any:
+        v = getattr(orchestrator, name, None)
+        return v if isinstance(v, typ) else None
+
+    def many(name: str, typ: type) -> list[Any]:
+        v = getattr(orchestrator, name, None)
+        return [x for x in v if isinstance(x, typ)] if isinstance(v, list) else []
+
+    return {
+        "campaign_coverage": one("campaign_coverage", CoverageSummary),
+        "campaign_plan": one("campaign_plan", CampaignPlanSummary),
+        "objective_records": many("campaign_objective_records", ObjectiveExecutionRecord),
+        "reproduction_records": many("campaign_reproduction_records", ReproductionRecord),
+        "branch_summaries": many("campaign_branch_summaries", ConversationBranchSummary),
+        "capability_observations": many("campaign_observations", CapabilityObservation),
+        "efficiency": one("campaign_efficiency", EfficiencySummary),
+    }
+
+
+def _regression_summary(orchestrator: RedteamOrchestrator) -> DefenceRegressionRunSummary | None:
+    """Normalize optional regression state from older orchestrators and test doubles."""
+    summary = getattr(orchestrator, "defence_regression_summary", None)
+    return summary if isinstance(summary, DefenceRegressionRunSummary) else None
+
+
 def _build_partial_result(orchestrator: RedteamOrchestrator, exc: PartialRunError) -> RedteamRunResult:
     """Build a JSON-safe partial :class:`RedteamRunResult` from a :class:`PartialRunError`.
 
@@ -353,6 +432,7 @@ def _build_partial_result(orchestrator: RedteamOrchestrator, exc: PartialRunErro
         scenario_records=payload.get("scenario_records", []),
         scan_outcome="partial",
         config_notes=list(orchestrator.config_notes),
+        defence_regression_summary=_regression_summary(orchestrator),
         llm_executive_summary=orchestrator.llm_executive_summary,
         llm_coding_brief=None,
         scenarios_run=orchestrator.scenarios_run,
@@ -366,6 +446,7 @@ def _build_partial_result(orchestrator: RedteamOrchestrator, exc: PartialRunErro
         coverage_tracker=coverage_tracker.to_dict() if coverage_tracker is not None else None,
         remediation_plan=[],
         security_invariants=[i.model_dump() for i in getattr(orchestrator, "security_invariants", [])],
+        **_campaign_fields(orchestrator),
     )
 
 
@@ -410,7 +491,13 @@ async def run_redteam(
         if _resume_checkpoint is None:
             raise ValueError(f"--resume checkpoint not found or unreadable: {request.resume_from}")
 
-    orchestrator = RedteamOrchestrator(
+    if request.mode == "campaign":
+        from nuguard.redteam.campaign.orchestrator import CampaignOrchestrator
+
+        _orchestrator_cls: Any = CampaignOrchestrator
+    else:
+        _orchestrator_cls = RedteamOrchestrator
+    orchestrator = _orchestrator_cls(
         sbom=sbom,
         target_url=request.target_url,
         sbom_path=sbom_path,
@@ -445,6 +532,8 @@ async def run_redteam(
         verbose=request.verbose,
         credentials=_reveal_secret_strings(request.credentials),
         scenario_timeout=request.scenario_timeout,
+        api_endpoint_threshold=request.api_endpoint_threshold,
+        ci_api_spot_checks=request.ci_api_spot_checks,
         turn_delay_seconds=request.turn_delay_seconds,
         scenario_delay_seconds=request.scenario_delay_seconds,
         similar_miss_threshold=request.similar_miss_threshold,
@@ -465,6 +554,13 @@ async def run_redteam(
         golden_data=request.golden_data,
         suppress_spa_html_auth_bypass=request.suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=request.codegen_escalation_enabled,
+        defence_regressions=request.defence_regressions,
+        defence_regression_paraphrases=request.defence_regression_paraphrases,
+        defence_regression_timeout=request.defence_regression_timeout,
+        defence_regression_probe_timeout=request.defence_regression_probe_timeout,
+        asm_max_probe_requests=request.asm_max_probe_requests,
+        asm_extra_inventory_paths=request.asm_extra_inventory_paths,
+        trust_context_confirmation_cells=request.trust_context_confirmation_cells,
         mode=request.mode,
         progressive_halt_on_severity=request.progressive_halt_on_severity,
         progress_sink=_progress_sink,
@@ -551,6 +647,7 @@ async def run_redteam(
         scenario_records=[dataclasses.asdict(r) for r in orchestrator.scenario_records],
         scan_outcome=orchestrator.scan_outcome,  # type: ignore[arg-type]
         config_notes=list(orchestrator.config_notes),
+        defence_regression_summary=_regression_summary(orchestrator),
         llm_executive_summary=orchestrator.llm_executive_summary,
         llm_coding_brief=llm_coding_brief,
         scenarios_run=orchestrator.scenarios_run,
@@ -564,6 +661,7 @@ async def run_redteam(
         coverage_tracker=coverage_tracker.to_dict() if coverage_tracker is not None else None,
         remediation_plan=remediation_plan,
         security_invariants=[i.model_dump() for i in getattr(orchestrator, "security_invariants", [])],
+        **_campaign_fields(orchestrator),
     )
 
 

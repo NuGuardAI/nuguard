@@ -79,6 +79,10 @@ def redteam(
     profile: str = typer.Option(
         "ci", "--profile", help="Scan profile: ci | full."
     ),
+    mode: Optional[str] = typer.Option(
+        None, "--mode",
+        help="Engine mode: concurrent | progressive | campaign (yaml: redteam.mode).",
+    ),
     scenarios: Optional[str] = typer.Option(
         None, "--scenarios", help="Comma-separated: destructive, non-destructive (default: both)."
     ),
@@ -164,6 +168,18 @@ def redteam(
     _source_path_val = getattr(cfg, "source_path", None)
     source_dir = source or (Path(str(_source_path_val)) if _source_path_val else None)
     effective_profile = profile if profile != "ci" else cfg.redteam_profile
+    effective_mode = mode if mode is not None else cfg.redteam_mode
+    if effective_mode not in ("concurrent", "progressive", "campaign"):
+        typer.echo(
+            f"Error: --mode must be concurrent, progressive or campaign (got {mode!r})",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    effective_campaign = (
+        cfg.resolved_redteam_campaign_config().model_dump()
+        if effective_mode == "campaign"
+        else None
+    )
     effective_min_impact = (
         min_impact_score if min_impact_score != 0.0 else cfg.min_impact_score
     )
@@ -314,6 +330,8 @@ def redteam(
         finding_triggers=finding_triggers,
         verbose=effective_verbose,
         scenario_timeout=cfg.redteam_scenario_timeout,
+        api_endpoint_threshold=cfg.redteam_api_endpoint_threshold,
+        ci_api_spot_checks=cfg.redteam_ci_api_spot_checks,
         concurrency=cfg.redteam_concurrency,
         turn_delay_seconds=effective_turn_delay,
         scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
@@ -334,10 +352,18 @@ def redteam(
         golden_data=cfg.redteam_golden_data or None,
         suppress_spa_html_auth_bypass=cfg.redteam_suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=cfg.redteam_codegen_escalation_enabled,
-        mode=cfg.redteam_mode,
+        mode=effective_mode,
+        campaign=effective_campaign,
         progressive_halt_on_severity=cfg.redteam_progressive_halt_on_severity,
         probe_llm=cfg.probe_llm_enabled,
         resume=effective_resume,
+        defence_regressions=cfg.redteam_defence_regressions or None,
+        defence_regression_paraphrases=cfg.redteam_defence_regression_paraphrases,
+        defence_regression_timeout=cfg.redteam_defence_regression_timeout,
+        defence_regression_probe_timeout=cfg.redteam_defence_regression_probe_timeout,
+        asm_max_probe_requests=cfg.redteam_asm_max_probe_requests,
+        asm_extra_inventory_paths=cfg.redteam_asm_extra_inventory_paths or None,
+        trust_context_confirmation_cells=cfg.redteam_trust_context_confirmation_cells,
     )
 
     _partial_run = False
@@ -612,6 +638,8 @@ async def _run_redteam(
     verbose: bool = False,
     credentials: dict[str, str] | None = None,
     scenario_timeout: float = 300.0,
+    api_endpoint_threshold: int = 25,
+    ci_api_spot_checks: int = 3,
     concurrency: int = 5,
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
@@ -634,9 +662,17 @@ async def _run_redteam(
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
     mode: str = "concurrent",
+    campaign: dict | None = None,
     progressive_halt_on_severity: str = "none",
     probe_llm: bool = False,
     resume: str | None = None,
+    defence_regressions: "list[dict] | None" = None,
+    defence_regression_paraphrases: int = 5,
+    defence_regression_timeout: float = 180.0,
+    defence_regression_probe_timeout: float = 30.0,
+    asm_max_probe_requests: int = 25,
+    asm_extra_inventory_paths: "list[str] | None" = None,
+    trust_context_confirmation_cells: int = 1,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -760,9 +796,18 @@ async def _run_redteam(
                 remediation_llm_client=remediation_llm_client,
                 prompt_cache_dir=prompt_cache_dir,
                 finding_triggers=finding_triggers,
+                defence_regressions=defence_regressions,
+                defence_regression_paraphrases=defence_regression_paraphrases,
+                defence_regression_timeout=defence_regression_timeout,
+                defence_regression_probe_timeout=defence_regression_probe_timeout,
+                asm_max_probe_requests=asm_max_probe_requests,
+                asm_extra_inventory_paths=asm_extra_inventory_paths,
+                trust_context_confirmation_cells=trust_context_confirmation_cells,
                 verbose=verbose,
                 credentials=credentials,
                 scenario_timeout=scenario_timeout,
+                api_endpoint_threshold=api_endpoint_threshold,
+                ci_api_spot_checks=ci_api_spot_checks,
                 concurrency=concurrency,
                 turn_delay_seconds=turn_delay_seconds,
                 scenario_delay_seconds=scenario_delay_seconds,
@@ -784,6 +829,7 @@ async def _run_redteam(
                 suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
                 codegen_escalation_enabled=codegen_escalation_enabled,
                 mode=mode,
+                campaign=campaign,
                 progressive_halt_on_severity=progressive_halt_on_severity,
                 probe_llm=probe_llm,
                 resume=resume,
@@ -825,9 +871,18 @@ async def _run_redteam(
         remediation_llm_client=remediation_llm_client,
         prompt_cache_dir=prompt_cache_dir,
         finding_triggers=finding_triggers,
+        defence_regressions=defence_regressions,
+        defence_regression_paraphrases=defence_regression_paraphrases,
+        defence_regression_timeout=defence_regression_timeout,
+        defence_regression_probe_timeout=defence_regression_probe_timeout,
+        asm_max_probe_requests=asm_max_probe_requests,
+        asm_extra_inventory_paths=asm_extra_inventory_paths,
+        trust_context_confirmation_cells=trust_context_confirmation_cells,
         verbose=verbose,
         credentials=credentials,
         scenario_timeout=scenario_timeout,
+        api_endpoint_threshold=api_endpoint_threshold,
+        ci_api_spot_checks=ci_api_spot_checks,
         concurrency=concurrency,
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
@@ -849,6 +904,7 @@ async def _run_redteam(
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=codegen_escalation_enabled,
         mode=mode,
+        campaign=campaign,
         progressive_halt_on_severity=progressive_halt_on_severity,
         probe_llm=probe_llm,
     )
@@ -891,6 +947,8 @@ async def _run_orchestrator(  # noqa: C901
     verbose: bool = False,
     credentials: dict[str, str] | None = None,
     scenario_timeout: float = 300.0,
+    api_endpoint_threshold: int = 25,
+    ci_api_spot_checks: int = 3,
     concurrency: int = 5,
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
@@ -912,13 +970,22 @@ async def _run_orchestrator(  # noqa: C901
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
     mode: str = "concurrent",
+    campaign: dict | None = None,
     progressive_halt_on_severity: str = "none",
     probe_llm: bool = False,
     resume: str | None = None,
+    defence_regressions: "list[dict] | None" = None,
+    defence_regression_paraphrases: int = 5,
+    defence_regression_timeout: float = 180.0,
+    defence_regression_probe_timeout: float = 30.0,
+    asm_max_probe_requests: int = 25,
+    asm_extra_inventory_paths: "list[str] | None" = None,
+    trust_context_confirmation_cells: int = 1,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from pydantic import SecretStr
 
     from nuguard.common.llm_client import LLMClient
+    from nuguard.redteam.campaign.config import CampaignConfig
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
     from nuguard.redteam.public_api import RedteamAuthConfig, RedteamRunRequest, run_redteam
 
@@ -968,6 +1035,13 @@ async def _run_orchestrator(  # noqa: C901
             else None
         ),
         finding_triggers=finding_triggers,
+        defence_regressions=defence_regressions,
+        defence_regression_paraphrases=defence_regression_paraphrases,
+        defence_regression_timeout=defence_regression_timeout,
+        defence_regression_probe_timeout=defence_regression_probe_timeout,
+        asm_max_probe_requests=asm_max_probe_requests,
+        asm_extra_inventory_paths=asm_extra_inventory_paths or [],
+        trust_context_confirmation_cells=trust_context_confirmation_cells,
         verbose=verbose,
         credentials=(
             {name: SecretStr(value) for name, value in credentials.items()}
@@ -975,6 +1049,8 @@ async def _run_orchestrator(  # noqa: C901
             else None
         ),
         scenario_timeout=scenario_timeout,
+        api_endpoint_threshold=api_endpoint_threshold,
+        ci_api_spot_checks=ci_api_spot_checks,
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
@@ -994,7 +1070,8 @@ async def _run_orchestrator(  # noqa: C901
         golden_data=golden_data,
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=codegen_escalation_enabled,
-        mode=mode,
+        mode=mode,  # type: ignore[arg-type]  # validated by the request model
+        campaign=CampaignConfig.model_validate(campaign) if campaign else None,
         progressive_halt_on_severity=progressive_halt_on_severity,
         probe_llm=probe_llm,
         resume_from=resume,
@@ -1200,8 +1277,18 @@ def _append_remediation_plan(lines: list[str], remediation_plan: list) -> None:
 
 
 def _fail_on_severity(findings: list, fail_on: str) -> None:
-    """Exit with code 2 if any finding meets or exceeds the threshold severity."""
+    """Exit with code 2 if any finding meets or exceeds the threshold severity.
+
+    Defence-regression findings (``regression_paraphrase_kind is not None``)
+    are blocking in CI regardless of this threshold — see
+    ``redteam.defence_regressions`` in ``nuguard.yaml.example`` and
+    ``nuguard.redteam.defence_regressions``.
+    """
     from nuguard.models.finding import Severity
+
+    for f in findings:
+        if getattr(f, "regression_paraphrase_kind", None) is not None:
+            raise typer.Exit(code=2)
 
     _ORDER = [
         Severity.CRITICAL,

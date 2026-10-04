@@ -50,6 +50,8 @@ def to_json(
     token_usage: "TokenUsage | None" = None,
     scenario_records: list | None = None,
     security_invariants: list | None = None,
+    campaign_coverage: "object | None" = None,
+    efficiency: "object | None" = None,
 ) -> str:
     """Generate a JSON report string from red-team findings.
 
@@ -89,6 +91,10 @@ def to_json(
         ]
     if scenario_records:
         payload["phases"] = _phase_summary_rows(findings, scenario_records)
+    if campaign_coverage is not None or efficiency is not None:
+        from nuguard.redteam.campaign.report import to_json_fields
+
+        payload.update(to_json_fields(campaign_coverage, efficiency))  # type: ignore[arg-type]
     return json.dumps(payload, indent=2, default=str)
 
 
@@ -152,6 +158,8 @@ def to_markdown(
     coverage_tracker: "object | None" = None,
     security_invariants: list | None = None,
     scan_outcome: str = "no_findings",
+    campaign_coverage: "object | None" = None,
+    efficiency: "object | None" = None,
 ) -> str:
     """Render red-team findings as a Markdown report string.
 
@@ -210,6 +218,12 @@ def to_markdown(
     lines += [f"- **Scan Outcome**: `{scan_outcome}`", ""]
     if scan_outcome in _ABORT_SCAN_OUTCOMES:
         lines += [_abort_outcome_note(scan_outcome), ""]
+    if campaign_coverage is not None:
+        from nuguard.redteam.campaign.report import inconclusive_note
+
+        _inc = inconclusive_note(campaign_coverage)  # type: ignore[arg-type]
+        if _inc and not findings:
+            lines += [_inc, ""]
     if findings:
         sev_counts: dict[str, int] = {}
         for f in findings:
@@ -243,6 +257,12 @@ def to_markdown(
 
     if security_invariants:
         lines += _security_invariants_section(security_invariants)
+
+    if campaign_coverage is not None or efficiency is not None:
+        from nuguard.redteam.campaign.report import coverage_markdown, efficiency_markdown
+
+        lines += coverage_markdown(campaign_coverage)  # type: ignore[arg-type]
+        lines += efficiency_markdown(efficiency)  # type: ignore[arg-type]
 
     if scenario_records:
         lines += _phase_summary_section(findings, scenario_records)

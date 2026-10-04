@@ -169,8 +169,8 @@ def build_faux_reasoning_authorization(
         goal_type=GoalType.PROMPT_DRIVEN_THREAT,
         scenario_type=ScenarioType.FAUX_REASONING_INJECTION,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI01 – Prompt Injection",
-        owasp_llm_ref="LLM01 – Prompt Injection",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             # Step 1: warm up — establish a plausible workflow with an approval concept
@@ -413,8 +413,8 @@ def build_policy_patching(
         goal_type=GoalType.PROMPT_DRIVEN_THREAT,
         scenario_type=ScenarioType.POLICY_PATCHING,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI01 – Prompt Injection",
-        owasp_llm_ref="LLM01 – Prompt Injection",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=steps,
     )
@@ -476,8 +476,8 @@ def build_approval_state_forgery(
         goal_type=GoalType.PROMPT_DRIVEN_THREAT,
         scenario_type=ScenarioType.APPROVAL_STATE_FORGERY,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
-        owasp_llm_ref="LLM01 – Prompt Injection",
+        owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             # Step 1: trigger the action to see the approval prompt / HITL flow

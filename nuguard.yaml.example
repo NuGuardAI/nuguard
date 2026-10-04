@@ -41,6 +41,10 @@ sbom_generation:
   # llm_concurrency: 5              # max in-flight LLM calls during enrichment
                                     # (issue #197). Override with NUGUARD_LLM_CONCURRENCY
                                     # or --llm-concurrency. 1 = sequential (legacy).
+  # scan_images: false             # run `syft` on pulled base images to record their real
+                                    # OS and installed packages (needs syft on PATH and
+                                    # registry access). CLI: --scan-images
+  # max_image_packages: 200        # cap on packages recorded per container image
 
   # Gap-fill discovery pass — multi-round LLM discovery of component types
   # that regex/AST extraction can't see structurally (dynamically-registered
@@ -316,6 +320,23 @@ redteam:
     # omitted). Only applies when mode: progressive.
     halt_on_severity: none
 
+  # Campaign mode (only with mode: campaign) — see documentation/docs/redteam-guide.md.
+  # campaign:
+  #   max_turns_per_branch: 24          # rotate a conversation branch after N turns
+  #   max_branch_tokens: 8000           # ... or N estimated context tokens
+  #   max_objective_turns: 12           # per-objective turn bound (<= max_turns_per_branch)
+  #   max_retries_per_incident: 2       # retries per transport incident ...
+  #   retry_window_seconds: 120         # ... within this window
+  #   confirm_in_fresh_sessions: true   # reproduce findings in a brand-new conversation
+  #   target_supports_session_reset: true  # false = no reset possible (confirmation blocked)
+  #   campaign_warmup: true             # one benign baseline per branch (set pre_run_warmup: 0)
+  #   declared_fixtures: false          # true when dry-run/sandbox tools exist
+  #   fixture_version: ""               # change invalidates a resumed campaign checkpoint
+  #   confirmation_reserve_fraction: 0.2   # share of a finite request budget kept for confirmation
+  #   max_run_target_requests: null     # optional run budgets (null = unlimited)
+  #   max_run_seconds: null
+  #   max_run_llm_cost_usd: null
+
   # Custom scenario catalog — export the built-in catalog as a starting point,
   # edit it, then point here to use your customised version:
   #   nuguard redteam catalog-export --output my-catalog.yaml
@@ -352,6 +373,31 @@ redteam:
       expect: refused
       severity: critical
 
+  # Number of paraphrase variants generated per regression above (roleplay,
+  # extraction-between-markers, audit-evidence, encoded, second-person
+  # indirection) — catches the case where the literal configured message is
+  # refused but a trivially-similar paraphrase succeeds. Built-in templates
+  # work without an attack LLM; set 0 to evaluate only the literal message.
+  defence_regression_paraphrases: 5
+  # Includes variant generation and retries; incomplete probes are inconclusive.
+  defence_regression_timeout: 180
+  defence_regression_probe_timeout: 30
+
+  # Agentic Surface Model (ASM) — live recon beyond the chat endpoint:
+  # unauthenticated tool/agent inventory disclosure, schema exposure
+  # (/openapi.json, /docs), observation-channel (WS/SSE) connectability,
+  # and CORS reflection. GET/OPTIONS only, capped by max_probe_requests.
+  asm:
+    max_probe_requests: 25
+    # extra_inventory_paths:
+    #   - /api/v2/tools
+
+  # Trust-context matrix (W2): re-executes identity_sensitive scenarios
+  # (A10/A11, D02/D03, G-series) under invalid/missing credentials plus a
+  # conflicting/spoofed identity — no LLM call, cheap round-trips only.
+  trust_context:
+    confirmation_cells: 1
+
   # Per-request HTTP timeout in seconds (default: 120)
   # Multi-agent pipelines with LLM calls can take 60–120 s; increase for slow apps
   request_timeout: 120
@@ -360,6 +406,13 @@ redteam:
   # Scenarios that exceed this limit are cancelled and recorded as 'timeout'.
   # 0 disables the timeout.
   scenario_timeout: 600
+
+  # Apps with many API endpoints: above this count the redteam LLM picks only the
+  # relevant endpoints per direct-HTTP probe (JWT tampering, XSS, ...). (default: 25)
+  api_endpoint_threshold: 25
+
+  # ci profile: number of API endpoints spot-checked per probe family. (default: 3)
+  ci_api_spot_checks: 3
 
   # Maximum number of redteam scenarios to run in parallel (default: 5, max: 20)
   # Lower for rate-limited or quota-sensitive targets.
@@ -631,6 +684,10 @@ redteam:
 analyze:
   min_severity: medium              # critical | high | medium | low | info
   nga_only: false                   # true → run only NGA-001–018, skip external scans
+  checkov_timeout: 120              # seconds per scanner process; finite and positive
+  checkov_total_timeout: 300        # seconds across all Checkov paths
+  semgrep_timeout: 120              # seconds per scanner process
+  semgrep_total_timeout: 300        # seconds across all Semgrep paths
   # llm: true                       # force LLM enrichment in the ATLAS pass on/off.
                                      # Unset = auto (on when llm.api_key above is set)
 

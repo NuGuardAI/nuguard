@@ -40,6 +40,28 @@ _WRITE_TOOL_INDICATORS = frozenset({
     "cancel", "submit", "publish", "upload", "notify", "message", "email",
     "transfer", "pay", "charge", "set", "save", "store",
 })
+# Admin tier (redteam-proposal.md W4/W10): distinct from plain WRITE_SINK —
+# the capability a router-manipulation or dual-path-gate-bypass scenario
+# wants to reach, not just any mutating tool. Keyword-based: the SBOM's
+# standalone PRIVILEGE nodes (sbom/adapters/privilege.py, scope "admin")
+# are not currently joined back onto the TOOL node they protect via any
+# edge — that adapter emits PRIVILEGE nodes with no outgoing edges at all —
+# so a per-tool admin tier has to be inferred from the tool's own name/
+# description until that extraction gap is closed.
+_ADMIN_TOOL_INDICATORS = frozenset({
+    "admin", "superuser", "root", "sudo", "override", "waive", "bypass",
+    "grant", "disable_safety", "disable_guardrail", "elevate", "escalate",
+    "force_approve", "impersonate",
+})
+# Minimum token length for an agent's intent-keyword extraction (below this,
+# tokens are almost always stopwords/noise: "a", "to", "is", "for").
+_INTENT_KEYWORD_MIN_LEN = 4
+_INTENT_KEYWORD_STOPWORDS = frozenset({
+    "this", "that", "with", "from", "your", "have", "will", "when", "what",
+    "which", "their", "about", "into", "they", "would", "there", "been",
+})
+_MAX_INTENT_KEYWORDS_PER_AGENT = 12
+_WORD_RE = re.compile(r"[a-z]+")
 
 
 def _tool_haystack(node: Node) -> str:
@@ -62,6 +84,51 @@ def _is_egress_tool(node: Node) -> bool:
     return bool(_WEB_PAT.search(hay) or _EMAIL_PAT.search(hay))
 
 
+def _is_admin_tool(node: Node) -> bool:
+    if node.metadata and node.metadata.privilege_scope == "admin":
+        return True
+    hay = _tool_haystack(node)
+    return any(ind in hay for ind in _ADMIN_TOOL_INDICATORS)
+
+
+def _intent_keywords(node: Node) -> frozenset[str]:
+    """Extract candidate routing/intent keywords from an agent's own text.
+
+    Static-only in this phase (NodeMetadata.description/system_prompt_excerpt
+    plus name) — once the Phase 2a ASM lands, an /api/agents-style inventory
+    disclosure can enrich this without changing AgentToolTier's shape (see
+    redteam-proposal.md W4/W1).
+    """
+    name = node.name or ""
+    desc = (node.metadata.description or "") if node.metadata else ""
+    prompt_excerpt = (node.metadata.system_prompt_excerpt or "") if node.metadata else ""
+    hay = f"{name} {desc} {prompt_excerpt}".lower()
+    tokens = {
+        w for w in _WORD_RE.findall(hay)
+        if len(w) >= _INTENT_KEYWORD_MIN_LEN and w not in _INTENT_KEYWORD_STOPWORDS
+    }
+    return frozenset(sorted(tokens)[:_MAX_INTENT_KEYWORDS_PER_AGENT])
+
+
+@dataclass(frozen=True)
+class AgentToolTier:
+    """Per-agent tool classification (redteam-proposal.md W4/W10).
+
+    Closes the "app-wide aggregated, not per-agent" gap in
+    :class:`AppCapabilityProfile`'s flat ``write_sink_ids``/``egress_sink_ids``
+    — the router-manipulation family (Q01/Q02) needs "the agent with the
+    most write/admin tools", and the dual-path write-gate (X02) needs to
+    know which direct-invocation targets require the ``destructive``
+    profile; neither question is answerable from the flat lists alone.
+    """
+
+    agent_id: str
+    read_tool_ids: frozenset[str]
+    write_tool_ids: frozenset[str]   # includes admin_tool_ids (admin implies write)
+    admin_tool_ids: frozenset[str]
+    intent_keywords: frozenset[str]
+
+
 @dataclass(frozen=True)
 class AppCapabilityProfile:
     """Immutable summary of what the target application can do.
@@ -82,6 +149,7 @@ class AppCapabilityProfile:
     tool_names: tuple[str, ...]             # all reachable tool names (for prompt context)
     tool_index: dict[str, str]              # node_id -> classified category
     domain: str                             # inferred domain (automotive, fintech, …)
+    agent_tool_tiers: tuple[AgentToolTier, ...] = ()  # per-agent read/write/admin (W4/W10)
 
     def satisfies(self, required: frozenset[C]) -> bool:
         """Return True iff every required capability is present."""
@@ -240,6 +308,25 @@ class CapabilityDetector:
 
         domain = self._infer_domain(agents, all_tools)
 
+        agent_tool_tiers = self._agent_tool_tiers(agents)
+        if self._has_multi_tier_agents(agent_tool_tiers):
+            caps.add(C.MULTI_TIER_AGENTS)
+
+        # DIRECT_TOOL_ENDPOINT (W10): a coarse structural signal that a direct
+        # REST/MCP invocation path might exist alongside the chat gate — the
+        # app exposes both tools and API endpoints. This degrades gracefully
+        # (no false negatives blocking X01 entirely) until the Phase 2a ASM
+        # prober can confirm a *specific* directly-invocable endpoint per
+        # tool; it may also produce some false positives the X01 builder
+        # itself filters by requiring a concrete target_endpoint/target_tool
+        # binding before emitting a scenario.
+        if all_sbom_tools and api_ep_nodes:
+            caps.add(C.DIRECT_TOOL_ENDPOINT)
+        elif mcp_tools:
+            # An MCP tool is inherently dual-path: reachable via chat AND via
+            # direct MCP tools/call JSON-RPC, regardless of REST endpoints.
+            caps.add(C.DIRECT_TOOL_ENDPOINT)
+
         return AppCapabilityProfile(
             capabilities=frozenset(caps),
             entry_agent_ids=tuple(str(a.id) for a in entry_agents),
@@ -251,6 +338,7 @@ class CapabilityDetector:
             tool_names=tool_names,
             tool_index=tool_index,
             domain=domain,
+            agent_tool_tiers=agent_tool_tiers,
         )
 
     # ── Private helpers ───────────────────────────────────────────────────────
@@ -288,6 +376,57 @@ class CapabilityDetector:
                     seen.add(tid)
                     tools.append(n)
         return tools
+
+    def _agent_tool_tiers(self, agents: list[Node]) -> tuple[AgentToolTier, ...]:
+        """Per-agent read/write/admin tool classification (W4/W10).
+
+        Walks each agent's own CALLS/DELEGATES_TO edges (not transitively
+        through other agents) so a privileged sub-agent's tools are
+        attributed to it specifically, not flattened into the app-wide
+        write_sink_ids/egress_sink_ids lists above.
+        """
+        tiers: list[AgentToolTier] = []
+        for agent in agents:
+            agent_id = str(agent.id)
+            targets: set[str] = set()
+            for rel in (RelationshipType.CALLS, RelationshipType.DELEGATES_TO):
+                targets.update(self._outgoing.get(agent_id, {}).get(rel, []))
+            read_ids: set[str] = set()
+            write_ids: set[str] = set()
+            admin_ids: set[str] = set()
+            for tid in targets:
+                tool = self._node_by_id.get(tid)
+                if tool is None or tool.component_type != ComponentType.TOOL:
+                    continue
+                is_admin = _is_admin_tool(tool)
+                is_write = is_admin or _is_write_tool(tool)
+                if is_admin:
+                    admin_ids.add(tid)
+                if is_write:
+                    write_ids.add(tid)
+                else:
+                    read_ids.add(tid)
+            tiers.append(AgentToolTier(
+                agent_id=agent_id,
+                read_tool_ids=frozenset(read_ids),
+                write_tool_ids=frozenset(write_ids),
+                admin_tool_ids=frozenset(admin_ids),
+                intent_keywords=_intent_keywords(agent),
+            ))
+        return tuple(tiers)
+
+    @staticmethod
+    def _has_multi_tier_agents(tiers: tuple[AgentToolTier, ...]) -> bool:
+        """True when >=2 agents exist and at least one has privileged tools
+        (admin or write) that at least one other agent lacks — the
+        asymmetry a router-manipulation scenario (Q01/Q02) targets."""
+        if len(tiers) < 2:
+            return False
+        privilege_sets = [t.admin_tool_ids | t.write_tool_ids for t in tiers]
+        non_empty = [s for s in privilege_sets if s]
+        if not non_empty:
+            return False
+        return any(s != privilege_sets[0] for s in privilege_sets)
 
     def _pii_fields(self) -> list[str]:
         fields: list[str] = []

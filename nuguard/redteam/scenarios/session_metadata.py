@@ -98,8 +98,8 @@ def build_role_claim_forgery(
         goal_type=GoalType.PRIVILEGE_ESCALATION,
         scenario_type=ScenarioType.SESSION_METADATA_FORGERY,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
-        owasp_llm_ref="LLM01 – Prompt Injection",
+        owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             ExploitStep(
@@ -192,8 +192,8 @@ def build_policy_version_claim(
         goal_type=GoalType.PROMPT_DRIVEN_THREAT,
         scenario_type=ScenarioType.SESSION_METADATA_FORGERY,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI01 – Prompt Injection",
-        owasp_llm_ref="LLM01 – Prompt Injection",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             ExploitStep(
@@ -286,8 +286,8 @@ def build_jurisdiction_forgery(
         goal_type=GoalType.POLICY_VIOLATION,
         scenario_type=ScenarioType.SESSION_METADATA_FORGERY,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
-        owasp_llm_ref="LLM01 – Prompt Injection",
+        owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             ExploitStep(
