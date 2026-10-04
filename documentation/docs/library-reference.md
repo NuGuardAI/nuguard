@@ -170,6 +170,10 @@ result = await run_analysis(
 
 `AnalysisRunResult` includes `findings`, `tool_status`, `nga_audit`, `sc_audit`, `token_usage`, and `remediation_plan`.
 
+`AnalysisRunRequest` accepts `checkov_timeout` and `semgrep_timeout` (120 seconds per process), plus `checkov_total_timeout` and `semgrep_total_timeout` (300 seconds per scanner across all paths). Values must be finite and positive. `StaticAnalyzer` accepts the same arguments. CLI flags use hyphens, for example `--checkov-total-timeout 180`; YAML places these keys under `analyze`.
+
+Timeouts terminate scanner workers and reap the parent, with bounded cleanup beyond the scan deadline. Launch, exit, output, and scanner-reported parsing errors set the tool's status to `error`; partial findings remain available. The CLI writes the report and exits with code 2 for incomplete Checkov or Semgrep scans. Missing binaries or paths are `skipped`. Logs identify each path, duration, return code, and outcome, with a heartbeat every 15 seconds during execution. Raw scanner output is omitted from error logs. Cancelling the async caller does not immediately cancel scanner threads; their configured deadlines still apply.
+
 ## Behavior APIs
 
 Module: `nuguard.behavior.public_api`

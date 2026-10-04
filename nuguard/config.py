@@ -629,6 +629,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
+    for key in ("checkov_timeout", "checkov_total_timeout", "semgrep_timeout", "semgrep_total_timeout"):
+        if key in analyze:
+            flat[f"analyze_{key}"] = analyze[key]
     if "min_severity" in analyze:
         flat["analyze_min_severity"] = analyze["min_severity"]
     if "nga_only" in analyze:
@@ -1927,6 +1930,10 @@ class NuGuardConfig(BaseSettings):
     )
 
     # ------------------------------------------------------- Analyze
+    analyze_checkov_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds (yaml: analyze.checkov_timeout).")
+    analyze_checkov_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.checkov_total_timeout).")
+    analyze_semgrep_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds (yaml: analyze.semgrep_timeout).")
+    analyze_semgrep_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.semgrep_total_timeout).")
     analyze_min_severity: str = Field(
         default="medium",
         description=(

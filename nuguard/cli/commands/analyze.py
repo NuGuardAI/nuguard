@@ -4,7 +4,7 @@ Exit codes
 ----------
 0  No findings at or above ``--fail-on`` threshold (default: high)
 1  One or more findings at or above ``--fail-on`` threshold
-2  Analysis error (SBOM could not be read / parsed)
+2  Analysis error (SBOM could not be read / parsed, or incomplete Checkov/Semgrep scan)
 3  Not implemented / reserved
 """
 
@@ -135,6 +135,10 @@ def analyze(
         None, "--grype-retries",
         help="Number of retry attempts when grype times out. [default: 3]",
     ),
+    checkov_timeout: Optional[float] = typer.Option(None, "--checkov-timeout", min=0.001, help="Per-process scanner deadline in seconds. [default: 120]"),
+    checkov_total_timeout: Optional[float] = typer.Option(None, "--checkov-total-timeout", min=0.001, help="Total scanner budget across all paths in seconds. [default: 300]"),
+    semgrep_timeout: Optional[float] = typer.Option(None, "--semgrep-timeout", min=0.001, help="Per-process scanner deadline in seconds. [default: 120]"),
+    semgrep_total_timeout: Optional[float] = typer.Option(None, "--semgrep-total-timeout", min=0.001, help="Total scanner budget across all paths in seconds. [default: 300]"),
     checkov: bool = typer.Option(True, "--checkov/--no-checkov",
                                  help="Run Checkov IaC scan (requires checkov on PATH)."),
     trivy: bool = typer.Option(True, "--trivy/--no-trivy",
@@ -364,6 +368,10 @@ def analyze(
             min_severity=min_sev,
             verbose=verbose,
             grype_timeout=grype_timeout if grype_timeout is not None else 180.0,
+            checkov_timeout=checkov_timeout if checkov_timeout is not None else cfg.analyze_checkov_timeout,
+            checkov_total_timeout=checkov_total_timeout if checkov_total_timeout is not None else cfg.analyze_checkov_total_timeout,
+            semgrep_timeout=semgrep_timeout if semgrep_timeout is not None else cfg.analyze_semgrep_timeout,
+            semgrep_total_timeout=semgrep_total_timeout if semgrep_total_timeout is not None else cfg.analyze_semgrep_total_timeout,
             grype_retries=grype_retries if grype_retries is not None else 3,
         )
         result = asyncio.run(run_analysis(request, sbom=doc, llm_client=llm_client))
@@ -444,6 +452,11 @@ def analyze(
             typer.echo(f"report written to {out_path}")
     else:
         typer.echo(_render(formats[0]))
+
+    # Coverage failures take precedence over a finding-based pass/fail.
+    if any(tool_status.get(tool, {}).get("status") == "error" for tool in ("checkov", "semgrep")):
+        typer.echo("Analysis incomplete: Checkov or Semgrep failed; see scanner logs and tool coverage.", err=True)
+        raise typer.Exit(code=2)
 
     # Exit 1 if any findings meet the fail-on severity threshold
     fail_threshold = _SEV_ORDER.get(effective_fail_on.lower(), 1)

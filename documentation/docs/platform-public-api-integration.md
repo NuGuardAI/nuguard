@@ -52,6 +52,7 @@ Module: `nuguard.analysis.public_api`
 
 Request model:
 - `AnalysisRunRequest`
+  - Checkov and Semgrep accept finite positive `*_timeout` (120 seconds per process) and `*_total_timeout` (300 seconds per scanner) settings. Failed or incomplete scans retain partial findings and expose `tool_status[tool].status = "error"`; callers should distinguish this from complete coverage. Worker cleanup is bounded; cancelling the async caller leaves scanner threads bounded by their configured deadlines.
 
 Response model:
 - `AnalysisRunResult`

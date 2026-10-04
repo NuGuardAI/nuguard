@@ -94,6 +94,34 @@
         "title": "Grype Retries",
         "type": "integer"
       },
+      "checkov_timeout": {
+        "default": 120.0,
+        "description": "Per-process wall-clock scanner deadline in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Checkov Timeout",
+        "type": "number"
+      },
+      "checkov_total_timeout": {
+        "default": 300.0,
+        "description": "Total wall-clock scanner budget across all paths in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Checkov Total Timeout",
+        "type": "number"
+      },
+      "semgrep_timeout": {
+        "default": 120.0,
+        "description": "Per-process wall-clock scanner deadline in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Semgrep Timeout",
+        "type": "number"
+      },
+      "semgrep_total_timeout": {
+        "default": 300.0,
+        "description": "Total wall-clock scanner budget across all paths in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Semgrep Total Timeout",
+        "type": "number"
+      },
       "supply_chain_profile": {
         "default": "standard",
         "title": "Supply Chain Profile",
