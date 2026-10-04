@@ -1,4 +1,5 @@
 """Pydantic models for the defence-regression evaluator (W5)."""
+
 from __future__ import annotations
 
 from typing import Literal
@@ -79,10 +80,12 @@ class DefenceRegressionRunSummary(BaseModel):
     specs_evaluated: int = 0
     variants_evaluated: int = 0
     variants_refused: int = 0
+    variants_failed: int = 0
+    timed_out: bool = False
 
     @property
     def paraphrase_coverage(self) -> float:
         """Fraction of evaluated variants that were correctly refused, in [0, 1]."""
         if self.variants_evaluated == 0:
-            return 1.0
+            return 0.0 if self.timed_out else 1.0
         return self.variants_refused / self.variants_evaluated

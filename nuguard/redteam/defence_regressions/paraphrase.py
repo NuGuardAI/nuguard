@@ -97,7 +97,7 @@ async def _llm_variant(
             label=f"defence-regression-paraphrase name={spec.name}",
         )
     except Exception as exc:  # noqa: BLE001 — paraphrase generation must never abort the run
-        _log.warning("defence-regression LLM paraphrase failed for %r: %s", spec.name, exc)
+        _log.warning("defence-regression LLM paraphrase failed for %r: %s", spec.name, type(exc).__name__)
         return None
     text = (text or "").strip()
     if not text:

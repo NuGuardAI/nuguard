@@ -21,7 +21,7 @@ from nuguard.common.errors import (
 from nuguard.common.http import quota_exhausted_detail
 from nuguard.common.logging import get_logger
 from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KEYS
-from nuguard.common.transport import strip_known_boilerplate
+from nuguard.common.transport import is_provider_blocked, strip_known_boilerplate
 from nuguard.redteam.campaign.transport.context import RetryDeferred
 
 from .session import AttackSession
@@ -818,16 +818,10 @@ class TargetAppClient:
         on top of the client's default headers for this request only — used to
         test client-controlled debug/observability toggles.
 
-        When ``max_concurrent_requests`` is set (semaphore mode), transient app
-        errors ("having difficulty connecting") are retried **inside** the semaphore
-        scope so no other concurrent chain can send while the target is recovering.
-        This prevents the thundering-herd pattern where multiple chains hammer a
-        cold-starting Azure Container App during the retry window.
-
-        ``retry_transient=True`` opts into the same classify+backoff retry loop
-        without requiring a semaphore — for single-shot pre-scenario callers
-        (warmup pings, health checks) that want cold-start absorption but run
-        sequentially, so there's no other concurrent chain to protect.
+        Semaphore mode and ``retry_transient=True`` enable bounded retries.
+        Request slots are released during backoff. Ambiguous app fallback text
+        gets one short retry; explicit gateway failures get two. Structured
+        provider policy blocks are non-retryable.
 
         Raises:
             TargetUnavailableError: after MAX_CONSECUTIVE_ERRORS consecutive 5xx
@@ -838,8 +832,7 @@ class TargetAppClient:
         if transport is not None:
             text, calls = await self._send_branch(payload, session, extra_headers, transport)
         elif self._request_sem is not None:
-            async with self._request_sem:
-                text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
+            text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
         elif retry_transient:
             text, calls = await self._send_with_transient_retry(payload, session, extra_headers)
         else:
@@ -884,27 +877,15 @@ class TargetAppClient:
         session: AttackSession,
         extra_headers: dict[str, str] | None = None,
     ) -> tuple[str, list[dict]]:
-        """Send with in-semaphore transient-error retries (holds the semaphore during waits).
+        """Send with bounded retries, releasing request slots during backoff.
 
-        Retries :data:`~nuguard.common.transport.RETRIABLE_OUTCOMES` (app-transient
-        phrases AND HTTP 502/503/504 gateway errors) with capped backoff, all while
-        holding the semaphore.  Retrying stops when:
-
-        * The target returns a non-retriable response → ``return``.
-        * ``_max_transient_hold_seconds`` of total wait time has elapsed → releases
-          the semaphore so other chains can proceed (prevents one chain from blocking
-          all others for the full objective timeout when the cause is systemic, e.g.
-          shared Azure OpenAI quota contention between nuguard and the target app).
-        * The objective timeout fires (``asyncio.CancelledError``) → re-raised so the
-          scheduler records the objective as ``"timeout"``.
-
-        The backoff schedule is :data:`~nuguard.common.rate_limit.TRANSIENT_ERROR_RETRY_DELAYS`
-        for the first N attempts, then the last (largest) delay caps all subsequent waits.
+        Gateway failures use short capped backoff; ambiguous app fallback
+        responses get one short retry. The configured transient-hold limit is
+        a wall-clock deadline including requests, slot acquisition and sleeps.
+        A non-positive legacy limit disables only the deadline, not attempt caps.
+        Cancellation propagates to the caller.
         """
-        from nuguard.common.rate_limit import (  # noqa: PLC0415
-            GATEWAY_ERROR_RETRY_DELAYS,
-            TRANSIENT_ERROR_RETRY_DELAYS,
-        )
+        from nuguard.common.rate_limit import GATEWAY_ERROR_RETRY_DELAYS  # noqa: PLC0415
         from nuguard.common.transport import (  # noqa: PLC0415
             RETRIABLE_OUTCOMES,
             TransportOutcome,
@@ -912,86 +893,66 @@ class TargetAppClient:
         )
 
         attempt = 0
-        total_waited = 0.0
+        started = time.monotonic()
         text: str = ""
         calls: list[dict] = []
 
-        while True:
-            text, calls = await self._send_impl(
-                payload, session, extra_headers, _deferred_gateway_accounting=True
+        async def send_attempt() -> tuple[str, list[dict]]:
+            if self._request_sem is not None:
+                async with self._request_sem:
+                    return await self._send_impl(
+                        payload, session, extra_headers, _deferred_gateway_accounting=True,
+                    )
+            return await self._send_impl(
+                payload, session, extra_headers, _deferred_gateway_accounting=True,
             )
+
+        while True:
+            remaining = self._max_transient_hold_seconds - (time.monotonic() - started)
+            if self._max_transient_hold_seconds > 0:
+                try:
+                    async with asyncio.timeout(max(0.0, remaining)):
+                        text, calls = await send_attempt()
+                except TimeoutError:
+                    _log.warning("Target retry deadline reached: session=%s attempts=%d elapsed=%.2fs",
+                                 session.session_id, attempt + 1, time.monotonic() - started)
+                    self._record_chat_error("Retry deadline reached")
+                    return "[REQUEST_ERROR: retry_deadline]", []
+            else:
+                text, calls = await send_attempt()
             outcome = classify_transport(text)
             if outcome not in RETRIABLE_OUTCOMES:
                 return text, calls
 
-            # Choose the retry schedule based on the error type:
-            # - HTTP_GATEWAY_ERROR (502/503/504): short delays (2 s, 5 s) for Azure quota
-            #   blips that typically resolve in under 3 seconds.
-            # - APP_TRANSIENT (cold-start friendly text): long delays (60 s, 120 s) to
-            #   allow Azure Container Apps (minReplicas=0) time to spin up.
             is_gateway = outcome == TransportOutcome.HTTP_GATEWAY_ERROR
-            delays = list(GATEWAY_ERROR_RETRY_DELAYS if is_gateway else TRANSIENT_ERROR_RETRY_DELAYS)
-            cap_delay = delays[-1] if delays else 5.0
+            # A friendly HTTP-200 fallback is ambiguous: one short retry is
+            # enough. Only explicit gateway failures receive the full schedule.
+            delays = list(GATEWAY_ERROR_RETRY_DELAYS if is_gateway else GATEWAY_ERROR_RETRY_DELAYS[:1])
 
-            # For gateway errors: enforce a hard retry cap (len(delays)) so we don’t
-            # hold the semaphore indefinitely on a persistently broken endpoint.
-            # For app-transient errors: the existing max_transient_hold_seconds gate
-            # applies (cold-start can take minutes).
-            if is_gateway and attempt >= len(delays):
+            if attempt >= len(delays):
                 _log.warning(
-                    "HTTP gateway error persisted after %d retry attempt(s) — "
-                    "incrementing circuit breaker and releasing.",
-                    attempt,
-                )
-                self._record_chat_error(f"HTTP gateway (after {attempt} retries)")
-                return text, calls
-
-            # If the session already has prior turns, the target backend is up
-            # and responding — the transient is either a quota-induced blip or a
-            # content-filter block on this specific adversarial payload.  Allow
-            # one retry (attempt 0 → 1) so a momentary quota spike can recover;
-            # after that, stop retrying since the same payload will keep being
-            # blocked by the content filter.
-            if session.turns and attempt >= 1:
-                _log.debug(
-                    "Transient response on turn %d (retry #%d) — treating as content-filter "
-                    "block (backend is healthy); stopping retry.",
-                    len(session.turns) + 1,
-                    attempt,
+                    "Target retry exhausted: session=%s outcome=%s retries=%d elapsed=%.2fs",
+                    session.session_id, outcome.value, attempt, time.monotonic() - started,
                 )
                 if is_gateway:
-                    self._record_chat_error(f"HTTP gateway (turn {len(session.turns) + 1})")
+                    self._record_chat_error(f"HTTP gateway (after {attempt} retries)")
                 return text, calls
 
-            # Release the semaphore after holding it for too long.  Systemic issues
-            # (e.g. shared Azure OpenAI quota contention) will not resolve with more
-            # retries from this chain; other chains deserve a chance to make progress.
-            if self._max_transient_hold_seconds > 0 and total_waited >= self._max_transient_hold_seconds:
-                _log.warning(
-                    "Transient errors persisted after %.0fs of in-semaphore retries "
-                    "(max_transient_hold=%.0fs) — releasing semaphore so other chains "
-                    "can proceed. Last response was retriable but target did not recover.",
-                    total_waited, self._max_transient_hold_seconds,
-                )
-                if is_gateway:
-                    self._record_chat_error(f"HTTP gateway (transient hold {total_waited:.0f}s)")
-                return text, calls
-
-            delay = delays[attempt] if attempt < len(delays) else cap_delay
+            delay = delays[attempt]
+            if self._max_transient_hold_seconds > 0:
+                delay = min(delay, max(0.0, self._max_transient_hold_seconds - (time.monotonic() - started)))
             attempt += 1
             _log.info(
-                "Retriable transport error — waiting %.0fs before retry #%d "
-                "[semaphore held; no other chains will send during this window]",
-                delay, attempt,
+                "Target retry: session=%s outcome=%s delay=%.2fs retry=%d/%d elapsed=%.2fs [request slot released]",
+                session.session_id, outcome.value, delay, attempt, len(delays), time.monotonic() - started,
             )
             try:
                 await asyncio.sleep(delay)
-                total_waited += delay
             except asyncio.CancelledError:
                 # Objective timeout fired during the sleep — release the semaphore
                 # and propagate so the scheduler records this as "timeout".
                 _log.warning(
-                    "In-semaphore transient retry cancelled (objective timeout) "
+                    "Target transient retry cancelled "
                     "after %d attempt(s); target may still be recovering.",
                     attempt,
                 )
@@ -1207,10 +1168,13 @@ class TargetAppClient:
                     resp = await self._client.post(chat_path, json=body, headers=_req_headers)
                 if transport is not None:
                     transport.absorb_response_cookies(resp.cookies)
-                _log.debug(
-                    "Target HTTP Response status=%s body=%s",
-                    resp.status_code, resp.text,
-                )
+                if is_provider_blocked(resp.text):
+                    _log.debug("Target HTTP Response status=%s outcome=provider_blocked", resp.status_code)
+                else:
+                    _log.debug(
+                        "Target HTTP Response status=%s body=%s",
+                        resp.status_code, resp.text,
+                    )
                 resp.raise_for_status()
                 _content_type = resp.headers.get("content-type", "")
                 if "text/event-stream" in _content_type and self._framework_adapter is None:
@@ -1257,6 +1221,10 @@ class TargetAppClient:
                 break
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
+                if is_provider_blocked(exc.response.text):
+                    _log.info("Target HTTP %s outcome=provider_blocked; retry disabled", status)
+                    self._record_chat_success()
+                    return f"[HTTP {status}] [PROVIDER_BLOCKED]", []
                 body_preview = exc.response.text[:300] if exc.response.text else ""
                 _log.warning(
                     "Target HTTP %s  url=%s  body=%r",
@@ -1329,6 +1297,9 @@ class TargetAppClient:
         # Extract response text and tool calls.
         # When a framework adapter is present, delegate to its specialised parsers.
         self.last_raw_response = data
+        if isinstance(data, dict) and is_provider_blocked(json.dumps(data)):
+            self._record_chat_success()
+            return "[PROVIDER_BLOCKED]", []
         tool_calls: list[dict] = []
         text = ""
         if self._framework_adapter is not None:

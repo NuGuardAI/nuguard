@@ -135,6 +135,8 @@ redteam:
 
   # Disable catalog in prepublish to keep redteam bounded and fast.
   use_catalog: false
+  defence_regression_timeout: 120
+  defence_regression_probe_timeout: 20
 
   # Prepublish sanity scope: run both destructive and non-destructive scenarios.
   scenarios:

@@ -109,7 +109,7 @@ class TestCheckovPlugin:
         with (
             patch("shutil.which", return_value="/usr/bin/checkov"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", return_value=_completed_process(stdout, returncode=1)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(json.loads(stdout), None, 1)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
 
@@ -126,7 +126,7 @@ class TestCheckovPlugin:
         with (
             patch("shutil.which", return_value="/usr/bin/checkov"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", return_value=_completed_process(stdout, returncode=1)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(json.loads(stdout), None, 1)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
 
@@ -138,34 +138,34 @@ class TestCheckovPlugin:
         with (
             patch("shutil.which", return_value="/usr/bin/checkov"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", return_value=_completed_process(stdout, returncode=0)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(json.loads(stdout), None, 0)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
 
         assert result.status == "ok"
         assert result.findings == []
 
-    def test_invalid_json_returns_ok(self) -> None:
+    def test_invalid_json_returns_error(self) -> None:
         plugin = self._import()
         with (
             patch("shutil.which", return_value="/usr/bin/checkov"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", return_value=_completed_process(b"not-json", returncode=1)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(None, "invalid_json", 1)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
 
-        # Bad output → no findings, but no crash
+        assert result.status == "error"
         assert result.findings == []
 
-    def test_timeout_returns_ok(self) -> None:
-        import subprocess  # noqa: PLC0415
+    def test_timeout_returns_error(self) -> None:
         plugin = self._import()
         with (
             patch("shutil.which", return_value="/usr/bin/checkov"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", side_effect=subprocess.TimeoutExpired("checkov", 120)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(None, "timeout", None)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
+        assert result.status == "error"
         assert result.findings == []
 
 
@@ -336,7 +336,7 @@ class TestSemgrepPlugin:
         with (
             patch("shutil.which", return_value="/usr/bin/semgrep"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", return_value=_completed_process(stdout, returncode=1)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(json.loads(stdout), None, 1)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
 
@@ -353,7 +353,7 @@ class TestSemgrepPlugin:
         with (
             patch("shutil.which", return_value="/usr/bin/semgrep"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", return_value=_completed_process(stdout, returncode=1)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(json.loads(stdout), None, 1)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
 
@@ -367,7 +367,7 @@ class TestSemgrepPlugin:
         with (
             patch("shutil.which", return_value="/usr/bin/semgrep"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", return_value=_completed_process(stdout, returncode=1)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(json.loads(stdout), None, 1)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
 
@@ -383,7 +383,7 @@ class TestSemgrepPlugin:
         with (
             patch("shutil.which", return_value="/usr/bin/semgrep"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", return_value=_completed_process(stdout, returncode=1)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(json.loads(stdout), None, 1)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
 
@@ -398,7 +398,7 @@ class TestSemgrepPlugin:
         with (
             patch("shutil.which", return_value="/usr/bin/semgrep"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", return_value=_completed_process(stdout, returncode=1)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(json.loads(stdout), None, 1)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
 
@@ -416,7 +416,7 @@ class TestSemgrepPlugin:
         with (
             patch("shutil.which", return_value="/usr/bin/semgrep"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", return_value=_completed_process(stdout, returncode=0)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(json.loads(stdout), None, 0)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
         assert result.status == "ok"
@@ -427,18 +427,18 @@ class TestSemgrepPlugin:
         with (
             patch("shutil.which", return_value="/usr/bin/semgrep"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", return_value=_completed_process(b"NOT JSON", returncode=1)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(None, "invalid_json", 1)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
         assert result.findings == []
 
-    def test_timeout_returns_ok(self) -> None:
-        import subprocess  # noqa: PLC0415
+    def test_timeout_returns_error(self) -> None:
         plugin = self._import()
         with (
             patch("shutil.which", return_value="/usr/bin/semgrep"),
             patch("pathlib.Path.exists", return_value=True),
-            patch("subprocess.run", side_effect=subprocess.TimeoutExpired("semgrep", 120)),
+            patch("nuguard.analysis.plugins.scanner_runtime._execute", return_value=(None, "timeout", None)),
         ):
             result = plugin.run(_SBOM_WITH_SRC, {})
+        assert result.status == "error"
         assert result.findings == []

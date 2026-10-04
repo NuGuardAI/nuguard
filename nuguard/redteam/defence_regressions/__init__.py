@@ -29,6 +29,7 @@ from __future__ import annotations
 from .evaluator import DefenceRegressionEvaluator, build_regression_findings
 from .models import (
     DefenceRegressionResult,
+    DefenceRegressionRunSummary,
     DefenceRegressionSpec,
     DefenceRegressionVariant,
 )
@@ -36,6 +37,7 @@ from .models import (
 __all__ = [
     "DefenceRegressionEvaluator",
     "DefenceRegressionResult",
+    "DefenceRegressionRunSummary",
     "DefenceRegressionSpec",
     "DefenceRegressionVariant",
     "build_regression_findings",

@@ -12,10 +12,11 @@ coverage: ``ai-security.yaml`` targets Python/Go AI code,
 ``generic-security.yaml`` targets the non-AI JS/TS backends
 NuGuard's AI-security rules don't otherwise touch.
 
-The plugin is silently skipped (returns status ``"skipped"``) when:
+The plugin is skipped (returns status ``"skipped"``) when:
 - ``semgrep`` is not installed / not on PATH
 - No source paths are found in the SBOM
-- ``semgrep`` exits with an unexpected error
+
+Execution and output errors are reported as incomplete scans.
 
 Usage
 -----
@@ -36,14 +37,13 @@ Config keys
 
 from __future__ import annotations
 
-import json
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
+from nuguard.analysis.plugins.scanner_runtime import run_scanner
 from nuguard.common.logging import get_logger
 
 _log = get_logger("analysis.plugins.semgrep")
@@ -84,7 +84,7 @@ class SemgrepScannerPlugin(AnalysisPlugin):
         """
         binary = _semgrep_path()
         if binary is None:
-            _log.debug(
+            _log.info(
                 "semgrep not found on PATH; install from https://semgrep.dev "
                 "to enable static code analysis"
             )
@@ -96,7 +96,7 @@ class SemgrepScannerPlugin(AnalysisPlugin):
 
         src_paths = _collect_source_paths(sbom, config)
         if not src_paths:
-            _log.debug("semgrep: no source paths found in SBOM nodes")
+            _log.info("semgrep: no source paths found in SBOM nodes")
             return AnalysisResult(
                 status="skipped",
                 plugin=self.name,
@@ -105,35 +105,23 @@ class SemgrepScannerPlugin(AnalysisPlugin):
 
         rule_files: list[str] = [str(p) for p in _BUNDLED_RULES]
         extra_rules = config.get("semgrep_rules")
-        if extra_rules and Path(str(extra_rules)).exists():
+        if extra_rules:
+            if not Path(str(extra_rules)).exists():
+                _log.warning("semgrep: additional rules path missing; scan incomplete")
+                return AnalysisResult(status="error", plugin=self.name, message="Additional Semgrep rules path does not exist")
             rule_files.append(str(extra_rules))
 
-        all_findings: list[dict[str, Any]] = []
-        timeout = float(config.get("semgrep_timeout", 120.0))
-        exclude_tests = config.get("semgrep_exclude_tests", True)
-
-        for src_path in sorted(src_paths):
-            _log.info("semgrep: scanning %s", src_path)
-            all_findings.extend(_run_semgrep(binary, src_path, rule_files, timeout, exclude_tests))
-
-        status = "warning" if all_findings else "ok"
-        message = (
-            f"{len(all_findings)} code pattern finding(s)"
-            if all_findings
-            else "No code pattern findings"
+        result = run_scanner(
+            self.name, src_paths,
+            lambda path: _semgrep_command(binary, path, rule_files, config.get("semgrep_exclude_tests", True)),
+            _parse_semgrep_output,
+            timeout=config.get("semgrep_timeout", 120.0),
+            total_timeout=config.get("semgrep_total_timeout", 300.0),
         )
-        _log.info("semgrep: %s", message)
-        return AnalysisResult(
-            status=status,
-            plugin=self.name,
-            message=message,
-            findings=all_findings,
-            details={
-                "total": len(all_findings),
-                "paths_scanned": sorted(src_paths),
-                "rule_files": rule_files,
-            },
-        )
+        result.details["paths_scanned"] = result.details.get("scanned_paths", [])
+        result.details["rule_files"] = rule_files
+        return result
+
 
 
 def _collect_source_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:
@@ -159,57 +147,28 @@ def _collect_source_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[s
     return paths
 
 
-def _run_semgrep(
-    binary: str,
-    src_path: str,
-    rule_files: list[str],
-    timeout: float,
-    exclude_tests: bool,
-) -> list[dict[str, Any]]:
-    """Run semgrep and return parsed finding dicts."""
-    cmd = [binary, "--json", "--quiet"]
+def _semgrep_command(binary: str, src_path: str, rule_files: list[str], exclude_tests: bool) -> list[str]:
+    """Build a local Semgrep scan, avoiding optional version-check network calls."""
+    cmd = [binary, "scan", "--json", "--quiet", "--disable-version-check", "--metrics", "off"]
     for rf in rule_files:
         cmd += ["--config", rf]
     if exclude_tests:
         cmd += ["--exclude", "tests/", "--exclude", "test_*.py", "--exclude", "*_test.py"]
-    cmd.append(src_path)
+    return [*cmd, src_path]
 
-    _log.debug("running: %s", " ".join(cmd))
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        _log.warning("semgrep timed out scanning %s", src_path)
-        return []
-    except OSError as exc:
-        _log.warning("semgrep process error for %s: %s", src_path, exc)
-        return []
 
-    # Semgrep exits 1 when findings exist
-    if result.returncode not in (0, 1):
-        stderr = result.stderr.decode(errors="replace").strip()
-        _log.warning(
-            "semgrep exited %d for %s%s",
-            result.returncode,
-            src_path,
-            f": {stderr[:200]}" if stderr else "",
-        )
-        return []
-
-    try:
-        data = json.loads(result.stdout)
-    except (json.JSONDecodeError, ValueError) as exc:
-        _log.warning("semgrep output parse error for %s: %s", src_path, exc)
-        return []
-
-    return _parse_semgrep_output(data, src_path)
+def _run_semgrep(binary: str, src_path: str, rule_files: list[str], timeout: float, exclude_tests: bool) -> list[dict[str, Any]]:
+    """Compatibility helper for one path; plugin.run exposes scan diagnostics."""
+    return run_scanner(
+        "semgrep", [src_path], lambda path: _semgrep_command(binary, path, rule_files, exclude_tests),
+        _parse_semgrep_output, timeout=timeout,
+    ).findings
 
 
 def _parse_semgrep_output(data: dict[str, Any], scan_path: str) -> list[dict[str, Any]]:
     """Convert semgrep JSON results into nuguard finding dicts."""
+    if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+        raise ValueError("Invalid Semgrep output shape")
     findings: list[dict[str, Any]] = []
     for r in data.get("results") or []:
         check_id = r.get("check_id", "")

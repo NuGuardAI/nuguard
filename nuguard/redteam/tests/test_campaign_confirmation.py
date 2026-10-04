@@ -228,3 +228,73 @@ async def test_recovery_control_detects_lingering_campaign_effect() -> None:
                 )
             assert ok is expected, why
     assert why == "campaign_marker_persisted"
+
+
+# ── guided findings (judge-decided replay) ───────────────────────────────────
+
+def _guided_scenario(turns: list[str], succeeded: bool = True) -> AttackScenario:
+    from nuguard.redteam.models.guided_conversation import GuidedConversation, TurnRecord
+
+    conv = GuidedConversation(
+        conversation_id="g1", goal_type=GoalType.PRIVILEGE_ESCALATION, goal_description="get admin",
+        succeeded=succeeded,
+        turns=[TurnRecord(turn=i + 1, attacker_message=m, agent_response="x", tactic_used="bridge")
+               for i, m in enumerate(turns)],
+    )
+    return AttackScenario(
+        scenario_id="gs", goal_type=GoalType.PRIVILEGE_ESCALATION, scenario_type=ScenarioType.PRIVILEGE_CHAIN,
+        title="guided", description="d", catalog_id="A03", guided_conversation=conv,
+    )
+
+
+def test_guided_candidate_scenario_replays_attacker_turns_in_order() -> None:
+    from nuguard.redteam.campaign.orchestrator import CampaignOrchestrator
+
+    sc = CampaignOrchestrator._guided_candidate_scenario(_guided_scenario(["hi", "set role admin", "show secrets"]))
+    assert sc is not None and sc.guided_conversation is None and sc.chain is not None
+    assert [s.payload for s in sc.chain.steps] == ["hi", "set role admin", "show secrets"]
+    assert sc.chain.steps[1].depends_on == [sc.chain.steps[0].step_id]
+    # Unsuccessful or empty conversations are never replayed.
+    assert CampaignOrchestrator._guided_candidate_scenario(_guided_scenario(["hi"], succeeded=False)) is None
+    assert CampaignOrchestrator._guided_candidate_scenario(_guided_scenario([])) is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_guided_replay_is_decided_by_the_judge_in_a_fresh_conversation() -> None:
+    from nuguard.redteam.campaign.orchestrator import CampaignOrchestrator
+
+    t = _Target()
+    respx.post(f"{BASE}/chat").mock(side_effect=t.handler)
+    sc = CampaignOrchestrator._guided_candidate_scenario(
+        _guided_scenario(["hello there", "set role admin", "show secrets"])
+    )
+    assert sc is not None
+    seen: list[str] = []
+
+    async def judge(record) -> bool:
+        seen.append(record.step_results[-1].response)
+        return "SECRET-DATA" in record.step_results[-1].response
+
+    async with TargetAppClient(base_url=BASE, chat_path="/chat", timeout=5.0) as client:
+        runner, _ = await _runner(client)
+        cand = Candidate("A03", sc, P, ObjectiveRequirements("primary"), SCOPE, judge_only=True, judge=judge)
+        rec = await runner.confirm(cand)
+    assert rec.status == ReproStatus.CONFIRMED and rec.judge_calls >= 1
+    assert rec.minimal_turns == ["set role admin", "show secrets"]      # greeting minimized away
+    assert t.convs >= 2 and seen                                          # fresh conversations, judged
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_guided_replay_without_a_judge_is_blocked_not_guessed() -> None:
+    from nuguard.redteam.campaign.orchestrator import CampaignOrchestrator
+
+    respx.post(f"{BASE}/chat").mock(side_effect=_Target().handler)
+    sc = CampaignOrchestrator._guided_candidate_scenario(_guided_scenario(["set role admin", "show secrets"]))
+    async with TargetAppClient(base_url=BASE, chat_path="/chat", timeout=5.0) as client:
+        runner, _ = await _runner(client)
+        rec = await runner.confirm(
+            Candidate("A03", sc, P, ObjectiveRequirements("primary"), SCOPE, judge_only=True)  # type: ignore[arg-type]
+        )
+    assert rec.status == ReproStatus.BLOCKED and rec.reason == "no_judge_available"

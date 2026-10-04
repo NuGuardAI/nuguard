@@ -62,6 +62,10 @@ class Candidate:
     needs_baseline: bool = True
     original_evidence: str = ""              # preserved even when replay fails
     markers: tuple[str, ...] = ()            # strings that must not linger after recovery
+    #: Guided findings: the success signal is an LLM judgement of the final response, not a
+    #: string match, so replay results are decided by ``judge`` alone.
+    judge_only: bool = False
+    judge: "Judge | None" = None             # per-candidate judge (overrides the runner's)
 
 
 @dataclass
@@ -128,6 +132,8 @@ class ConfirmationRunner:
             original_evidence=cand.original_evidence, evidence_kind=cand.evidence_kind,
         )
         blocked = self._blocked_reason(cand)
+        if blocked is None and cand.judge_only and (cand.judge or self._judge) is None:
+            blocked = "no_judge_available"
         if blocked:
             rec.status, rec.reason = ReproStatus.BLOCKED, blocked
             return rec
@@ -219,10 +225,16 @@ class ConfirmationRunner:
             })
             record = await ex.run_static(sc, branch, cand.req)
             self._budget.spend(requests=record.turns)
-            hit = any(self._detect(r) for r in record.step_results)
-            if hit and not cand.deterministic and self._judge is not None:
+            judge = cand.judge or self._judge
+            if cand.judge_only:
+                if not record.step_results or judge is None:
+                    return False
                 rec.judge_calls += 1
-                hit = bool(await self._judge(record))
+                return bool(await judge(record))
+            hit = any(self._detect(r) for r in record.step_results)
+            if hit and not cand.deterministic and judge is not None:
+                rec.judge_calls += 1
+                hit = bool(await judge(record))
             return hit
         finally:
             ex.branches.retire(branch, RotationReason.CAMPAIGN_COMPLETE)

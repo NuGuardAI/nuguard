@@ -606,6 +606,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 flat["redteam_auth_password"] = _recovery_password
 
     # Redteam defence_regressions
+    for key in ("defence_regression_timeout", "defence_regression_probe_timeout"):
+        if isinstance(redteam, dict) and key in redteam:
+            flat[f"redteam_{key}"] = redteam[key]
     if isinstance(redteam, dict) and "defence_regressions" in redteam:
         flat["redteam_defence_regressions"] = redteam["defence_regressions"]
     if isinstance(redteam, dict) and "defence_regression_paraphrases" in redteam:
@@ -626,6 +629,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
+    for key in ("checkov_timeout", "checkov_total_timeout", "semgrep_timeout", "semgrep_total_timeout"):
+        if key in analyze:
+            flat[f"analyze_{key}"] = analyze[key]
     if "min_severity" in analyze:
         flat["analyze_min_severity"] = analyze["min_severity"]
     if "nga_only" in analyze:
@@ -1924,6 +1930,10 @@ class NuGuardConfig(BaseSettings):
     )
 
     # ------------------------------------------------------- Analyze
+    analyze_checkov_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds (yaml: analyze.checkov_timeout).")
+    analyze_checkov_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.checkov_total_timeout).")
+    analyze_semgrep_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds (yaml: analyze.semgrep_timeout).")
+    analyze_semgrep_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.semgrep_total_timeout).")
     analyze_min_severity: str = Field(
         default="medium",
         description=(
@@ -2019,6 +2029,14 @@ class NuGuardConfig(BaseSettings):
     redteam_defence_regressions: list[dict] = Field(
         default_factory=list,
         description="Defence regression scenarios declared in nuguard.yaml redteam.defence_regressions.",
+    )
+    redteam_defence_regression_timeout: float = Field(
+        default=180.0, gt=0,
+        description="Wall-clock deadline for the entire defence-regression pre-pass, including variant generation (yaml: redteam.defence_regression_timeout).",
+    )
+    redteam_defence_regression_probe_timeout: float = Field(
+        default=30.0, gt=0,
+        description="Wall-clock deadline per defence-regression probe, including retries (yaml: redteam.defence_regression_probe_timeout).",
     )
     redteam_defence_regression_paraphrases: int = Field(
         default=5,
