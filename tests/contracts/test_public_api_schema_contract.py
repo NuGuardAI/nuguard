@@ -65,6 +65,7 @@ from nuguard.redteam.campaign.models import (
     ObjectiveExecutionRecord,
     ReproductionRecord,
 )
+from nuguard.redteam.defence_regressions.models import DefenceRegressionRunSummary
 from nuguard.redteam.public_api import (
     RedteamAuthConfig,
     RedteamExecutionResult,
@@ -151,6 +152,7 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "redteam.RedteamExecutionResult": RedteamExecutionResult,
     "redteam.RedteamLoginFlowConfig": RedteamLoginFlowConfig,
     "redteam.RedteamRunRequest": RedteamRunRequest,
+    "redteam.DefenceRegressionRunSummary": DefenceRegressionRunSummary,
     "redteam.RedteamRunResult": RedteamRunResult,
     "sbom.SbomEnrichmentLlmConfig": SbomEnrichmentLlmConfig,
     "sbom.SbomEnrichmentRequest": SbomEnrichmentRequest,

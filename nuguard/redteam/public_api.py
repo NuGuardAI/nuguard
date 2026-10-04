@@ -50,6 +50,7 @@ from nuguard.redteam.campaign.models import (
     ObjectiveExecutionRecord,
     ReproductionRecord,
 )
+from nuguard.redteam.defence_regressions.models import DefenceRegressionRunSummary
 from nuguard.redteam.executor.orchestrator import (
     RedteamOrchestrator,
     _dedup_findings,
@@ -222,6 +223,14 @@ class RedteamRunRequest(BaseModel):
     defence_regression_paraphrases: int = 5
     """Paraphrase variants generated per entry above; 0 evaluates only the
     literal configured message (yaml: redteam.defence_regression_paraphrases)."""
+    defence_regression_timeout: float = Field(
+        default=180.0, gt=0,
+        description="Wall-clock deadline for the defence-regression pre-pass, including variant generation.",
+    )
+    defence_regression_probe_timeout: float = Field(
+        default=30.0, gt=0,
+        description="Wall-clock deadline per defence-regression probe, including retries.",
+    )
     asm_max_probe_requests: int = 25
     """Request budget for the Agentic Surface Model prober; 0 disables it
     entirely (yaml: redteam.asm.max_probe_requests)."""
@@ -276,6 +285,7 @@ class RedteamRunResult(BaseModel):
         "partial",
     ]
     config_notes: list[str] = Field(default_factory=list)
+    defence_regression_summary: DefenceRegressionRunSummary | None = None
     llm_executive_summary: str | None = None
     llm_coding_brief: str | None = None
     scenarios_run: int = 0
@@ -399,6 +409,12 @@ def _campaign_fields(orchestrator: Any) -> dict[str, Any]:
     }
 
 
+def _regression_summary(orchestrator: RedteamOrchestrator) -> DefenceRegressionRunSummary | None:
+    """Normalize optional regression state from older orchestrators and test doubles."""
+    summary = getattr(orchestrator, "defence_regression_summary", None)
+    return summary if isinstance(summary, DefenceRegressionRunSummary) else None
+
+
 def _build_partial_result(orchestrator: RedteamOrchestrator, exc: PartialRunError) -> RedteamRunResult:
     """Build a JSON-safe partial :class:`RedteamRunResult` from a :class:`PartialRunError`.
 
@@ -416,6 +432,7 @@ def _build_partial_result(orchestrator: RedteamOrchestrator, exc: PartialRunErro
         scenario_records=payload.get("scenario_records", []),
         scan_outcome="partial",
         config_notes=list(orchestrator.config_notes),
+        defence_regression_summary=_regression_summary(orchestrator),
         llm_executive_summary=orchestrator.llm_executive_summary,
         llm_coding_brief=None,
         scenarios_run=orchestrator.scenarios_run,
@@ -539,6 +556,8 @@ async def run_redteam(
         codegen_escalation_enabled=request.codegen_escalation_enabled,
         defence_regressions=request.defence_regressions,
         defence_regression_paraphrases=request.defence_regression_paraphrases,
+        defence_regression_timeout=request.defence_regression_timeout,
+        defence_regression_probe_timeout=request.defence_regression_probe_timeout,
         asm_max_probe_requests=request.asm_max_probe_requests,
         asm_extra_inventory_paths=request.asm_extra_inventory_paths,
         trust_context_confirmation_cells=request.trust_context_confirmation_cells,
@@ -628,6 +647,7 @@ async def run_redteam(
         scenario_records=[dataclasses.asdict(r) for r in orchestrator.scenario_records],
         scan_outcome=orchestrator.scan_outcome,  # type: ignore[arg-type]
         config_notes=list(orchestrator.config_notes),
+        defence_regression_summary=_regression_summary(orchestrator),
         llm_executive_summary=orchestrator.llm_executive_summary,
         llm_coding_brief=llm_coding_brief,
         scenarios_run=orchestrator.scenarios_run,

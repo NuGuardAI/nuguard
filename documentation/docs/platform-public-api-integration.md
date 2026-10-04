@@ -105,6 +105,15 @@ raises `CheckpointMismatchError` instead of silently combining incompatible resu
 
 ### Redteam (v1 engine)
 
+`RedteamRunRequest.defence_regression_timeout` bounds the entire regression
+pre-pass, including paraphrase generation (default 180 seconds).
+`defence_regression_probe_timeout` bounds each probe including retries (default
+30 seconds). Both must be positive. `RedteamRunResult.defence_regression_summary`
+adds `variants_failed` and `timed_out` coverage diagnostics. Failed or expired
+probes are inconclusive, and incomplete regression coverage prevents an otherwise
+clean run from reporting `no_findings`. These changes add no filesystem or network
+side effects beyond the requested scan; cancellation propagates to active probes.
+
 Module: `nuguard.redteam.public_api`
 
 Request model:

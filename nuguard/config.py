@@ -606,6 +606,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 flat["redteam_auth_password"] = _recovery_password
 
     # Redteam defence_regressions
+    for key in ("defence_regression_timeout", "defence_regression_probe_timeout"):
+        if isinstance(redteam, dict) and key in redteam:
+            flat[f"redteam_{key}"] = redteam[key]
     if isinstance(redteam, dict) and "defence_regressions" in redteam:
         flat["redteam_defence_regressions"] = redteam["defence_regressions"]
     if isinstance(redteam, dict) and "defence_regression_paraphrases" in redteam:
@@ -2019,6 +2022,14 @@ class NuGuardConfig(BaseSettings):
     redteam_defence_regressions: list[dict] = Field(
         default_factory=list,
         description="Defence regression scenarios declared in nuguard.yaml redteam.defence_regressions.",
+    )
+    redteam_defence_regression_timeout: float = Field(
+        default=180.0, gt=0,
+        description="Wall-clock deadline for the entire defence-regression pre-pass, including variant generation (yaml: redteam.defence_regression_timeout).",
+    )
+    redteam_defence_regression_probe_timeout: float = Field(
+        default=30.0, gt=0,
+        description="Wall-clock deadline per defence-regression probe, including retries (yaml: redteam.defence_regression_probe_timeout).",
     )
     redteam_defence_regression_paraphrases: int = Field(
         default=5,

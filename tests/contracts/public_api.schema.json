@@ -8002,6 +8002,38 @@
     "title": "CoverageSummary",
     "type": "object"
   },
+  "redteam.DefenceRegressionRunSummary": {
+    "description": "Aggregate coverage metric reported alongside findings (\u00a78 success metric).",
+    "properties": {
+      "specs_evaluated": {
+        "default": 0,
+        "title": "Specs Evaluated",
+        "type": "integer"
+      },
+      "variants_evaluated": {
+        "default": 0,
+        "title": "Variants Evaluated",
+        "type": "integer"
+      },
+      "variants_refused": {
+        "default": 0,
+        "title": "Variants Refused",
+        "type": "integer"
+      },
+      "variants_failed": {
+        "default": 0,
+        "title": "Variants Failed",
+        "type": "integer"
+      },
+      "timed_out": {
+        "default": false,
+        "title": "Timed Out",
+        "type": "boolean"
+      }
+    },
+    "title": "DefenceRegressionRunSummary",
+    "type": "object"
+  },
   "redteam.EfficiencySummary": {
     "description": "What the run cost per unit of coverage.",
     "properties": {
@@ -8627,6 +8659,38 @@
           "status"
         ],
         "title": "CredentialCheckResult",
+        "type": "object"
+      },
+      "DefenceRegressionRunSummary": {
+        "description": "Aggregate coverage metric reported alongside findings (\u00a78 success metric).",
+        "properties": {
+          "specs_evaluated": {
+            "default": 0,
+            "title": "Specs Evaluated",
+            "type": "integer"
+          },
+          "variants_evaluated": {
+            "default": 0,
+            "title": "Variants Evaluated",
+            "type": "integer"
+          },
+          "variants_refused": {
+            "default": 0,
+            "title": "Variants Refused",
+            "type": "integer"
+          },
+          "variants_failed": {
+            "default": 0,
+            "title": "Variants Failed",
+            "type": "integer"
+          },
+          "timed_out": {
+            "default": false,
+            "title": "Timed Out",
+            "type": "boolean"
+          }
+        },
+        "title": "DefenceRegressionRunSummary",
         "type": "object"
       },
       "EfficiencySummary": {
@@ -9776,6 +9840,17 @@
         "title": "Config Notes",
         "type": "array"
       },
+      "defence_regression_summary": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/DefenceRegressionRunSummary"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "llm_executive_summary": {
         "anyOf": [
           {
@@ -10690,6 +10765,20 @@
         "title": "Defence Regression Paraphrases",
         "type": "integer"
       },
+      "defence_regression_timeout": {
+        "default": 180.0,
+        "description": "Wall-clock deadline for the defence-regression pre-pass, including variant generation.",
+        "exclusiveMinimum": 0,
+        "title": "Defence Regression Timeout",
+        "type": "number"
+      },
+      "defence_regression_probe_timeout": {
+        "default": 30.0,
+        "description": "Wall-clock deadline per defence-regression probe, including retries.",
+        "exclusiveMinimum": 0,
+        "title": "Defence Regression Probe Timeout",
+        "type": "number"
+      },
       "asm_max_probe_requests": {
         "default": 25,
         "title": "Asm Max Probe Requests",
@@ -11129,6 +11218,38 @@
           "status"
         ],
         "title": "CredentialCheckResult",
+        "type": "object"
+      },
+      "DefenceRegressionRunSummary": {
+        "description": "Aggregate coverage metric reported alongside findings (\u00a78 success metric).",
+        "properties": {
+          "specs_evaluated": {
+            "default": 0,
+            "title": "Specs Evaluated",
+            "type": "integer"
+          },
+          "variants_evaluated": {
+            "default": 0,
+            "title": "Variants Evaluated",
+            "type": "integer"
+          },
+          "variants_refused": {
+            "default": 0,
+            "title": "Variants Refused",
+            "type": "integer"
+          },
+          "variants_failed": {
+            "default": 0,
+            "title": "Variants Failed",
+            "type": "integer"
+          },
+          "timed_out": {
+            "default": false,
+            "title": "Timed Out",
+            "type": "boolean"
+          }
+        },
+        "title": "DefenceRegressionRunSummary",
         "type": "object"
       },
       "EfficiencySummary": {
@@ -12277,6 +12398,17 @@
         },
         "title": "Config Notes",
         "type": "array"
+      },
+      "defence_regression_summary": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/DefenceRegressionRunSummary"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       },
       "llm_executive_summary": {
         "anyOf": [

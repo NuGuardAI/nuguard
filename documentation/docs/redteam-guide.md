@@ -10,6 +10,22 @@ Only run the red-team engine against a sandbox or staging environment — never 
 
 ## Quick Start
 
+Defence regressions run before attack scenarios. Their logs identify each configured
+regression name, variant, generation source, elapsed time, and outcome. Payloads and
+target response bodies are omitted from these probe logs. Configure
+`redteam.defence_regression_timeout` (default 180 seconds for the entire pre-pass,
+including variant generation) and `redteam.defence_regression_probe_timeout`
+(default 30 seconds per probe, including retries). Expired and failed probes are
+inconclusive; they cannot produce bypass findings. Incomplete regression coverage
+prevents an otherwise clean scan from reporting `no_findings`.
+
+In concurrent and progressive mode, ambiguous app fallback text receives one
+short retry; HTTP 502/503/504 failures
+receive two. Retry backoff releases the request slot. Explicit structured provider
+policy blocks are non-retryable, and session history is never used to infer a block.
+The existing `max_transient_hold_seconds` client option now bounds wall-clock time,
+including requests and waits. External cancellation propagates normally.
+
 Start in your application's source directory:
 
 ```bash

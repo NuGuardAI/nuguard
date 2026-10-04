@@ -23,6 +23,7 @@ Major product and documentation changes for NuGuard users. See the linked guides
 - **Dockerfile and nginx detection:** `Dockerfile.*` variants are scanned, and `proxy_pass` on the same line as a `location` block is detected.
 
 ### Fixed
+- **Red-team regression runtime:** Defence-regression probes log their names, variants, durations, and outcomes, with configurable pre-pass and probe deadlines. Ambiguous fallback errors receive one short retry, gateway errors receive capped retries, and request slots are released during backoff. Structured provider policy blocks are non-retryable; failed probes remain inconclusive.
 - **Dockerfile scan performance:** Malformed package-install flags no longer cause excessive regex backtracking, preventing scan stalls on crafted Dockerfiles.
 
 ### Compatibility
