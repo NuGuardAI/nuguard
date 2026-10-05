@@ -2,7 +2,7 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
-## Unreleased - 2026-10-03
+## Unreleased - 2026-10-04
 
 ### Added
 - **Red-team campaign mode (opt-in):** `redteam.mode: campaign` (or `nuguard redteam --mode campaign`) reuses conversations across related attacks instead of opening a fresh session per scenario, schedules one representative attempt per control before expanding techniques, cools down `429`/5xx retries outside the request path, and reproduces each finding in a brand-new conversation (`confirmed`, `not_reproduced`, `blocked`, `not_attempted`). Objectives that need a second account, a callback server, or a declared dry-run/sandbox fixture are reported as blocked instead of running. Reports add coverage-quality and efficiency sections and mark a no-findings run with untested controls as inconclusive. `concurrent` and `progressive` are unchanged. See the [red-team guide](redteam-guide.md#campaign-mode-opt-in).
@@ -15,12 +15,21 @@ Major product and documentation changes for NuGuard users. See the linked guides
 - **Red-team OWASP mappings:** Scenario catalog references now use the OWASP LLM Top 10 **2026** numbering. The catalog previously carried 2025-era numbers, so for example destructive tool actions were cited as `LLM06` and are now `LLM03` (Excessive Agency), hidden-context probes are `LLM08`, and vector/RAG scenarios are `LLM09`. Agentic references were corrected the same way (for example destructive actions map to `ASI02`, not `ASI06`). The per-scenario references set by the individual attack builders were also normalized to the same `LLM02:2026` / `ASI03` format and 2026 meanings (they previously mixed 2023, 2025 and 2026 numbers and free-text labels), so findings from legacy-builder scenarios now cite the same IDs as catalog scenarios. Reports and findings produced from catalog scenarios cite the new IDs; historical reports keep the 2025 numbers they were generated with.
 
 ### Improved
+- **Static scanner reliability:** Checkov and Semgrep now have configurable per-process and total deadlines, worker cleanup, path-level timings and heartbeat logs. Failed or incomplete scans report errors while retaining partial findings; overlapping source paths are scanned once.
+- **Guided campaign confirmation:** Successful guided attacks now replay their recorded attacker turns in a fresh conversation and use the same success criteria to judge reproduction. Confirmation removes unnecessary turns where possible; without a configured red-team LLM judge, it reports `blocked` with `no_judge_available`.
+- **Campaign checkpoint security:** Stronger credential fingerprints make offline guessing more expensive while keeping raw credentials out of checkpoints. Credential rotation invalidates resume.
+- **Red-team setup guidance:** The guide now starts with source discovery, configuration, and target verification, and clarifies profiles, non-destructive defaults, campaign budgets, and coverage results. The documentation landing page adds visual security workflows.
 - **CloudFormation:** YAML templates that use short-form tags such as `!Ref` and `!Sub` are now scanned instead of being skipped.
 - **Large compose and Bicep files:** Every service is kept; previously only the first three were retained.
 - **Dockerfile and nginx detection:** `Dockerfile.*` variants are scanned, and `proxy_pass` on the same line as a `location` block is detected.
 
+### Fixed
+- **Red-team regression runtime:** Defence-regression probes log their names, variants, durations, and outcomes, with configurable pre-pass and probe deadlines. Ambiguous fallback errors receive one short retry, gateway errors receive capped retries, and request slots are released during backoff. Structured provider policy blocks are non-retryable; failed probes remain inconclusive.
+- **Dockerfile scan performance:** Malformed package-install flags no longer cause excessive regex backtracking, preventing scan stalls on crafted Dockerfiles.
+
 ### Compatibility
 - Schema changes are additive. Code that switches exhaustively on edge `relationship_type` must handle the six new values.
+- Authenticated campaign checkpoints created with the older SHA-256 credential fingerprint cannot be resumed after the fingerprint upgrade. Start a new campaign without `--resume`; incompatible checkpoints raise `CheckpointMismatchError` before state is restored.
 
 ## v0.9.14 - 2026-10-01
 

@@ -167,6 +167,10 @@ async def test_run_analysis_passes_every_config_field():
             enable_grype=False,
             grype_timeout=30.0,
             grype_retries=1,
+            checkov_timeout=11,
+            checkov_total_timeout=22,
+            semgrep_timeout=33,
+            semgrep_total_timeout=44,
             supply_chain_profile="full",
             supply_chain_verify_artifacts="fail",
             atlas_config={"llm": True},
@@ -179,6 +183,10 @@ async def test_run_analysis_passes_every_config_field():
     assert kwargs["enable_grype"] is False
     assert kwargs["grype_timeout"] == 30.0
     assert kwargs["grype_retries"] == 1
+    assert kwargs["checkov_timeout"] == 11
+    assert kwargs["checkov_total_timeout"] == 22
+    assert kwargs["semgrep_timeout"] == 33
+    assert kwargs["semgrep_total_timeout"] == 44
     assert kwargs["supply_chain_profile"] == "full"
     assert kwargs["supply_chain_verify_artifacts"] == "fail"
     assert kwargs["atlas_config"] == {"llm": True}

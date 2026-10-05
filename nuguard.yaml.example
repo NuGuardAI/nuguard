@@ -379,6 +379,9 @@ redteam:
   # refused but a trivially-similar paraphrase succeeds. Built-in templates
   # work without an attack LLM; set 0 to evaluate only the literal message.
   defence_regression_paraphrases: 5
+  # Includes variant generation and retries; incomplete probes are inconclusive.
+  defence_regression_timeout: 180
+  defence_regression_probe_timeout: 30
 
   # Agentic Surface Model (ASM) — live recon beyond the chat endpoint:
   # unauthenticated tool/agent inventory disclosure, schema exposure
@@ -681,6 +684,10 @@ redteam:
 analyze:
   min_severity: medium              # critical | high | medium | low | info
   nga_only: false                   # true → run only NGA-001–018, skip external scans
+  checkov_timeout: 120              # seconds per scanner process; finite and positive
+  checkov_total_timeout: 300        # seconds across all Checkov paths
+  semgrep_timeout: 120              # seconds per scanner process
+  semgrep_total_timeout: 300        # seconds across all Semgrep paths
   # llm: true                       # force LLM enrichment in the ATLAS pass on/off.
                                      # Unset = auto (on when llm.api_key above is set)
 

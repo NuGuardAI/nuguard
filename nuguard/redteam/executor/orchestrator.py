@@ -871,6 +871,8 @@ class RedteamOrchestrator:
         codegen_escalation_enabled: bool = True,
         defence_regressions: list[dict] | None = None,
         defence_regression_paraphrases: int = 5,
+        defence_regression_timeout: float = 180.0,
+        defence_regression_probe_timeout: float = 30.0,
         asm_max_probe_requests: int = 25,
         asm_extra_inventory_paths: list[str] | None = None,
         trust_context_confirmation_cells: int = 1,
@@ -985,6 +987,10 @@ class RedteamOrchestrator:
         # W5 defence-regression pre-pass config (nuguard/redteam/defence_regressions/).
         self._defence_regressions_cfg: list[dict] = defence_regressions or []
         self._defence_regression_paraphrases = max(0, defence_regression_paraphrases)
+        if defence_regression_timeout <= 0 or defence_regression_probe_timeout <= 0:
+            raise ValueError("Defence-regression deadlines must be positive")
+        self._defence_regression_timeout = defence_regression_timeout
+        self._defence_regression_probe_timeout = defence_regression_probe_timeout
         # Findings raised by the pre-pass — merged into the final return value
         # (see _run_impl) independently of the normal scenario dispatch loop.
         self._regression_findings: list[Finding] = []
@@ -1403,8 +1409,15 @@ class RedteamOrchestrator:
         evaluator = DefenceRegressionEvaluator(client, target_url=self._target_url)
         results, summary = await evaluator.run(
             specs, self._defence_regression_paraphrases, llm_client=self._redteam_llm,
+            timeout_seconds=self._defence_regression_timeout,
+            probe_timeout_seconds=self._defence_regression_probe_timeout,
         )
         self.defence_regression_summary = summary
+        if summary.timed_out or summary.variants_failed:
+            self.config_notes.append(
+                f"Defence-regression coverage incomplete: failed={summary.variants_failed}, "
+                f"deadline_reached={summary.timed_out}; untested probes are inconclusive."
+            )
         new_findings = build_regression_findings(results)
         if new_findings:
             _log.warning(
@@ -2008,7 +2021,7 @@ class RedteamOrchestrator:
             self.llm_enriched_executed = sum(
                 1 for s in scenarios if s.scenario_id in _llm_payloads
             )
-        _log.info("Running %d scenarios", self.scenarios_run)
+        _log.info("Selected %d scenarios; pre-passes run before scenario dispatch", self.scenarios_run)
         self._publish_scenarios(scenarios)
 
         if not scenarios:
@@ -2131,8 +2144,11 @@ class RedteamOrchestrator:
             # separate opt-in config block — GET/OPTIONS-only recon is safe
             # by default); set redteam.asm.max_probe_requests: 0 to disable.
             if self._asm_max_probe_requests > 0:
+                _phase_started = time.monotonic()
+                _log.info("Redteam pre-pass start: stage=agentic_surface request_budget=%d", self._asm_max_probe_requests)
                 try:
                     await self._run_asm_pre_pass(client)
+                    _log.info("Redteam pre-pass end: stage=agentic_surface elapsed=%.2fs", time.monotonic() - _phase_started)
                 except Exception as exc:
                     _log.warning("Redteam: ASM pre-pass failed (non-fatal): %s", exc)
 
@@ -2140,7 +2156,10 @@ class RedteamOrchestrator:
                 # the ASM's own discovered channels, so only runs when the ASM
                 # pre-pass above actually ran.
                 try:
+                    _phase_started = time.monotonic()
+                    _log.info("Redteam pre-pass start: stage=observation")
                     await self._run_observation_pass()
+                    _log.info("Redteam pre-pass end: stage=observation elapsed=%.2fs", time.monotonic() - _phase_started)
                 except Exception as exc:
                     _log.warning("Redteam: observation pass failed (non-fatal): %s", exc)
 
@@ -2163,6 +2182,8 @@ class RedteamOrchestrator:
             # connection errors and produce 0-turn ABORTED records.  Sending a
             # lightweight probe first absorbs the cold-start penalty centrally.
             if self._pre_run_warmup > 0:
+                _phase_started = time.monotonic()
+                _log.info("Redteam pre-pass start: stage=warmup probes=%d", self._pre_run_warmup)
                 from nuguard.common.transport import (  # noqa: PLC0415
                     TransportOutcome,
                     classify_transport,
@@ -2183,6 +2204,7 @@ class RedteamOrchestrator:
                             _log.info("pre-run warmup %d/%d: %s", _wu_idx + 1, self._pre_run_warmup, _wu_resp_text[:80])
                     except Exception as _wu_exc:
                         _log.warning("pre-run warmup %d/%d failed (non-fatal): %s", _wu_idx + 1, self._pre_run_warmup, _wu_exc)
+                _log.info("Redteam pre-pass end: stage=warmup elapsed=%.2fs", time.monotonic() - _phase_started)
 
             # Build a synthetic DiscoveredProfile from statically configured golden_data
             # when the live pre-scan discovery did not produce a profile (or was skipped
@@ -2368,6 +2390,9 @@ class RedteamOrchestrator:
         )
         if self._not_engaged_detail is not None and not findings:
             self.scan_outcome = "aborted_target_not_engaged"
+        if self.scan_outcome == "no_findings" and self.defence_regression_summary is not None:
+            if self.defence_regression_summary.timed_out or self.defence_regression_summary.variants_failed:
+                self.scan_outcome = "inconclusive_target_errors"
         _log.info("Scan outcome: %s", self.scan_outcome)
 
         # LLM evaluation + summary (opt-in — only when eval_llm is configured)

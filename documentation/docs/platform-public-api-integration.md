@@ -52,6 +52,7 @@ Module: `nuguard.analysis.public_api`
 
 Request model:
 - `AnalysisRunRequest`
+  - Checkov and Semgrep accept finite positive `*_timeout` (120 seconds per process) and `*_total_timeout` (300 seconds per scanner) settings. Failed or incomplete scans retain partial findings and expose `tool_status[tool].status = "error"`; callers should distinguish this from complete coverage. Worker cleanup is bounded; cancelling the async caller leaves scanner threads bounded by their configured deadlines.
 
 Response model:
 - `AnalysisRunResult`
@@ -104,6 +105,15 @@ A checkpoint is fingerprinted against the sbom/policy it was created with; a mis
 raises `CheckpointMismatchError` instead of silently combining incompatible results.
 
 ### Redteam (v1 engine)
+
+`RedteamRunRequest.defence_regression_timeout` bounds the entire regression
+pre-pass, including paraphrase generation (default 180 seconds).
+`defence_regression_probe_timeout` bounds each probe including retries (default
+30 seconds). Both must be positive. `RedteamRunResult.defence_regression_summary`
+adds `variants_failed` and `timed_out` coverage diagnostics. Failed or expired
+probes are inconclusive, and incomplete regression coverage prevents an otherwise
+clean run from reporting `no_findings`. These changes add no filesystem or network
+side effects beyond the requested scan; cancellation propagates to active probes.
 
 Module: `nuguard.redteam.public_api`
 

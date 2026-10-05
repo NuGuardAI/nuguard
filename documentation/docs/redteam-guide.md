@@ -10,13 +10,43 @@ Only run the red-team engine against a sandbox or staging environment — never 
 
 ## Quick Start
 
-Red-teaming needs a live target — point `nuguard init` at your running app, then run it.
+Defence regressions run before attack scenarios. Their logs identify each configured
+regression name, variant, generation source, elapsed time, and outcome. Payloads and
+target response bodies are omitted from these probe logs. Configure
+`redteam.defence_regression_timeout` (default 180 seconds for the entire pre-pass,
+including variant generation) and `redteam.defence_regression_probe_timeout`
+(default 30 seconds per probe, including retries). Expired and failed probes are
+inconclusive; they cannot produce bypass findings. Incomplete regression coverage
+prevents an otherwise clean scan from reporting `no_findings`.
 
-<img src="assets/quickstart-4-redteam.svg" alt="nuguard init --target <your-app-url>. nuguard sbom generate --source <path-to-your-app> --output app.sbom.json. nuguard redteam --config nuguard.yaml --format markdown --output <output-path>." width="620">
+In concurrent and progressive mode, ambiguous app fallback text receives one
+short retry; HTTP 502/503/504 failures
+receive two. Retry backoff releases the request slot. Explicit structured provider
+policy blocks are non-retryable, and session history is never used to infer a block.
+The existing `max_transient_hold_seconds` client option now bounds wall-clock time,
+including requests and waits. External cancellation propagates normally.
+
+Start in your application's source directory:
+
+```bash
+nuguard sbom generate --source . --output app.sbom.json
+```
+
+Use the annotated [`nuguard.yaml.example`](https://github.com/NuGuardAI/nuguard/blob/main/nuguard.yaml.example)
+to create `nuguard.yaml` for your app's target, authentication and payload shape.
+Set `redteam.profile: ci` for a first pass. Verify the live target before running attacks:
+
+```bash
+nuguard target verify --config nuguard.yaml --sbom app.sbom.json
+nuguard redteam --config nuguard.yaml --sbom app.sbom.json \
+  --scenarios non-destructive --format markdown --output redteam-report.md
+```
+
+<img src="assets/quickstart-4-redteam.svg" alt="Discover AI assets with nuguard sbom generate; configure nuguard.yaml; verify the target; run a non-destructive red-team scan and save a Markdown report." width="760">
 
 **Common changes** (in `nuguard.yaml`, under `target:` / `redteam:`):
 
-- Target URL and endpoint — `target.url`, `target.endpoint` (default: auto-discovered from SBOM, fallback `/chat`)
+- Target URL and endpoint — `target.url`, `target.endpoint` (omit the endpoint for authenticated live discovery)
 - Request/response payload shape — `redteam.chat_payload_key` / `chat_response_key` / `chat_payload_extras` if your app doesn't use `{"message": "..."}` / `{"response": "..."}`
 - Auth — `target.auth`: `bearer`, `api_key`, `basic`, `login_flow`, or `cookie_file` (a captured session cookie — see below)
 
@@ -37,7 +67,11 @@ target:
   url: http://localhost:8000        # backend URL, not the frontend
 ```
 
-`target.endpoint` is the chat endpoint path appended to `target.url`. Leave it empty to auto-discover from the SBOM's `API_ENDPOINT` nodes; it falls back to `/chat` if nothing is discovered:
+`target.endpoint` is the chat endpoint path appended to `target.url`. Omit it to validate
+SBOM candidates against the live target, try authenticated HTTP probes, and use browser
+discovery when needed. The confirmed route and payload shape are retained for the scan.
+If discovery cannot confirm a route, the scan stops with an endpoint-not-found error;
+set the correct path explicitly or check the backend URL and login configuration.
 
 ```yaml
 target:
@@ -50,7 +84,7 @@ Resolution order when no `target.url` is set at all: `--target` CLI flag → `re
 Before running a full scan, verify the URL and endpoint actually resolve to a live chat endpoint:
 
 ```bash
-nuguard target verify --config nuguard.yaml
+nuguard target verify --config nuguard.yaml --sbom app.sbom.json
 ```
 
 ### Auth
@@ -63,6 +97,7 @@ nuguard target verify --config nuguard.yaml
 | `api_key` | API key in a custom header | `header` (e.g. `"X-API-Key: ${TARGET_API_KEY}"`) |
 | `basic` | HTTP Basic Auth | `username`, `password` |
 | `login_flow` | App exposes a login endpoint that returns a token | `login_flow.endpoint`, `login_flow.payload`, `login_flow.token_response_key`, `login_flow.token_header` |
+| `cookie_file` | Browser login or an existing captured session | `cookie_file` (path to a Netscape-format `cookies.txt`) |
 | `none` | Open/local-dev endpoint, no credentials | — |
 
 The demo app runs locally with no auth in front of it:
@@ -79,13 +114,16 @@ Always source credential values from environment variables with `${VAR}` interpo
 
 `redteam.profile` (`--profile` on the CLI) controls how many scenarios run, trading speed for coverage:
 
-| Profile | Scenario count | Threshold | When to use |
+| Profile | Catalog selection cap | Threshold | When to use |
 |---|---|---|---|
-| `ci` (default) | fast, high-signal only | `base_impact` ≥ 5.0 | Pre-merge gates, PR checks — fails fast on high-severity issues |
-| `standard` | ~30 scenarios | `base_impact` ≥ 3.0 | Regular sanity scans during development |
-| `full` | all scenarios (50+ on rich SBOMs) | no threshold | Pre-release audits, security review, the OpenAI CS agents example below |
+| `ci` (default) | 20 | `base_impact` ≥ 5.0 | Pre-merge gates; excludes destructive and resource-exhaustion catalog scenarios |
+| `standard` | 40 | `base_impact` ≥ 3.0 | Regular scans during development |
+| `full` | All applicable scenarios | No impact threshold | Pre-release audits and security review |
+| `minimal` | One static scenario | No impact threshold | Target smoke check; disables guided conversations |
 
-`redteam.min_impact_score` overrides the profile's built-in threshold directly — set it to exclude low pre-score scenarios regardless of profile.
+Actual counts depend on discovered capabilities, scenario filters, and generated variants.
+`redteam.min_impact_score` adds a minimum pre-score for inclusion; it does not restore
+catalog scenarios already excluded by the profile.
 
 For the demo app's pre-release scan, the `nuguard.yaml` sets:
 
@@ -94,7 +132,8 @@ redteam:
   profile: full
 ```
 
-which is what produced the 111-scenario run described in [Red-Team the Live App](example-openai-cs-agents.md#6-red-team-the-live-app). For a fast CI gate on the same app, switch to:
+which is what produced the 111-scenario run described in [Red-Team the Live App](example-openai-cs-agents.md#6-red-team-the-live-app).
+For a CI gate, set `redteam.profile: ci` in `nuguard.yaml`, then run:
 
 ```bash
 nuguard redteam -c nuguard.yaml --profile ci --format sarif --output results.sarif --fail-on high
@@ -102,14 +141,20 @@ nuguard redteam -c nuguard.yaml --profile ci --format sarif --output results.sar
 
 ### Scenarios (destructive / non-destructive filter)
 
-`redteam.scenarios` (`--scenarios` on the CLI) restricts the run by whether a scenario is likely to mutate or destroy target state. Leave it empty to run both. Values: `destructive`, `non-destructive`.
+`redteam.scenarios` (`--scenarios` on the CLI) restricts the run by whether a scenario is
+likely to mutate or destroy target state. Omitted or empty filters run **non-destructive
+scenarios only**. Values: `destructive`, `non-destructive`.
 
-A scenario is classified `destructive` when its title/description matches a keyword like *cancel, delete, close, remove, purge, refund, terminate, deactivate, wipe, revoke, unsubscribe, deregister* — the same classification the engine already uses to always run destructive scenarios last, after every non-destructive scenario, so mutating actions don't corrupt account state a non-destructive scenario still needs to probe.
+A scenario is classified `destructive` when it asks for mutating actions such as
+cancel/delete/refund, contains a credentialed write through a direct HTTP probe, or tests
+resource exhaustion. Mutating scenarios run after non-destructive probes. The filter is a
+classification of intended behavior; adversarial prompts can still trigger unexpected side effects.
 
 For a first pass against a shared or production-like target, restrict to non-destructive scenarios only:
 
 ```yaml
 redteam:
+  profile: ci
   scenarios:
     - non-destructive
 ```
@@ -124,21 +169,58 @@ Once you're confident the target can tolerate mutating actions (a throwaway/stag
 
 ```yaml
 redteam:
+  profile: full
   scenarios:
     - non-destructive
     - destructive
 ```
 
-The full unfiltered run (both categories) is what the [example walkthrough](example-openai-cs-agents.md) uses in its `nuguard.yaml`, alongside `canary`, `similar_miss_threshold`, `scenario_timeout`, and `guided_conversations` settings — see [Set Up Project Config](example-openai-cs-agents.md#4-set-up-project-config) for the complete file.
+Use `standard` or `full` when opting into mutating tests; the CI catalog excludes them.
+For write-capable API probes, configure `redteam.canary` with a disposable tenant's
+`session_token`. Without one, probes may use the configured target credentials; review
+credential fallback notes in the report. See the [example configuration](example-openai-cs-agents.md#4-set-up-project-config).
 
-For the full list of attack vectors — 125 scenarios across 18 categories, with per-scenario impact scores, goal types, and safe-execution modes — see the [Red-Team Scenario Catalog](redteam-scenario-catalog.md).
+For attack vectors, impact scores, goal types, and execution modes, see the
+[Red-Team Scenario Catalog](redteam-scenario-catalog.md).
+
+### API endpoint coverage
+
+Direct HTTP probes use the AI-SBOM's API endpoints in addition to the chat route.
+Above `redteam.api_endpoint_threshold` (default `25`), a configured red-team LLM selects
+endpoints relevant to each probe family. CI spot-checks at most
+`redteam.ci_api_spot_checks` endpoints (default `3`); it uses a deterministic selection
+when the LLM is unavailable. These are coverage limits, so a CI result does not establish
+that every API route was tested.
+
+### Customizing the catalog
+
+Export the bundled catalog, edit the exported entries, then select that file for a run:
+
+```bash
+nuguard redteam catalog-export --output my-catalog.yaml
+nuguard redteam --config nuguard.yaml --sbom app.sbom.json --catalog my-catalog.yaml
+```
+
+The custom catalog replaces the bundled catalog. Keep stable entry IDs and the exported
+field structure; profile, capability, and destructive-scenario filters still apply.
+You can also set `redteam.catalog: ./my-catalog.yaml` in `nuguard.yaml`.
+
+### Execution modes
+
+| Mode | Scheduling | Use case |
+|---|---|---|
+| `concurrent` (default) | Phases run in order; scenarios within a phase can run in parallel | Independent attack scenarios |
+| `progressive` | Named phases run sequentially, one scenario at a time | A staged engagement; `redteam.progressive.halt_on_severity` can stop after a phase |
+| `campaign` | Related objectives reuse conversations; representative coverage precedes deeper attempts | Broad coverage with less repeated setup |
+
+Set `redteam.mode` in YAML or use `--mode`. `redteam.max_concurrent_requests` limits
+HTTP requests to the target; it is separate from provider-side LLM rate limits.
 
 ### Campaign mode (opt-in)
 
-`redteam.mode: campaign` (or `nuguard redteam --mode campaign`) replaces the
-fire-all-scenarios dispatcher with a coverage-first scheduler. Use it when a run is slow or leaves
-whole families (tool abuse, agentic trust, MCP) untested. `concurrent` and `progressive` are
-unchanged.
+`redteam.mode: campaign` (or `nuguard redteam --mode campaign`) uses a coverage-first
+scheduler and reuses conversations across related objectives. Use it when repeated setup
+slows a run or whole families (tool abuse, agentic trust, MCP) remain untested.
 
 What changes:
 
@@ -165,14 +247,29 @@ redteam:
   pre_run_warmup: 0            # campaign manages its own warm-up
   max_concurrent_requests: 1   # one request at a time (default)
   campaign:
+    campaign_warmup: true
     confirm_in_fresh_sessions: true
-    target_supports_session_reset: true   # false = no reset possible -> confirmation is blocked
+    target_supports_session_reset: null   # detect; use true only when isolated reset is supported
     declared_fixtures: false              # true when dry-run/sandbox tools exist
+    fixture_version: ""                  # change when the fixture changes
     max_run_target_requests: 600          # optional; unset = no hidden cap
 ```
 
-Current limits: WebSocket targets are not supported (use `concurrent`), and fresh-session replay of
-*guided* findings is not implemented yet (they are reported `not_attempted`). See
+If the target cannot create an isolated session, set both
+`target_supports_session_reset: false` and `confirm_in_fresh_sessions: false`.
+Setting reset support to `false` while confirmation remains enabled is a configuration
+error. Keep `declared_fixtures: false` until the target actually provides the required
+dry-run or sandbox behavior.
+
+Optional campaign budgets also include `max_run_seconds` and `max_run_llm_cost_usd`.
+Omitted budgets have no run-wide cap. Tune `max_turns_per_branch`, `max_branch_tokens`,
+and `max_objective_turns` to bound conversations; the objective turn limit must not exceed
+the branch turn limit.
+
+Guided findings are confirmed by replaying the recorded attacker turns in a fresh conversation and
+re-judging the final response with the same success criteria as the live run (they are `blocked` with
+`no_judge_available` when no redteam LLM is configured). Current limit: WebSocket targets are not
+supported (use `concurrent`). See
 [redteam-design.md](redteam-design.md#12a-campaign-mode) for the design.
 
 ### Resuming an aborted run
@@ -197,6 +294,33 @@ redteam:
 The checkpoint is fingerprinted against the SBOM and policy it was created with — resuming
 against a different SBOM/policy raises a `CheckpointMismatchError` instead of silently mixing
 results. On a fully successful run the checkpoint file is deleted automatically.
+
+Campaign resume also checks the target, authentication scope, and `campaign.fixture_version`.
+It restores conversation state with current credentials and probes saved branches for liveness;
+expired conversations are rebuilt from permitted setup without replaying writes.
+Checkpoints contain authentication fingerprints rather than raw headers or cookies.
+
+**Upgrading to 0.9.15:** authenticated campaign checkpoints created with the older
+SHA-256 fingerprint cannot be resumed after the credential fingerprint upgrade. Start a
+new campaign without `--resume`; a mismatch raises `CheckpointMismatchError` before
+campaign state is restored. New fingerprints remain stable across processes and header
+ordering, and credential rotation invalidates resume.
+
+### Reading campaign results
+
+Review findings together with the coverage and reproduction sections:
+
+| Result | What to check |
+|---|---|
+| Coverage quality | Attempted and meaningfully completed objectives, blocked controls, and work deferred by budgets |
+| Reproduction | `confirmed`, `not_reproduced`, `blocked`, or `not_attempted`; original evidence is retained |
+| Effect verification | Whether a concrete canary or synthetic-account effect was verified; a reproduced response alone does not establish a real side effect |
+| Efficiency | Target requests, LLM calls, reused branches, and setup requests avoided |
+
+Zero findings with untested controls is **inconclusive**. Resolve missing fixtures,
+transport failures, or exhausted budgets before using the report as a release decision.
+For JSON-safe library results and checkpoint exceptions, see
+[platform integration](platform-public-api-integration.md).
 
 ### 📖 Need every flag?
 

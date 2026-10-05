@@ -309,13 +309,20 @@ async def test_run_redteam_constructs_orchestrator_and_builds_result():
     """The orchestrator receives the policy model unwrapped from a parse result."""
     findings = [_finding("prompt_driven_threat"), _finding("data_exfiltration")]
     mock_instance = _make_mock_orchestrator(findings)
+    from nuguard.redteam.defence_regressions.models import DefenceRegressionRunSummary
+    mock_instance.defence_regression_summary = DefenceRegressionRunSummary(
+        specs_evaluated=1, variants_evaluated=2, variants_failed=1,
+    )
     sbom = MagicMock()
     policy = CognitivePolicy(allowed_topics=["Support"])
     parsed_policy = CognitivePolicyParseResult(success=True, policy=policy)
 
     with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
         mock_cls.return_value = mock_instance
-        request = RedteamRunRequest(target_url="http://target", profile="standard")
+        request = RedteamRunRequest(
+            target_url="http://target", profile="standard",
+            defence_regression_timeout=120, defence_regression_probe_timeout=20,
+        )
         result = await run_redteam(request, sbom=sbom, policy=parsed_policy)
 
     mock_cls.assert_called_once()
@@ -324,8 +331,12 @@ async def test_run_redteam_constructs_orchestrator_and_builds_result():
     assert kwargs["policy"] is policy
     assert kwargs["target_url"] == "http://target"
     assert kwargs["profile"] == "standard"
+    assert kwargs["defence_regression_timeout"] == 120
+    assert kwargs["defence_regression_probe_timeout"] == 20
 
     assert isinstance(result, RedteamRunResult)
+    assert result.defence_regression_summary.variants_failed == 1
+    assert RedteamRunResult.model_validate(result.model_dump(mode="json")) == result
     assert len(result.findings) == 2
     assert result.scenario_records == [dataclasses.asdict(mock_instance.scenario_records[0])]
     assert result.scan_outcome == "high_findings"
