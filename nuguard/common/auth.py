@@ -383,6 +383,18 @@ class AuthSession:
             self._token_header_name = name.strip()
             self._token_header_value_prefix = prefix.strip()
 
+    @property
+    def auth_config(self) -> AuthConfig:
+        """The underlying, statically-configured AuthConfig this session wraps.
+
+        Never the dynamically-acquired login_flow token — callers needing a
+        stable identity fingerprint (e.g. nuguard.common.discovery.
+        profile_cache_fingerprint) want the configured credential, not the
+        live token, which changes on every login_flow run even for the same
+        underlying identity.
+        """
+        return self._config
+
     async def initialize(self) -> None:
         """Acquire a token if using login_flow auth; no-op for static types."""
         if self._config.type == "login_flow":

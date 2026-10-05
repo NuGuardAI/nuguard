@@ -1005,6 +1005,17 @@ def persist_liveness_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
     return _persist_enriched_sbom(sbom, sbom_path)
 
 
+def persist_endpoint_resolution_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
+    """Persist *sbom* (with ``sbom.resolved_chat_endpoint`` /
+    ``resolved_path_param_values`` / ``resolved_chat_endpoint_fingerprint``
+    already set) so a live-validated chat-endpoint resolution (see
+    :mod:`nuguard.common.endpoint_preflight`) survives across runs and Target
+    Verify/Behavior/Redteam can share one validated resolution instead of
+    each re-probing the target live.
+    """
+    return _persist_enriched_sbom(sbom, sbom_path)
+
+
 def _enrichment_cache_key(
     sbom: AiSbomDocument,
     target_url: str | None,

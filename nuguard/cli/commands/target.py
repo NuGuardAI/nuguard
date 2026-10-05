@@ -86,6 +86,18 @@ def verify_command(
             help="Max pre-scan discovery turns (default: redteam.discovery_max_turns, or 3).",
         ),
     ] = None,
+    preflight_candidates: Annotated[
+        int | None,
+        typer.Option(
+            "--preflight-candidates",
+            help=(
+                "How many alternative SBOM candidates to test when the resolved chat "
+                "endpoint's reply isn't clearly conversational (default: "
+                "redteam.preflight_candidates, or 3) — matches the pool a subsequent "
+                "Behavior/Redteam run would test."
+            ),
+        ),
+    ] = None,
     skip_discovery: Annotated[
         bool,
         typer.Option(
@@ -123,6 +135,7 @@ def verify_command(
             sbom,
             discovery_max_turns,
             skip_discovery,
+            preflight_candidates,
         )
     )
 
@@ -136,6 +149,7 @@ async def _verify_async(
     sbom_override: Path | None = None,
     discovery_max_turns_override: int | None = None,
     skip_discovery_override: bool = False,
+    preflight_candidates_override: int | None = None,
 ) -> None:
     # Load config
     try:
@@ -192,13 +206,59 @@ async def _verify_async(
             sbom_doc = AiSbomSerializer.from_json(sbom_path.read_text())
         except Exception as exc:
             console.print(f"[yellow]Warning:[/yellow] failed to load SBOM {sbom_path}: {exc}")
+        else:
+            # Re-run topology enrichment in case the SBOM file predates it
+            # (idempotent) — matches behavior.py/redteam.py's own pre-load
+            # normalization. Without this, the _enrichment_cache_key computed
+            # below hashes a differently-shaped SBOM than behavior/redteam do
+            # for the identical source file, guaranteeing a cache-key mismatch
+            # and making the issue #611 Phase 2/3 caches unreachable across
+            # commands even though each command's own structural content is
+            # otherwise identical.
+            from nuguard.sbom.enricher import enrich as _enrich_topology_pre
+
+            _enrich_topology_pre(sbom_doc)
     elif sbom_path:
         console.print(f"[yellow]Warning:[/yellow] SBOM file not found: {sbom_path}")
+
+    # Load the already-enriched SBOM artifact when present/fresh (same
+    # structural-enrichment pipeline behavior/redteam already use) — without
+    # this, target verify always reads the pristine sbom_path directly and
+    # can never see its own (or behavior/redteam's) previously-persisted
+    # discovered_profile / resolved_chat_endpoint cache data, making the
+    # issue #611 Phase 2/3 caching unreachable for this command in either
+    # direction. See nuguard.cli.common.enrich_sbom_for_run.
+    if sbom_doc is not None:
+        from nuguard.cli.common import enrich_sbom_for_run
+
+        sbom_doc = await enrich_sbom_for_run(
+            sbom=sbom_doc,
+            sbom_path=sbom_path,
+            target_url=target_url,
+            llm_enabled=getattr(cfg, "use_llm", False),
+            llm_model=cfg.litellm_model,
+            llm_api_key=cfg.litellm_api_key,
+            llm_api_base=cfg.litellm_api_base,
+            probe_auth_header=auth.header if auth.type != "none" else None,
+            log_prefix="target verify",
+        )
+        # enrich_sbom_for_run() may return a cached artifact loaded from disk,
+        # not guaranteed to have gone through topology enrichment — re-run it
+        # here (idempotent) so endpoint-candidate ranking/discovery below
+        # always sees the derived risk attributes (mirrors redteam.py).
+        from nuguard.sbom.enricher import enrich as _enrich_topology_post
+
+        _enrich_topology_post(sbom_doc)
 
     effective_discovery_max_turns = (
         discovery_max_turns_override
         if discovery_max_turns_override is not None
         else getattr(cfg, "redteam_discovery_max_turns", 3)
+    )
+    effective_preflight_candidates = (
+        preflight_candidates_override
+        if preflight_candidates_override is not None
+        else getattr(cfg, "redteam_preflight_candidates", 3)
     )
     effective_skip_discovery = skip_discovery_override or getattr(
         cfg, "redteam_skip_discovery", False
@@ -360,9 +420,16 @@ async def _verify_async(
         if default_check is not None and default_check.status != "ok":
             discovery_skip_note = "default credential did not verify"
         else:
-            profile = await _run_pre_scan_discovery(
-                sbom_doc, session_cfg, max_turns=effective_discovery_max_turns
+            profile, preflight_skip_note = await _run_pre_scan_discovery(
+                sbom_doc,
+                session_cfg,
+                max_turns=effective_discovery_max_turns,
+                has_explicit_endpoint=bool(ep_configured),
+                preflight_candidates=effective_preflight_candidates,
+                sbom_path=sbom_path,
             )
+            if preflight_skip_note:
+                discovery_skip_note = preflight_skip_note
 
     # Render results table — Identity/Detail carry the discovered user/account
     # and golden data for the default identity's row.
@@ -475,13 +542,30 @@ async def _run_pre_scan_discovery(
     session_cfg: "TargetSessionConfig",
     *,
     max_turns: int,
-) -> "DiscoveredProfile | None":
+    has_explicit_endpoint: bool,
+    preflight_candidates: int,
+    sbom_path: "Path | None" = None,
+) -> "tuple[DiscoveredProfile | None, str | None]":
     """Run the same pre-scan discovery conversation used by behavior/redteam.
 
-    Returns ``None`` (rather than raising) on failure — discovery is diagnostic,
-    never fatal to `target verify`.
+    Returns ``(profile, skip_reason)``. ``profile`` is ``None`` (rather than
+    raising) on failure — discovery is diagnostic, never fatal to
+    `target verify`. ``skip_reason`` is set only when a working chat endpoint
+    could not be validated at all (as opposed to discovery running but
+    finding nothing), so the caller can surface it the same way as the
+    existing "default credential did not verify" skip note, instead of a
+    differently-styled message printed from inside this function.
     """
-    from nuguard.common.discovery import run_discovery_conversation
+    from nuguard.common.discovery import (
+        cached_discovery_profile,
+        profile_cache_fingerprint,
+        run_discovery_conversation,
+    )
+    from nuguard.common.endpoint_preflight import (
+        cached_endpoint_resolution,
+        persist_endpoint_resolution,
+        validate_and_rotate_chat_endpoint,
+    )
     from nuguard.common.target_client_builder import build_target_app_client
     from nuguard.redteam.target.session import AttackSession
 
@@ -504,13 +588,125 @@ async def _run_pre_scan_discovery(
         use_case = ""
         if sbom_doc.summary is not None:
             use_case = getattr(sbom_doc.summary, "use_case", "") or ""
+        auth_config = getattr(session_cfg.auth_session, "auth_config", None)
         async with client:
-            return await run_discovery_conversation(
+            # Validate (and if needed rotate) the chat endpoint, and bootstrap
+            # any templated path param (e.g. :id on a create-conversation-then-
+            # post-message route) before sending any discovery turn — the same
+            # preflight RedteamOrchestrator.run() and BehaviorRunner already run.
+            # Without this, every turn against a templated endpoint fails with
+            # "[CONFIG_ERROR: unresolved path param ...]" — see issue #611.
+            #
+            # First check for a previously-validated resolution cached on the
+            # SBOM by an earlier Target Verify/Behavior/Redteam run against
+            # this same target/auth — reusing it skips the live round-trip
+            # entirely. A cache entry for a DIFFERENT path than the one
+            # explicitly configured here is never used (config-wins
+            # precedence; see endpoint-resolution-precedence-plan.md).
+            sbom_hit = cached_endpoint_resolution(
+                sbom_doc,
+                session_cfg.base_url,
+                auth_config,
+                required_chat_path=session_cfg.chat_path if has_explicit_endpoint else None,
+            )
+            if sbom_hit is not None:
+                resolved, resolved_params = sbom_hit
+                client.set_chat_endpoint(
+                    resolved.chat_path, resolved.chat_payload_key,
+                    resolved.chat_payload_list, resolved.chat_response_key,
+                )
+                for pp_name, pp_value in resolved_params.items():
+                    client.set_path_param(pp_name, pp_value)
+                console.print(
+                    f"  [dim]Chat endpoint {resolved.chat_path!r} reused from a "
+                    "previously-validated SBOM resolution — skipped live preflight.[/dim]"
+                )
+            else:
+                preflight = await validate_and_rotate_chat_endpoint(
+                    client,
+                    sbom_doc,
+                    has_explicit_endpoint=has_explicit_endpoint,
+                    target_url=session_cfg.base_url,
+                    auth_headers=session_cfg.effective_headers or None,
+                    max_candidates=preflight_candidates,
+                )
+                for note in preflight.notes:
+                    console.print(f"  [dim]{note}[/dim]")
+                if not preflight.ok:
+                    return None, "no working chat endpoint found during preflight validation"
+                # Prefer the rotation outcome itself over re-reading
+                # client.chat_path: self-contained rather than relying on
+                # validate_and_rotate_chat_endpoint having mutated *client*
+                # as a side effect.
+                if preflight.rotated_endpoint is not None:
+                    final_path, final_payload_key, final_payload_list, final_response_key = (
+                        preflight.rotated_endpoint
+                    )
+                else:
+                    final_path = session_cfg.chat_path
+                    final_payload_key = getattr(client, "_chat_payload_key", "message")
+                    final_payload_list = bool(getattr(client, "_chat_payload_list", False))
+                    final_response_key = getattr(client, "_chat_response_key", None)
+                persist_endpoint_resolution(
+                    sbom_doc,
+                    session_cfg.base_url,
+                    auth_config,
+                    chat_path=final_path,
+                    chat_payload_key=final_payload_key,
+                    chat_payload_list=final_payload_list,
+                    chat_response_key=final_response_key,
+                    endpoint_source=preflight.endpoint_source,
+                    path_param_values=dict(getattr(client, "path_param_values", None) or {}),
+                )
+                if sbom_path is not None:
+                    from nuguard.common.auto_sbom_enricher import (
+                        persist_endpoint_resolution_sbom,
+                    )
+
+                    try:
+                        persist_endpoint_resolution_sbom(sbom_doc, sbom_path)
+                    except Exception as exc:
+                        console.print(
+                            f"  [yellow]Could not persist endpoint resolution (non-fatal):[/yellow] {exc}"
+                        )
+            # Same cache-then-fall-back pattern as the endpoint resolution
+            # above, applied to the discovered identity profile (issue #611
+            # Phase 2) — previously wired into verify_target()'s sibling
+            # BehaviorRunner/RedteamOrchestrator call sites but never into
+            # this CLI's own discovery implementation, so every target
+            # verify run re-ran the live DISCOVER conversation regardless of
+            # a prior successful discovery against the same target/auth.
+            cached_profile = cached_discovery_profile(sbom_doc, session_cfg.base_url, auth_config)
+            if cached_profile is not None:
+                console.print(
+                    f"  [dim]Pre-scan discovery (from enriched SBOM): "
+                    f"name={cached_profile.customer_name!r} ids={cached_profile.ids}[/dim]"
+                )
+                return cached_profile, None
+
+            profile = await run_discovery_conversation(
                 client, session, use_case=use_case, max_turns=max_turns
             )
+            if not profile.is_empty:
+                sbom_doc.discovered_profile = profile.model_dump(mode="json")
+                sbom_doc.discovered_profile_fingerprint = profile_cache_fingerprint(
+                    session_cfg.base_url, auth_config
+                )
+                if sbom_path is not None:
+                    from nuguard.common.auto_sbom_enricher import (
+                        persist_discovery_profile_sbom,
+                    )
+
+                    try:
+                        persist_discovery_profile_sbom(sbom_doc, sbom_path)
+                    except Exception as exc:
+                        console.print(
+                            f"  [yellow]Could not persist discovery profile (non-fatal):[/yellow] {exc}"
+                        )
+            return profile, None
     except Exception as exc:
         console.print(f"  [yellow]Discovery failed (non-fatal):[/yellow] {exc}")
-        return None
+        return None, None
 
 
 # Field names checked (in order) for a configured user/account identity to
