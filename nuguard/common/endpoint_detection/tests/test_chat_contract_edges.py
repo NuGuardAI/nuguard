@@ -9,6 +9,7 @@ import httpx
 import pytest
 import respx
 
+from nuguard.common.endpoint_detection.constants import TEST_MESSAGE
 from nuguard.common.endpoint_detection.live_probe import (
     _message_field_required,
     _try_openapi_detection,
@@ -48,6 +49,9 @@ async def test_transport_failure_on_control_is_not_evidence(failure: Exception) 
     "status,body,expected",
     [
         (400, {"error": "text is required"}, True),
+        (400, {"error": '"text" (string) is required'}, True),
+        (400, {"error": '"profile" (string) is required; text was ignored'}, False),
+        (400, {"error": '"text" (string is required'}, False),
         (
             422,
             {"detail": [{"loc": ["body", "text"], "msg": "Field required", "type": "missing"}]},
@@ -235,7 +239,9 @@ async def test_browser_cannot_replace_explicit_route(observed: tuple | None) -> 
         result = await resolve_chat_endpoint(
             BASE, None, endpoint="/chat", enable_browser_fallback=True
         )
-    assert result.path is None
+    assert result.path == "/chat"
+    assert result.path_source is EndpointSource.CONFIG
+    assert result.payload.source is EndpointSource.FALLBACK
 
 
 @pytest.mark.asyncio
@@ -314,3 +320,23 @@ async def test_shared_omission_response_is_evaluated_for_each_candidate_key() ->
     result = await probe_endpoint(BASE, None, hint_path="/chat")
     assert result is not None and result.confirmed and result.key == "text"
     assert sum(json.loads(call.request.content) == {} for call in route.calls) == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_gemini_typed_validation_confirms_configured_route() -> None:
+    def reply(request: httpx.Request) -> httpx.Response:
+        if "message" not in json.loads(request.content):
+            return httpx.Response(400, json={"error": '"message" (string) is required'})
+        return httpx.Response(200, json={"text": "Hello", "sources": [], "vehicleUpdates": {}})
+
+    respx.get(url__regex=r".*").mock(return_value=httpx.Response(404))
+    route = respx.post(f"{BASE}/api/agent/chat").mock(side_effect=reply)
+    result = await resolve_chat_endpoint(BASE, None, endpoint="/api/agent/chat")
+    assert result.path == "/api/agent/chat"
+    assert result.path_source is EndpointSource.CONFIG
+    assert result.payload.key == "message"
+    assert result.payload.source is EndpointSource.PROBE
+    assert [json.loads(call.request.content) for call in route.calls] == [
+        {"message": TEST_MESSAGE}, {},
+    ]

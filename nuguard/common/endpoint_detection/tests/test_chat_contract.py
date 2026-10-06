@@ -124,7 +124,9 @@ async def test_explicit_endpoint_unknown_field_does_not_use_default_guess() -> N
         return_value=httpx.Response(200, json={"outputs": [{"text": "Welcome"}]}),
     )
     result = await resolve_chat_endpoint(BASE, None, endpoint="/api/chat", payload_key=UNSET)
-    assert result.path is None
+    assert result.path == "/api/chat"
+    assert result.path_source.value == "config"
+    assert result.payload.source.value == "fallback"
     assert any("message field" in note for note in result.notes)
 
 

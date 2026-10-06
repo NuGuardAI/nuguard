@@ -322,8 +322,9 @@ async def resolve_chat_endpoint(
 
     if field_unresolved:
         notes.append("No message field could be validated; configure chat_payload_key or enable browser discovery.")
-        resolved_path = None
-        path_source = EndpointSource.UNKNOWN
+        if not endpoint_is_explicit:
+            resolved_path = None
+            path_source = EndpointSource.UNKNOWN
 
     if resolved_path is None:
         notes.append("No endpoint was resolved.")

@@ -272,7 +272,9 @@ async def test_actual_blissful_default_greeting_does_not_establish_a_field(live_
     if kind != "blissful":
         pytest.skip("Requires the actual optional-text Blissful handler")
     result = await resolve_chat_endpoint(base, None, endpoint="/api/chat", timeout=3)
-    assert result.path is None
+    assert result.path == "/api/chat"
+    assert result.payload.source.value == "fallback"
+    assert any("No message field could be validated" in note for note in result.notes)
 
 
 @pytest.mark.asyncio

@@ -347,6 +347,7 @@ async def resolve_target_session(
         is_empty_session_response,
         probe_endpoint,
     )
+    from nuguard.common.endpoint_detection.payload import _sbom_payload_contract  # noqa: PLC0415
     from nuguard.common.endpoint_detection.resolver import (  # noqa: PLC0415
         resolve_chat_endpoint,
     )
@@ -438,6 +439,12 @@ async def resolve_target_session(
             browser_auth_config=effective_auth,
         )
         resolution_notes.extend(resolved.notes)
+        _configured_field_unresolved = (
+            is_endpoint_explicit
+            and not payload_key_explicit
+            and resolved.payload.source.value == "fallback"
+            and not _sbom_payload_contract(sbom, resolved.path or "")[0]
+        )
         if not resolved.path:
             if is_endpoint_explicit:
                 # Preserve auth/transport diagnostics on the configured route.

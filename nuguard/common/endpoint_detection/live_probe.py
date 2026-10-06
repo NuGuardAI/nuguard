@@ -545,7 +545,9 @@ _SHAPE_REJECTED_RE = re.compile(
 # be empty", "missing field: query") — used to try that key next.
 _ERROR_FIELD_RES: tuple[re.Pattern[str], ...] = (
     re.compile(
-        r"[`'\"]?([A-Za-z_][A-Za-z0-9_]{1,40})[`'\"]?\s+(?:must not be empty|cannot be empty"
+        r"[`'\"]?([A-Za-z_][A-Za-z0-9_]{1,40})[`'\"]?"
+        r"(?:\s+\((?:string|str|number|integer|int|float|boolean|bool|array|list|object|dict)\))?"
+        r"\s+(?:must not be empty|cannot be empty"
         r"|is required|is missing|must be provided|field required)",
         re.IGNORECASE,
     ),

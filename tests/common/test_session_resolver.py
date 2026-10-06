@@ -262,6 +262,46 @@ async def test_health_report_reflects_discovered_endpoint_not_stale_default() ->
 
 
 @pytest.mark.asyncio
+async def test_explicit_route_with_unconfirmed_field_fails_without_defaulting() -> None:
+    bootstrapper, health_report = _mock_bootstrapper()
+    health_report.all_ok = True
+    resolved = ResolvedEndpoint(
+        path="/api/agent/chat",
+        path_source=EndpointSource.CONFIG,
+        path_explicit=True,
+        payload=PayloadShape(key="message", source=EndpointSource.FALLBACK),
+    )
+    with (
+        patch(
+            "nuguard.common.endpoint_detection.context.resolve_api_origin",
+            new=AsyncMock(return_value=(TARGET, [])),
+        ),
+        patch(
+            "nuguard.common.endpoint_detection.resolver.resolve_chat_endpoint",
+            new=AsyncMock(return_value=resolved),
+        ),
+        patch(
+            "nuguard.common.auth_runtime.bootstrap_auth_runtime",
+            new=AsyncMock(return_value=(bootstrapper, health_report)),
+        ) as bootstrap,
+    ):
+        with pytest.raises(TargetEndpointNotFoundError, match="message field could not be confirmed"):
+            await resolve_target_session(
+                target_url=TARGET,
+                sbom=None,
+                auth_config=None,
+                extra_headers={},
+                chat_path="/api/agent/chat",
+                chat_payload_key="message",
+                chat_payload_list=False,
+                chat_payload_extras={},
+                chat_response_key=None,
+                endpoint_explicit=True,
+            )
+    assert bootstrap.call_args.kwargs["endpoint"] == "/api/agent/chat"
+
+
+@pytest.mark.asyncio
 async def test_websocket_placeholder_endpoint_is_not_re_validated() -> None:
     # Regression guard: the WS-handshake placeholder "/ws" (used deliberately
     # for step 4's bootstrap regardless of the real SBOM-discovered WS path)
