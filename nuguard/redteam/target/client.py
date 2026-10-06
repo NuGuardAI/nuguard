@@ -227,6 +227,8 @@ def _extract_sse_event_text(event: dict[str, Any]) -> str | None:
     """
     if not isinstance(event, dict) or "error" in event:
         return ""
+    if "detail" in event and set(event) <= {"detail", "message", "code", "status"}:
+        return ""
     event_type = event.get("type")
     if isinstance(event_type, str) and event_type.lower() in _SSE_NON_CONTENT_TYPES:
         # A transient progress/control frame (e.g. phlox's
@@ -266,7 +268,7 @@ def _extract_sse_event_text(event: dict[str, Any]) -> str | None:
         # (e.g. a "message_start"/"ping" control frame) — legitimately empty,
         # not unrecognized.
         return ""
-    return None
+    return _extract_common_response_text(event) or None
 
 
 def _extract_common_response_text(data: Any) -> str:
@@ -367,6 +369,7 @@ class TargetAppClient:
         # nuguard.common.response_extraction.chat_fitness).
         self.last_raw_response: Any = None
         self._last_response_is_report_fallback = False
+        self._last_response_extracted_from_stream = False
         # Two-step chat bootstrap: values bound via set_path_param() to
         # substitute :name/{name} placeholders in _chat_path before each
         # request (e.g. a conversation id created by a prerequisite POST) —
@@ -964,6 +967,7 @@ class TargetAppClient:
         once its own retries are exhausted (see the 502/503/504 branch below).
         """
         self._last_response_is_report_fallback = False
+        self._last_response_extracted_from_stream = False
         data: dict | list | str = {}
         body: dict | None = None
         _ctx: dict[str, Any] = (
@@ -1090,8 +1094,12 @@ class TargetAppClient:
                         resp.status_code, resp.text,
                     )
                 resp.raise_for_status()
-                _content_type = resp.headers.get("content-type", "")
-                if "text/event-stream" in _content_type and self._framework_adapter is None:
+                _content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+                from nuguard.common.endpoint_detection.constants import (
+                    STREAMING_CONTENT_TYPES,  # noqa: PLC0415
+                )
+
+                if _content_type in STREAMING_CONTENT_TYPES and self._framework_adapter is None:
                     # Non-streaming send() against an SSE-only chat endpoint (e.g.
                     # a FastAPI StreamingResponse) — resp.json() would raise
                     # JSONDecodeError on the buffered "data: {...}\n\n" body,
@@ -1101,13 +1109,31 @@ class TargetAppClient:
                     # the isinstance(data, str) fallback below picks this up.
                     from nuguard.redteam.target.sse import parse_sse_events  # noqa: PLC0415
 
-                    _sse_events = parse_sse_events(resp.text)
-                    _extracted_texts = [_extract_sse_event_text(_ev) for _ev in _sse_events]
+                    if _content_type == "text/event-stream":
+                        _sse_events = parse_sse_events(resp.text)
+                    else:
+                        _sse_events = []
+                        for line in resp.text.splitlines():
+                            try:
+                                event = json.loads(line)
+                            except ValueError:
+                                continue
+                            if isinstance(event, dict):
+                                _sse_events.append(event)
+                    if self._chat_response_key:
+                        from nuguard.common.response_extraction import (
+                            extract_chat_text,  # noqa: PLC0415
+                        )
+
+                        _extracted_texts: list[str | None] = [extract_chat_text(_ev, self._chat_response_key) for _ev in _sse_events]
+                    else:
+                        _extracted_texts = [_extract_sse_event_text(_ev) for _ev in _sse_events]
                     _sse_text = "".join(t for t in _extracted_texts if t)
                     _has_error_event = any(
-                        isinstance(_ev, dict) and "error" in _ev for _ev in _sse_events
+                        isinstance(_ev, dict) and ("error" in _ev or "detail" in _ev) for _ev in _sse_events
                     )
                     if _sse_text:
+                        self._last_response_extracted_from_stream = True
                         data = _sse_text
                     elif _has_error_event:
                         # An app-level error event carries no extractable

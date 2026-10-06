@@ -67,9 +67,10 @@ def _response_indicates_wrong_endpoint(response: str) -> bool:
 class PreflightOutcome(BaseModel):
     """Result of :func:`validate_and_rotate_chat_endpoint`.
 
-    ``ok`` is ``True`` when *client* is left pointed at a chat endpoint that
-    did not 400/404/405 on the test request (whether that was the original
-    endpoint or a rotated one). ``rotated_endpoint`` is populated whenever
+    ``ok`` is ``True`` when *client* produces a usable chat reply, or when
+    an unexpected validation exception retains fail-open scan behavior.
+    Only ``cacheable`` outcomes establish an endpoint confirmation.
+    ``rotated_endpoint`` is populated whenever
     the endpoint changed, so callers can update their own tracked
     ``chat_path``/``chat_payload_key``/... state to match.
     """
@@ -281,6 +282,8 @@ async def _test_current_endpoint(
         response = ""
     elif raw is not None and getattr(client, "_framework_adapter", None) is None:
         key = getattr(client, "_chat_response_key", None)
+        if getattr(client, "_last_response_extracted_from_stream", False):
+            key = None  # the configured path was already applied to each stream frame
         if not extract_chat_text(raw, key):
             response = ""
     return response, chat_fitness(response, raw)
@@ -347,7 +350,7 @@ async def validate_and_rotate_chat_endpoint(
     except TargetQuotaExhaustedError:
         raise  # an exhausted usage quota won't clear by rotating endpoints
     except Exception as exc:
-        _log.debug("Pre-flight: test request failed (non-fatal): %s", exc)
+        _log.debug("Pre-flight: test request failed (non-fatal): %s", type(exc).__name__)
         notes.append("Chat validation could not complete; continuing without caching an endpoint confirmation.")
         outcome = PreflightOutcome(ok=True, notes=notes)
         outcome._validation_completed = False

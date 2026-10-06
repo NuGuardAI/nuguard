@@ -181,6 +181,7 @@ def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool, dict | Non
     """
     paths_obj = schema.get("paths") or {}
     best: tuple[int, str, str, bool] | None = None  # (score, path, key, list)
+    best_prop: dict = {}
 
     for path, methods in paths_obj.items():
         if not isinstance(methods, dict):
@@ -242,6 +243,7 @@ def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool, dict | Non
 
             if best is None or path_score > best[0]:
                 best = (path_score, path, key, is_list)
+                best_prop = prop if isinstance(prop, dict) else {}
             break
 
     if best is None:
@@ -251,9 +253,8 @@ def _chat_config_from_openapi(schema: dict) -> "tuple[str, str, bool, dict | Non
     # When the chat key resolves to an object schema, build a generic template
     # so the probe and redteam client send the correct nested structure.
     value_template: dict[str, object] | None = None
-    raw_prop = (body_schema.get("properties") or {}).get(key) or {}
-    if not is_list:
-        value_template = _build_object_template(raw_prop, schema)
+    raw_prop = (best_prop.get("items") or {}) if is_list else best_prop
+    value_template = _build_object_template(raw_prop, schema)
 
     return path, key, is_list, value_template
 
@@ -350,6 +351,8 @@ async def _try_openapi_detection(
     if oa_template is not None:
         # Replace the sentinel with the test message for the verification probe.
         val: object = {k: (TEST_MESSAGE if v == CHAT_TEXT_SENTINEL else v) for k, v in oa_template.items()}
+        if oa_list:
+            val = [val]
     elif oa_list:
         val = [TEST_MESSAGE]
     else:
@@ -595,6 +598,7 @@ def _error_field_hints(data: dict) -> list[str]:
 
 async def _message_field_required(
     client: httpx.AsyncClient, path: str, body: dict[str, object], key: str,
+    *, omission_responses: dict[str, httpx.Response] | None = None,
 ) -> bool:
     """Check whether omitting a guessed field causes request validation to fail.
 
@@ -603,10 +607,15 @@ async def _message_field_required(
     the field is required. Rate limiting aborts discovery as on normal probes.
     """
     missing_field_body = {name: value for name, value in body.items() if name != key}
-    try:
-        response = await client.post(path, content=json.dumps(missing_field_body))
-    except Exception:  # noqa: BLE001 - no field evidence on transport failure
-        return False
+    control = json.dumps(missing_field_body, sort_keys=True)
+    response = omission_responses.get(control) if omission_responses is not None else None
+    if response is None:
+        try:
+            response = await client.post(path, content=control)
+        except Exception:  # noqa: BLE001 - no field evidence on transport failure
+            return False
+        if omission_responses is not None:
+            omission_responses[control] = response
     if response.status_code == 429:
         from nuguard.common.errors import TargetRateLimitedError  # noqa: PLC0415
 
@@ -619,17 +628,28 @@ async def _message_field_required(
             "Rate limited while validating a chat request field (HTTP 429)",
             url=f"{str(client.base_url).rstrip('/')}{path}", retry_after=delay,
         )
-    if response.status_code in (400, 422):
-        return True
-    if response.status_code < 300:
+    if response.status_code < 300 or response.status_code in (400, 422):
         try:
             data = response.json()
         except ValueError:
             data = _try_read_first_streaming_json(response)
         if isinstance(data, dict) and not extract_chat_text(data):
-            return (
-                _classify_error_envelope(data) == "shape_rejected"
-                and re.search(rf"\b{re.escape(key)}\b", _error_envelope_text(data), re.IGNORECASE) is not None
+            if _classify_error_envelope(data) != "shape_rejected":
+                return False
+            if any(
+                match.group(1).casefold() == key.casefold()
+                for pattern in _ERROR_FIELD_RES
+                for match in pattern.finditer(_error_envelope_text(data))
+            ):
+                return True
+            # FastAPI/Pydantic loc identifies the rejected request field;
+            # incidental mentions elsewhere in the error are not evidence.
+            detail = data.get("detail")
+            return isinstance(detail, list) and any(
+                isinstance(error, dict)
+                and error.get("loc") == ["body", key]
+                and error.get("type") == "missing"
+                for error in detail
             )
     return False
 
@@ -658,7 +678,7 @@ async def _blind_probe(
         # Mutable per-path queue: field names an error envelope names as
         # missing/empty are appended and tried after the configured shapes.
         shapes = list(payload_shapes)
-        omission_checks: dict[str, bool] = {}
+        omission_responses: dict[str, httpx.Response] = {}
         for pay_key, pay_list in shapes:
             tried_keys.add(pay_key)
             if pay_list and pay_key.strip().lower() in MESSAGE_HISTORY_KEYS:
@@ -737,10 +757,9 @@ async def _blind_probe(
                 if chat_like:
                     confirmed = bool(known_payload_key)
                     if not confirmed:
-                        control = json.dumps({k: v for k, v in body.items() if k != pay_key}, sort_keys=True)
-                        if control not in omission_checks:
-                            omission_checks[control] = await _message_field_required(client, path, body, pay_key)
-                        confirmed = omission_checks[control]
+                        confirmed = await _message_field_required(
+                            client, path, body, pay_key, omission_responses=omission_responses,
+                        )
                     if confirmed:
                         _log.info("endpoint_detection: selected %s (key=%r, status=%d)", path, pay_key, status)
                         return ProbeResult(path, pay_key, pay_list)
@@ -827,14 +846,9 @@ async def _blind_probe(
                         except Exception:
                             hint_data = _try_read_first_streaming_json(hint_resp, known_response_key) or {}
                         if _looks_like_chat_response(hint_data, known_response_key):
-                            control = json.dumps(
-                                {k: v for k, v in hint_body.items() if k != hint_key}, sort_keys=True,
-                            )
-                            if control not in omission_checks:
-                                omission_checks[control] = await _message_field_required(
-                                    client, path, hint_body, hint_key,
-                                )
-                            if not omission_checks[control]:
+                            if not await _message_field_required(
+                                client, path, hint_body, hint_key, omission_responses=omission_responses,
+                            ):
                                 if ambiguous_fallback is None:
                                     ambiguous_fallback = ProbeResult(
                                         path, hint_key, hint_key.lower() in MESSAGE_HISTORY_KEYS, confirmed=False,

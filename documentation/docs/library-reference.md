@@ -373,7 +373,9 @@ and metadata alone do not validate a chat reply. Raw JSON retained for reporting
 is not reply-validation evidence.
 
 When the message field is unknown, blind HTTP discovery checks whether omitting
-the candidate field causes a validation rejection. The control keeps configured
+the candidate field causes a validation rejection naming that field. Generic
+empty-body errors and errors naming other fields remain inconclusive. The control
+keeps configured
 payload extras and adds at most one request per distinct omitted-field body on a
 candidate route. A greeting that also appears without the field leaves the
 candidate unconfirmed. SBOM/OpenAPI declarations or observed browser requests can

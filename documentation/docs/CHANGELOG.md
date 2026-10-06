@@ -25,6 +25,7 @@ Major product and documentation changes for NuGuard users. See the linked guides
 
 ### Fixed
 - **HTTP chat discovery (#627):** Shared reply extraction recognizes outputs-only and nested text replies while rejecting empty, error-only, and metadata-only bodies. Blind discovery checks field omission rather than confirming a guessed message field from a default greeting. Ambiguous candidates cannot create validated endpoint caches; existing endpoint confirmations are revalidated. API-only targets with optional message fields can provide explicit payload configuration.
+  Omitted-field errors must identify the candidate field; generic empty-body errors remain inconclusive. OpenAPI probing retains the selected route's object schema and supports arrays of message objects. Sessions preserve discovered object templates, and runtime validation supports buffered SSE/NDJSON replies and configured paths within stream frames.
 - **Red-team regression runtime:** Defence-regression probes log their names, variants, durations, and outcomes, with configurable pre-pass and probe deadlines. Ambiguous fallback errors receive one short retry, gateway errors receive capped retries, and request slots are released during backoff. Structured provider policy blocks are non-retryable; failed probes remain inconclusive.
 - **Dockerfile scan performance:** Malformed package-install flags no longer cause excessive regex backtracking, preventing scan stalls on crafted Dockerfiles.
 

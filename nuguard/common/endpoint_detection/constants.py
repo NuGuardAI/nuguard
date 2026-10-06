@@ -263,7 +263,7 @@ DEFAULT_ENDPOINT_CONFIRMATION_TTL_SECONDS = 3600.0
 PROBE_SOURCE_AUTO_ENRICHMENT = "auto_enrichment"
 PROBE_SOURCE_RUNTIME_PROBE = "runtime_probe"
 # Changes when the rules for persisting a validated chat contract change.
-CHAT_CONTRACT_VERSION = 2
+CHAT_CONTRACT_VERSION = 3
 
 
 class ProbeExtras(TypedDict, total=False):

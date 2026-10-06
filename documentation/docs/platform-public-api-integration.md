@@ -280,7 +280,8 @@ Entry points:
 HTTP chat discovery accepts actual reply text, including outputs-only replies
 and configured nested response paths. A successful response alone does not
 establish an unknown request field: blind discovery uses an omitted-field
-validation control, while declared or browser-observed fields retain their
+validation control naming that specific field, while declared or browser-observed
+fields retain their
 provenance. Ambiguous greetings cannot create an endpoint confirmation.
 If no usable contract can be resolved, Target Verify reports
 `all_ok=false` with an `endpoint_not_found` check; API-only callers can supply

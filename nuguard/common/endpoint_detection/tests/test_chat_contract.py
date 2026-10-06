@@ -59,7 +59,7 @@ async def test_blind_discovery_checks_that_message_field_is_required(key: str, i
     def respond(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
         if key not in body:
-            return httpx.Response(422, json={"detail": "Missing message field"})
+            return httpx.Response(422, json={"detail": f"{key} is required"})
         return httpx.Response(200, json={"outputs": [{"text": "Actual reply"}]})
 
     route = respx.post(f"{BASE}/api/chat").mock(side_effect=respond)

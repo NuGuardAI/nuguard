@@ -84,7 +84,8 @@ async def test_unset_endpoint_uses_shared_resolver_before_bootstrap() -> None:
     bootstrapper, health_report = _mock_bootstrapper()
     resolved = ResolvedEndpoint(
         path="/extract",
-        payload=PayloadShape(key="text", is_list=False, source=EndpointSource.PROBE),
+        payload=PayloadShape(key="text", is_list=False, source=EndpointSource.PROBE,
+                             value_template={"content": "__nuguard_chat_text__"}),
         path_source=EndpointSource.PROBE,
     )
     with (
@@ -124,6 +125,7 @@ async def test_unset_endpoint_uses_shared_resolver_before_bootstrap() -> None:
     assert resolve_kwargs["probe_payload_extras"] == {"consumerID": "c1"}
     assert session_cfg.chat_path == "/extract"
     assert session_cfg.chat_payload_key == "text"
+    assert session_cfg.chat_payload_value_template == resolved.payload.value_template
     assert session_cfg.endpoint_source == "probe"
     assert mock_bootstrap.call_args.kwargs["endpoint"] == "/extract"
 

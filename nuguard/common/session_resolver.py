@@ -416,12 +416,14 @@ async def resolve_target_session(
     _chat_path_unknown_at_bootstrap = False
     _configured_field_unresolved = False
     _payload_shape_validated = False
+    chat_payload_value_template: "dict[str, object] | None" = None
 
     async def _resolve_endpoint(auth_headers: dict[str, str] | None):
         nonlocal chat_path, chat_payload_key, chat_payload_list
         nonlocal chat_response_key, endpoint_source, _chat_path_unknown_at_bootstrap
         nonlocal _configured_field_unresolved
         nonlocal _payload_shape_validated
+        nonlocal chat_payload_value_template
         resolved = await resolve_chat_endpoint(
             target_url=target_url,
             sbom=sbom,
@@ -454,6 +456,7 @@ async def resolve_target_session(
             chat_payload_key = resolved.payload_key
         if not payload_key_explicit:
             chat_payload_list = resolved.payload_list
+            chat_payload_value_template = resolved.payload.value_template
         if not response_key_explicit and resolved.response_key:
             chat_response_key = resolved.response_key
         endpoint_source = resolved.path_source.value
@@ -569,7 +572,6 @@ async def resolve_target_session(
     # Both options run without an SBOM too (issue #532) — probe_endpoint falls
     # back to the generic HTTP_ENDPOINT_FALLBACK_PATHS candidate list when
     # sbom=None, so a target without an SBOM can still be discovered.
-    chat_payload_value_template: "dict[str, object] | None" = None
     if not chat_path:
         # Option A: discover both path and key
         probe_result = await probe_endpoint(
