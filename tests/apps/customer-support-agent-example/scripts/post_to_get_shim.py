@@ -15,6 +15,7 @@ Usage:
     python3 scripts/post_to_get_shim.py [--port 8088] [--upstream http://127.0.0.1:8087]
     python3 scripts/post_to_get_shim.py --self-test
 """
+
 from __future__ import annotations
 
 import argparse
@@ -108,7 +109,9 @@ def _self_test() -> int:
             pass
 
     fake = ThreadingHTTPServer(("127.0.0.1", 0), Fake)
-    shim = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(f"http://127.0.0.1:{fake.server_port}"))
+    shim = ThreadingHTTPServer(
+        ("127.0.0.1", 0), make_handler(f"http://127.0.0.1:{fake.server_port}")
+    )
     for srv in (fake, shim):
         threading.Thread(target=srv.serve_forever, daemon=True).start()
 
@@ -127,7 +130,9 @@ def _self_test() -> int:
     code, out = post({"userMessage": "Cancel MS-777 & more? 100%", "sessionId": "s-1"})
     assert code == 200 and out == {"response": "hello Ünïcode & more"}, (code, out)
     assert seen["path"] == UPSTREAM_PATH, seen
-    assert seen["query"] == {"sessionId": ["s-1"], "userMessage": ["Cancel MS-777 & more? 100%"]}, seen
+    assert seen["query"] == {"sessionId": ["s-1"], "userMessage": ["Cancel MS-777 & more? 100%"]}, (
+        seen
+    )
     code, out = post({"message": "hi"})
     assert code == 200 and seen["query"]["sessionId"] == [DEFAULT_SESSION], seen
     code, out = post({"userMessage": "boom", "sessionId": "s-2"})
@@ -138,7 +143,8 @@ def _self_test() -> int:
     srv = ThreadingHTTPServer(("127.0.0.1", 0), dead)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     req = urllib.request.Request(
-        f"http://127.0.0.1:{srv.server_port}/chat", data=b'{"userMessage":"x"}',
+        f"http://127.0.0.1:{srv.server_port}/chat",
+        data=b'{"userMessage":"x"}',
         headers={"Content-Type": "application/json"},
     )
     try:
@@ -152,7 +158,9 @@ def _self_test() -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--port", type=int, default=8088)
     parser.add_argument("--upstream", default="http://127.0.0.1:8087")
     parser.add_argument("--self-test", action="store_true")

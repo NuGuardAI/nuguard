@@ -37,7 +37,9 @@ Result: 20 nodes, 40 edges (9 AGENT, 1 API_ENDPOINT, 1 DATASTORE, 2 FRAMEWORK, 5
 - Agent and prompt may be missed: **wrong**. Both were detected.
 
 ## Issues filed
-D1: TBD, D2: TBD, D3: TBD, D4: TBD, D5: TBD, D6: TBD
+D1: #642, D2: #640, D3: #641, D4: #643, D5: #644, D6: #641 (with D3), D10: #645, D11: #646.
+The chat client's POST-only limitation (not an SBOM discrepancy, found while wiring the target): #647.
+Not filed: D7 (by design, a plain HashMap has no store marker), D8 (unclear whether a memory or retriever type exists), D9 (cosmetic name casing, listed in the gap list).
 
 ## Additional discrepancies (from `analyze` and Semgrep)
 
