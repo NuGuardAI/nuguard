@@ -32,6 +32,8 @@ jobs:
             report_dir: tests/apps/Gemini-Auto-app/reports
           - app: pinnacle-bank
             report_dir: tests/apps/pinnacle-bank-app/reports
+          - app: customer-support
+            report_dir: tests/apps/customer-support-agent-example/reports
 
     env:
       AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
@@ -53,8 +55,43 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev
 
+      # --- customer-support only: the target is a local Java app started inside the job ---
+      - name: Set up Java (customer-support)
+        if: matrix.app == 'customer-support'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: tests/apps/customer-support-agent-example/pom.xml
+
+      - name: Start the Java target app and shim (customer-support)
+        if: matrix.app == 'customer-support'
+        run: tests/apps/customer-support-agent-example/scripts/serve.sh
+
       - name: Run prepublish sanity suite (${{ matrix.app }})
         run: bash tests/apps/prepublish-sanity.sh ${{ matrix.app }}
+
+      - name: Install Semgrep (customer-support)
+        if: matrix.app == 'customer-support'
+        run: |
+          uv tool install semgrep
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run analyze on the generated SBOM (customer-support)
+        if: matrix.app == 'customer-support'
+        run: |
+          set +e
+          APP=tests/apps/customer-support-agent-example
+          uv run nuguard analyze --sbom $APP/customer-support-agent.sbom.json --source $APP \
+            --no-grype --no-trivy --no-checkov --format markdown --output $APP/reports/analyze.md
+          rc=$?
+          echo "analyze exit code: $rc (0 = no findings, 1 = findings reported, 2 = analysis error)"
+          [ "$rc" -le 1 ]
+
+      - name: Stop the Java target app and shim (customer-support)
+        if: always() && matrix.app == 'customer-support'
+        run: tests/apps/customer-support-agent-example/scripts/stop.sh
 
       - name: Upload reports
         if: always()
