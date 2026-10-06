@@ -647,28 +647,29 @@ async def _run_pre_scan_discovery(
                     final_payload_key = getattr(client, "_chat_payload_key", "message")
                     final_payload_list = bool(getattr(client, "_chat_payload_list", False))
                     final_response_key = getattr(client, "_chat_response_key", None)
-                persist_endpoint_resolution(
-                    sbom_doc,
-                    session_cfg.base_url,
-                    auth_config,
-                    chat_path=final_path,
-                    chat_payload_key=final_payload_key,
-                    chat_payload_list=final_payload_list,
-                    chat_response_key=final_response_key,
-                    endpoint_source=preflight.endpoint_source,
-                    path_param_values=dict(getattr(client, "path_param_values", None) or {}),
-                )
-                if sbom_path is not None:
-                    from nuguard.common.auto_sbom_enricher import (
-                        persist_endpoint_resolution_sbom,
+                if preflight.cacheable:
+                    persist_endpoint_resolution(
+                        sbom_doc,
+                        session_cfg.base_url,
+                        auth_config,
+                        chat_path=final_path,
+                        chat_payload_key=final_payload_key,
+                        chat_payload_list=final_payload_list,
+                        chat_response_key=final_response_key,
+                        endpoint_source=preflight.endpoint_source,
+                        path_param_values=dict(getattr(client, "path_param_values", None) or {}),
                     )
-
-                    try:
-                        persist_endpoint_resolution_sbom(sbom_doc, sbom_path)
-                    except Exception as exc:
-                        console.print(
-                            f"  [yellow]Could not persist endpoint resolution (non-fatal):[/yellow] {exc}"
+                    if sbom_path is not None:
+                        from nuguard.common.auto_sbom_enricher import (
+                            persist_endpoint_resolution_sbom,
                         )
+
+                        try:
+                            persist_endpoint_resolution_sbom(sbom_doc, sbom_path)
+                        except Exception as exc:
+                            console.print(
+                                f"  [yellow]Could not persist endpoint resolution (non-fatal):[/yellow] {exc}"
+                            )
             # Same cache-then-fall-back pattern as the endpoint resolution
             # above, applied to the discovered identity profile (issue #611
             # Phase 2) — previously wired into verify_target()'s sibling

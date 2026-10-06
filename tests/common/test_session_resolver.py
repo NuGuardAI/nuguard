@@ -1,6 +1,7 @@
 """Regression test: bootstrap failures (None auth session) must not crash."""
 from __future__ import annotations
 
+import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -232,9 +233,12 @@ async def test_health_report_reflects_discovered_endpoint_not_stale_default() ->
     # be used — not a stale pre-discovery "/chat" 404 — or a working target
     # would still be reported as failed verification.
     respx.get(url__regex=r".*").mock(return_value=httpx.Response(404))
-    respx.post(f"{TARGET}/api/agent/chat").mock(
-        return_value=httpx.Response(200, json={"response": "hi"})
-    )
+    def reply(request: httpx.Request) -> httpx.Response:
+        if "message" not in json.loads(request.content):
+            return httpx.Response(422, json={"detail": "message is required"})
+        return httpx.Response(200, json={"response": "hi"})
+
+    respx.post(f"{TARGET}/api/agent/chat").mock(side_effect=reply)
     respx.post(url__regex=r".*").mock(return_value=httpx.Response(404))
 
     session_cfg, health_report = await resolve_target_session(
@@ -298,7 +302,13 @@ async def test_resolve_target_session_no_websocket_for_plain_http_sbom() -> None
     with patch(
         "nuguard.common.auth_runtime.bootstrap_auth_runtime",
         new=AsyncMock(return_value=(bootstrapper, health_report)),
-    ) as mock_bootstrap:
+    ) as mock_bootstrap, patch(
+        "nuguard.common.endpoint_detection.resolver.resolve_chat_endpoint",
+        new=AsyncMock(return_value=ResolvedEndpoint(
+            path="/api/chat", payload=PayloadShape(key="custom_key", is_list=False, source=EndpointSource.CONFIG),
+            path_source=EndpointSource.CONFIG,
+        )),
+    ):
         await resolve_target_session(
             target_url="http://app.test",
             sbom=sbom,

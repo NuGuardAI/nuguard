@@ -21,7 +21,7 @@ import hashlib
 import json
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from nuguard.common.discovery import auth_identity_string
 from nuguard.common.logging import get_logger
@@ -78,6 +78,12 @@ class PreflightOutcome(BaseModel):
     rotated_endpoint: "tuple[str, str, bool, str | None] | None" = None
     endpoint_source: 'Literal["sbom", "probe"] | None' = None
     notes: list[str] = Field(default_factory=list)
+    _validation_completed: bool = PrivateAttr(default=True)
+
+    @property
+    def cacheable(self) -> bool:
+        """Only a validated reply permits caching an endpoint confirmation."""
+        return self.ok and self._validation_completed
 
 
 class CachedEndpointResolution(BaseModel):
@@ -122,7 +128,11 @@ def endpoint_cache_fingerprint(
     """
     identity = auth_identity_string(auth_config)
     sources_part = json.dumps(dict(path_param_sources or {}), sort_keys=True)
-    return hashlib.sha256(f"{target_url}|{identity}|{chat_path}|{sources_part}".encode()).hexdigest()
+    from nuguard.common.endpoint_detection.constants import CHAT_CONTRACT_VERSION  # noqa: PLC0415
+
+    return hashlib.sha256(
+        f"{CHAT_CONTRACT_VERSION}|{target_url}|{identity}|{chat_path}|{sources_part}".encode()
+    ).hexdigest()
 
 
 def cached_endpoint_resolution(
@@ -259,14 +269,21 @@ async def _test_current_endpoint(
     send matters for templated routes (``/conversations/:id/messages``): sent
     unbound they can only ever answer ``[CONFIG_ERROR: unresolved path param]``.
     """
-    from nuguard.common.response_extraction import chat_fitness  # noqa: PLC0415
+    from nuguard.common.response_extraction import chat_fitness, extract_chat_text  # noqa: PLC0415
 
     if sbom is not None and _path_params_unbound(client):
         await _bootstrap_path_params(client, sbom, client.chat_path, notes)
     if hasattr(client, "last_raw_response"):
         client.last_raw_response = None
     response, _ = await client.send(_TEST_MESSAGE, session)  # type: ignore[arg-type]
-    return response, chat_fitness(response, getattr(client, "last_raw_response", None))
+    raw = getattr(client, "last_raw_response", None)
+    if getattr(client, "_last_response_is_report_fallback", False):
+        response = ""
+    elif raw is not None and getattr(client, "_framework_adapter", None) is None:
+        key = getattr(client, "_chat_response_key", None)
+        if not extract_chat_text(raw, key):
+            response = ""
+    return response, chat_fitness(response, raw)
 
 
 async def validate_and_rotate_chat_endpoint(
@@ -331,13 +348,21 @@ async def validate_and_rotate_chat_endpoint(
         raise  # an exhausted usage quota won't clear by rotating endpoints
     except Exception as exc:
         _log.debug("Pre-flight: test request failed (non-fatal): %s", exc)
-        return PreflightOutcome(ok=True, notes=notes)
+        notes.append("Chat validation could not complete; continuing without caching an endpoint confirmation.")
+        outcome = PreflightOutcome(ok=True, notes=notes)
+        outcome._validation_completed = False
+        return outcome
 
     wrong_endpoint = _response_indicates_wrong_endpoint(response)
 
+    def current_outcome() -> PreflightOutcome:
+        outcome = PreflightOutcome(ok=True, notes=notes)
+        outcome._validation_completed = fitness > CHAT_FITNESS_NONE
+        return outcome
+
     if has_explicit_endpoint:
         if not wrong_endpoint:
-            return PreflightOutcome(ok=True, notes=notes)
+            return current_outcome()
         note = (
             "Configured chat endpoint rejected the test request (400/404/405). Explicit "
             "endpoint precedence is enforced; no SBOM/probe rotation was attempted. "
@@ -349,7 +374,7 @@ async def validate_and_rotate_chat_endpoint(
 
     if fitness >= CHAT_FITNESS_PROSE or sbom is None:
         if not wrong_endpoint:
-            return PreflightOutcome(ok=True, notes=notes)
+            return current_outcome()
     else:
         from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
             discover_chat_candidates as _dcandidates,
@@ -418,7 +443,7 @@ async def validate_and_rotate_chat_endpoint(
             if sbom is not None and _path_params_unbound(client):
                 await _bootstrap_path_params(client, sbom, original_path, notes)
         if not wrong_endpoint:
-            return PreflightOutcome(ok=True, notes=notes)
+            return current_outcome()
 
     _log.warning(
         "Pre-flight: chat endpoint returned %s — attempting live discovery",
@@ -436,7 +461,7 @@ async def validate_and_rotate_chat_endpoint(
         except Exception as exc:
             _log.warning("Pre-flight live probe failed: %s", exc)
             probed = None
-        if probed:
+        if probed and getattr(probed, "confirmed", True):
             path, pay_key, pay_list = probed
             client.set_chat_endpoint(path, pay_key, pay_list)
             _log.info("Pre-flight: live probe found working endpoint %s", path)
@@ -469,18 +494,25 @@ async def validate_and_rotate_chat_endpoint(
         if sniffed is not None:
             path, pay_key, pay_list = sniffed
             client.set_chat_endpoint(path, pay_key, pay_list)
-            _log.info("Pre-flight: browser sniff found working endpoint %s", path)
-            notes.append(
-                f"Chat endpoint rotated to {path!r} via headless-browser sniff after SBOM "
-                "candidates and live probe both failed."
-            )
             await _bootstrap_path_params(client, sbom, path, notes)
-            return PreflightOutcome(
-                ok=True,
-                rotated_endpoint=(path, pay_key, pay_list, None),
-                endpoint_source="probe",
-                notes=notes,
-            )
+            try:
+                browser_reply, _ = await _test_current_endpoint(client, sbom, session, notes)
+            except TargetQuotaExhaustedError:
+                raise
+            except Exception:  # noqa: BLE001 - an observed request still needs a reply
+                browser_reply = ""
+            if browser_reply and not _response_indicates_wrong_endpoint(browser_reply):
+                _log.info("Pre-flight: browser sniff validated endpoint %s", path)
+                notes.append(
+                    f"Chat endpoint rotated to {path!r} via headless-browser sniff after SBOM "
+                    "candidates and live probe both failed."
+                )
+                return PreflightOutcome(
+                    ok=True,
+                    rotated_endpoint=(path, pay_key, pay_list, None),
+                    endpoint_source="probe",
+                    notes=notes,
+                )
 
     note = (
         "Chat endpoint unreachable — all SBOM candidates, the live probe, and the "

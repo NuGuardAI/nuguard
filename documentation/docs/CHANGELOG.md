@@ -24,6 +24,7 @@ Major product and documentation changes for NuGuard users. See the linked guides
 - **Dockerfile and nginx detection:** `Dockerfile.*` variants are scanned, and `proxy_pass` on the same line as a `location` block is detected.
 
 ### Fixed
+- **HTTP chat discovery (#627):** Shared reply extraction recognizes outputs-only and nested text replies while rejecting empty, error-only, and metadata-only bodies. Blind discovery checks field omission rather than confirming a guessed message field from a default greeting. Ambiguous candidates cannot create validated endpoint caches; existing endpoint confirmations are revalidated. API-only targets with optional message fields can provide explicit payload configuration.
 - **Red-team regression runtime:** Defence-regression probes log their names, variants, durations, and outcomes, with configurable pre-pass and probe deadlines. Ambiguous fallback errors receive one short retry, gateway errors receive capped retries, and request slots are released during backoff. Structured provider policy blocks are non-retryable; failed probes remain inconclusive.
 - **Dockerfile scan performance:** Malformed package-install flags no longer cause excessive regex backtracking, preventing scan stalls on crafted Dockerfiles.
 

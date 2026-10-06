@@ -949,9 +949,14 @@ def persist_probe_result_to_sbom(
 
     target_node.metadata.chat_payload_key = result.key
     target_node.metadata.chat_payload_list = result.is_list
+    if getattr(result, "response_key", None) is not None:
+        target_node.metadata.response_text_key = result.response_key
     extras: ProbeExtras = cast(ProbeExtras, dict(target_node.metadata.extras or {}))
     extras["source"] = PROBE_SOURCE_RUNTIME_PROBE
     extras["confirmed_at"] = datetime.now(timezone.utc).isoformat()
+    from nuguard.common.endpoint_detection.constants import CHAT_CONTRACT_VERSION  # noqa: PLC0415
+
+    extras["chat_contract_version"] = CHAT_CONTRACT_VERSION
     if result.value_template is not None:
         extras["probe_value_template"] = result.value_template
     else:

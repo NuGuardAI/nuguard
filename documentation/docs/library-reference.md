@@ -366,6 +366,27 @@ Module: `nuguard.common.target_verify_public_api`
 
 These APIs handle endpoint selection (config/SBOM/probe/default), auth bootstrapping, and target health checks before scans.
 
+HTTP discovery and runtime use shared reply extraction, including nonempty
+`outputs[].text`, message lists, completion envelopes, and configured nested
+paths such as `chat_response_key="outputs[0].text"`. Empty or error-only bodies
+and metadata alone do not validate a chat reply. Raw JSON retained for reporting
+is not reply-validation evidence.
+
+When the message field is unknown, blind HTTP discovery checks whether omitting
+the candidate field causes a validation rejection. The control keeps configured
+payload extras and adds at most one request per distinct omitted-field body on a
+candidate route. A greeting that also appears without the field leaves the
+candidate unconfirmed. SBOM/OpenAPI declarations or observed browser requests can
+provide field evidence; browser observation is followed by HTTP reply validation.
+This validates the request contract, not the semantic correctness of an AI answer.
+For API-only targets that accept missing fields, explicitly provide
+`chat_payload_key` and, for custom replies, `chat_response_key`.
+
+Unconfirmed candidates are not cached as validated endpoints. Older endpoint
+confirmations are revalidated once under the updated contract rules; unrelated
+profile caches are retained. Browser discovery remains subject to the caller's
+existing enablement rules, and explicitly configured endpoints are not rotated.
+
 When an SBOM is supplied, `resolve_target_session_public()` resolves a static-hosting target URL to the SBOM deployment URL before endpoint probing and session bootstrap. The returned `effective_target_url` reports the URL used for the resolved session.
 
 For targets that obtain a token through a login request, set `auth_type="login_flow"` and pass the nested `LoginFlowConfig` model. Its `endpoint`, `payload`, `token_response_key`, `token_header`, and `refresh_on_401` fields configure the complete login flow. No-login callers can omit both fields; `auth_type` defaults to `"none"`.

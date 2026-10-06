@@ -348,7 +348,7 @@ async def verify_target(
                     _rot_response_key = getattr(client, "_chat_response_key", None)
                 preflight_ok = preflight.ok
                 preflight_notes = preflight.notes
-                if preflight_ok and sbom is not None:
+                if preflight.cacheable and sbom is not None:
                     persist_endpoint_resolution(
                         sbom,
                         session_cfg.base_url,

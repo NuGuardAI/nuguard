@@ -35,6 +35,7 @@ from nuguard.common.endpoint_detection.constants import (
 )
 from nuguard.common.endpoint_detection.sbom import _sbom_post_paths, _sbom_websocket_paths
 from nuguard.common.logging import get_logger
+from nuguard.common.response_extraction import extract_chat_text
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
@@ -63,6 +64,7 @@ class ProbeResult:
     # best-effort fallback (every shape 5xx'd or returned an error envelope).
     # Callers must not persist an unconfirmed result as if it were verified.
     confirmed: bool = field(default=True, compare=False)
+    response_key: str | None = field(default=None, compare=False)
 
     def __iter__(self):  # noqa: ANN204
         # Yield only the 3 positional fields so ``a, b, c = result`` still works.
@@ -369,8 +371,10 @@ async def _try_openapi_detection(
         try:
             data = resp.json()
         except Exception:
-            data = _try_read_first_streaming_json(resp) or {}
-        if _looks_like_chat_response(data, known_response_key) or _is_streaming_response(resp):
+            data = _try_read_first_streaming_json(resp, known_response_key) or {}
+        if _looks_like_chat_response(data, known_response_key):
+            if config is None and not await _message_field_required(client, oa_path, body, oa_key):
+                return None
             _log.info("endpoint_detection: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
             return ProbeResult(oa_path, oa_key, oa_list, oa_template)
     elif status in (401, 403):
@@ -381,7 +385,7 @@ async def _try_openapi_detection(
         # confirmation and must fall through to let the blind probe /
         # browser-sniff fallback try other candidates instead.
         _log.info("endpoint_detection: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
-        return ProbeResult(oa_path, oa_key, oa_list, oa_template)
+        return ProbeResult(oa_path, oa_key, oa_list, oa_template, confirmed=False)
     # 400/404/405/422/5xx — don't block; let the blind probe try this path too
     return None
 
@@ -392,14 +396,17 @@ def _is_streaming_response(resp: "httpx.Response") -> bool:
     return ct in STREAMING_CONTENT_TYPES
 
 
-def _try_read_first_streaming_json(resp: "httpx.Response") -> "dict | None":
-    """Extract the first JSON object from an SSE or NDJSON response body.
+def _try_read_first_streaming_json(
+    resp: "httpx.Response", response_key: str | None = None,
+) -> "dict | None":
+    """Find reply content in SSE/NDJSON, retaining an error frame as fallback.
 
     Handles SSE (``data: {...}`` lines) and NDJSON (first non-empty line).
     Returns ``None`` when the response is not a streaming type or unparseable.
     """
     if not _is_streaming_response(resp):
         return None
+    fallback: dict | None = None
     try:
         for line in resp.text.splitlines():
             line = line.strip()
@@ -412,12 +419,15 @@ def _try_read_first_streaming_json(resp: "httpx.Response") -> "dict | None":
             try:
                 obj = json.loads(line)
                 if isinstance(obj, dict):
-                    return obj
+                    if extract_chat_text(obj, response_key):
+                        return obj
+                    if fallback is None or "error" in obj:
+                        fallback = obj
             except Exception:
                 continue
     except Exception:
         pass
-    return None
+    return fallback
 
 
 async def _llm_extract_error_field_names(body_text: str, llm: "LLMClient") -> list[str]:
@@ -479,18 +489,8 @@ async def _llm_confirms_chat_response(data: dict, llm: "LLMClient") -> bool:
 
 
 def _has_known_chat_key(data: dict, response_key: str | None) -> bool:
-    """True when *data* contains an explicit chat-response key (not just the ≥2-keys rule)."""
-    if response_key and response_key in data:
-        return True
-    for key in (
-        "response", "content", "prognosis", "text", "output",
-        "answer", "result", "reply", "choices", "messages",
-        "bot_response", "assistant_message", "assistant_reply",
-        "generated_text", "completion", "delta", "llm_output", "llm_response", "data",
-    ):
-        if key in data:
-            return True
-    return False
+    """Use the same text contract as runtime extraction and discovery."""
+    return _looks_like_chat_response(data, response_key)
 
 
 def _extract_422_field_names(resp: "httpx.Response") -> list[str]:
@@ -593,6 +593,47 @@ def _error_field_hints(data: dict) -> list[str]:
     return hints
 
 
+async def _message_field_required(
+    client: httpx.AsyncClient, path: str, body: dict[str, object], key: str,
+) -> bool:
+    """Check whether omitting a guessed field causes request validation to fail.
+
+    Reply variation is not evidence: a default greeting still makes this check
+    inconclusive. Network, auth, route, and server failures do not prove that
+    the field is required. Rate limiting aborts discovery as on normal probes.
+    """
+    missing_field_body = {name: value for name, value in body.items() if name != key}
+    try:
+        response = await client.post(path, content=json.dumps(missing_field_body))
+    except Exception:  # noqa: BLE001 - no field evidence on transport failure
+        return False
+    if response.status_code == 429:
+        from nuguard.common.errors import TargetRateLimitedError  # noqa: PLC0415
+
+        retry_after = response.headers.get("Retry-After")
+        try:
+            delay = float(retry_after) if retry_after is not None else None
+        except ValueError:
+            delay = None
+        raise TargetRateLimitedError(
+            "Rate limited while validating a chat request field (HTTP 429)",
+            url=f"{str(client.base_url).rstrip('/')}{path}", retry_after=delay,
+        )
+    if response.status_code in (400, 422):
+        return True
+    if response.status_code < 300:
+        try:
+            data = response.json()
+        except ValueError:
+            data = _try_read_first_streaming_json(response)
+        if isinstance(data, dict) and not extract_chat_text(data):
+            return (
+                _classify_error_envelope(data) == "shape_rejected"
+                and re.search(rf"\b{re.escape(key)}\b", _error_envelope_text(data), re.IGNORECASE) is not None
+            )
+    return False
+
+
 async def _blind_probe(
     client: "httpx.AsyncClient",
     paths: list[str],
@@ -608,6 +649,7 @@ async def _blind_probe(
     known_key_rejected_fallback: ProbeResult | None = None
     streaming_error_fallback: ProbeResult | None = None
     streaming_error_rank = -1
+    ambiguous_fallback: ProbeResult | None = None
     base = str(client.base_url).rstrip("/")
 
     for path in paths:
@@ -616,6 +658,7 @@ async def _blind_probe(
         # Mutable per-path queue: field names an error envelope names as
         # missing/empty are appended and tried after the configured shapes.
         shapes = list(payload_shapes)
+        omission_checks: dict[str, bool] = {}
         for pay_key, pay_list in shapes:
             tried_keys.add(pay_key)
             if pay_list and pay_key.strip().lower() in MESSAGE_HISTORY_KEYS:
@@ -677,7 +720,7 @@ async def _blind_probe(
                 try:
                     data = resp.json()
                 except Exception:
-                    data = _try_read_first_streaming_json(resp) or {}
+                    data = _try_read_first_streaming_json(resp, known_response_key) or {}
                 # A parsed body that is *only* an error envelope (e.g. a streaming
                 # LLM backend's "messages must not be empty"/"invalid prompt" error
                 # for the wrong payload shape) means the app logic rejected or
@@ -691,13 +734,19 @@ async def _blind_probe(
                     and set(data.keys()) <= {"error", "detail", "message", "code", "status"}
                 )
                 chat_like = _looks_like_chat_response(data, known_response_key)
-                if llm is not None and isinstance(data, dict) and data and not is_error_envelope:
-                    # LLM re-checks ambiguous ≥2-key matches and catches non-standard response keys
-                    if not chat_like or not _has_known_chat_key(data, known_response_key):
-                        chat_like = await _llm_confirms_chat_response(data, llm)
                 if chat_like:
-                    _log.info("endpoint_detection: selected %s (key=%r, status=%d)", path, pay_key, status)
-                    return ProbeResult(path, pay_key, pay_list)
+                    confirmed = bool(known_payload_key)
+                    if not confirmed:
+                        control = json.dumps({k: v for k, v in body.items() if k != pay_key}, sort_keys=True)
+                        if control not in omission_checks:
+                            omission_checks[control] = await _message_field_required(client, path, body, pay_key)
+                        confirmed = omission_checks[control]
+                    if confirmed:
+                        _log.info("endpoint_detection: selected %s (key=%r, status=%d)", path, pay_key, status)
+                        return ProbeResult(path, pay_key, pay_list)
+                    if ambiguous_fallback is None:
+                        ambiguous_fallback = ProbeResult(path, pay_key, pay_list, confirmed=False)
+                    continue
                 if is_error_envelope and not known_payload_key:
                     # The app may name the field it wanted ("`messages` must not
                     # be empty") — queue it so it's tried on this path next.
@@ -722,9 +771,9 @@ async def _blind_probe(
                                 path, pay_key, pay_list, confirmed=False
                             )
                         continue
-                    # Streaming endpoint: accept even when we can't parse the body content
-                    _log.info("endpoint_detection: selected %s (streaming, key=%r)", path, pay_key)
-                    return ProbeResult(path, pay_key, pay_list)
+                    # A streaming content type alone cannot confirm reply content
+                    # or a request field (progress frames and empty streams exist).
+                    continue
                 _log.debug("endpoint_detection: %s key=%r → %d but not chat-like", path, pay_key, status)
                 continue
 
@@ -760,12 +809,37 @@ async def _blind_probe(
                     except Exception:
                         continue
                     hint_status = hint_resp.status_code
+                    if hint_status == 429:
+                        from nuguard.common.errors import TargetRateLimitedError  # noqa: PLC0415
+
+                        retry_after = hint_resp.headers.get("Retry-After")
+                        try:
+                            delay = float(retry_after) if retry_after is not None else None
+                        except ValueError:
+                            delay = None
+                        raise TargetRateLimitedError(
+                            "Rate limited while validating a hinted chat field (HTTP 429)",
+                            url=f"{base}{path}", retry_after=delay,
+                        )
                     if hint_status < 300:
                         try:
                             hint_data = hint_resp.json()
                         except Exception:
-                            hint_data = {}
+                            hint_data = _try_read_first_streaming_json(hint_resp, known_response_key) or {}
                         if _looks_like_chat_response(hint_data, known_response_key):
+                            control = json.dumps(
+                                {k: v for k, v in hint_body.items() if k != hint_key}, sort_keys=True,
+                            )
+                            if control not in omission_checks:
+                                omission_checks[control] = await _message_field_required(
+                                    client, path, hint_body, hint_key,
+                                )
+                            if not omission_checks[control]:
+                                if ambiguous_fallback is None:
+                                    ambiguous_fallback = ProbeResult(
+                                        path, hint_key, hint_key.lower() in MESSAGE_HISTORY_KEYS, confirmed=False,
+                                    )
+                                continue
                             _log.info(
                                 "endpoint_detection: 422-hint selected %s (key=%r, status=%d)",
                                 path, hint_key, hint_status,
@@ -776,9 +850,15 @@ async def _blind_probe(
                             "endpoint_detection: 422-hint selected %s (key=%r, status=%d)",
                             path, hint_key, hint_status,
                         )
-                        return ProbeResult(path, hint_key, hint_key.lower() in MESSAGE_HISTORY_KEYS)
+                        if known_key_rejected_fallback is None:
+                            known_key_rejected_fallback = ProbeResult(
+                                path, hint_key, hint_key.lower() in MESSAGE_HISTORY_KEYS, confirmed=False,
+                            )
 
     _log.warning("endpoint_detection: no chat-capable endpoint found after probing %d paths", len(paths))
+    if ambiguous_fallback is not None:
+        _log.info("endpoint_detection: reply received but message field remains unconfirmed")
+        return ambiguous_fallback
     if known_key_rejected_fallback:
         _log.info(
             "endpoint_detection: selected %s as unconfirmed fallback (4xx with known payload_key=%r)",
@@ -907,36 +987,8 @@ async def _detect_chat_endpoint(
 
 
 def _looks_like_chat_response(data: object, response_key: str | None = None) -> bool:
-    """Return True if *data* looks like a processed response from a chat endpoint.
-
-    For probe purposes the bar is intentionally low: any non-empty JSON object
-    that is not a plain error envelope counts. We are discovering *which*
-    endpoint handles chat requests, not validating response quality.
-    """
-    if not isinstance(data, dict) or not data:
-        return False
-    # Explicit key wins immediately
-    if response_key and response_key in data:
-        return True
-    # Generic error envelopes — skip these
-    error_only = set(data.keys()) <= {"error", "detail", "message", "code", "status"}
-    if error_only and len(data) <= 2:
-        return False
-    # Any response with ≥2 keys is treated as a real API response, not an error
-    if len(data) >= 2:
-        return True
-    # Single-key response: accept if it contains a known chat-y key
-    for key in (
-        "response", "content", "prognosis", "text", "output",
-        "answer", "result", "reply", "choices", "messages",
-        # common custom agent / HuggingFace / LangChain response keys
-        "bot_response", "assistant_message", "assistant_reply",
-        "generated_text", "completion", "delta",
-        "llm_output", "llm_response", "data",
-    ):
-        if key in data:
-            return True
-    return False
+    """Return whether a supported response structure contains actual reply text."""
+    return bool(extract_chat_text(data, response_key))
 
 
 async def _verify_adk_list_apps(

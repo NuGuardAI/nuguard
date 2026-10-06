@@ -262,6 +262,8 @@ DEFAULT_ENDPOINT_CONFIRMATION_TTL_SECONDS = 3600.0
 # instead of raw string literals so a typo can't silently break scoring.
 PROBE_SOURCE_AUTO_ENRICHMENT = "auto_enrichment"
 PROBE_SOURCE_RUNTIME_PROBE = "runtime_probe"
+# Changes when the rules for persisting a validated chat contract change.
+CHAT_CONTRACT_VERSION = 2
 
 
 class ProbeExtras(TypedDict, total=False):
@@ -275,5 +277,6 @@ class ProbeExtras(TypedDict, total=False):
     # ``DEFAULT_ENDPOINT_CONFIRMATION_TTL_SECONDS`` and
     # ``nuguard.common.endpoint_detection.sbom.find_confirmed_chat_endpoint``).
     confirmed_at: str
+    chat_contract_version: int
     probe_get_404: bool
     probe_post_405: bool
