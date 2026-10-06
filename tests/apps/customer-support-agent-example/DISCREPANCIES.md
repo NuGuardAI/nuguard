@@ -38,3 +38,22 @@ Result: 20 nodes, 40 edges (9 AGENT, 1 API_ENDPOINT, 1 DATASTORE, 2 FRAMEWORK, 5
 
 ## Issues filed
 D1: TBD, D2: TBD, D3: TBD, D4: TBD, D5: TBD, D6: TBD
+
+## Additional discrepancies (from `analyze` and Semgrep)
+
+| # | Expected | Found | Evidence | Class |
+|---|----------|-------|----------|-------|
+| D10 | Dedicated Java Semgrep rules flag user input reaching the model and an LLM answer returned from a controller | 0 Semgrep findings, although `userMessage` (a `@RequestParam`) goes straight to the `@AiService` method and its answer is returned unchecked | `java-ai-prompt-injection` only treats servlet-style calls (`getParameter`, `getHeader`, ...) as sources and only `.prompt(x)`, `.call(x)`, `.generate(x)`, `.chat(x)`, `.complete(x)` as sinks; `java-ai-unvalidated-controller-response` needs `return $SERVICE.chat(...)`. This app calls `agent.answer(sessionId, userMessage)` | NuGuard detection gap |
+| D11 | No critical CVE for a Spring Boot 3.4.2 app | CRITICAL GHSA-36P3-WJMG-H94X (Spring4Shell, Spring Framework 5.x) on `spring-boot-starter-web`, with remediation text about `5.2.20.RELEASE` and an OS package in a container image | The SBOM dependency has no version (`pkg:maven/org.springframework.boot/spring-boot-starter-web`, no `@version`) because the version comes from `spring-boot-starter-parent` | NuGuard detection gap (false positive) |
+
+## `analyze` triage (25 findings, exit code 1 = findings reported)
+
+| Finding | Verdict | Note |
+|---------|---------|------|
+| CRITICAL OSV GHSA-36P3-WJMG-H94X | False positive | D11 |
+| NGA-006 missing authentication on `GET /customerSupportAgent` | True positive | no authentication exists |
+| NGA-002 no output guardrail on an internet-capable agent | True positive | reported on the controller node, not the real agent (D4) |
+| NGA-009 no audit logging | True positive | the app has none; component list inflated by D2 |
+| NGA-012 invoke tool without HITL approval (18 findings) | 1 true positive, 17 noise or debatable | `CustomerSupportAgent` to `cancelBooking` is real. The rest come from test classes, the config class, the controller and the tool holder (D2, D3). `getBookingDetails` is read-only (D5) |
+| NGA-026 no rate limiting, NGA-027 no security headers | True positives | the app has neither |
+| ATLAS-NC-002 writable datastore reachable by unguarded agent (embedding store) | Likely false positive, to verify | the store is filled at startup and only read afterwards |
