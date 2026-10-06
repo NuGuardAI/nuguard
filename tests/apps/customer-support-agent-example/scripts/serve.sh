@@ -16,11 +16,12 @@ mkdir -p "$RUN_DIR" "$LOG_DIR"
 cd "$APP_DIR"
 "$APP_DIR/scripts/stop.sh" >/dev/null 2>&1 || true
 
-JAR="$(ls "$APP_DIR"/target/customer-support-agent-example-*.jar 2>/dev/null | head -1 || true)"
-if [[ -z "$JAR" ]]; then
-  echo "[serve] building jar"
-  mvn -B -q -DskipTests package
-  JAR="$(ls "$APP_DIR"/target/customer-support-agent-example-*.jar | head -1)"
+# The example reads its terms-of-use file with getFile(), which fails inside a packaged jar.
+# So run from the exploded classes directory with an explicit classpath (no source change).
+CP_FILE="$APP_DIR/target/classpath.txt"
+if [[ ! -f "$CP_FILE" || ! -d "$APP_DIR/target/classes" ]]; then
+  echo "[serve] compiling and resolving the classpath"
+  mvn -B -q -DskipTests compile dependency:build-classpath -Dmdep.outputFile="$CP_FILE"
 fi
 
 LLM_ARGS=()
@@ -42,7 +43,8 @@ fi
 
 echo "[serve] starting app on 127.0.0.1:$APP_PORT"
 SERVER_ADDRESS=127.0.0.1 SERVER_PORT=$APP_PORT \
-  java -jar "$JAR" "${LLM_ARGS[@]}" >"$LOG_DIR/app.log" 2>&1 &
+  java -cp "$APP_DIR/target/classes:$(cat "$CP_FILE")" dev.langchain4j.example.CustomerSupportAgentApplication \
+  "${LLM_ARGS[@]}" >"$LOG_DIR/app.log" 2>&1 &
 echo $! >"$RUN_DIR/app.pid"
 
 for _ in $(seq 1 120); do

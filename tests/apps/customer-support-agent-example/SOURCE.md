@@ -14,3 +14,4 @@
 - Bind it to loopback only: SERVER_ADDRESS=127.0.0.1
 - cancelBooking deletes the only seeded booking, held in memory. Restart the app before every run to reseed it.
 - Never expose this app publicly. Local and CI use only.
+- The example reads its terms-of-use file with getFile(), which fails inside a packaged jar. Run it from the classes directory (scripts/serve.sh does this) or with mvn spring-boot:run.
