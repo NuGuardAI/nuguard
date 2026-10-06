@@ -4,6 +4,7 @@
 - Pinned commit: 9d441958edc7f5a91a716271b4f8748af2c854ec (copied on 2026-10-06)
 - License: Apache-2.0 (the upstream LICENSE file is in this directory)
 - Local changes to the application source: none
+- Added: .gitignore (build output, reports, SBOM files)
 - Removed from the copy: mvnw, mvnw.cmd and .mvn (the wrapper includes a binary jar; use a system Maven)
 
 ## Running it
