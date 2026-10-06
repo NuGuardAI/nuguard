@@ -347,6 +347,7 @@ async def resolve_target_session(
         is_empty_session_response,
         probe_endpoint,
     )
+    from nuguard.common.endpoint_detection.payload import _sbom_payload_contract  # noqa: PLC0415
     from nuguard.common.endpoint_detection.resolver import (  # noqa: PLC0415
         resolve_chat_endpoint,
     )
@@ -414,10 +415,16 @@ async def resolve_target_session(
     )
     endpoint_source = "config" if is_endpoint_explicit else "default"
     _chat_path_unknown_at_bootstrap = False
+    _configured_field_unresolved = False
+    _payload_shape_validated = False
+    chat_payload_value_template: "dict[str, object] | None" = None
 
     async def _resolve_endpoint(auth_headers: dict[str, str] | None):
         nonlocal chat_path, chat_payload_key, chat_payload_list
         nonlocal chat_response_key, endpoint_source, _chat_path_unknown_at_bootstrap
+        nonlocal _configured_field_unresolved
+        nonlocal _payload_shape_validated
+        nonlocal chat_payload_value_template
         resolved = await resolve_chat_endpoint(
             target_url=target_url,
             sbom=sbom,
@@ -432,7 +439,18 @@ async def resolve_target_session(
             browser_auth_config=effective_auth,
         )
         resolution_notes.extend(resolved.notes)
+        _configured_field_unresolved = (
+            is_endpoint_explicit
+            and not payload_key_explicit
+            and resolved.payload.source.value == "fallback"
+            and not _sbom_payload_contract(sbom, resolved.path or "")[0]
+        )
         if not resolved.path:
+            if is_endpoint_explicit:
+                # Preserve auth/transport diagnostics on the configured route.
+                # A healthy route still needs a confirmed field before use.
+                _configured_field_unresolved = True
+                return resolved
             raise TargetEndpointNotFoundError(
                 "Could not discover a chat endpoint from the SBOM, authenticated HTTP probes, "
                 "or browser fallback. Set target_endpoint explicitly or verify the target URL "
@@ -440,10 +458,12 @@ async def resolve_target_session(
                 url=target_url,
             )
         chat_path = resolved.path
+        _payload_shape_validated = resolved.payload.source.value in {"probe", "browser"}
         if not payload_key_explicit and resolved.payload_key:
             chat_payload_key = resolved.payload_key
         if not payload_key_explicit:
             chat_payload_list = resolved.payload_list
+            chat_payload_value_template = resolved.payload.value_template
         if not response_key_explicit and resolved.response_key:
             chat_response_key = resolved.response_key
         endpoint_source = resolved.path_source.value
@@ -508,6 +528,12 @@ async def resolve_target_session(
         payload_list=chat_payload_list,
         endpoint_resolver=endpoint_resolver,
     )
+    if _configured_field_unresolved and health_report.all_ok:
+        raise TargetEndpointNotFoundError(
+            "The configured endpoint is reachable, but its chat message field could not be confirmed. "
+            "Set target.chat_payload_key (and target.chat_response_key for a custom response format).",
+            url=target_url,
+        )
     bootstrap_headers = bootstrapper.session.headers()
     effective_headers = dict(extra_headers)
     if bootstrap_headers:
@@ -553,7 +579,6 @@ async def resolve_target_session(
     # Both options run without an SBOM too (issue #532) — probe_endpoint falls
     # back to the generic HTTP_ENDPOINT_FALLBACK_PATHS candidate list when
     # sbom=None, so a target without an SBOM can still be discovered.
-    chat_payload_value_template: "dict[str, object] | None" = None
     if not chat_path:
         # Option A: discover both path and key
         probe_result = await probe_endpoint(
@@ -564,12 +589,12 @@ async def resolve_target_session(
             known_payload_list=chat_payload_list,
             probe_payload_extras=_probe_extras or None,
         )
-        if probe_result is not None:
+        if probe_result is not None and probe_result.confirmed:
             chat_path, chat_payload_key, chat_payload_list = probe_result
             chat_payload_value_template = probe_result.value_template
             endpoint_source = "probe"
             _log.info("resolve_target_session: live probe selected endpoint %s", chat_path)
-    elif not payload_key_explicit and chat_payload_key == "message":
+    elif not payload_key_explicit and not _payload_shape_validated and chat_payload_key == "message":
         # Option B: path is known but key is still the default — detect key only
         probe_result = await probe_endpoint(
             target_url=target_url,
@@ -580,7 +605,7 @@ async def resolve_target_session(
             probe_payload_extras=_probe_extras or None,
             hint_path=chat_path,
         )
-        if probe_result is not None:
+        if probe_result is not None and probe_result.confirmed:
             _probe_path, chat_payload_key, chat_payload_list = probe_result
             chat_payload_value_template = probe_result.value_template
             # Keep the user's path — only the key and list are updated

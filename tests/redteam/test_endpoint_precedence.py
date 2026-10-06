@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from nuguard.common.endpoint_detection import EndpointSource, PayloadShape, ResolvedEndpoint
+from nuguard.common.endpoint_detection.constants import CHAT_CONTRACT_VERSION
 from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
@@ -157,6 +158,7 @@ async def test_redteam_maybe_probe_uses_cached_confirmed_endpoint(monkeypatch) -
             chat_payload_list=False,
             extras={
                 "source": "runtime_probe",
+                "chat_contract_version": CHAT_CONTRACT_VERSION,
                 "confirmed_at": datetime.now(timezone.utc).isoformat(),
             },
         ),

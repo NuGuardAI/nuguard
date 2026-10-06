@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from unittest.mock import AsyncMock, patch
 
@@ -340,6 +341,12 @@ async def test_verify_target_passes_through_payload_hint(monkeypatch):
 @pytest.mark.asyncio
 async def test_verify_target_runs_optional_discovery_when_checks_ok(monkeypatch):
     class _FakeClient:
+        chat_path = "/chat"
+
+        async def send(self, message, session):
+            _ = (message, session)
+            return "Hello, how can I help?", []
+
         async def __aenter__(self):
             return self
 
@@ -884,11 +891,14 @@ async def test_verify_target_reflects_real_rotation_to_a_working_candidate(monke
         bad_route = respx.post("http://target/chat").mock(
             return_value=httpx.Response(400, json={"error": "bad request"})
         )
-        good_route = respx.post(f"http://target{alt_endpoint}").mock(
-            return_value=httpx.Response(
+        def reply(request: httpx.Request) -> httpx.Response:
+            if "message" not in json.loads(request.content):
+                return httpx.Response(422, json={"detail": "message is required"})
+            return httpx.Response(
                 200, json={"response": "Name: Alice Johnson. Account ID: ACCT-1001."}
             )
-        )
+
+        good_route = respx.post(f"http://target{alt_endpoint}").mock(side_effect=reply)
 
         result = await verify_target(
             TargetVerifyRequest(target_url="http://target"), sbom=sbom

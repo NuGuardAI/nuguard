@@ -1,6 +1,7 @@
 """CLI tests for the SBOM-driven pre-scan discovery in ``nuguard target verify``."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import httpx
@@ -27,6 +28,12 @@ _ACCOUNT_RESPONSE = (
 )
 
 
+def _account_reply(request: httpx.Request) -> httpx.Response:
+    if "message" not in json.loads(request.content):
+        return httpx.Response(422, json={"detail": "message is required"})
+    return httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+
+
 def _write_sbom(tmp_path: Path) -> Path:
     doc = AiSbomDocument(target="./test-app")
     sbom_path = tmp_path / "app.sbom.json"
@@ -37,7 +44,7 @@ def _write_sbom(tmp_path: Path) -> Path:
 @respx.mock
 def test_verify_with_sbom_discovers_account(tmp_path: Path) -> None:
     respx.post(FULL_URL).mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
     sbom_path = _write_sbom(tmp_path)
     result = runner.invoke(
@@ -66,7 +73,7 @@ def test_verify_table_publishes_userid_and_golden_data(tmp_path: Path) -> None:
     """Identity column combines configured user_id + discovered name; Detail
     column carries the golden data — same style as behavior/redteam reports."""
     respx.post(FULL_URL).mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
     sbom_path = _write_sbom(tmp_path)
     cfg_path = tmp_path / "nuguard.yaml"
@@ -104,7 +111,7 @@ def test_verify_auto_discovers_endpoint_from_sbom(tmp_path: Path) -> None:
     auth bootstrap must probe that path, not the generic '/chat' default."""
     discovered_endpoint = "/api/agent/converse"
     respx.post(f"{TARGET}{discovered_endpoint}").mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
     doc = AiSbomDocument(
         target="./test-app",
@@ -134,7 +141,7 @@ def test_verify_auto_discovers_endpoint_from_sbom(tmp_path: Path) -> None:
 @respx.mock
 def test_verify_with_sbom_and_skip_discovery(tmp_path: Path) -> None:
     respx.post(FULL_URL).mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
     sbom_path = _write_sbom(tmp_path)
     result = runner.invoke(
@@ -158,11 +165,13 @@ def test_verify_with_sbom_and_skip_discovery(tmp_path: Path) -> None:
 
 
 @respx.mock
-def test_verify_without_sbom_notes_discovery_unavailable() -> None:
+def test_verify_without_sbom_notes_discovery_unavailable(tmp_path: Path) -> None:
     respx.post(FULL_URL).mock(return_value=httpx.Response(200))
+    cfg_path = tmp_path / "nuguard.yaml"
+    cfg_path.write_text("target:\n  chat_payload_key: message\n", encoding="utf-8")
     result = runner.invoke(
         app,
-        ["target", "verify", "--target", TARGET, "--endpoint", ENDPOINT],
+        ["target", "verify", "--target", TARGET, "--endpoint", ENDPOINT, "--config", str(cfg_path)],
     )
     assert result.exit_code == 0, result.output
     assert "discovery skipped" in result.output
@@ -209,7 +218,7 @@ def test_verify_keeps_live_probed_endpoint_for_session_resolution(
         return_value=httpx.Response(400, json={"error": "consumerID and message are required"})
     )
     respx.post(f"{TARGET}/extract").mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
     respx.post(url__regex=r".*").mock(return_value=httpx.Response(404))
     doc = AiSbomDocument.model_validate(
@@ -257,7 +266,7 @@ def test_verify_resolves_templated_endpoint_and_discovers_account(tmp_path: Path
         return_value=httpx.Response(201, json={"id": "conv-abc123"})
     )
     respx.post(f"{TARGET}/chat/conversations/conv-abc123/messages").mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
     doc = AiSbomDocument(
         target="./test-app",
@@ -319,7 +328,7 @@ def test_verify_skips_discovery_when_preflight_finds_no_working_endpoint(
     from nuguard.common.endpoint_preflight import PreflightOutcome
 
     respx.post(FULL_URL).mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
 
     async def _fake_preflight(client, sbom, **kwargs):
@@ -378,7 +387,7 @@ def test_verify_preflight_candidates_cli_flag_overrides_default(
     tmp_path: Path, monkeypatch
 ) -> None:
     respx.post(FULL_URL).mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
     captured: list[int] = []
     _capture_max_candidates(monkeypatch, captured)
@@ -403,7 +412,7 @@ def test_verify_preflight_candidates_falls_back_to_config(
     tmp_path: Path, monkeypatch
 ) -> None:
     respx.post(FULL_URL).mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
     captured: list[int] = []
     _capture_max_candidates(monkeypatch, captured)
@@ -430,7 +439,7 @@ def test_verify_preflight_candidates_defaults_to_three(
     tmp_path: Path, monkeypatch
 ) -> None:
     respx.post(FULL_URL).mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
     captured: list[int] = []
     _capture_max_candidates(monkeypatch, captured)
@@ -466,7 +475,7 @@ def test_verify_explicit_endpoint_suppresses_rotation_to_better_candidate(
         return_value=httpx.Response(400, json={"error": "bad request"})
     )
     good_route = respx.post(f"{TARGET}{alt_endpoint}").mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
     doc = AiSbomDocument(
         target="./test-app",
@@ -529,7 +538,7 @@ def test_verify_auto_discovers_templated_endpoint_and_bootstraps_path_param(
         return_value=httpx.Response(201, json={"id": "conv-xyz789"})
     )
     respx.post(f"{TARGET}/chat/conversations/conv-xyz789/messages").mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
     doc = AiSbomDocument(
         target="./test-app",
@@ -601,7 +610,7 @@ def test_verify_run_twice_reuses_cached_endpoint_and_profile(tmp_path: Path) -> 
     sbom_path = tmp_path / "app.sbom.json"
     sbom_path.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
     route = respx.post(FULL_URL).mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        side_effect=_account_reply
     )
 
     args = ["target", "verify", "--target", TARGET, "--endpoint", ENDPOINT, "--sbom", str(sbom_path)]

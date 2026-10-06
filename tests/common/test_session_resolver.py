@@ -1,6 +1,7 @@
 """Regression test: bootstrap failures (None auth session) must not crash."""
 from __future__ import annotations
 
+import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -83,7 +84,8 @@ async def test_unset_endpoint_uses_shared_resolver_before_bootstrap() -> None:
     bootstrapper, health_report = _mock_bootstrapper()
     resolved = ResolvedEndpoint(
         path="/extract",
-        payload=PayloadShape(key="text", is_list=False, source=EndpointSource.PROBE),
+        payload=PayloadShape(key="text", is_list=False, source=EndpointSource.PROBE,
+                             value_template={"content": "__nuguard_chat_text__"}),
         path_source=EndpointSource.PROBE,
     )
     with (
@@ -123,6 +125,7 @@ async def test_unset_endpoint_uses_shared_resolver_before_bootstrap() -> None:
     assert resolve_kwargs["probe_payload_extras"] == {"consumerID": "c1"}
     assert session_cfg.chat_path == "/extract"
     assert session_cfg.chat_payload_key == "text"
+    assert session_cfg.chat_payload_value_template == resolved.payload.value_template
     assert session_cfg.endpoint_source == "probe"
     assert mock_bootstrap.call_args.kwargs["endpoint"] == "/extract"
 
@@ -232,9 +235,12 @@ async def test_health_report_reflects_discovered_endpoint_not_stale_default() ->
     # be used — not a stale pre-discovery "/chat" 404 — or a working target
     # would still be reported as failed verification.
     respx.get(url__regex=r".*").mock(return_value=httpx.Response(404))
-    respx.post(f"{TARGET}/api/agent/chat").mock(
-        return_value=httpx.Response(200, json={"response": "hi"})
-    )
+    def reply(request: httpx.Request) -> httpx.Response:
+        if "message" not in json.loads(request.content):
+            return httpx.Response(422, json={"detail": "message is required"})
+        return httpx.Response(200, json={"response": "hi"})
+
+    respx.post(f"{TARGET}/api/agent/chat").mock(side_effect=reply)
     respx.post(url__regex=r".*").mock(return_value=httpx.Response(404))
 
     session_cfg, health_report = await resolve_target_session(
@@ -253,6 +259,46 @@ async def test_health_report_reflects_discovered_endpoint_not_stale_default() ->
     assert health_report.endpoint == "/api/agent/chat"
     assert health_report.checks[0].status == "ok"
     assert health_report.all_ok is True
+
+
+@pytest.mark.asyncio
+async def test_explicit_route_with_unconfirmed_field_fails_without_defaulting() -> None:
+    bootstrapper, health_report = _mock_bootstrapper()
+    health_report.all_ok = True
+    resolved = ResolvedEndpoint(
+        path="/api/agent/chat",
+        path_source=EndpointSource.CONFIG,
+        path_explicit=True,
+        payload=PayloadShape(key="message", source=EndpointSource.FALLBACK),
+    )
+    with (
+        patch(
+            "nuguard.common.endpoint_detection.context.resolve_api_origin",
+            new=AsyncMock(return_value=(TARGET, [])),
+        ),
+        patch(
+            "nuguard.common.endpoint_detection.resolver.resolve_chat_endpoint",
+            new=AsyncMock(return_value=resolved),
+        ),
+        patch(
+            "nuguard.common.auth_runtime.bootstrap_auth_runtime",
+            new=AsyncMock(return_value=(bootstrapper, health_report)),
+        ) as bootstrap,
+    ):
+        with pytest.raises(TargetEndpointNotFoundError, match="message field could not be confirmed"):
+            await resolve_target_session(
+                target_url=TARGET,
+                sbom=None,
+                auth_config=None,
+                extra_headers={},
+                chat_path="/api/agent/chat",
+                chat_payload_key="message",
+                chat_payload_list=False,
+                chat_payload_extras={},
+                chat_response_key=None,
+                endpoint_explicit=True,
+            )
+    assert bootstrap.call_args.kwargs["endpoint"] == "/api/agent/chat"
 
 
 @pytest.mark.asyncio
@@ -298,7 +344,13 @@ async def test_resolve_target_session_no_websocket_for_plain_http_sbom() -> None
     with patch(
         "nuguard.common.auth_runtime.bootstrap_auth_runtime",
         new=AsyncMock(return_value=(bootstrapper, health_report)),
-    ) as mock_bootstrap:
+    ) as mock_bootstrap, patch(
+        "nuguard.common.endpoint_detection.resolver.resolve_chat_endpoint",
+        new=AsyncMock(return_value=ResolvedEndpoint(
+            path="/api/chat", payload=PayloadShape(key="custom_key", is_list=False, source=EndpointSource.CONFIG),
+            path_source=EndpointSource.CONFIG,
+        )),
+    ):
         await resolve_target_session(
             target_url="http://app.test",
             sbom=sbom,

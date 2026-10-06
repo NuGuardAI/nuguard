@@ -2455,7 +2455,7 @@ class BehaviorRunner:
             _client_path_params = getattr(client, "path_param_values", None)
             if isinstance(_client_path_params, dict):
                 self._bootstrapped_path_params = dict(_client_path_params)
-            if preflight_ok and self._sbom is not None:
+            if preflight_ok and _pf.cacheable and self._sbom is not None:
                 # Prefer the already-tracked rotation tuple over re-reading
                 # client.chat_path: it's self-contained (set directly from
                 # _pf.rotated_endpoint above) rather than relying on

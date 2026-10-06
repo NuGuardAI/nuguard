@@ -277,6 +277,21 @@ Entry points:
 
 ### Target verify/session contracts
 
+HTTP chat discovery accepts actual reply text, including outputs-only replies
+and configured nested response paths. A successful response alone does not
+establish an unknown request field: blind discovery uses an omitted-field
+validation control naming that specific field, while declared or browser-observed
+fields retain their
+provenance. Ambiguous greetings cannot create an endpoint confirmation.
+If no usable contract can be resolved, Target Verify reports
+`all_ok=false` with an `endpoint_not_found` check; API-only callers can supply
+`chat_payload_key` and `chat_response_key` explicitly. This is contract and
+connectivity validation, not a guarantee of semantic message processing.
+
+Legacy endpoint confirmations are revalidated under the new rules. Transport
+exceptions in preflight retain the existing fail-open scan behavior, but do not
+write a validated endpoint cache entry. Public request/result schemas are unchanged.
+
 Module: `nuguard.common.target_verify_public_api`
 
 Models:

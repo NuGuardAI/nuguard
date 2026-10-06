@@ -4114,7 +4114,7 @@ class RedteamOrchestrator:
         self._preflight_path_params = dict(_pp) if isinstance(_pp, dict) else {}
         self._preflight_result = (_pf.ok, list(_pf.notes))
 
-        if _pf.ok and self._sbom is not None:
+        if _pf.cacheable and self._sbom is not None:
             persist_endpoint_resolution(
                 self._sbom,
                 self._target_url,

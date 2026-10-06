@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from nuguard.common.auto_sbom_enricher import persist_probe_result_to_sbom
+from nuguard.common.endpoint_detection.constants import CHAT_CONTRACT_VERSION
 from nuguard.common.endpoint_detection.sbom import find_confirmed_chat_endpoint
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
@@ -40,6 +41,7 @@ def _confirmed_node(path: str, *, key: str = "text", confirmed_at: str | None = 
             extras={
                 "source": "runtime_probe",
                 "confirmed_at": confirmed_at or datetime.now(timezone.utc).isoformat(),
+                "chat_contract_version": CHAT_CONTRACT_VERSION,
             },
         ),
     )
@@ -53,6 +55,14 @@ def test_find_confirmed_chat_endpoint_ignores_keyword_ranking() -> None:
     result = find_confirmed_chat_endpoint(sbom)
 
     assert result == ("/extract", "text", False, None)
+
+
+def test_legacy_probe_confirmation_requires_revalidation() -> None:
+    node = _confirmed_node("/chat", key="message")
+    assert node.metadata is not None
+    node.metadata.extras.pop("chat_contract_version")
+    sbom = AiSbomDocument(target="./app", nodes=[node])
+    assert find_confirmed_chat_endpoint(sbom) is None
 
 
 def test_find_confirmed_chat_endpoint_respects_expected_path() -> None:
