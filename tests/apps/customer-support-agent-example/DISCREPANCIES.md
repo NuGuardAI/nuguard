@@ -59,3 +59,12 @@ Not filed: D7 (by design, a plain HashMap has no store marker), D8 (unclear whet
 | NGA-012 invoke tool without HITL approval (18 findings) | 1 true positive, 17 noise or debatable | `CustomerSupportAgent` to `cancelBooking` is real. The rest come from test classes, the config class, the controller and the tool holder (D2, D3). `getBookingDetails` is read-only (D5) |
 | NGA-026 no rate limiting, NGA-027 no security headers | True positives | the app has neither |
 | ATLAS-NC-002 writable datastore reachable by unguarded agent (embedding store) | Likely false positive, to verify | the store is filled at startup and only read afterwards |
+
+## Note: the config-driven run produces a different SBOM (22 nodes, 49 edges)
+
+`prepublish-sanity.sh` runs `sbom generate --config nuguard.prepublish.yaml` with our added files (scripts, config, docs) in the scanned folder. That run scanned 18 files instead of 14 and added 2 nodes and 9 edges compared with the `--no-llm` run on the bare app:
+- MODEL `gpt-5.4-mini` and DEPLOYMENT `Deployment`, both with evidence only in `scripts/serve.sh` (the default Azure deployment name and endpoint override that our start script passes to the app).
+- 9 `AGENT -USES-> MODEL` edges, one per agent, including the test classes (same fan-out as D3).
+- `application.properties` (`gpt-4o-mini`) is still not detected, so D1 stands.
+
+Anything added to the scanned folder changes the SBOM. The comparison with `EXPECTED_SBOM.md` in this file uses the bare-app run.
