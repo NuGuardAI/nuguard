@@ -17,6 +17,35 @@ pip install nuguard
 
 ## Core pattern
 
+### Browser chat discovery settings
+
+`TargetVerifyRequest`, `TargetSessionResolveRequest`, and `RedteamRunRequest` accept
+an optional `browser_discovery` configuration. Behavior requests use
+`config.browser_discovery`. Existing requests remain valid without this field.
+
+```python
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
+from nuguard.common.target_verify_public_api import TargetVerifyRequest
+
+request = TargetVerifyRequest(
+    target_url="https://app.example.com",
+    browser_discovery=BrowserDiscoveryConfig(
+        chat_opener_selector="#open-chat",
+        chat_input_selector="#chat-input",
+        send_button_selector="#chat-send",
+        chat_ui_timeout_ms=10000,
+    ),
+)
+```
+
+The readiness timeout accepts 1-60000 milliseconds and defaults to 10000. It
+covers widget opening and input readiness, not navigation or request capture.
+Visible but disabled inputs are awaited without toggling their widget. Settings
+do not enable a new browser-discovery mode; existing fallback activation remains
+unchanged. Playwright and Chromium are required only when browser discovery runs.
+Expected UI failures become warnings or discovery notes; cancellation propagates.
+An observed request still needs HTTP reply validation before endpoint confirmation.
+
 Most public entry points follow this shape:
 
 - A `*Request` Pydantic model for JSON-safe run settings.

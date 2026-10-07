@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, cast
 
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.endpoint_detection.browser import detect_with_browser
 from nuguard.common.endpoint_detection.constants import (
     DEFAULT_PAYLOAD_KEY,
@@ -43,6 +44,7 @@ async def resolve_chat_endpoint(
     browser_auth_config: Any = None,
     probe_result_callback: Callable[[ProbeResult], None] | None = None,
     allow_live_probe: bool = True,
+    browser_discovery: "BrowserDiscoveryConfig | None" = None,
 ) -> ResolvedEndpoint:
     """Resolve an endpoint and only the payload fields that are missing.
 
@@ -293,6 +295,8 @@ async def resolve_chat_endpoint(
             target_url,
             auth_config=browser_auth_config,
             timeout_s=max(1, min(int(timeout), 60)),
+            browser_discovery=browser_discovery,
+            discovery_notes=notes,
         )
         if browser_result is not None and (not endpoint_is_explicit or browser_result[0] == resolved_path):
             observed_path, browser_payload = browser_result
@@ -308,6 +312,8 @@ async def resolve_chat_endpoint(
             if observed is None or not observed.confirmed:
                 notes.append("Browser-observed request did not produce a usable chat reply.")
             else:
+                if probe_result_callback is not None:
+                    probe_result_callback(observed)
                 resolved_path = observed_path
                 if not endpoint_is_explicit:
                     path_source = EndpointSource.BROWSER

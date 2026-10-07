@@ -53,13 +53,16 @@ def _session_config(*, endpoint_source: str = "default"):
 
 @pytest.mark.asyncio
 async def test_verify_target_reports_endpoint_discovery_failure() -> None:
-    request = TargetVerifyRequest(target_url="http://target")
+    request = TargetVerifyRequest(
+        target_url="http://target", browser_discovery={"chat_opener_selector": "#open-chat"}
+    )
     with patch(
         "nuguard.common.target_verify_public_api.resolve_target_session",
         new=AsyncMock(side_effect=TargetEndpointNotFoundError("Could not discover a chat endpoint")),
-    ):
+    ) as resolver:
         result = await verify_target(request)
 
+    assert resolver.call_args.kwargs["browser_discovery"].chat_opener_selector == "#open-chat"
     assert result.all_ok is False
     assert result.endpoint_source == "default"
     assert result.checks[0].status == "endpoint_not_found"

@@ -5,7 +5,9 @@ Playwright-driving methods themselves are exercised only in a live/manual run
 against a real target (see tests/apps/kscope)."""
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -157,3 +159,48 @@ class TestMissingCredentials:
         with pytest.raises(BrowserLoginError) as exc_info:
             await session.run()
         assert exc_info.value.step == "missing_credentials"
+
+
+class TestChatInputReadiness:
+    async def test_skips_hidden_and_readonly_matches(self) -> None:
+        session = _session()
+        matches = []
+        for visible, editable in [(False, True), (True, False), (True, True)]:
+            locator = MagicMock()
+            locator.count = AsyncMock(return_value=1)
+            locator.is_visible = AsyncMock(return_value=visible)
+            locator.is_enabled = AsyncMock(return_value=True)
+            locator.is_editable = AsyncMock(return_value=editable)
+            matches.append(locator)
+        group = MagicMock()
+        group.first = matches[0]
+        group.count = AsyncMock(return_value=len(matches))
+        group.nth.side_effect = matches.__getitem__
+        page = MagicMock()
+        page.locator.return_value = group
+        page.wait_for_timeout = AsyncMock()
+        session._page = page
+
+        selected = await session._poll_for_locator(["textarea"], budget_s=0.1)
+
+        assert selected is matches[2]
+
+
+@pytest.mark.parametrize("failure", [TimeoutError, asyncio.CancelledError, ValueError])
+async def test_chat_interaction_cleans_up_listener_and_preserves_cancellation(failure: type[BaseException]) -> None:
+    session = _session()
+    page = MagicMock()
+    session._page = page
+    locator = MagicMock()
+    locator.click = AsyncMock()
+    locator.fill = AsyncMock(side_effect=failure("fixture-secret"))
+    session._prepare_chat_input = AsyncMock(return_value=locator)
+
+    if failure is TimeoutError:
+        assert await session._sniff_chat_request("probe") == (None, None)
+        assert "fixture-secret" not in session.chat_sniff_note
+    else:
+        with pytest.raises(failure):
+            await session._sniff_chat_request("probe")
+
+    page.remove_listener.assert_called_once_with("request", page.on.call_args.args[1])
