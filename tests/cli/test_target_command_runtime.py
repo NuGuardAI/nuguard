@@ -1,13 +1,14 @@
 """Runtime-focused tests for target verify auth helper integration."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pytest
 import typer
 
 from nuguard.common.auth import AuthConfig
 from nuguard.common.auth_runtime import ResolvedAuthRuntime
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.models.health_report import CredentialCheckResult, TargetHealthReport
 
 
@@ -17,6 +18,7 @@ class _ConfigStub:
     target_endpoint: str | None = None
     canary_path: str | None = None
     redteam_headers: dict[str, str] | None = None
+    target_browser_discovery: BrowserDiscoveryConfig = field(default_factory=BrowserDiscoveryConfig)
 
     def resolved_auth_config(self) -> AuthConfig:
         return AuthConfig(type="none")
@@ -47,6 +49,7 @@ async def test_verify_redteam_uses_headers_override(monkeypatch: pytest.MonkeyPa
         target_url="http://redteam.test",
         target_endpoint="/chat",
         redteam_headers={"Authorization": "Bearer override-token"},
+        target_browser_discovery=BrowserDiscoveryConfig(chat_opener_selector="#chat-open"),
     )
     monkeypatch.setattr(target_cmd, "load_config", lambda _p: cfg)
 
@@ -67,6 +70,7 @@ async def test_verify_redteam_uses_headers_override(monkeypatch: pytest.MonkeyPa
         # through resolve_target_session directly rather than
         # bootstrap_auth_runtime — see the no-SBOM branch of _verify_async.
         captured["bootstrap_auth_type"] = getattr(kwargs.get("auth_config"), "type", None)
+        captured["browser_discovery"] = kwargs.get("browser_discovery")
         from nuguard.common.session_resolver import TargetSessionConfig
 
         class _FakeAuthSession:
@@ -103,3 +107,4 @@ async def test_verify_redteam_uses_headers_override(monkeypatch: pytest.MonkeyPa
     assert exc.value.exit_code == 0
     assert captured["headers_override"] == {"Authorization": "Bearer override-token"}
     assert captured["bootstrap_auth_type"] == "bearer"
+    assert captured["browser_discovery"] is cfg.target_browser_discovery

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from pydantic import BaseModel, Field, model_validator
 
 from nuguard.common.auth import AuthConfig, LoginFlowConfig
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.discovery import (
     DiscoveredProfile,
     DiscoveryRequest,
@@ -51,6 +52,7 @@ EndpointSource = Literal["config", "sbom", "probe", "browser", "default", "enric
 
 class TargetVerifyRequest(BaseModel):
     target_url: str
+    browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
     chat_path: str | None = None
     auth_type: str = "none"
     auth_value: str | None = None
@@ -119,6 +121,7 @@ class TargetVerifyResult(BaseModel):
 
 class TargetSessionResolveRequest(BaseModel):
     target_url: str
+    browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
     chat_path: str | None = None
     auth_type: str = "none"
     auth_value: str | None = None
@@ -243,6 +246,7 @@ async def verify_target(
             probe_payload_extras=request.chat_payload_extras or None,
             config_path=config_path,
             request_timeout=request.request_timeout,
+            browser_discovery=request.browser_discovery,
             endpoint_explicit=endpoint_explicit,
             payload_key_explicit="chat_payload_key" in request.model_fields_set,
             response_key_explicit="chat_response_key" in request.model_fields_set,
@@ -330,6 +334,7 @@ async def verify_target(
                     target_url=session_cfg.base_url,
                     auth_headers=session_cfg.effective_headers or None,
                     max_candidates=request.preflight_candidates,
+                    browser_discovery=request.browser_discovery,
                 )
                 discovery_notes.extend(preflight.notes)
                 # Prefer the rotation outcome itself over re-reading
@@ -492,6 +497,7 @@ async def resolve_target_session_public(
         config_path=config_path,
         request_timeout=request.request_timeout,
         endpoint_explicit="chat_path" in request.model_fields_set,
+        browser_discovery=request.browser_discovery,
         payload_key_explicit="chat_payload_key" in request.model_fields_set,
         response_key_explicit="chat_response_key" in request.model_fields_set,
     )

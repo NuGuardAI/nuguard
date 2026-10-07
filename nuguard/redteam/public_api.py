@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 from nuguard.common.auth import AuthConfig, LoginFlowConfig
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.logging import get_logger
 from nuguard.common.run_checkpoint import PartialRunError, RunCheckpoint
 from nuguard.common.stream_runtime import StreamRunHandle, create_stream_handle
@@ -209,6 +210,7 @@ class RedteamRunRequest(BaseModel):
     capability_discovery: bool = True
     liveness_cache_ttl_seconds: float = 3600.0
     preflight_candidates: int = Field(default=3, ge=0, le=10)
+    browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
     llm_capability_dedup: bool = False
     chat_payload_extras: dict[str, Any] | None = None
     pre_run_warmup: int = 0
@@ -546,6 +548,7 @@ async def run_redteam(
         capability_discovery=request.capability_discovery,
         liveness_cache_ttl_seconds=request.liveness_cache_ttl_seconds,
         preflight_candidates=request.preflight_candidates,
+        browser_discovery=request.browser_discovery,
         llm_capability_dedup=request.llm_capability_dedup,
         chat_payload_extras=request.chat_payload_extras,
         catalog=catalog,

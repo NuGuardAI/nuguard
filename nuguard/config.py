@@ -27,6 +27,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from nuguard.common.auth import LoginFlowConfig, infer_auth_type
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.errors import ConfigError
 from nuguard.common.logging import get_logger
 
@@ -241,6 +242,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     # precedence and override the shared values when present.
     shared_target = data.get("target", {}) or {}
     if isinstance(shared_target, dict):
+        if isinstance(shared_target.get("browser_discovery"), dict):
+            flat["target_browser_discovery"] = shared_target["browser_discovery"]
+            flat["redteam_browser_discovery"] = shared_target["browser_discovery"]
         if "url" in shared_target:
             flat["target_url"] = shared_target["url"]
         if "endpoint" in shared_target:
@@ -314,6 +318,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     # Precedence matches the shared block: ``endpoint`` wins over
     # ``target_endpoint`` when both are set in the same block.
     redteam = {k: v for k, v in (data.get("redteam", {}) or {}).items() if v is not None}
+    if isinstance(redteam.get("browser_discovery"), dict):
+        flat["redteam_browser_discovery"] = {
+            **flat.get("redteam_browser_discovery", {}), **redteam["browser_discovery"]
+        }
     if "target" in redteam:
         flat["target_url"] = redteam["target"]
     if "endpoint" in redteam:
@@ -507,7 +515,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_eval_llm_api_base"] = redteam_eval_llm["api_base"]
 
     # Behavior section — shared target block keys are the baseline; behavior.* overrides them
-    if "behavior" in data:
+    if "behavior" in data or (
+        isinstance(shared_target, dict) and isinstance(shared_target.get("browser_discovery"), dict)
+    ):
         b = data.get("behavior") or {}
         if isinstance(b, dict):
             # A YAML key written with no value (e.g. "workflows:") parses to None,
@@ -521,6 +531,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             # Keys already present in the behavior block take precedence.
             if isinstance(shared_target, dict):
                 _shared_for_behavior: dict[str, Any] = {}
+                if isinstance(shared_target.get("browser_discovery"), dict):
+                    b["browser_discovery"] = {
+                        **shared_target["browser_discovery"], **(b.get("browser_discovery") or {})
+                    }
                 if "url" in shared_target:
                     _shared_for_behavior["target"] = shared_target["url"]
                 if "endpoint" in shared_target:
@@ -749,6 +763,7 @@ class BehaviorConfig(BaseModel):
     """Configuration for nuguard behavior mode."""
 
     target: str = ""
+    browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
     target_endpoint: str = ""
     auth: AppAuthConfig = Field(default_factory=AppAuthConfig)
     headers: dict[str, str] = Field(
@@ -1595,6 +1610,8 @@ class NuGuardConfig(BaseSettings):
             "Ignored when the chat endpoint is set explicitly."
         ),
     )
+    target_browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
+    redteam_browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
     redteam_browser_discover_endpoints: bool = Field(
         default=False,
         description=(

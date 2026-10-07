@@ -1149,6 +1149,9 @@
             "title": "Target",
             "type": "string"
           },
+          "browser_discovery": {
+            "$ref": "#/$defs/BrowserDiscoveryConfig"
+          },
           "target_endpoint": {
             "default": "",
             "title": "Target Endpoint",
@@ -1476,6 +1479,77 @@
           }
         },
         "title": "BehaviorConfig",
+        "type": "object"
+      },
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
         "type": "object"
       },
       "GoogleADKConfig": {
@@ -2763,6 +2837,9 @@
             "title": "Target",
             "type": "string"
           },
+          "browser_discovery": {
+            "$ref": "#/$defs/BrowserDiscoveryConfig"
+          },
           "target_endpoint": {
             "default": "",
             "title": "Target Endpoint",
@@ -3252,6 +3329,77 @@
         ],
         "title": "BehaviorScenarioType",
         "type": "string"
+      },
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
+        "type": "object"
       },
       "DiscoveredProfile": {
         "description": "Real user data extracted from the live agent during pre-scan discovery.\n\nA plain Pydantic model \u2014 JSON-serializable via ``.model_dump()`` /\n``.model_dump_json()`` and constructible from a plain dict via\n``DiscoveredProfile.model_validate(data)`` \u2014 so code outside the CLI (and\noutside the behavior/redteam packages) can consume or construct golden-data\nprofiles without importing any live connection objects.",
@@ -4349,6 +4497,330 @@
     "title": "BehaviorRunResult",
     "type": "object"
   },
+  "common.browser_login.BrowserDiscoveryConfig": {
+    "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+    "properties": {
+      "login_button_text": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Login Button Text",
+        "type": "array"
+      },
+      "username_selector": {
+        "default": "",
+        "title": "Username Selector",
+        "type": "string"
+      },
+      "password_selector": {
+        "default": "",
+        "title": "Password Selector",
+        "type": "string"
+      },
+      "submit_selector": {
+        "default": "",
+        "title": "Submit Selector",
+        "type": "string"
+      },
+      "post_login_wait_selector": {
+        "default": "",
+        "title": "Post Login Wait Selector",
+        "type": "string"
+      },
+      "identity_endpoint": {
+        "default": "",
+        "title": "Identity Endpoint",
+        "type": "string"
+      },
+      "chat_input_selector": {
+        "default": "",
+        "title": "Chat Input Selector",
+        "type": "string"
+      },
+      "chat_opener_selector": {
+        "default": "",
+        "title": "Chat Opener Selector",
+        "type": "string"
+      },
+      "chat_ui_timeout_ms": {
+        "default": 10000,
+        "maximum": 60000,
+        "minimum": 1,
+        "title": "Chat Ui Timeout Ms",
+        "type": "integer"
+      },
+      "send_button_selector": {
+        "default": "",
+        "title": "Send Button Selector",
+        "type": "string"
+      },
+      "extra_wait_ms": {
+        "default": 500,
+        "title": "Extra Wait Ms",
+        "type": "integer"
+      },
+      "navigation_timeout_ms": {
+        "default": 30000,
+        "title": "Navigation Timeout Ms",
+        "type": "integer"
+      }
+    },
+    "title": "BrowserDiscoveryConfig",
+    "type": "object"
+  },
+  "common.browser_login.BrowserDiscoveryRequest": {
+    "$defs": {
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
+        "type": "object"
+      }
+    },
+    "description": "JSON-safe input for :func:`discover_browser`.",
+    "properties": {
+      "target_url": {
+        "title": "Target Url",
+        "type": "string"
+      },
+      "auth_type": {
+        "default": "none",
+        "title": "Auth Type",
+        "type": "string"
+      },
+      "auth_value": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Value"
+      },
+      "auth_username": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Username"
+      },
+      "auth_password": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Password"
+      },
+      "headless": {
+        "default": true,
+        "title": "Headless",
+        "type": "boolean"
+      },
+      "timeout_s": {
+        "default": 30,
+        "title": "Timeout S",
+        "type": "integer"
+      },
+      "sniff_chat": {
+        "default": true,
+        "title": "Sniff Chat",
+        "type": "boolean"
+      },
+      "chat_message": {
+        "default": "Hello",
+        "title": "Chat Message",
+        "type": "string"
+      },
+      "browser_discovery": {
+        "$ref": "#/$defs/BrowserDiscoveryConfig"
+      }
+    },
+    "required": [
+      "target_url"
+    ],
+    "title": "BrowserDiscoveryRequest",
+    "type": "object"
+  },
+  "common.browser_login.BrowserDiscoveryResult": {
+    "description": "JSON-safe result of a :func:`discover_browser` run.",
+    "properties": {
+      "cookies_written_to": {
+        "title": "Cookies Written To",
+        "type": "string"
+      },
+      "identity_url": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Identity Url"
+      },
+      "identity_payload": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Identity Payload"
+      },
+      "sniffed_endpoint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Sniffed Endpoint"
+      },
+      "sniffed_chat_request": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Sniffed Chat Request"
+      },
+      "candidate_extra_fields": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Candidate Extra Fields",
+        "type": "object"
+      },
+      "ambiguous_fields": {
+        "additionalProperties": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": "Ambiguous Fields",
+        "type": "object"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "bearer_token": {
+        "anyOf": [
+          {
+            "format": "password",
+            "type": "string",
+            "writeOnly": true
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Bearer Token"
+      }
+    },
+    "required": [
+      "cookies_written_to"
+    ],
+    "title": "BrowserDiscoveryResult",
+    "type": "object"
+  },
   "common.discovery.TargetDiscoveryResult": {
     "$defs": {
       "DiscoveredProfile": {
@@ -4872,6 +5344,77 @@
   },
   "common.target_verify.TargetSessionResolveRequest": {
     "$defs": {
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
+        "type": "object"
+      },
       "LoginFlowConfig": {
         "description": "Configuration for apps that require a login request to obtain a JWT.\n\nExample nuguard.yaml block::\n\n    auth:\n      type: login_flow\n      login_flow:\n        endpoint: /login\n        payload:\n          username: ${APP_USERNAME}\n          password: ${APP_PASSWORD}\n        token_response_key: access_token\n        token_header: \"Authorization: Bearer\"\n        refresh_on_401: true",
         "properties": {
@@ -4930,6 +5473,9 @@
       "target_url": {
         "title": "Target Url",
         "type": "string"
+      },
+      "browser_discovery": {
+        "$ref": "#/$defs/BrowserDiscoveryConfig"
       },
       "chat_path": {
         "anyOf": [
@@ -5215,6 +5761,77 @@
   },
   "common.target_verify.TargetVerifyRequest": {
     "$defs": {
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
+        "type": "object"
+      },
       "LoginFlowConfig": {
         "description": "Configuration for apps that require a login request to obtain a JWT.\n\nExample nuguard.yaml block::\n\n    auth:\n      type: login_flow\n      login_flow:\n        endpoint: /login\n        payload:\n          username: ${APP_USERNAME}\n          password: ${APP_PASSWORD}\n        token_response_key: access_token\n        token_header: \"Authorization: Bearer\"\n        refresh_on_401: true",
         "properties": {
@@ -5273,6 +5890,9 @@
       "target_url": {
         "title": "Target Url",
         "type": "string"
+      },
+      "browser_discovery": {
+        "$ref": "#/$defs/BrowserDiscoveryConfig"
       },
       "chat_path": {
         "anyOf": [
@@ -10116,6 +10736,77 @@
   },
   "redteam.RedteamRunRequest": {
     "$defs": {
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
+        "type": "object"
+      },
       "CampaignConfig": {
         "additionalProperties": false,
         "description": "Bounds and policy knobs for a campaign run.\n\nRun-level budgets default to ``None`` (no hidden cap); per-objective and\nper-branch limits are always bounded.\n\nExample:\n    >>> CampaignConfig(max_turns_per_branch=12).max_turns_per_branch\n    12",
@@ -10727,6 +11418,9 @@
         "minimum": 0,
         "title": "Preflight Candidates",
         "type": "integer"
+      },
+      "browser_discovery": {
+        "$ref": "#/$defs/BrowserDiscoveryConfig"
       },
       "llm_capability_dedup": {
         "default": false,

@@ -28,6 +28,7 @@ from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
+    from nuguard.common.browser_login.config import BrowserDiscoveryConfig
     from nuguard.common.target_client_builder import TargetClient
     from nuguard.sbom.models import AiSbomDocument
 
@@ -298,6 +299,7 @@ async def validate_and_rotate_chat_endpoint(
     auth_headers: dict[str, str] | None = None,
     max_candidates: int = DEFAULT_PREFLIGHT_CANDIDATES,
     exclude_paths: "list[str] | None" = None,
+    browser_discovery: "BrowserDiscoveryConfig | None" = None,
 ) -> PreflightOutcome:
     """Validate *client*'s chat endpoint and rotate to a better SBOM candidate.
 
@@ -490,7 +492,10 @@ async def validate_and_rotate_chat_endpoint(
         )
 
         try:
-            sniffed = await sniff_chat_endpoint_headless(target_url, chat_message=_TEST_MESSAGE)
+            sniffed = await sniff_chat_endpoint_headless(
+                target_url, chat_message=_TEST_MESSAGE,
+                browser_discovery=browser_discovery, discovery_notes=notes,
+            )
         except Exception as exc:
             _log.info("Pre-flight: browser-sniff fallback failed: %s", exc)
             sniffed = None

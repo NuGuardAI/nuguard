@@ -68,6 +68,14 @@ sbom_generation:
 target:
   url: https://your-app.example.com
 
+  # Optional browser fallback settings; these do not activate a new browser mode.
+  # behavior.browser_discovery and redteam.browser_discovery override shared fields.
+  # browser_discovery:
+  #   chat_opener_selector: "#open-chat"
+  #   chat_input_selector: "#chat-input"
+  #   send_button_selector: "#chat-send"
+  #   chat_ui_timeout_ms: 10000       # readiness budget: 1-60000 ms
+
   # Path of the chat/agent endpoint (default: auto-discovered from SBOM, fallback /chat)
   # endpoint: /api/chat
 

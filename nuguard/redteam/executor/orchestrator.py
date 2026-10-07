@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.session import AttackSession
     from nuguard.redteam.trust_context import TrustContextResult
 
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.console import print_turn as _common_print_turn
 from nuguard.common.id_extractor import extract_customer_name, extract_ids
 from nuguard.common.logging import get_logger
@@ -882,6 +883,7 @@ class RedteamOrchestrator:
         probe_llm: bool = False,
         resume_checkpoint: dict[str, Any] | None = None,
         resume_checkpoint_path: Path | None = None,
+        browser_discovery: BrowserDiscoveryConfig | None = None,
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
@@ -975,6 +977,7 @@ class RedteamOrchestrator:
         # Chat-endpoint pre-flight (see _ensure_endpoint_preflight): run once
         # per scan, shared by pre-scan discovery and scenario execution.
         self._preflight_candidates = max(0, preflight_candidates)
+        self._browser_discovery = browser_discovery
         self._preflight_result: "tuple[bool, list[str]] | None" = None
         self._preflight_path_params: dict[str, str] = {}
         self._llm_capability_dedup = llm_capability_dedup
@@ -1567,6 +1570,7 @@ class RedteamOrchestrator:
             canary_config=self._canary_config,
             config_path=self._config_path,
             request_timeout=self._request_timeout,
+            browser_discovery=self._browser_discovery,
             endpoint_explicit=self._chat_path_source == "config" or _keep_resolved,
             payload_key_explicit=_keep_resolved or self._chat_payload_key != "message",
             response_key_explicit=bool(self._chat_response_key),
@@ -4094,6 +4098,7 @@ class RedteamOrchestrator:
             target_url=self._target_url,
             auth_headers=auth_headers,
             max_candidates=self._preflight_candidates,
+            browser_discovery=self._browser_discovery,
         )
         self.config_notes.extend(_pf.notes)
         if _pf.rotated_endpoint is not None:

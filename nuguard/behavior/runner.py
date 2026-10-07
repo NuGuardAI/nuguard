@@ -945,6 +945,7 @@ class BehaviorRunner:
                 chat_response_key=chat_response_key,
                 config_path=self._config_path,
                 request_timeout=float(getattr(self._config, "request_timeout", 60.0)),
+                browser_discovery=getattr(self._config, "browser_discovery", None),
                 payload_format=getattr(self._config, "chat_payload_format", "json") or "json",
                 endpoint_explicit=self._endpoint_is_explicit() or keep_resolved,
                 payload_key_explicit=keep_resolved or "chat_payload_key" in user_fields,
@@ -2438,6 +2439,7 @@ class BehaviorRunner:
                 target_url=_target_url,
                 auth_headers=_bootstrap_hdrs or None,
                 max_candidates=int(getattr(self._config, "preflight_candidates", 3)),
+                browser_discovery=getattr(self._config, "browser_discovery", None),
             )
             for _pf_note in _pf.notes:
                 _console.print(

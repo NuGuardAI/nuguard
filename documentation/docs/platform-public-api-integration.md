@@ -32,6 +32,23 @@ Schema lock for platform-facing models:
 
 ## Public API module map
 
+### Collapsed chat widgets
+
+Pass `browser_discovery` on target verification/session and redteam requests, or
+`config.browser_discovery` on behavior requests. The JSON-safe configuration
+supports `chat_opener_selector`, `chat_input_selector`, `send_button_selector`, and
+`chat_ui_timeout_ms` (default 10000, range 1-60000). YAML uses shared
+`target.browser_discovery`; behavior/redteam fields override shared fields.
+
+Automatic discovery tries recognizable chat openers only when no eligible input
+is visible. A visible loading input is not mistaken for a collapsed widget.
+Requests must contain the probe message and must pass HTTP reply validation before
+being confirmed or cached. UI failure details appear in warnings/discovery notes,
+without raw Playwright exception text. Cancellation is not converted to failure.
+`verify_target` returns `endpoint_not_found` when endpoint discovery fails; platform
+handlers should map that result rather than treating it as an unexpected HTTP 500.
+Iframe and closed-shadow-root traversal are not added by this change.
+
 | Domain | Public module | Entry points |
 |---|---|---|
 | Static analysis | `nuguard.analysis.public_api` | `run_analysis` |

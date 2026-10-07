@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
     from nuguard.common.auth import AuthConfig, AuthSession
     from nuguard.common.bootstrap import TargetHealthReport
+    from nuguard.common.browser_login.config import BrowserDiscoveryConfig
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
@@ -285,6 +286,7 @@ async def resolve_target_session(
     payload_key_explicit: bool = False,
     response_key_explicit: bool = False,
     endpoint_source_hint: str | None = None,
+    browser_discovery: "BrowserDiscoveryConfig | None" = None,
 ) -> tuple[TargetSessionConfig, "TargetHealthReport"]:
     """Resolve all target-connection config and return a :class:`TargetSessionConfig`.
 
@@ -437,6 +439,7 @@ async def resolve_target_session(
             probe_payload_extras=_probe_extras or None,
             enable_browser_fallback=not is_endpoint_explicit,
             browser_auth_config=effective_auth,
+            browser_discovery=browser_discovery,
         )
         resolution_notes.extend(resolved.notes)
         _configured_field_unresolved = (
