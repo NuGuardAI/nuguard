@@ -50,9 +50,28 @@ def make_handler(upstream: str):
             self.end_headers()
             self.wfile.write(data)
 
+        def _send_raw(self, code: int, data: bytes, content_type: str | None) -> None:
+            self.send_response(code)
+            self.send_header("Content-Type", content_type or "text/plain")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
         def do_GET(self) -> None:  # noqa: N802
             if self.path == "/health":
                 self._send(200, {"status": "ok"})
+            elif self.path.split("?")[0] == UPSTREAM_PATH:
+                # Pass the real endpoint through unchanged, so NuGuard's liveness probe and its
+                # direct-HTTP scenarios see the app itself instead of a 404 from the shim.
+                try:
+                    with urllib.request.urlopen(  # noqa: S310
+                        upstream.rstrip("/") + self.path, timeout=UPSTREAM_TIMEOUT
+                    ) as resp:
+                        self._send_raw(resp.status, resp.read(), resp.headers.get("Content-Type"))
+                except urllib.error.HTTPError as exc:
+                    self._send_raw(exc.code, exc.read(), exc.headers.get("Content-Type"))
+                except (urllib.error.URLError, TimeoutError, OSError):
+                    self._send(502, {"response": "upstream unavailable"})
             else:
                 self._send(404, {"response": "not found"})
 
@@ -137,6 +156,12 @@ def _self_test() -> int:
     assert code == 200 and seen["query"]["sessionId"] == [DEFAULT_SESSION], seen
     code, out = post({"userMessage": "boom", "sessionId": "s-2"})
     assert code == 500 and "exploded" in out["response"], (code, out)
+    with urllib.request.urlopen(  # noqa: S310
+        f"http://127.0.0.1:{shim.server_port}{UPSTREAM_PATH}?sessionId=g-1&userMessage=hi%20there",
+        timeout=10,
+    ) as resp:
+        assert resp.status == 200 and resp.read().decode() == "hello Ünïcode & more"
+    assert seen["query"] == {"sessionId": ["g-1"], "userMessage": ["hi there"]}, seen
     shim.shutdown()
     fake.shutdown()
     dead = make_handler("http://127.0.0.1:1")

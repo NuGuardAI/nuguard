@@ -2,3 +2,5 @@ target/
 reports/
 .run/
 *.sbom.json
+*.sbom.enriched.json
+cognitive_policy.json
