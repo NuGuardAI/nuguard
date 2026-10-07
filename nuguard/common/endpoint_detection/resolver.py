@@ -312,6 +312,8 @@ async def resolve_chat_endpoint(
             if observed is None or not observed.confirmed:
                 notes.append("Browser-observed request did not produce a usable chat reply.")
             else:
+                if probe_result_callback is not None:
+                    probe_result_callback(observed)
                 resolved_path = observed_path
                 if not endpoint_is_explicit:
                     path_source = EndpointSource.BROWSER

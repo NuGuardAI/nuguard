@@ -516,7 +516,7 @@ async def resolve_target_session(
         target_url=target_url,
         sbom=sbom,
         endpoint=(
-            configured_chat_path
+            (configured_chat_path if is_endpoint_explicit else None)
             or ("/ws" if is_websocket else chat_path or "/chat")
         ),
         auth_config=auth_runtime.auth_config,
