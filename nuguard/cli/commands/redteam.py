@@ -16,6 +16,7 @@ import typer
 
 from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.cli.report_meta import ReportMeta
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.logging import get_logger
 from nuguard.common.run_checkpoint import PartialRunError
 
@@ -345,6 +346,7 @@ def redteam(
         capability_discovery=cfg.redteam_capability_discovery,
         liveness_cache_ttl_seconds=cfg.redteam_liveness_cache_ttl_seconds,
         preflight_candidates=cfg.redteam_preflight_candidates,
+        browser_discovery=cfg.redteam_browser_discovery,
         llm_capability_dedup=cfg.redteam_llm_capability_dedup,
         catalog=custom_catalog,
         pre_run_warmup=cfg.redteam_pre_run_warmup,
@@ -673,6 +675,7 @@ async def _run_redteam(
     asm_max_probe_requests: int = 25,
     asm_extra_inventory_paths: "list[str] | None" = None,
     trust_context_confirmation_cells: int = 1,
+    browser_discovery: BrowserDiscoveryConfig | None = None,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -821,6 +824,7 @@ async def _run_redteam(
                 capability_discovery=capability_discovery,
                 liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
                 preflight_candidates=preflight_candidates,
+                browser_discovery=browser_discovery,
                 llm_capability_dedup=llm_capability_dedup,
                 catalog=catalog,
                 pre_run_warmup=pre_run_warmup,
@@ -896,6 +900,7 @@ async def _run_redteam(
         capability_discovery=capability_discovery,
         liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
         preflight_candidates=preflight_candidates,
+        browser_discovery=browser_discovery,
         llm_capability_dedup=llm_capability_dedup,
         catalog=catalog,
         pre_run_warmup=pre_run_warmup,
@@ -981,6 +986,7 @@ async def _run_orchestrator(  # noqa: C901
     asm_max_probe_requests: int = 25,
     asm_extra_inventory_paths: "list[str] | None" = None,
     trust_context_confirmation_cells: int = 1,
+    browser_discovery: BrowserDiscoveryConfig | None = None,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from pydantic import SecretStr
 
@@ -1063,6 +1069,7 @@ async def _run_orchestrator(  # noqa: C901
         capability_discovery=capability_discovery,
         liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
         preflight_candidates=preflight_candidates,
+        browser_discovery=browser_discovery or BrowserDiscoveryConfig(),
         llm_capability_dedup=llm_capability_dedup,
         chat_payload_extras=chat_payload_extras or None,
         pre_run_warmup=pre_run_warmup,

@@ -189,63 +189,10 @@ def _substitute_path_params(path: str, values: dict[str, str]) -> tuple[str, lis
 
 
 def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
-    """Extract a value from a nested dict/list using a flexible path notation.
+    """Compatibility wrapper for the shared nested JSON path extractor."""
+    from nuguard.common.response_extraction import extract_nested_key
 
-    Supports:
-    - Dot notation: ``"a.b.c"``
-    - Bracket array index: ``"outputs[0].text"``
-    - Numeric path segment: ``"outputs.0.text"``
-    - List spread: when a list is encountered without an explicit index,
-      traversal continues across all items; non-null results are returned
-      as a list (single element is unwrapped to the bare value).
-
-    Examples::
-
-        _extract_nested_key({"a": {"b": "val"}}, "a.b")            # → "val"
-        _extract_nested_key({"outputs": [{"text": "hi"}]}, "outputs[0].text")  # → "hi"
-        _extract_nested_key({"outputs": [{"text": "hi"}]}, "outputs.0.text")   # → "hi"
-        _extract_nested_key({"outputs": [{"text": "a"}, {"text": "b"}]}, "outputs.text")  # → ["a", "b"]
-    """
-    # Tokenize: split on '.' then parse optional bracket index from each segment.
-    # e.g. "outputs[0].text" → [("outputs", 0), ("text", None)]
-    tokens: list[tuple[str, int | None]] = []
-    for raw_part in key_path.split("."):
-        m = re.fullmatch(r"(\w+)\[(\d+)\]", raw_part)
-        if m:
-            tokens.append((m.group(1), int(m.group(2))))
-        else:
-            tokens.append((raw_part, None))
-
-    current: Any = data
-    for key, idx in tokens:
-        if current is None:
-            return None
-
-        # Numeric-only key → treat as list index
-        if key.isdigit():
-            if isinstance(current, list):
-                i = int(key)
-                current = current[i] if i < len(current) else None
-            else:
-                return None
-        elif isinstance(current, dict):
-            current = current.get(key)
-        elif isinstance(current, list):
-            # List spread: collect the named key from each dict item
-            results = [item.get(key) for item in current if isinstance(item, dict)]
-            results = [r for r in results if r is not None]
-            current = results[0] if len(results) == 1 else (results if results else None)
-        else:
-            return None
-
-        # Apply explicit bracket array index if present
-        if idx is not None:
-            if isinstance(current, list):
-                current = current[idx] if idx < len(current) else None
-            else:
-                return None
-
-    return current
+    return extract_nested_key(data, key_path)
 
 
 # SSE event "type" values that are always transient progress/control frames,
@@ -279,6 +226,8 @@ def _extract_sse_event_text(event: dict[str, Any]) -> str | None:
     an assistant reply.
     """
     if not isinstance(event, dict) or "error" in event:
+        return ""
+    if "detail" in event and set(event) <= {"detail", "message", "code", "status"}:
         return ""
     event_type = event.get("type")
     if isinstance(event_type, str) and event_type.lower() in _SSE_NON_CONTENT_TYPES:
@@ -319,49 +268,14 @@ def _extract_sse_event_text(event: dict[str, Any]) -> str | None:
         # (e.g. a "message_start"/"ping" control frame) — legitimately empty,
         # not unrecognized.
         return ""
-    return None
+    return _extract_common_response_text(event) or None
 
 
 def _extract_common_response_text(data: Any) -> str:
-    """Try the common generic response shapes shared by chat/streaming clients.
+    """Compatibility wrapper for shared reply extraction (without JSON fallback)."""
+    from nuguard.common.response_extraction import extract_chat_text
 
-    Order: ``response``/``answer``/``content``/``text``/``message.content``
-    keys, then Google ADK/CES ``outputs: [{"text": ...}]``, then a trailing
-    ``messages: [...]`` entry, then a raw string. Returns ``""`` if none match
-    — callers apply their own last-resort fallback (raw JSON dump, key
-    auto-detection, etc.).
-
-    ``answer`` matters here specifically because it's a common top-level key
-    that competes with sibling keys like ``suggestions`` (a list of follow-up
-    prompt chips). Without it in this always-tried, never-cached path, a
-    response whose ``answer`` happens to be short/echo-filtered on the first
-    probed turn would let ``_detect_response_key``'s one-shot, cached
-    auto-detection lock onto ``suggestions`` instead — silently discarding
-    the real reply for the rest of the run.
-    """
-    text = ""
-    if isinstance(data, dict):
-        text = (
-            data.get("response")
-            or data.get("answer")
-            or data.get("content")
-            or data.get("text")
-            or data.get("message", {}).get("content", "")
-            or ""
-        )
-    # Google ADK / CES format: {"outputs": [{"text": "..."}]}
-    if not text and isinstance(data, dict) and isinstance(data.get("outputs"), list):
-        outputs = data["outputs"]
-        texts = [item.get("text", "") for item in outputs if isinstance(item, dict)]
-        text = " ".join(t for t in texts if t)
-    # Handle list-of-messages response (e.g. openai-cs-agents-demo)
-    if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
-        msgs = data["messages"]
-        if msgs and isinstance(msgs[-1], dict):
-            text = msgs[-1].get("content") or msgs[-1].get("text") or ""
-    if not text and isinstance(data, str):
-        text = data
-    return text
+    return extract_chat_text(data)
 MAX_CONSECUTIVE_ERRORS = 3
 DEFAULT_MAX_429_RETRIES = 2
 DEFAULT_429_BACKOFF_BASE_SECONDS = 0.5
@@ -454,6 +368,8 @@ class TargetAppClient:
         # a structured artefact even after text extraction (see
         # nuguard.common.response_extraction.chat_fitness).
         self.last_raw_response: Any = None
+        self._last_response_is_report_fallback = False
+        self._last_response_extracted_from_stream = False
         # Two-step chat bootstrap: values bound via set_path_param() to
         # substitute :name/{name} placeholders in _chat_path before each
         # request (e.g. a conversation id created by a prerequisite POST) —
@@ -1050,6 +966,8 @@ class TargetAppClient:
         method, is responsible for calling ``_record_chat_error`` on a 502/503/504
         once its own retries are exhausted (see the 502/503/504 branch below).
         """
+        self._last_response_is_report_fallback = False
+        self._last_response_extracted_from_stream = False
         data: dict | list | str = {}
         body: dict | None = None
         _ctx: dict[str, Any] = (
@@ -1176,8 +1094,12 @@ class TargetAppClient:
                         resp.status_code, resp.text,
                     )
                 resp.raise_for_status()
-                _content_type = resp.headers.get("content-type", "")
-                if "text/event-stream" in _content_type and self._framework_adapter is None:
+                _content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+                from nuguard.common.endpoint_detection.constants import (
+                    STREAMING_CONTENT_TYPES,  # noqa: PLC0415
+                )
+
+                if _content_type in STREAMING_CONTENT_TYPES and self._framework_adapter is None:
                     # Non-streaming send() against an SSE-only chat endpoint (e.g.
                     # a FastAPI StreamingResponse) — resp.json() would raise
                     # JSONDecodeError on the buffered "data: {...}\n\n" body,
@@ -1187,13 +1109,31 @@ class TargetAppClient:
                     # the isinstance(data, str) fallback below picks this up.
                     from nuguard.redteam.target.sse import parse_sse_events  # noqa: PLC0415
 
-                    _sse_events = parse_sse_events(resp.text)
-                    _extracted_texts = [_extract_sse_event_text(_ev) for _ev in _sse_events]
+                    if _content_type == "text/event-stream":
+                        _sse_events = parse_sse_events(resp.text)
+                    else:
+                        _sse_events = []
+                        for line in resp.text.splitlines():
+                            try:
+                                event = json.loads(line)
+                            except ValueError:
+                                continue
+                            if isinstance(event, dict):
+                                _sse_events.append(event)
+                    if self._chat_response_key:
+                        from nuguard.common.response_extraction import (
+                            extract_chat_text,  # noqa: PLC0415
+                        )
+
+                        _extracted_texts: list[str | None] = [extract_chat_text(_ev, self._chat_response_key) for _ev in _sse_events]
+                    else:
+                        _extracted_texts = [_extract_sse_event_text(_ev) for _ev in _sse_events]
                     _sse_text = "".join(t for t in _extracted_texts if t)
                     _has_error_event = any(
-                        isinstance(_ev, dict) and "error" in _ev for _ev in _sse_events
+                        isinstance(_ev, dict) and ("error" in _ev or "detail" in _ev) for _ev in _sse_events
                     )
                     if _sse_text:
+                        self._last_response_extracted_from_stream = True
                         data = _sse_text
                     elif _has_error_event:
                         # An app-level error event carries no extractable
@@ -1201,6 +1141,7 @@ class TargetAppClient:
                         # _extract_sse_event_text's docstring), but it must
                         # still reach callers/judges as a visible failure
                         # rather than silently becoming an empty response.
+                        self._last_response_is_report_fallback = True
                         data = json.dumps(_sse_events)
                     elif _sse_events and all(t is None for t in _extracted_texts):
                         # Every event had an unrecognized (non-error) shape —
@@ -1321,20 +1262,14 @@ class TargetAppClient:
         # ordering, one bad turn permanently poisons every later turn even
         # after the target starts responding normally again.
         # chat_response_key supports dot-notation for nested keys (e.g. "result.text").
+        from nuguard.common.response_extraction import extract_chat_text  # noqa: PLC0415
+
         if self._chat_response_key and isinstance(data, dict):
-            extracted = _extract_nested_key(data, self._chat_response_key)
-            if isinstance(extracted, list):
-                text = " ".join(str(item) for item in extracted if item is not None)
-            elif extracted is not None:
-                text = str(extracted)
-        if not text:
+            text = extract_chat_text(data, self._chat_response_key)
+        elif not text:
             text = _extract_common_response_text(data)
         if not text and self._detected_response_key and isinstance(data, dict):
-            extracted = _extract_nested_key(data, self._detected_response_key)
-            if isinstance(extracted, list):
-                text = " ".join(str(item) for item in extracted if item is not None)
-            elif extracted is not None:
-                text = str(extracted)
+            text = extract_chat_text(data, self._detected_response_key)
         # Last resort: return full JSON so evaluators have something to work with.
         # Before doing so, attempt one-time auto-detection of the response key so
         # subsequent turns extract a clean text field instead of raw JSON.
@@ -1343,11 +1278,7 @@ class TargetAppClient:
                 detected = self._detect_response_key(data, value if isinstance(value, str) else "")
                 if detected:
                     self._detected_response_key = detected
-                    extracted = _extract_nested_key(data, detected)
-                    if isinstance(extracted, list):
-                        text = " ".join(str(i) for i in extracted if i is not None)
-                    elif extracted is not None:
-                        text = str(extracted)
+                    text = extract_chat_text(data, detected)
             if not text:
                 text = json.dumps(data)
 

@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Any, Callable, cast
 
 from nuguard.common.endpoint_detection.constants import (
+    CHAT_CONTRACT_VERSION,
     DEFAULT_PAYLOAD_KEY,
     DEFAULT_PROBE_TIMEOUT_SECONDS,
+    PROBE_SOURCE_RUNTIME_PROBE,
     UNSET,
 )
 from nuguard.common.endpoint_detection.live_probe import ProbeResult, probe_endpoint
@@ -39,12 +41,12 @@ def payload_shape_from_probe_result(
     resolved_response = (
         str(response_key)
         if response_is_explicit and response_key is not None
-        else None
+        else (None if response_is_explicit or result is None else result.response_key)
     )
 
     if result is None or not result.confirmed:
         resolved_source = EndpointSource.FALLBACK
-        notes = (note or "Payload shape probe returned no result; defaults were retained.",)
+        notes = ("The message field could not be confirmed; candidate defaults are not a validated contract.",)
     else:
         resolved_source = source
         notes = (note or "Payload shape normalized from probe result.",)
@@ -60,6 +62,21 @@ def payload_shape_from_probe_result(
         explicit_template=template_is_explicit,
         notes=notes,
     )
+
+
+def _sbom_payload_contract(sbom: Any, endpoint: str) -> tuple[str | None, bool, str | None]:
+    """Read a declared request field without trusting obsolete probe metadata."""
+    for node in getattr(sbom, "nodes", ()):
+        metadata = node.metadata
+        if (
+            metadata is not None and metadata.endpoint == endpoint and metadata.chat_payload_key
+            and (metadata.method or "POST").upper() in {"POST", "ANY"}
+        ):
+            if (metadata.extras or {}).get("source") == PROBE_SOURCE_RUNTIME_PROBE:
+                if (metadata.extras or {}).get("chat_contract_version") != CHAT_CONTRACT_VERSION:
+                    continue
+            return metadata.chat_payload_key, bool(metadata.chat_payload_list), metadata.response_text_key
+    return None, False, None
 
 
 async def detect_payload_shape(
@@ -104,18 +121,27 @@ async def detect_payload_shape(
             notes=("Payload shape supplied by configuration.",),
         )
 
+    # A matching SBOM node declares a field candidate. Preserve it when the
+    # caller omitted that field instead of restarting a blind naming sweep.
+    sbom_key, sbom_list, sbom_response = _sbom_payload_contract(sbom, endpoint)
+    effective_key = str(payload_key) if key_is_explicit else sbom_key
+    effective_response = str(response_key) if response_is_explicit and response_key is not None else (
+        None if response_is_explicit else sbom_response
+    )
     result = await probe_endpoint(
         target_url,
         sbom,
         auth_headers=auth_headers,
         timeout=timeout,
-        known_payload_key=str(payload_key) if key_is_explicit else None,
-        known_payload_list=bool(payload_list) if list_is_explicit else False,
-        known_response_key=str(response_key) if response_is_explicit else None,
+        known_payload_key=effective_key,
+        known_payload_list=bool(payload_list) if list_is_explicit else sbom_list,
+        known_response_key=effective_response,
         probe_payload_extras=probe_payload_extras,
         hint_path=endpoint,
         llm=llm,
     )
+    if result is not None:
+        result.response_key = effective_response
     if result is not None and result.confirmed and probe_result_callback is not None:
         probe_result_callback(result)
 

@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
 from nuguard.common.endpoint_detection.constants import (
+    CHAT_CONTRACT_VERSION,
     CONVERSATIONAL_PATH_SEGMENTS,
     CONVERSATIONAL_PAYLOAD_KEYS,
     EXCLUDE_PATTERNS,
@@ -92,6 +93,8 @@ def find_confirmed_chat_endpoint(
             continue
         extras = meta.extras or {}
         if extras.get("source") != PROBE_SOURCE_RUNTIME_PROBE:
+            continue
+        if extras.get("chat_contract_version") != CHAT_CONTRACT_VERSION:
             continue
         if ttl_seconds is not None and not _confirmation_is_fresh(
             extras.get("confirmed_at"), ttl_seconds
@@ -287,6 +290,9 @@ def discover_chat_candidates_from_sbom(
         endpoint_l = discovered_path.lower()
         node_extras: ProbeExtras = cast(ProbeExtras, meta.extras or {})
         source = node_extras.get("source")
+        # A legacy probe's guessed key is not static request-contract evidence.
+        if source == PROBE_SOURCE_RUNTIME_PROBE and node_extras.get("chat_contract_version") != CHAT_CONTRACT_VERSION:
+            continue
 
         # ── Resolve payload key ────────────────────────────────────────────
         inferred_response_key: str | None = meta.response_text_key or None

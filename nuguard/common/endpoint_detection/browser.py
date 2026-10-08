@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.endpoint_detection.models import EndpointSource, PayloadShape
 
 
@@ -13,6 +14,8 @@ async def detect_with_browser(
     chat_message: str = "Hello",
     timeout_s: int = 30,
     auth_config: Any = None,
+    browser_discovery: BrowserDiscoveryConfig | None = None,
+    discovery_notes: list[str] | None = None,
 ) -> tuple[str, PayloadShape] | None:
     """Observe the target UI's chat request as a last-resort detector.
 
@@ -35,11 +38,13 @@ async def detect_with_browser(
             async with BrowserLoginSession(
                 target_url,
                 auth_config,
-                BrowserDiscoveryConfig(),
+                browser_discovery or BrowserDiscoveryConfig(),
                 headless=True,
                 timeout_s=timeout_s,
             ) as session:
                 login_result = await session.run(chat_message=chat_message, sniff_chat=True)
+                if discovery_notes is not None:
+                    discovery_notes.extend(login_result.warnings if hasattr(login_result, "warnings") else [])
             if login_result.sniffed_endpoint and login_result.sniffed_chat_request:
                 path = urlparse(login_result.sniffed_endpoint).path or None
                 key_info = _find_chat_payload_key(login_result.sniffed_chat_request, chat_message)
@@ -48,7 +53,9 @@ async def detect_with_browser(
         except Exception as exc:  # noqa: BLE001 - browser fallback is best effort
             from nuguard.common.logging import get_logger  # noqa: PLC0415
 
-            get_logger(__name__).info("browser endpoint discovery failed: %s", exc)
+            get_logger(__name__).info("browser endpoint discovery failed (%s)", type(exc).__name__)
+            if discovery_notes is not None:
+                discovery_notes.append("Authenticated browser discovery failed before confirming a chat request.")
     else:
         from nuguard.common.browser_login.session import (
             sniff_chat_endpoint_headless,  # noqa: PLC0415
@@ -58,6 +65,8 @@ async def detect_with_browser(
             target_url,
             chat_message=chat_message,
             timeout_s=timeout_s,
+            browser_discovery=browser_discovery,
+            discovery_notes=discovery_notes,
         )
         if sniffed_result is not None:
             path, payload_key, payload_list = sniffed_result

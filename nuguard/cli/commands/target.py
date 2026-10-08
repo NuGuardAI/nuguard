@@ -12,6 +12,7 @@ from rich.table import Table
 
 from nuguard.common.auth import AuthConfig
 from nuguard.common.auth_runtime import resolve_auth_runtime
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.errors import TargetEndpointNotFoundError, TargetUnavailableError
 from nuguard.config import load_config
 from nuguard.redteam.target.canary import CanaryConfig
@@ -341,6 +342,7 @@ async def _verify_async(
                 payload_key_explicit=keep_resolved or "redteam_chat_payload_key" in configured_fields,
                 response_key_explicit="redteam_chat_response_key" in configured_fields,
                 endpoint_source_hint="probe" if keep_resolved else None,
+                browser_discovery=cfg.target_browser_discovery,
             )
         except TargetEndpointNotFoundError as exc:
             console.print(f"[red]✗ Endpoint discovery failed:[/red] {exc}")
@@ -390,6 +392,7 @@ async def _verify_async(
                 canary_config=canary_config,
                 config_path=config_path,
                 endpoint_explicit=bool(ep_configured),
+                browser_discovery=cfg.target_browser_discovery,
                 payload_key_explicit="redteam_chat_payload_key" in configured_fields,
                 response_key_explicit="redteam_chat_response_key" in configured_fields,
             )
@@ -427,6 +430,7 @@ async def _verify_async(
                 has_explicit_endpoint=bool(ep_configured),
                 preflight_candidates=effective_preflight_candidates,
                 sbom_path=sbom_path,
+                browser_discovery=cfg.target_browser_discovery,
             )
             if preflight_skip_note:
                 discovery_skip_note = preflight_skip_note
@@ -545,6 +549,7 @@ async def _run_pre_scan_discovery(
     has_explicit_endpoint: bool,
     preflight_candidates: int,
     sbom_path: "Path | None" = None,
+    browser_discovery: BrowserDiscoveryConfig | None = None,
 ) -> "tuple[DiscoveredProfile | None, str | None]":
     """Run the same pre-scan discovery conversation used by behavior/redteam.
 
@@ -629,6 +634,7 @@ async def _run_pre_scan_discovery(
                     target_url=session_cfg.base_url,
                     auth_headers=session_cfg.effective_headers or None,
                     max_candidates=preflight_candidates,
+                    browser_discovery=browser_discovery,
                 )
                 for note in preflight.notes:
                     console.print(f"  [dim]{note}[/dim]")
@@ -647,28 +653,29 @@ async def _run_pre_scan_discovery(
                     final_payload_key = getattr(client, "_chat_payload_key", "message")
                     final_payload_list = bool(getattr(client, "_chat_payload_list", False))
                     final_response_key = getattr(client, "_chat_response_key", None)
-                persist_endpoint_resolution(
-                    sbom_doc,
-                    session_cfg.base_url,
-                    auth_config,
-                    chat_path=final_path,
-                    chat_payload_key=final_payload_key,
-                    chat_payload_list=final_payload_list,
-                    chat_response_key=final_response_key,
-                    endpoint_source=preflight.endpoint_source,
-                    path_param_values=dict(getattr(client, "path_param_values", None) or {}),
-                )
-                if sbom_path is not None:
-                    from nuguard.common.auto_sbom_enricher import (
-                        persist_endpoint_resolution_sbom,
+                if preflight.cacheable:
+                    persist_endpoint_resolution(
+                        sbom_doc,
+                        session_cfg.base_url,
+                        auth_config,
+                        chat_path=final_path,
+                        chat_payload_key=final_payload_key,
+                        chat_payload_list=final_payload_list,
+                        chat_response_key=final_response_key,
+                        endpoint_source=preflight.endpoint_source,
+                        path_param_values=dict(getattr(client, "path_param_values", None) or {}),
                     )
-
-                    try:
-                        persist_endpoint_resolution_sbom(sbom_doc, sbom_path)
-                    except Exception as exc:
-                        console.print(
-                            f"  [yellow]Could not persist endpoint resolution (non-fatal):[/yellow] {exc}"
+                    if sbom_path is not None:
+                        from nuguard.common.auto_sbom_enricher import (
+                            persist_endpoint_resolution_sbom,
                         )
+
+                        try:
+                            persist_endpoint_resolution_sbom(sbom_doc, sbom_path)
+                        except Exception as exc:
+                            console.print(
+                                f"  [yellow]Could not persist endpoint resolution (non-fatal):[/yellow] {exc}"
+                            )
             # Same cache-then-fall-back pattern as the endpoint resolution
             # above, applied to the discovered identity profile (issue #611
             # Phase 2) — previously wired into verify_target()'s sibling

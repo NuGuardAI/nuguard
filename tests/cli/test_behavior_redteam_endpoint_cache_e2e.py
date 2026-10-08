@@ -21,6 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
 from typer.testing import CliRunner
 
@@ -40,7 +41,7 @@ _ACCOUNT_RESPONSE = (
 )
 
 
-def _write_one_node_sbom(tmp_path: Path) -> Path:
+def _write_one_node_sbom(tmp_path: Path, payload_key: str = "message") -> Path:
     doc = AiSbomDocument(
         target="./test-app",
         nodes=[
@@ -48,7 +49,7 @@ def _write_one_node_sbom(tmp_path: Path) -> Path:
                 name="chat_endpoint",
                 component_type=NodeType.API_ENDPOINT,
                 confidence=0.95,
-                metadata=NodeMetadata(endpoint=ENDPOINT, method="POST", chat_payload_key="message"),
+                metadata=NodeMetadata(endpoint=ENDPOINT, method="POST", chat_payload_key=payload_key),
             ),
         ],
     )
@@ -146,10 +147,12 @@ def _verify_args(sbom_path: Path) -> list[str]:
 
 
 @respx.mock
-def test_target_verify_then_behavior_reuses_cached_endpoint(tmp_path: Path) -> None:
-    sbom_path = _write_one_node_sbom(tmp_path)
+@pytest.mark.parametrize("payload_key", ["message", "text"])
+def test_target_verify_then_behavior_reuses_cached_endpoint(tmp_path: Path, payload_key: str) -> None:
+    sbom_path = _write_one_node_sbom(tmp_path, payload_key)
+    reply = {"outputs": [{"text": _ACCOUNT_RESPONSE}]} if payload_key == "text" else {"response": _ACCOUNT_RESPONSE}
     route = respx.post(FULL_URL).mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        return_value=httpx.Response(200, json=reply)
     )
 
     verify_result = runner.invoke(app, _verify_args(sbom_path), catch_exceptions=False)
@@ -188,10 +191,12 @@ def test_target_verify_then_behavior_reuses_cached_endpoint(tmp_path: Path) -> N
 
 
 @respx.mock
-def test_target_verify_then_redteam_reuses_cached_endpoint(tmp_path: Path) -> None:
-    sbom_path = _write_one_node_sbom(tmp_path)
+@pytest.mark.parametrize("payload_key", ["message", "text"])
+def test_target_verify_then_redteam_reuses_cached_endpoint(tmp_path: Path, payload_key: str) -> None:
+    sbom_path = _write_one_node_sbom(tmp_path, payload_key)
+    reply = {"outputs": [{"text": _ACCOUNT_RESPONSE}]} if payload_key == "text" else {"response": _ACCOUNT_RESPONSE}
     route = respx.post(FULL_URL).mock(
-        return_value=httpx.Response(200, json={"response": _ACCOUNT_RESPONSE})
+        return_value=httpx.Response(200, json=reply)
     )
 
     verify_result = runner.invoke(app, _verify_args(sbom_path), catch_exceptions=False)

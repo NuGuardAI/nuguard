@@ -53,6 +53,22 @@ def test_fingerprint_same_for_same_inputs():
     )
 
 
+def test_legacy_endpoint_cache_fingerprint_requires_revalidation():
+    import hashlib
+    import json
+
+    from nuguard.common.discovery import auth_identity_string
+
+    sbom = _sbom_with_endpoint()
+    persist_endpoint_resolution(
+        sbom, _TARGET_URL, None, chat_path=_CHAT_PATH, chat_payload_key="message",
+        chat_payload_list=False, chat_response_key=None, endpoint_source="probe", path_param_values={},
+    )
+    old_value = f"{_TARGET_URL}|{auth_identity_string(None)}|{_CHAT_PATH}|{json.dumps(_SOURCES, sort_keys=True)}"
+    sbom.resolved_chat_endpoint_fingerprint = hashlib.sha256(old_value.encode()).hexdigest()
+    assert cached_endpoint_resolution(sbom, _TARGET_URL, None) is None
+
+
 def test_fingerprint_differs_for_different_target_urls():
     assert endpoint_cache_fingerprint("http://a.test", None, _CHAT_PATH, _SOURCES) != endpoint_cache_fingerprint(
         "http://b.test", None, _CHAT_PATH, _SOURCES
