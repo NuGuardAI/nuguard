@@ -41,6 +41,7 @@ else
   export OPENAI_API_KEY="not-a-real-key"
 fi
 
+echo "[serve] model overrides passed to the app: ${LLM_ARGS[*]:-none}"
 echo "[serve] starting app on 127.0.0.1:$APP_PORT"
 SERVER_ADDRESS=127.0.0.1 SERVER_PORT=$APP_PORT \
   java -cp "$APP_DIR/target/classes:$(cat "$CP_FILE")" dev.langchain4j.example.CustomerSupportAgentApplication \
