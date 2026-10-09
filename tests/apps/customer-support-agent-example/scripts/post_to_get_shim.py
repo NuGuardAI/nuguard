@@ -22,6 +22,7 @@ import argparse
 import json
 import sys
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -44,6 +45,21 @@ def make_handler(upstream: str):
     class Handler(BaseHTTPRequestHandler):
         def _send(self, code: int, payload: dict) -> None:
             data = json.dumps(payload).encode("utf-8")
+            req = getattr(self, "_req_body", None)
+            if req is not None:
+                self._req_body = None
+                print(
+                    json.dumps(
+                        {
+                            "ts": time.strftime("%H:%M:%S"),
+                            "session": str(req.get("sessionId", req.get("session_id", "")))[:40],
+                            "user": str(req.get("userMessage", req.get("message", "")))[:600],
+                            "status": code,
+                            "response": str(payload.get("response", ""))[:600],
+                        }
+                    ),
+                    flush=True,
+                )
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
@@ -88,6 +104,7 @@ def make_handler(upstream: str):
                 self._send(400, {"response": "invalid JSON body"})
                 return
             url = translate(body, upstream)
+            self._req_body = body
             try:
                 with urllib.request.urlopen(url, timeout=UPSTREAM_TIMEOUT) as resp:  # noqa: S310
                     text = resp.read().decode("utf-8", errors="replace")
