@@ -117,6 +117,16 @@ def _affected_versions(detail: dict[str, Any]) -> str:
     return "; ".join(ranges) if ranges else "see advisory"
 
 
+def _purl_has_version(purl: str) -> bool:
+    """True when the purl pins a version, for example ``pkg:maven/group/name@1.2.3``.
+
+    OSV answers a purl without a version with every advisory ever published for that package
+    name, not the ones that affect the project, so such dependencies must not be queried.
+    """
+    last_segment = purl.split("?", 1)[0].split("#", 1)[0].rsplit("/", 1)[-1]
+    return "@" in last_segment
+
+
 def query_osv(
     deps: list[dict[str, Any]],
     timeout: float = _TIMEOUT,
@@ -133,6 +143,15 @@ def query_osv(
         for dep in deps
         if dep.get("purl")
     ]
+    unversioned = [purl for purl, _, _ in purls_with_meta if not _purl_has_version(purl)]
+    if unversioned:
+        _log.info(
+            "OSV: skipping %d dependenc%s without a resolved version: %s",
+            len(unversioned),
+            "y" if len(unversioned) == 1 else "ies",
+            ", ".join(unversioned[:5]),
+        )
+        purls_with_meta = [m for m in purls_with_meta if _purl_has_version(m[0])]
     if not purls_with_meta:
         return []
 

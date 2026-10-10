@@ -48,6 +48,8 @@ _GRADLE_CONFIG_GROUPS = {
     "developmentonly": "dev",
 }
 _PLACEHOLDER_RE = re.compile(r"\$\{([^}]+)\}|\$([A-Za-z_][\w.]*)")
+_SPRING_BOOT_GROUP = "org.springframework.boot"
+_SPRING_BOOT_PARENTS = {"spring-boot-starter-parent", "spring-boot-dependencies"}
 
 
 def _local_name(tag: str) -> str:
@@ -200,6 +202,29 @@ def _maven_scope(scope: str, optional: str) -> str:
     return "runtime"
 
 
+def _spring_boot_version(
+    project: ET.Element,
+    properties: dict[str, str],
+    managed_versions: dict[tuple[str, str], str],
+) -> str:
+    """Return the Spring Boot version that manages ``org.springframework.boot`` dependencies.
+
+    It comes from an imported ``spring-boot-dependencies`` BOM (which wins in Maven) or from a
+    ``spring-boot-starter-parent`` parent. Returns an empty string when neither is declared.
+    """
+    imported = managed_versions.get((_SPRING_BOOT_GROUP, "spring-boot-dependencies"), "")
+    if imported:
+        return imported
+    parent = _child(project, "parent")
+    if parent is None:
+        return ""
+    if _resolve(_text(parent, "groupId"), properties) != _SPRING_BOOT_GROUP:
+        return ""
+    if _resolve(_text(parent, "artifactId"), properties) not in _SPRING_BOOT_PARENTS:
+        return ""
+    return _resolve(_text(parent, "version"), properties)
+
+
 def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
     try:
         project = ET.parse(path).getroot()
@@ -214,6 +239,7 @@ def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
         version = _resolve(_text(dependency, "version"), properties)
         if group and artifact and version:
             managed_versions[(group, artifact)] = version
+    boot_version = _spring_boot_version(project, properties, managed_versions)
     source = str(path.relative_to(root))
     result: list[dict[str, str]] = []
     for dependency in declared:
@@ -222,6 +248,8 @@ def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
         version = _resolve(_text(dependency, "version"), properties)
         if not version:
             version = managed_versions.get((group, artifact), "")
+        if not version and group == _SPRING_BOOT_GROUP:
+            version = boot_version
         scope = _resolve(_text(dependency, "scope"), properties)
         optional = _resolve(_text(dependency, "optional"), properties)
         item = _record(group, artifact, version, _maven_scope(scope, optional), source)
