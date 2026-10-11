@@ -41,6 +41,17 @@ _AI_MARKERS = (
     "VertexAI",
     "PromptTemplate",
 )
+# LangChain4j (Spring Boot starter) and Quarkus LangChain4j declarative AI services.
+_AI_SERVICE_ANNOTATIONS = {"AiService", "RegisterAiService"}
+# Spring scaffolding: such a type is not an agent just because its file imports an AI package.
+_SCAFFOLDING_ANNOTATIONS = {
+    "Configuration",
+    "SpringBootApplication",
+    "RestController",
+    "Controller",
+    "ControllerAdvice",
+    "RestControllerAdvice",
+}
 _TOOL_ANNOTATIONS = {"Tool", "Function", "ToolFunction", "Action"}
 _GUARDRAIL_MARKERS = (
     "Guardrail",
@@ -174,14 +185,16 @@ class JavaAIAdapter(JavaFrameworkAdapter):
         agent_types: list[str] = []
         for item in result.type_declarations:
             body = content[item.body_start : item.body_end + 1]
-            if any(marker in body for marker in _AI_MARKERS) or any(
-                method.containing_type == item.name and _method_contains_ai(method)
-                for method in result.method_declarations
+            annotation_names = {self._annotation_name(annotation) for annotation in item.annotations}
+            if (
+                annotation_names & _AI_SERVICE_ANNOTATIONS
+                or any(marker in body for marker in _AI_MARKERS)
+                or any(
+                    method.containing_type == item.name and _method_contains_ai(method)
+                    for method in result.method_declarations
+                )
             ):
                 agent_types.append(item.name)
-        if not agent_types:
-            stem = PurePosixPath(file_path).stem or "JavaApplication"
-            agent_types = [stem]
 
         tool_methods = [
             method
@@ -197,6 +210,18 @@ class JavaAIAdapter(JavaFrameworkAdapter):
             )
             for method in tool_methods
         }
+
+        if not agent_types:
+            # The file imports an AI package but shows no AI usage. Keep treating it as an agent,
+            # except when it only holds @Tool methods (the tools are still emitted) or when every
+            # type in it is Spring scaffolding (@Configuration, controllers, the application class).
+            scaffolding_only = bool(result.type_declarations) and all(
+                {self._annotation_name(annotation) for annotation in item.annotations}
+                & _SCAFFOLDING_ANNOTATIONS
+                for item in result.type_declarations
+            )
+            if not tool_methods and not scaffolding_only:
+                agent_types = [PurePosixPath(file_path).stem or "JavaApplication"]
 
         datastore_canonicals: list[tuple[str, str]] = []
         for marker, name, datastore_type in _DATASTORE_MARKERS:
