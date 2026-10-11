@@ -185,7 +185,9 @@ class JavaAIAdapter(JavaFrameworkAdapter):
         agent_types: list[str] = []
         for item in result.type_declarations:
             body = content[item.body_start : item.body_end + 1]
-            annotation_names = {self._annotation_name(annotation) for annotation in item.annotations}
+            annotation_names = {
+                self._annotation_name(annotation) for annotation in item.annotations
+            }
             if (
                 annotation_names & _AI_SERVICE_ANNOTATIONS
                 or any(marker in body for marker in _AI_MARKERS)
