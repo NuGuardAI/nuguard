@@ -27,6 +27,114 @@ _JAVA_COOKIE_PATTERNS = (
 )
 
 
+_PACKAGE_RE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.MULTILINE)
+_ANNOTATION_RE = re.compile(r"@\w+(?:\([^)]*\))?\s*")
+# ``Type name;`` / ``Type name =`` declarations in a class body (fields, local variables).
+_DECLARED_TYPE_RE = re.compile(r"\b([A-Z][\w.]*)(?:<[^>;{}()]*>)?\s+[a-z_]\w*\s*[;=]")
+# Simple types that are never agents; skipping them keeps the hint list short.
+_NON_AGENT_TYPES = frozenset(
+    {"String", "Object", "Integer", "Long", "Double", "Boolean", "List", "Map", "Set", "Optional"}
+)
+_MAX_INJECTED_HINTS = 20
+
+
+def _constructor_parameter_type(parameter: str) -> str:
+    """Return the type of ``@Qualifier("x") final SupportAgent agent`` (generics removed)."""
+    text = _ANNOTATION_RE.sub("", parameter).strip()
+    text = re.sub(r"\bfinal\b", "", text).strip()
+    parts = text.rsplit(None, 1)
+    if len(parts) != 2:
+        return ""
+    return re.sub(r"<.*>", "", parts[0]).strip()
+
+
+def _injected_agent_hints(
+    content: str,
+    file_path: str,
+    owner: Any,
+    owner_name: str,
+    result: Any,
+    agent_canonical: str,
+) -> list[RelationshipHint]:
+    """Link a controller to the agents it is injected with.
+
+    The extractor resolves a hint by the canonical name of its target, and that name is built from
+    the target's file path. Java mirrors packages in directories, so the file of an injected type
+    can be derived from the controller's own path, its package and its imports. A hint whose
+    target is not an agent never resolves and is dropped, so only real agents get linked.
+    """
+    package_match = _PACKAGE_RE.search(content)
+    package = package_match.group(1) if package_match else ""
+    parent = str(PurePosixPath(file_path).parent)
+    parent = "" if parent == "." else parent
+    package_path = package.replace(".", "/")
+    source_root: str | None
+    if not package_path:
+        source_root = parent
+    elif parent == package_path:
+        source_root = ""
+    elif parent.endswith("/" + package_path):
+        source_root = parent[: -len(package_path) - 1]
+    else:
+        source_root = None  # the directory layout does not mirror the package
+
+    type_names: list[str] = []
+    for method in result.method_declarations:
+        if method.is_constructor and method.containing_type == owner_name:
+            type_names.extend(_constructor_parameter_type(item) for item in method.parameters)
+    if owner is not None:
+        body = content[owner.body_start : owner.body_end + 1]
+        type_names.extend(_DECLARED_TYPE_RE.findall(body))
+
+    explicit = {
+        item.module.rsplit(".", 1)[-1]: item.module
+        for item in result.imports
+        if not item.wildcard and not item.is_static
+    }
+    wildcards = [item.module for item in result.imports if item.wildcard and not item.is_static]
+
+    def _path_for(qualified: str) -> str | None:
+        if source_root is None:
+            return None
+        relative = qualified.replace(".", "/") + ".java"
+        return f"{source_root}/{relative}" if source_root else relative
+
+    targets: dict[str, str] = {}
+    for type_name in type_names:
+        if not type_name:
+            continue
+        simple = type_name.rsplit(".", 1)[-1]
+        if not simple[:1].isupper() or simple == owner_name or simple in _NON_AGENT_TYPES:
+            continue
+        candidates: list[str] = []
+        if "." in type_name:
+            candidates.append(type_name)
+        elif type_name in explicit:
+            candidates.append(explicit[type_name])
+        else:
+            candidates.append(f"{package}.{type_name}" if package else type_name)
+            candidates.extend(f"{module}.{type_name}" for module in wildcards)
+        for qualified in candidates:
+            target_file = _path_for(qualified)
+            if target_file is None:
+                if "." in qualified and qualified.rsplit(".", 1)[0] != package:
+                    continue
+                target_file = f"{parent}/{simple}.java" if parent else f"{simple}.java"
+            targets.setdefault(_agent_canonical(target_file, simple), simple)
+
+    return [
+        RelationshipHint(
+            source_canonical=agent_canonical,
+            source_type=ComponentType.AGENT,
+            target_canonical=target,
+            target_type=ComponentType.AGENT,
+            relationship_type="CALLS",
+        )
+        for target in list(targets)[:_MAX_INJECTED_HINTS]
+        if target != agent_canonical
+    ]
+
+
 class JavaWebAdapter(JavaFrameworkAdapter):
     """Extract Spring MVC/WebFlux and JAX-RS/Quarkus routes and auth controls."""
 
@@ -248,6 +356,9 @@ class JavaWebAdapter(JavaFrameworkAdapter):
             )
             if agent_canonical not in emitted_agents:
                 emitted_agents.add(agent_canonical)
+                injected_agents = _injected_agent_hints(
+                    content, file_path, owner, owner_name, result, agent_canonical
+                )
                 detections.append(
                     ComponentDetection(
                         component_type=ComponentType.AGENT,
@@ -265,6 +376,7 @@ class JavaWebAdapter(JavaFrameworkAdapter):
                         line=owner.line if owner else method.line,
                         snippet=owner.signature[:160] if owner else method.signature[:160],
                         evidence_kind="ast_decorator",
+                        relationships=injected_agents,
                     )
                 )
             if auth_required:
