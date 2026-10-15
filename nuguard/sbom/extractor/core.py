@@ -69,6 +69,11 @@ from ..adapters.iac import (
     TerraformAdapter,
 )
 from ..adapters.java._java_base import JavaFrameworkAdapter
+from ..adapters.java.java_config import (
+    extract_java_config_models,
+    is_java_app_config_name,
+    link_config_models,
+)
 from ..adapters.json_adapters import (
     AgentJSONConfigAdapter,
     GoogleADKJSONAdapter,
@@ -843,6 +848,8 @@ class AiSbomExtractor:
         _file_imports: dict[str, set[str]] = {}
         # Minified JS files detected during the scan (for SC-019)
         _minified_js_files: list[str] = []
+        # MODEL detections read from application.properties/yml (linked to agents later)
+        _java_config_models: list[ComponentDetection] = []
         # Summary builder only needs a bounded content sample.
         files_sample: list[tuple[str, str]] = []
         files_scanned = 0
@@ -1399,6 +1406,15 @@ class AiSbomExtractor:
                 if _js_lines and max(len(ln) for ln in _js_lines) > 5000:
                     _minified_js_files.append(rel_path)
 
+            # Phase 1c-java-config: chat models named in Spring/Quarkus application config.
+            # The Java AST adapter cannot see these, the starters build the model from them.
+            if is_java_app_config_name(file_path.name):
+                for det in extract_java_config_models(content, rel_path):
+                    self._merge_detection(node_map, det)
+                    _java_config_models.append(det)
+                if suffix == ".properties":
+                    continue  # no other adapter reads .properties files
+
             # Phase 1d: Dockerfile — container image extraction
             if is_dockerfile:
                 _log.debug("running dockerfile adapter on %s", rel_path)
@@ -1717,6 +1733,8 @@ class AiSbomExtractor:
         # technology (e.g. "faiss" regex when "docs_index" / "tickets_index" AST
         # nodes already exist in that file with provider="faiss").
         _suppress_generic_tech_regex_datastore(node_map)
+        # Tie config-derived MODEL nodes to the agents of the same source root.
+        link_config_models(node_map, _java_config_models)
 
         # Record Python assets imported and actually referenced by a file with
         # an agent. The regular hint resolver has only canonical names, so this
@@ -3660,7 +3678,10 @@ class AiSbomExtractor:
                 # nginx configs (nginx.conf, default.conf, *.nginx) carry the gateway
                 # ingress facts the pentest needs; ".conf" is not a source extension.
                 is_nginx = is_nginx_file(path.relative_to(root).as_posix())
-                if suffix not in config.include_extensions and not (is_dockerfile or is_nginx):
+                is_java_config = suffix == ".properties" and is_java_app_config_name(path.name)
+                if suffix not in config.include_extensions and not (
+                    is_dockerfile or is_nginx or is_java_config
+                ):
                     continue
                 # Skip common irrelevant directories
                 parts = path.parts
