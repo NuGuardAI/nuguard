@@ -113,6 +113,7 @@ class AuthBootstrapper:
         payload_list: bool = False,
         sbom: "AiSbomDocument | None" = None,
         endpoint_resolver: "Callable[[dict[str, str]], Awaitable[ResolvedEndpoint]] | None" = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         self._target_url = target_url.rstrip("/")
         # Used to resolve a templated chat endpoint (".../:id/messages") into a
@@ -138,6 +139,7 @@ class AuthBootstrapper:
         self._is_websocket = is_websocket
         self._ws_auth_message = ws_auth_message
         self._endpoint_resolver = endpoint_resolver
+        self._extra_headers = dict(extra_headers or {})
         # Path to the loaded nuguard.yaml, when known. Passed through to
         # attempt_browser_auth_recovery() so a successful browser-login
         # recovery can be persisted back into the file (see run()); None
@@ -290,6 +292,7 @@ class AuthBootstrapper:
             else self._session.headers()
         )
         if self._endpoint_resolver is not None:
+            resolver_headers = {**self._extra_headers, **resolver_headers}
             resolved_endpoint = await self._endpoint_resolver(resolver_headers)
             if not resolved_endpoint.path:
                 raise TargetEndpointNotFoundError(
@@ -521,6 +524,7 @@ class AuthBootstrapper:
         request_headers = {
             "User-Agent": "nuguard-bootstrap/1.0",
             "Content-Type": "application/json",
+            **self._extra_headers,
             **headers,
         }
         # A natural greeting rather than a terse "ping" — a real chat app is far
@@ -808,7 +812,7 @@ class AuthBootstrapper:
 
         from nuguard.redteam.target.ws_client import to_ws_url  # noqa: PLC0415
 
-        request_headers = {"User-Agent": "nuguard-bootstrap/1.0", **headers}
+        request_headers = {"User-Agent": "nuguard-bootstrap/1.0", **self._extra_headers, **headers}
         ws_url = to_ws_url(self._target_url) + self._endpoint
         start = time.monotonic()
         try:

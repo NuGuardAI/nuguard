@@ -512,6 +512,9 @@ async def run_redteam(
         log_path=log_path,
         chat_path=request.chat_path,
         chat_payload_key=request.chat_payload_key,
+        chat_payload_key_explicit=bool(
+            {"chat_payload_key", "chat_payload_list"} & request.model_fields_set
+        ),
         chat_payload_list=request.chat_payload_list,
         chat_response_key=request.chat_response_key,
         concurrency=request.concurrency,

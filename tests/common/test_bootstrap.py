@@ -515,3 +515,48 @@ async def test_cold_start_retry_not_triggered_for_auth_failure() -> None:
 
     assert report.checks[0].status == "auth_failed"
     mock_sleep.assert_not_called()   # no sleep — auth failures skip retries
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_custom_session_headers_reach_discovery_and_bootstrap(caplog) -> None:
+    """A CSRF-protected session needs the same headers during every startup stage."""
+    from nuguard.common.auth_runtime import bootstrap_auth_runtime
+
+    custom = {
+        "Cookie": "session=fixture-session-secret",
+        "X-CSRF-Token": "fixture-csrf-secret",
+        "User-Agent": "test-session-client",
+        "Authorization": "Bearer stale-default",
+    }
+    seen = []
+
+    async def resolve(headers):
+        seen.append(headers)
+        return ResolvedEndpoint(
+            path=ENDPOINT, payload=PayloadShape(key="message"), path_source=EndpointSource.CONFIG,
+        )
+
+    def accept_session(request):
+        assert request.headers["Cookie"] == custom["Cookie"]
+        assert request.headers["X-CSRF-Token"] == custom["X-CSRF-Token"]
+        assert request.headers["User-Agent"] == custom["User-Agent"]
+        assert request.headers["Authorization"] == "Bearer identity-secret"
+        return httpx.Response(200, json={"response": "Hello"})
+
+    respx.post(FULL_URL).mock(side_effect=accept_session)
+    _, report = await bootstrap_auth_runtime(
+        target_url=TARGET,
+        endpoint=ENDPOINT,
+        auth_config=AuthConfig(type="bearer", header="Authorization: Bearer identity-secret"),
+        extra_headers=custom,
+        endpoint_resolver=resolve,
+        startup_retries=0,
+    )
+    assert report.all_ok
+    assert seen == [{**custom, "Authorization": "Bearer identity-secret"}]
+    assert custom["Authorization"] == "Bearer stale-default"
+    serialized = report.model_dump_json()
+    for secret in ("fixture-session-secret", "fixture-csrf-secret", "identity-secret"):
+        assert secret not in caplog.text
+        assert secret not in serialized

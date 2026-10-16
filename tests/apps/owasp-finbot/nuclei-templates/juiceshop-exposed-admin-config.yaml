@@ -1,0 +1,31 @@
+id: juiceshop-exposed-admin-config
+
+info:
+  name: OWASP Juice Shop - Unauthenticated Admin Configuration Disclosure
+  author: security-tester
+  severity: medium
+  description: >
+    The admin application-configuration endpoint returns the full server-side
+    configuration (backend paths, feature flags, theming/branding, and other
+    internal settings) to unauthenticated requests, with no admin-role check
+    enforced.
+  tags: juiceshop, exposure, broken-access-control
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/admin/application-configuration"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        part: body
+        words:
+          - '"config"'
+          - '"application"'
+        condition: and
+# digest: 4a0a0047304502202d5f03cdc1bfe4a9c4c2ce4313da1a52d4e2cc642ca1bbe0842e5a1c137621e8022100e725c92b638965f888d84f094d597f101af2ef3818da247e22f8605a0ec93329:2ded6eed97d125cafacc29c18bc0d60c
