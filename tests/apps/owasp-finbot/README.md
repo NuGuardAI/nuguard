@@ -33,7 +33,7 @@ Run commands from the NuGuard repository root. Docker mode requires Docker Compo
 
    ```bash
    tests/apps/owasp-finbot/finbot-behavior.sh
-   tests/apps/owasp-finbot/finbot-redteam.sh
+   tests/apps/owasp-finbot/finbot-redteam.sh --redteam-only
    ```
 
 The wrappers obtain a temporary anonymous session from `/vendor/`, extract its
@@ -53,3 +53,36 @@ uv run nuguard target verify --config "$SCRIPT_DIR/nuguard.yaml" --skip-discover
 
 The temporary identity does not represent a verified email or privileged account.
 Long runs may need a new session if FinBot expires or rotates its cookie.
+
+## Conventional pentest
+
+NuGuard blocks loopback addresses for conventional pentest, including when
+`--allow-private` is set. Use the running FinBot container's private address:
+
+```bash
+tests/apps/owasp-finbot/finbot-redteam.sh --pentest-only
+```
+
+The wrapper discovers `finbot-app`'s private Docker IPv4 address and uses
+`--allow-private`. If that address is unreachable from the scanner host, set
+`FINBOT_PENTEST_TARGET` to FinBot's authorized private/public URL. The URL is
+validated before session preparation. Chat testing keeps its configured target.
+
+For custom pentest options, invoke the stage directly:
+
+```bash
+tests/apps/owasp-finbot/finbot-pentest.sh --scan-timeout 300
+```
+
+DAST fuzzing and headless testing are enabled by default. Set
+`FINBOT_PENTEST_ACTIVE_FUZZING=0` or `FINBOT_PENTEST_HEADLESS=0` to disable
+those engines. The wrapper writes the session cookie, CSRF token, and fingerprint
+headers to an owner-only, exact-host-scoped Nuclei credential file, then removes
+it when the stage exits. This differs from the chat wrappers' memory-only flow.
+The session is temporary; a scanner warning that no identity endpoint could
+verify it does not establish privileged or verified-email coverage.
+
+With no stage flag, `finbot-redteam.sh` runs pentest followed by redteam and
+obtains a fresh chat session between stages. Pentest setup/execution failures
+stop the script and do not announce a completed report. Findings and coverage
+gate failures retain the generated report at `reports/finbot-pentest.md`.

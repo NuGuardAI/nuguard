@@ -26,7 +26,9 @@ class CSRFParser(HTMLParser):
 try:
     with open(sys.argv[1], encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file)
-    base_url = os.path.expandvars(config["target"]["url"]).rstrip("/")
+    base_url = os.path.expandvars(
+        os.environ.get("FINBOT_SESSION_URL") or config["target"]["url"]
+    ).rstrip("/")
     cookies = CookieJar()
     client = build_opener(HTTPCookieProcessor(cookies))
     # Match target.headers so FinBot's session fingerprint stays consistent.
