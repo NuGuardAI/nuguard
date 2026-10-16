@@ -308,8 +308,8 @@ async def resolve_target_session(
         target_url: Base URL of the target application (may be a static-hosting URL).
         sbom: Parsed AI-SBOM used for endpoint and auth discovery, when available.
         auth_config: Structured auth config; ``None`` falls back to *extra_headers*.
-        extra_headers: Static headers (legacy auth or custom).  Used when *auth_config*
-            is ``None`` or ``type='none'``.
+        extra_headers: Static headers (legacy auth or custom), included in discovery,
+            bootstrap and target requests. Identity auth headers take precedence.
         chat_path: Chat endpoint path from config; empty = auto-discover.
         chat_payload_key: JSON body key for the message (default ``"message"``).
         chat_payload_list: Whether to wrap the message value in a list.
@@ -434,7 +434,7 @@ async def resolve_target_session(
             payload_key=chat_payload_key if payload_key_explicit else UNSET,
             payload_list=chat_payload_list if payload_key_explicit else UNSET,
             response_key=chat_response_key if response_key_explicit else UNSET,
-            auth_headers=auth_headers,
+            auth_headers={**extra_headers, **(auth_headers or {})},
             timeout=request_timeout or 15.0,
             probe_payload_extras=_probe_extras or None,
             enable_browser_fallback=not is_endpoint_explicit,
@@ -530,6 +530,7 @@ async def resolve_target_session(
         payload_key=chat_payload_key,
         payload_list=chat_payload_list,
         endpoint_resolver=endpoint_resolver,
+        extra_headers=extra_headers,
     )
     if _configured_field_unresolved and health_report.all_ok:
         raise TargetEndpointNotFoundError(
@@ -640,6 +641,7 @@ async def resolve_target_session(
             sbom=sbom,
             endpoint=chat_path,
             auth_config=auth_runtime.auth_config,
+            extra_headers=extra_headers,
             canary_config=canary_config,
             run_id=_run_id,
             probe_payload_extras=_probe_extras or None,

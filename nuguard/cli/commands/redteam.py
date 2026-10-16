@@ -304,6 +304,9 @@ def redteam(
         launch=launch,
         chat_path=cfg.target_endpoint,
         chat_payload_key=cfg.redteam_chat_payload_key,
+        chat_payload_key_explicit=bool(
+            {"redteam_chat_payload_key", "redteam_chat_payload_list"} & cfg.model_fields_set
+        ),
         chat_payload_list=cfg.redteam_chat_payload_list,
         chat_response_key=cfg.redteam_chat_response_key or None,
         chat_payload_extras=cfg.redteam_chat_payload_extras or None,
@@ -676,6 +679,7 @@ async def _run_redteam(
     asm_extra_inventory_paths: "list[str] | None" = None,
     trust_context_confirmation_cells: int = 1,
     browser_discovery: BrowserDiscoveryConfig | None = None,
+    chat_payload_key_explicit: bool = False,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -778,6 +782,7 @@ async def _run_redteam(
                 config_path=config_path,
                 chat_path=chat_path,
                 chat_payload_key=chat_payload_key,
+                chat_payload_key_explicit=chat_payload_key_explicit,
                 chat_payload_list=chat_payload_list,
                 chat_response_key=chat_response_key,
                 chat_payload_extras=chat_payload_extras,
@@ -854,6 +859,7 @@ async def _run_redteam(
         config_path=config_path,
         chat_path=chat_path,
         chat_payload_key=chat_payload_key,
+        chat_payload_key_explicit=chat_payload_key_explicit,
         chat_payload_list=chat_payload_list,
         chat_response_key=chat_response_key,
         chat_payload_extras=chat_payload_extras,
@@ -987,6 +993,7 @@ async def _run_orchestrator(  # noqa: C901
     asm_extra_inventory_paths: "list[str] | None" = None,
     trust_context_confirmation_cells: int = 1,
     browser_discovery: BrowserDiscoveryConfig | None = None,
+    chat_payload_key_explicit: bool = False,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from pydantic import SecretStr
 
@@ -1012,13 +1019,17 @@ async def _run_orchestrator(  # noqa: C901
             default_system_prompt=EVAL_EXPERT_SYSTEM_PROMPT,
         )
 
+    # Preserve field presence: supplying defaults unconditionally would turn an
+    # auto-discovered request into an explicitly pinned message/list contract.
+    payload_options: dict[str, Any] = {}
+    if chat_payload_key_explicit or chat_payload_key != "message" or chat_payload_list:
+        payload_options = {"chat_payload_key": chat_payload_key, "chat_payload_list": chat_payload_list}
     request = RedteamRunRequest(
         target_url=target_url,
         profile=profile,
         min_impact_score=min_impact_score,
         chat_path=chat_path,
-        chat_payload_key=chat_payload_key,
-        chat_payload_list=chat_payload_list,
+        **payload_options,
         chat_response_key=chat_response_key,
         concurrency=concurrency,
         guided_conversations=guided_conversations,
