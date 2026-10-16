@@ -22914,6 +22914,12 @@
             "title": "Exclude Patterns",
             "type": "array"
           },
+          "include_test_sources": {
+            "default": false,
+            "description": "Also scan JVM test sources (src/test, src/testFixtures, src/integrationTest). Off by default so test helpers are not reported as application agents/prompts.",
+            "title": "Include Test Sources",
+            "type": "boolean"
+          },
           "scan_images": {
             "default": false,
             "description": "Run `syft` against pulled base images to record their real OS and installed packages. Needs syft on PATH and network/registry access; off by default.",

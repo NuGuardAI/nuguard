@@ -25,3 +25,16 @@ def looks_like_test_path(file_path: str) -> bool:
         return True
     stem = path.stem
     return stem.endswith(".test") or stem.endswith(".spec")
+
+
+JVM_TEST_SOURCE_DIRS: frozenset[str] = frozenset({"test", "testFixtures", "integrationTest"})
+
+
+def is_jvm_test_source_path(file_path: str) -> bool:
+    """True when *file_path* is under a Maven/Gradle test source root (``src/test``, ...).
+
+    Stricter than :func:`looks_like_test_path`: it needs the ``src/<test-dir>`` pair, so a
+    production package that happens to be named ``test`` is not flagged.
+    """
+    parts = PurePosixPath(file_path.replace("\\", "/")).parts
+    return any(a == "src" and b in JVM_TEST_SOURCE_DIRS for a, b in zip(parts, parts[1:-1]))
