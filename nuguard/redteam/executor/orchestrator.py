@@ -884,6 +884,7 @@ class RedteamOrchestrator:
         resume_checkpoint: dict[str, Any] | None = None,
         resume_checkpoint_path: Path | None = None,
         browser_discovery: BrowserDiscoveryConfig | None = None,
+        chat_payload_key_explicit: bool = False,
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
@@ -1025,6 +1026,10 @@ class RedteamOrchestrator:
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             discover_chat_config_from_sbom(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
+        self._chat_payload_key_explicit = chat_payload_key_explicit
+        if chat_payload_key_explicit:
+            self._chat_payload_key = chat_payload_key
+            self._chat_payload_list = chat_payload_list
         # Payload value template from OpenAPI schema detection (ProbeResult.value_template).
         # Populated by _maybe_probe_endpoints when the schema reveals a nested shape.
         self._chat_payload_value_template: "dict | None" = None
@@ -1548,7 +1553,9 @@ class RedteamOrchestrator:
         # 0. Endpoint auto-discovery (Option A) or payload-shape detection (Option B).
         # Option A: no path configured — probe SBOM endpoints live.
         # Option B: path known but key is default "message" — detect nested shape.
-        if not self._chat_path or self._chat_payload_key == "message":
+        if not self._chat_path or (
+            self._chat_payload_key == "message" and not self._chat_payload_key_explicit
+        ):
             await self._maybe_probe_endpoints()
 
         from nuguard.common.session_resolver import resolve_target_session
@@ -1572,7 +1579,9 @@ class RedteamOrchestrator:
             request_timeout=self._request_timeout,
             browser_discovery=self._browser_discovery,
             endpoint_explicit=self._chat_path_source == "config" or _keep_resolved,
-            payload_key_explicit=_keep_resolved or self._chat_payload_key != "message",
+            payload_key_explicit=(
+                self._chat_payload_key_explicit or _keep_resolved or self._chat_payload_key != "message"
+            ),
             response_key_explicit=bool(self._chat_response_key),
             endpoint_source_hint=self._chat_path_source if _keep_resolved else None,
         )
@@ -4156,7 +4165,7 @@ class RedteamOrchestrator:
         # chat-like (e.g. "/extract"). Respects an explicitly configured
         # endpoint: only that exact path's confirmation is consulted, never a
         # different cached one.
-        if self._sbom is not None:
+        if self._sbom is not None and not self._chat_payload_key_explicit:
             _confirmed = find_confirmed_chat_endpoint(
                 self._sbom,
                 expected_path=self._chat_path if self._chat_path_explicit else None,
@@ -4210,10 +4219,10 @@ class RedteamOrchestrator:
             endpoint=self._chat_path if self._chat_path_explicit else UNSET,
             payload_key=(
                 self._chat_payload_key
-                if self._chat_payload_key != "message"
+                if self._chat_payload_key_explicit or self._chat_payload_key != "message"
                 else UNSET
             ),
-            payload_list=UNSET,
+            payload_list=self._chat_payload_list if self._chat_payload_key_explicit else UNSET,
             response_key=self._chat_response_key or UNSET,
             auth_headers=self._extra_headers or None,
             timeout=min(self._request_timeout, 15.0),
