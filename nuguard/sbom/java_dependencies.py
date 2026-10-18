@@ -205,14 +205,14 @@ def _maven_scope(scope: str, optional: str) -> str:
 def _spring_boot_version(
     project: ET.Element,
     properties: dict[str, str],
-    managed_versions: dict[tuple[str, str], str],
+    imported_bom_versions: dict[tuple[str, str], str],
 ) -> str:
     """Return the Spring Boot version that manages ``org.springframework.boot`` dependencies.
 
     It comes from an imported ``spring-boot-dependencies`` BOM (which wins in Maven) or from a
     ``spring-boot-starter-parent`` parent. Returns an empty string when neither is declared.
     """
-    imported = managed_versions.get((_SPRING_BOOT_GROUP, "spring-boot-dependencies"), "")
+    imported = imported_bom_versions.get((_SPRING_BOOT_GROUP, "spring-boot-dependencies"), "")
     if imported:
         return imported
     parent = _child(project, "parent")
@@ -233,13 +233,18 @@ def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
     properties = _maven_properties(project)
     managed, declared = _maven_dependency_elements(project)
     managed_versions: dict[tuple[str, str], str] = {}
+    imported_bom_versions: dict[tuple[str, str], str] = {}
     for dependency in managed:
         group = _resolve(_text(dependency, "groupId"), properties)
         artifact = _resolve(_text(dependency, "artifactId"), properties)
         version = _resolve(_text(dependency, "version"), properties)
         if group and artifact and version:
             managed_versions[(group, artifact)] = version
-    boot_version = _spring_boot_version(project, properties, managed_versions)
+            dependency_type = _resolve(_text(dependency, "type"), properties)
+            scope = _resolve(_text(dependency, "scope"), properties)
+            if dependency_type.casefold() == "pom" and scope.casefold() == "import":
+                imported_bom_versions[(group, artifact)] = version
+    boot_version = _spring_boot_version(project, properties, imported_bom_versions)
     source = str(path.relative_to(root))
     result: list[dict[str, str]] = []
     for dependency in declared:

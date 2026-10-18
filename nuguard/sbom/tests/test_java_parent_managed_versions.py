@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from nuguard.sbom.java_dependencies import scan_java_dependencies
 
 _NS = 'xmlns="http://maven.apache.org/POM/4.0.0"'
@@ -63,6 +65,11 @@ def test_an_imported_spring_boot_bom_provides_the_version(tmp_path: Path) -> Non
     deps = _scan(
         tmp_path,
         f"""<project {_NS}>
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.4.2</version>
+  </parent>
   <dependencyManagement><dependencies>
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -78,6 +85,47 @@ def test_an_imported_spring_boot_bom_provides_the_version(tmp_path: Path) -> Non
 </project>""",
     )
     assert deps["org.springframework.boot:spring-boot-starter-web"]["purl"].endswith("@3.3.5")
+
+
+@pytest.mark.parametrize(
+    ("dependency_type", "scope"),
+    [
+        ("pom", "compile"),
+        ("jar", "import"),
+    ],
+)
+def test_only_a_pom_import_overrides_the_spring_boot_parent(
+    tmp_path: Path,
+    dependency_type: str,
+    scope: str,
+) -> None:
+    deps = _scan(
+        tmp_path,
+        f"""<project {_NS}>
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.4.2</version>
+  </parent>
+  <dependencyManagement><dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-dependencies</artifactId>
+      <version>3.3.5</version>
+      <type>{dependency_type}</type>
+      <scope>{scope}</scope>
+    </dependency>
+  </dependencies></dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+  </dependencies>
+</project>""",
+    )
+
+    assert deps["org.springframework.boot:spring-boot-starter-web"]["purl"].endswith("@3.4.2")
 
 
 def test_a_parent_version_given_as_a_property_is_resolved(tmp_path: Path) -> None:
