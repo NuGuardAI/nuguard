@@ -41,6 +41,9 @@ _AI_MARKERS = (
     "VertexAI",
     "PromptTemplate",
 )
+_AI_METHOD_CALL_RE = re.compile(
+    r"(?i)\.(?:prompt|call|chat|generate(?:Content(?:Stream)?)?|complete|invoke)\s*\("
+)
 # LangChain4j (Spring Boot starter) and Quarkus LangChain4j declarative AI services.
 _AI_SERVICE_ANNOTATIONS = {"AiService", "RegisterAiService"}
 # Spring scaffolding: such a type is not an agent just because its file imports an AI package.
@@ -106,7 +109,7 @@ def _agent_canonical(file_path: str, containing_type: str) -> str:
 def _method_contains_ai(method: JavaMethodDeclaration) -> bool:
     haystack = f"{method.signature}\n{method.body}"
     return any(marker in haystack for marker in _AI_MARKERS) or bool(
-        re.search(r"(?i)\.(?:prompt|call|chat|generate|complete|invoke)\s*\(", haystack)
+        _AI_METHOD_CALL_RE.search(haystack)
     )
 
 

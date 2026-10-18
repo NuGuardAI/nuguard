@@ -147,6 +147,58 @@ public class ChatController {
     ]
 
 
+def test_a_spring_application_using_google_generate_content_is_an_agent() -> None:
+    source = """package demo;
+
+import com.google.genai.Client;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class GeminiApplication {
+    private final Client client;
+
+    public GeminiApplication(Client client) { this.client = client; }
+
+    String answer(String message) {
+        return client.models.generateContent("gemini-2.0-flash", message, null).text();
+    }
+}
+"""
+    assert _names(_extract(source, "GeminiApplication.java"), ComponentType.AGENT) == [
+        "GeminiApplication"
+    ]
+
+
+def test_google_generate_content_stream_in_a_tool_file_preserves_the_agent() -> None:
+    source = """package demo;
+
+import com.google.genai.Client;
+import dev.langchain4j.agent.tool.Tool;
+
+public class GeminiToolAgent {
+    private final Client client;
+
+    public GeminiToolAgent(Client client) { this.client = client; }
+
+    Object stream(String message) {
+        return client.models.generateContentStream("gemini-2.0-flash", message, null);
+    }
+
+    @Tool
+    String lookup(String id) { return id; }
+}
+"""
+    detections = _extract(source, "GeminiToolAgent.java")
+
+    assert _names(detections, ComponentType.AGENT) == ["GeminiToolAgent"]
+    assert _names(detections, ComponentType.TOOL) == ["lookup"]
+
+    agent = next(item for item in detections if item.component_type == ComponentType.AGENT)
+    assert any(
+        relationship.target_type == ComponentType.TOOL for relationship in agent.relationships
+    )
+
+
 def test_tools_and_an_ai_service_in_one_file_link_the_agent_to_the_tools() -> None:
     source = """package demo;
 
