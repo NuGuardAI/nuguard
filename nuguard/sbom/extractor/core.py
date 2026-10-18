@@ -3649,6 +3649,9 @@ class AiSbomExtractor:
         _gitignore_match = (
             _load_gitignore_matcher(root) if getattr(config, "honor_gitignore", True) else None
         )
+        # Preserve the "src" component when the selected scan root is project/src.
+        # Other discovery behavior remains relative to the user-selected root.
+        jvm_test_path_root = root.parent if root.name == "src" else root
         count = 0
         for dirpath, dirnames, filenames in os.walk(root):
             # Keep traversal deterministic and prune irrelevant dirs early.
@@ -3682,7 +3685,9 @@ class AiSbomExtractor:
                             and suffix in {".properties", ".yml", ".yaml"}
                         )
                     )
-                    and is_jvm_test_source_path(path.relative_to(root).as_posix())
+                    and is_jvm_test_source_path(
+                        path.relative_to(jvm_test_path_root).as_posix()
+                    )
                 ):
                     continue
                 # Skip meta/tooling instruction files

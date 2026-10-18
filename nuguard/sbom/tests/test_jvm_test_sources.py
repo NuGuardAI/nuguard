@@ -50,7 +50,12 @@ def _write(root: Path, rel: str, text: str) -> None:
     target.write_text(text, encoding="utf-8")
 
 
-def _agent_paths(tmp_path: Path, include_test_sources: bool = False) -> set[str]:
+def _agent_paths(
+    tmp_path: Path,
+    include_test_sources: bool = False,
+    *,
+    scan_root: Path | None = None,
+) -> set[str]:
     _write(tmp_path, "src/main/java/demo/Assistant.java", _JAVA)
     _write(
         tmp_path,
@@ -58,7 +63,8 @@ def _agent_paths(tmp_path: Path, include_test_sources: bool = False) -> set[str]
         _JAVA.replace("Assistant", "AssistantIT"),
     )
     config = AiSbomConfig(enable_llm=False, include_test_sources=include_test_sources)
-    document = AiSbomExtractor().extract_from_path(tmp_path, config)
+    extraction_root = scan_root if scan_root is not None else tmp_path
+    document = AiSbomExtractor().extract_from_path(extraction_root, config)
     return {
         ev.location.path
         for node in document.nodes
@@ -79,3 +85,28 @@ def test_include_test_sources_opts_back_in(tmp_path: Path) -> None:
 
     assert any(p.endswith("src/main/java/demo/Assistant.java") for p in paths)
     assert any(p.endswith("src/test/java/demo/AssistantIT.java") for p in paths)
+
+
+def test_src_root_scan_excludes_test_sources_by_default(
+    tmp_path: Path,
+) -> None:
+    paths = _agent_paths(
+        tmp_path,
+        scan_root=tmp_path / "src",
+    )
+
+    assert any(path.endswith("main/java/demo/Assistant.java") for path in paths)
+    assert not any(path.endswith("test/java/demo/AssistantIT.java") for path in paths)
+
+
+def test_src_root_scan_include_test_sources_opts_back_in(
+    tmp_path: Path,
+) -> None:
+    paths = _agent_paths(
+        tmp_path,
+        include_test_sources=True,
+        scan_root=tmp_path / "src",
+    )
+
+    assert any(path.endswith("main/java/demo/Assistant.java") for path in paths)
+    assert any(path.endswith("test/java/demo/AssistantIT.java") for path in paths)
