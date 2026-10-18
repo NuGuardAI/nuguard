@@ -18,7 +18,7 @@ from nuguard.common.errors import (
     TargetQuotaExhaustedError,
     TargetUnavailableError,  # noqa: F401 — re-exported for callers
 )
-from nuguard.common.http import quota_exhausted_detail
+from nuguard.common.http import quota_exhausted_detail, resolve_chat_request, to_query_params
 from nuguard.common.logging import get_logger
 from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KEYS
 from nuguard.common.transport import is_provider_blocked, strip_known_boilerplate
@@ -120,39 +120,6 @@ def _contains_message_token(obj: Any) -> bool:
     if isinstance(obj, list):
         return any(_contains_message_token(v) for v in obj)
     return False
-
-
-_CHAT_METHODS = frozenset({"GET", "POST", "PUT", "PATCH"})
-
-
-def _to_query_params(body: Any) -> dict[str, Any]:
-    """Flatten a chat payload into query parameters (``chat_payload_in: query``).
-
-    Scalars become strings, booleans become ``true``/``false``, lists of scalars
-    become repeated parameters, and anything nested is JSON-encoded. ``None``
-    values are dropped.
-    """
-    if not isinstance(body, dict):
-        return {}
-
-    def _scalar(value: Any) -> str:
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        return str(value)
-
-    params: dict[str, Any] = {}
-    for key, value in body.items():
-        if value is None:
-            continue
-        if isinstance(value, (list, tuple)) and all(
-            isinstance(v, (str, int, float, bool)) for v in value
-        ):
-            params[key] = [_scalar(v) for v in value]
-        elif isinstance(value, (str, int, float, bool)):
-            params[key] = _scalar(value)
-        else:
-            params[key] = json.dumps(value, default=str)
-    return params
 
 
 def _parse_plain_text_reply(text: str) -> Any:
@@ -366,12 +333,8 @@ class TargetAppClient:
             chat_payload_format if chat_payload_format in ("json", "form") else "json"
         )
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
-        _method = (chat_method or "POST").upper()
-        self._chat_method = _method if _method in _CHAT_METHODS else "POST"
-        self._chat_payload_in = (
-            chat_payload_in
-            if chat_payload_in in ("body", "query")
-            else ("query" if self._chat_method == "GET" else "body")
+        self._chat_method, self._chat_payload_in = resolve_chat_request(
+            chat_method, chat_payload_in
         )
         self._chat_response_key = chat_response_key  # explicit key overrides auto-detection
         # Lazily-detected response key: set on the first successful dict response when
@@ -765,7 +728,7 @@ class TargetAppClient:
     def _chat_request_kwargs(self, body: Any) -> dict[str, Any]:
         """httpx keyword arguments carrying *body* as query, form or JSON."""
         if self._chat_payload_in == "query":
-            return {"params": _to_query_params(body)}
+            return {"params": to_query_params(body)}
         if self._chat_payload_format == "form":
             return {"data": body}
         return {"json": body}

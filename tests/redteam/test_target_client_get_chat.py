@@ -9,10 +9,10 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
+from nuguard.common.http import to_query_params
 from nuguard.redteam.target.client import (
     TargetAppClient,
     _parse_plain_text_reply,
-    _to_query_params,
 )
 from nuguard.redteam.target.session import AttackSession
 
@@ -35,7 +35,7 @@ async def _serve(
 
 
 def test_to_query_params_flattens_values() -> None:
-    assert _to_query_params(
+    assert to_query_params(
         {
             "q": "hello world",
             "n": 3,
@@ -51,7 +51,7 @@ def test_to_query_params_flattens_values() -> None:
         "tags": ["a", "2"],
         "nested": '{"k": "v"}',
     }
-    assert _to_query_params("not a dict") == {}
+    assert to_query_params("not a dict") == {}
 
 
 def test_parse_plain_text_reply() -> None:

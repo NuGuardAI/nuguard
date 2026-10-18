@@ -63,6 +63,9 @@ class TargetSessionConfig:
     effective_headers: dict[str, str] = field(default_factory=dict)
     endpoint_source: str = "default"
     payload_format: str = "json"
+    # HTTP method for chat turns and where the payload goes ("body" or "query").
+    chat_method: str = "POST"
+    chat_payload_in: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +285,8 @@ async def resolve_target_session(
     config_path: "Path | None" = None,
     request_timeout: float | None = None,
     payload_format: str = "json",
+    chat_method: str = "POST",
+    chat_payload_in: str | None = None,
     endpoint_explicit: bool | None = None,
     payload_key_explicit: bool = False,
     response_key_explicit: bool = False,
@@ -530,6 +535,8 @@ async def resolve_target_session(
         payload_key=chat_payload_key,
         payload_list=chat_payload_list,
         endpoint_resolver=endpoint_resolver,
+        chat_method=chat_method,
+        chat_payload_in=chat_payload_in,
     )
     if _configured_field_unresolved and health_report.all_ok:
         raise TargetEndpointNotFoundError(
@@ -649,6 +656,8 @@ async def resolve_target_session(
             timeout=request_timeout,
             payload_key=chat_payload_key,
             payload_list=chat_payload_list,
+            chat_method=chat_method,
+            chat_payload_in=chat_payload_in,
         )
         _revalidated_headers = bootstrapper.session.headers()
         if _revalidated_headers:
@@ -681,6 +690,8 @@ async def resolve_target_session(
             payload_extras=merged_extras or None,
             chat_payload_value_template=chat_payload_value_template,
             payload_format=payload_format,
+            chat_method=chat_method,
+            chat_payload_in=chat_payload_in,
             ws_auth_message=ws_auth_message,
         )
         async with _wu_client:
@@ -734,6 +745,8 @@ async def resolve_target_session(
                 else endpoint_source
             ),
             payload_format=payload_format,
+            chat_method=chat_method,
+            chat_payload_in=chat_payload_in,
         ),
         health_report,
     )
