@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from nuguard.common.http import resolve_chat_request
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
@@ -373,6 +374,13 @@ async def resolve_target_session(
     is_endpoint_explicit = (
         endpoint_explicit if endpoint_explicit is not None else bool(configured_chat_path)
     )
+    # A GET / query-string (non-POST) chat request cannot be discovered by the POST-based
+    # payload probes, so for an explicitly configured endpoint the configured request
+    # shape is authoritative: no POST probing and no failure on an unconfirmed field.
+    _method, _payload_in = resolve_chat_request(chat_method, chat_payload_in)
+    _pinned_request = is_endpoint_explicit and (_method != "POST" or _payload_in == "query")
+    if _pinned_request:
+        payload_key_explicit = True
 
     # ── 1. URL resolution ────────────────────────────────────────────────────
     # Static-hosting fallback + SPA bundle API-origin scan (memoised — the
@@ -442,6 +450,7 @@ async def resolve_target_session(
             auth_headers=auth_headers,
             timeout=request_timeout or 15.0,
             probe_payload_extras=_probe_extras or None,
+            allow_live_probe=not _pinned_request,
             enable_browser_fallback=not is_endpoint_explicit,
             browser_auth_config=effective_auth,
             browser_discovery=browser_discovery,
