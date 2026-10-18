@@ -410,9 +410,13 @@ class JavaAIAdapter(JavaFrameworkAdapter):
             description = self._annotation_value(annotation)
             privilege_scope: list[str] = []
             haystack = f"{method.name} {method.body}".lower()
+            # Split camelCase before looking for write verbs, so deleteTicket / cancelBooking match.
+            words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", f"{method.name} {method.body}").lower()
             if re.search(r"\b(exec|processbuilder|runtime\.getruntime)\b", haystack):
                 privilege_scope.append("code_execution")
-            if re.search(r"\b(write|delete|save|update|insert)\b", haystack):
+            if re.search(
+                r"\b(write|delete|remove|save|update|insert|cancel|refund|purge)\b", words
+            ):
                 privilege_scope.append("db_write")
             if re.search(r"\b(sendmail|email|smtp|mail)\b", haystack):
                 privilege_scope.append("email_out")
