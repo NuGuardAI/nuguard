@@ -67,6 +67,14 @@ def _make_scan_summary(d: dict) -> ScanSummary:
     )
 
 
+def _is_exact_config_model(
+    key: tuple[ComponentType, str],
+    acc: "_NodeAccumulator",
+) -> bool:
+    """Return whether a MODEL name came from a complete config scalar."""
+    return key[0] == ComponentType.MODEL and bool(acc.metadata.get("config_key"))
+
+
 def _dedup_by_name_prefix(
     node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
 ) -> None:
@@ -122,6 +130,9 @@ def _dedup_by_name_prefix(
         sorted_keys = sorted(keys, key=lambda key: node_map[key].display_name.lower())
         for index, key_a in enumerate(sorted_keys[:-1]):
             if key_a in keys_to_remove:
+                continue
+            # Complete config values are declarations, not truncated prefixes.
+            if _is_exact_config_model(key_a, node_map[key_a]):
                 continue
             name_a = node_map[key_a].display_name.lower()
             if not name_a:
@@ -245,10 +256,14 @@ def _dedup_by_location(
         keys = list(key_set)
         if len(keys) <= 1:
             continue
-        # Sort: lower priority number = higher precedence; break ties by confidence desc
+        # Exact config declarations win over heuristic detections at the same location.
         keys_sorted = sorted(
             keys,
-            key=lambda k: (node_map[k].priority, -node_map[k].confidence),
+            key=lambda k: (
+                not _is_exact_config_model(k, node_map[k]),
+                node_map[k].priority,
+                -node_map[k].confidence,
+            ),
         )
         winner = keys_sorted[0]
         for loser in keys_sorted[1:]:
@@ -286,7 +301,13 @@ def _dedup_by_location(
             # those separate instead of one silently absorbing the other's
             # evidence.
             if winner[0] == ComponentType.MODEL and winner[1] != loser[1]:
-                if winner[1] not in loser[1] and loser[1] not in winner[1]:
+                winner_is_exact = _is_exact_config_model(winner, node_map[winner])
+                loser_is_exact = _is_exact_config_model(loser, node_map[loser])
+                if winner_is_exact and loser_is_exact:
+                    continue
+                if winner_is_exact and loser[1] not in winner[1]:
+                    continue
+                if not winner_is_exact and winner[1] not in loser[1] and loser[1] not in winner[1]:
                     continue
             # Absorb evidence so the winner node reflects all source locations
             node_map[winner].evidence.extend(node_map[loser].evidence)
@@ -334,8 +355,10 @@ def _collapse_bulk_catalog_files(
     for key, acc in node_map.items():
         # A compose file / Bicep module legitimately declares dozens of services; each
         # workload (and its image) is a real deployed component, not catalog noise.
-        if acc.metadata.get("workload") or acc.metadata.get("fact_marker") or acc.metadata.get(
-            "image_role"
+        if (
+            acc.metadata.get("workload")
+            or acc.metadata.get("fact_marker")
+            or acc.metadata.get("image_role")
         ):
             continue
         paths = {ev.location.path for ev in acc.evidence if ev.location}

@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from nuguard.sbom import AiSbomConfig, AiSbomExtractor
 from nuguard.sbom.adapters.java.java_config import (
     extract_java_config_models,
@@ -187,3 +189,131 @@ def test_extractor_ignores_unresolvable_placeholder(tmp_path: Path) -> None:
     document = AiSbomExtractor().extract_from_path(tmp_path, AiSbomConfig(enable_llm=False))
 
     assert not [n for n in document.nodes if n.component_type == ComponentType.MODEL]
+
+
+def test_config_quarkus_quoted_named_model_segment() -> None:
+    content = 'quarkus.langchain4j.azure-openai."my-model".chat-model.deployment-name=dep1\n'
+
+    assert _models(content) == [
+        ("dep1", 1, "azure-openai", "quarkus-langchain4j"),
+    ]
+
+
+def test_config_properties_accepts_whitespace_separator() -> None:
+    content = "langchain4j.open-ai.chat-model.model-name gpt-4o-mini\n"
+
+    assert _models(content) == [
+        ("gpt-4o-mini", 1, "openai", "langchain4j"),
+    ]
+
+
+def test_config_yaml_skips_recursive_aliases() -> None:
+    content = """mapping-loop: &mapping-loop
+  again: *mapping-loop
+list-loop: &list-loop
+  - *list-loop
+langchain4j:
+  open-ai:
+    chat-model:
+      model-name: gpt-4o
+"""
+
+    assert _models(content, "application.yml") == [
+        ("gpt-4o", 8, "openai", "langchain4j"),
+    ]
+
+
+def test_config_yaml_uses_path_aware_marks_for_substrings_and_dotted_keys() -> None:
+    content = """spring:
+  ai:
+    openai:
+      chat:
+        options:
+          model: chatgpt-4o-latest
+---
+"spring.ai.openai.chat.options.model": gpt-4o
+"""
+
+    assert _models(content, "application.yml") == [
+        ("chatgpt-4o-latest", 6, "openai", "spring-ai"),
+        ("gpt-4o", 8, "openai", "spring-ai"),
+    ]
+
+
+def test_config_yaml_uses_path_aware_marks_for_repeated_values() -> None:
+    content = """other:
+  model: gpt-4o
+"spring.ai.openai.chat.options.model": gpt-4o
+"""
+
+    assert _models(content, "application.yml") == [
+        ("gpt-4o", 3, "openai", "spring-ai"),
+    ]
+
+
+def test_config_yaml_preserves_merge_keys_and_source_marks() -> None:
+    content = """defaults: &defaults
+  chat-model:
+    model-name: gpt-4o
+langchain4j:
+  open-ai:
+    <<: *defaults
+"""
+
+    assert _models(content, "application.yml") == [
+        ("gpt-4o", 3, "openai", "langchain4j"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("config_path", "content"),
+    [
+        (
+            "src/main/resources/application.properties",
+            "langchain4j.open-ai.chat-model.model-name=gpt-4o\n"
+            "langchain4j.open-ai.streaming-chat-model.model-name=gpt-4o-mini\n",
+        ),
+        (
+            "src/main/resources/application.yml",
+            "langchain4j: {open-ai: {chat-model: {model-name: gpt-4o}, "
+            "streaming-chat-model: {model-name: gpt-4o-mini}}}\n",
+        ),
+    ],
+)
+def test_extractor_preserves_distinct_exact_prefix_models(
+    tmp_path: Path,
+    config_path: str,
+    content: str,
+) -> None:
+    _write(tmp_path, "src/main/java/demo/Assistant.java", _ASSISTANT)
+    _write(tmp_path, config_path, content)
+
+    document = AiSbomExtractor().extract_from_path(
+        tmp_path,
+        AiSbomConfig(enable_llm=False),
+    )
+
+    models = {
+        node.name: node for node in document.nodes if node.component_type == ComponentType.MODEL
+    }
+    assert set(models) == {"gpt-4o", "gpt-4o-mini"}
+
+    agent = next(
+        node
+        for node in document.nodes
+        if node.component_type == ComponentType.AGENT
+        and any(
+            evidence.location is not None and evidence.location.path.endswith("Assistant.java")
+            for evidence in node.evidence
+        )
+    )
+
+    hint_targets = {
+        edge.target
+        for edge in document.edges
+        if edge.source == agent.id and edge.derivation == "hint"
+    }
+    assert {
+        models["gpt-4o"].id,
+        models["gpt-4o-mini"].id,
+    } <= hint_targets
