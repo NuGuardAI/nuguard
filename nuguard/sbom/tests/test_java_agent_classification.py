@@ -220,3 +220,80 @@ class Tools {
     assert _names(detections, ComponentType.TOOL) == ["lookup"]
     agent = next(item for item in detections if item.component_type == ComponentType.AGENT)
     assert any(rel.target_type == ComponentType.TOOL for rel in agent.relationships)
+
+
+def test_azure_async_chat_calls_preserve_a_scaffolding_agent() -> None:
+    calls = (
+        'client.getChatCompletions("deployment", options)',
+        'client.getChatCompletionsStream("deployment", options)',
+        'client.getChatCompletionsWithResponse("deployment", options, requestOptions)',
+        ('client.getChatCompletionsStreamWithResponse("deployment", options, requestOptions)'),
+    )
+
+    for call in calls:
+        source = """package demo;
+
+import com.azure.ai.openai.OpenAIAsyncClient;
+import com.azure.ai.openai.models.ChatCompletionsOptions;
+import com.azure.core.http.rest.RequestOptions;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class AzureAsyncApplication {
+    private OpenAIAsyncClient client;
+    private ChatCompletionsOptions options;
+    private RequestOptions requestOptions;
+
+    Object answer() {
+        return CALL;
+    }
+}
+""".replace("CALL", call)
+
+        assert _names(
+            _extract(source, "AzureAsyncApplication.java"),
+            ComponentType.AGENT,
+        ) == ["AzureAsyncApplication"], call
+
+
+def test_bedrock_async_model_calls_preserve_an_agent_in_a_tool_file() -> None:
+    calls = (
+        "client.converse(request)",
+        "client.converseStream(streamRequest, handler)",
+    )
+
+    for call in calls:
+        source = """package demo;
+
+import dev.langchain4j.agent.tool.Tool;
+import software.amazon.awssdk.services.bedrockruntime.BedrockRuntimeAsyncClient;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseRequest;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamRequest;
+import software.amazon.awssdk.services.bedrockruntime.model.ConverseStreamResponseHandler;
+
+public class BedrockToolAgent {
+    private BedrockRuntimeAsyncClient client;
+    private ConverseRequest request;
+    private ConverseStreamRequest streamRequest;
+    private ConverseStreamResponseHandler handler;
+
+    Object answer() {
+        return CALL;
+    }
+
+    @Tool
+    String lookup(String id) {
+        return id;
+    }
+}
+""".replace("CALL", call)
+
+        detections = _extract(source, "BedrockToolAgent.java")
+
+        assert _names(detections, ComponentType.AGENT) == ["BedrockToolAgent"], call
+        assert _names(detections, ComponentType.TOOL) == ["lookup"], call
+
+        agent = next(item for item in detections if item.component_type == ComponentType.AGENT)
+        assert any(
+            relationship.target_type == ComponentType.TOOL for relationship in agent.relationships
+        ), call

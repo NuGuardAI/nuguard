@@ -42,7 +42,8 @@ _AI_MARKERS = (
     "PromptTemplate",
 )
 _AI_METHOD_CALL_RE = re.compile(
-    r"(?i)\.(?:prompt|call|chat|generate(?:Content(?:Stream)?)?|complete|invoke)\s*\("
+    r"(?i)\.(?:prompt|call|chat|generate(?:Content(?:Stream)?)?|complete|invoke"
+    r"|getChatCompletions(?:Stream)?(?:WithResponse)?|converse(?:Stream)?)\s*\("
 )
 # LangChain4j (Spring Boot starter) and Quarkus LangChain4j declarative AI services.
 _AI_SERVICE_ANNOTATIONS = {"AiService", "RegisterAiService"}
