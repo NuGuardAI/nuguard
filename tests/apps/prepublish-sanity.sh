@@ -133,6 +133,10 @@ for entry in "${APP_RUNS[@]}"; do
   echo "[APP] ${name}"
   app_start="$(date +%s)"
 
+  # Do not let reports from an earlier invocation satisfy this run's gates.
+  rm -f -- "${behavior_base}.json" "${behavior_base}.md" \
+    "${redteam_base}.json" "${redteam_base}.md"
+
   # SBOM generation is expected to be strictly successful.
   run_with_allowed_rc "${name}: sbom" "0" \
     uv run nuguard sbom generate \
@@ -188,7 +192,10 @@ effective = str(data.get("effective_endpoint") or "")
 if expected and effective and effective != expected:
   raise SystemExit(f"behavior_effective_endpoint_mismatch:{effective}!={expected}")
 
-outcome = str(data.get("scan_outcome") or "unknown")
+outcome = str(data.get("scan_outcome") or "unknown").strip().lower()
+# Counts and bare chain-stop traces cannot override a run-level health abort.
+if outcome.startswith("aborted") or outcome == "inconclusive_target_errors":
+    raise SystemExit(f"behavior_scan_outcome_not_live:{outcome}")
 print(f"outcome={outcome};scenarios={executed};endpoint_source={source or 'unknown'};effective_endpoint={effective or 'unknown'}")
 PY
 )"; then
@@ -212,9 +219,10 @@ if not path.exists() or path.stat().st_size == 0:
     raise SystemExit(f"missing_or_empty_report:{path}")
 
 data = json.loads(path.read_text(encoding="utf-8"))
-outcome = str(data.get("scan_outcome") or "unknown")
-if outcome == "inconclusive_target_errors":
-    raise SystemExit("redteam_inconclusive_target_errors")
+outcome = str(data.get("scan_outcome") or "unknown").strip().lower()
+# Counts and bare chain-stop traces cannot override a run-level health abort.
+if outcome.startswith("aborted") or outcome == "inconclusive_target_errors":
+    raise SystemExit(f"redteam_scan_outcome_not_live:{outcome}")
 
 meta = data.get("_meta") or {}
 source = str(meta.get("target_endpoint_source") or "").lower()
