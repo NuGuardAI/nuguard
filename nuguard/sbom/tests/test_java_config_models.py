@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,6 +21,17 @@ public class Assistant {
   Object build() { return AiServices.create(Object.class); }
 }
 """
+
+
+def _capture_java_config_logs(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Capture real adapter warnings without relying on ancestor propagation."""
+    logger = java_config._log
+    caplog.set_level(logging.WARNING, logger=logger.name)
+    monkeypatch.setattr(logger, "handlers", [caplog.handler])
+    monkeypatch.setattr(logger, "propagate", False)
 
 
 def _models(content: str, path: str = "src/main/resources/application.properties") -> list[tuple]:
@@ -362,8 +374,7 @@ def test_yaml_alias_work_is_bounded(
     caplog: pytest.LogCaptureFixture,
     kind: str,
 ) -> None:
-    monkeypatch.setattr(java_config._log, "propagate", True)
-    caplog.set_level("WARNING", logger=java_config._log.name)
+    _capture_java_config_logs(monkeypatch, caplog)
     monkeypatch.setattr(java_config, "_YAML_MAX_VISITS", 64)
     lines = ["level0: &level0 {value: seed}"]
     for level in range(1, 5):
@@ -389,8 +400,7 @@ def test_yaml_budget_is_shared_across_documents_and_reset_for_each_file(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    monkeypatch.setattr(java_config._log, "propagate", True)
-    caplog.set_level("WARNING", logger=java_config._log.name)
+    _capture_java_config_logs(monkeypatch, caplog)
     monkeypatch.setattr(java_config, "_YAML_MAX_VISITS", 6)
     content = "spring.ai.openai.chat.options.model: gpt-4o\n"
     expected = [("gpt-4o", 1, "openai", "spring-ai")]
@@ -426,8 +436,7 @@ def test_yaml_depth_limit_is_nonfatal(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    monkeypatch.setattr(java_config._log, "propagate", True)
-    caplog.set_level("WARNING", logger=java_config._log.name)
+    _capture_java_config_logs(monkeypatch, caplog)
     monkeypatch.setattr(java_config, "_YAML_MAX_DEPTH", 4)
     content = "data: " + "[" * 8 + "seed" + "]" * 8
     assert _models(content, "application.yml") == []
@@ -511,3 +520,28 @@ def test_variant_dedup_still_merges_non_config_models() -> None:
     _dedup_model_variants(node_map)
     assert len(node_map) == 1
     assert len(next(iter(node_map.values())).evidence) == 2
+
+
+@pytest.mark.parametrize("parent_propagates", [False, True])
+def test_yaml_warning_capture_is_independent_of_parent_logging(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    parent_propagates: bool,
+) -> None:
+    # Reproduce a configured ancestor that can stop logs before pytest's root handler.
+    parent = logging.getLogger("nuguard")
+    monkeypatch.setattr(parent, "handlers", [])
+    monkeypatch.setattr(parent, "propagate", parent_propagates)
+    _capture_java_config_logs(monkeypatch, caplog)
+    monkeypatch.setattr(java_config, "_YAML_MAX_DEPTH", 4)
+
+    content = "data: " + "[" * 8 + "seed" + "]" * 8
+    assert _models(content, "application.yml") == []
+    assert caplog.record_tuples == [
+        (
+            java_config._log.name,
+            logging.WARNING,
+            "java_config: stopped YAML model extraction for application.yml: "
+            "YAML depth limit exceeded",
+        )
+    ]
