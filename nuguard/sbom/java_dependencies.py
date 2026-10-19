@@ -149,6 +149,64 @@ def _manifest_paths(root: Path) -> tuple[list[Path], list[Path], list[Path]]:
     return sorted(poms), sorted(gradle_builds), sorted(catalogs)
 
 
+def _maven_profiles(project: ET.Element) -> list[ET.Element]:
+    profiles = _child(project, "profiles")
+    return _children(profiles, "profile") if profiles is not None else []
+
+
+def _profile_version_uncertain(
+    project: ET.Element,
+    dependency: ET.Element,
+    properties: dict[str, str],
+) -> bool:
+    """Do not select a build-profile-dependent version without activation context.
+
+    This offline scanner cannot know -P, settings.xml or environment activation.
+    Even activeByDefault profiles can be disabled. Direct profile declarations
+    can override direct versions; profile management only affects unversioned
+    declarations. Imported profile BOMs are conservatively treated as opaque.
+    """
+    group = _resolve(_text(dependency, "groupId"), properties)
+    artifact = _resolve(_text(dependency, "artifactId"), properties)
+    if _PLACEHOLDER_RE.search(group) or _PLACEHOLDER_RE.search(artifact):
+        return True
+    explicit = bool(_text(dependency, "version"))
+
+    def may_equal(value: str, expected: str) -> bool:
+        resolved = _resolve(value, properties)
+        return resolved == expected or bool(_PLACEHOLDER_RE.search(resolved))
+
+    if not explicit:
+        local_managed, _ = _maven_dependency_elements(project)
+        for candidate in local_managed:
+            candidate_group = _resolve(_text(candidate, "groupId"), properties)
+            candidate_artifact = _resolve(_text(candidate, "artifactId"), properties)
+            if (
+                (
+                    _PLACEHOLDER_RE.search(candidate_group)
+                    or _PLACEHOLDER_RE.search(candidate_artifact)
+                )
+                and may_equal(candidate_group, group)
+                and may_equal(candidate_artifact, artifact)
+            ):
+                return True
+    for profile in _maven_profiles(project):
+        managed, declared = _maven_dependency_elements(profile)
+        for candidate in declared + ([] if explicit else managed):
+            if candidate in managed and (
+                may_equal(_text(candidate, "type"), "pom")
+                and may_equal(_text(candidate, "scope"), "import")
+            ):
+                return True
+            if (
+                _text(candidate, "version")
+                and may_equal(_text(candidate, "groupId"), group)
+                and may_equal(_text(candidate, "artifactId"), artifact)
+            ):
+                return True
+    return False
+
+
 def _maven_properties(project: ET.Element) -> dict[str, str]:
     parent = _child(project, "parent")
     group_id = _text(project, "groupId") or _text(parent, "groupId")
@@ -167,6 +225,15 @@ def _maven_properties(project: ET.Element) -> dict[str, str]:
         for child in properties_element:
             if isinstance(child.tag, str):
                 properties[_local_name(child.tag)] = (child.text or "").strip()
+    # Leave profile-controlled properties symbolic before resolving aliases.
+    # Otherwise a nested reference can hide a profile override behind a literal.
+    for profile in _maven_profiles(project):
+        profile_properties = _child(profile, "properties")
+        if profile_properties is not None:
+            for entry in profile_properties:
+                if isinstance(entry.tag, str):
+                    name = _local_name(entry.tag)
+                    properties[name] = "${" + name + "}"
     for key, value in list(properties.items()):
         properties[key] = _resolve(value, properties)
     return properties
@@ -207,22 +274,21 @@ def _spring_boot_version(
     properties: dict[str, str],
     imported_bom_versions: dict[tuple[str, str], str],
 ) -> str:
-    """Return the Spring Boot version that manages ``org.springframework.boot`` dependencies.
+    """Return the limited offline Boot fallback, not an effective Maven model.
 
-    It comes from an imported ``spring-boot-dependencies`` BOM (which wins in Maven) or from a
-    ``spring-boot-starter-parent`` parent. Returns an empty string when neither is declared.
+    Inherited management precedes imported BOM entries for overlapping artifacts.
+    Explicit dependency and local managed versions are handled by the caller.
+    A recognized parent with an unresolved version must not fall through to a BOM.
     """
-    imported = imported_bom_versions.get((_SPRING_BOOT_GROUP, "spring-boot-dependencies"), "")
-    if imported:
-        return imported
     parent = _child(project, "parent")
-    if parent is None:
-        return ""
-    if _resolve(_text(parent, "groupId"), properties) != _SPRING_BOOT_GROUP:
-        return ""
-    if _resolve(_text(parent, "artifactId"), properties) not in _SPRING_BOOT_PARENTS:
-        return ""
-    return _resolve(_text(parent, "version"), properties)
+    if parent is not None:
+        group = _resolve(_text(parent, "groupId"), properties)
+        artifact = _resolve(_text(parent, "artifactId"), properties)
+        if _PLACEHOLDER_RE.search(group) or _PLACEHOLDER_RE.search(artifact):
+            return ""
+        if group == _SPRING_BOOT_GROUP and artifact in _SPRING_BOOT_PARENTS:
+            return _resolve(_text(parent, "version"), properties)
+    return imported_bom_versions.get((_SPRING_BOOT_GROUP, "spring-boot-dependencies"), "")
 
 
 def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
@@ -255,6 +321,10 @@ def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
             version = managed_versions.get((group, artifact), "")
         if not version and group == _SPRING_BOOT_GROUP:
             version = boot_version
+        if _concrete_version(version) and _profile_version_uncertain(
+            project, dependency, properties
+        ):
+            version = ""
         scope = _resolve(_text(dependency, "scope"), properties)
         optional = _resolve(_text(dependency, "optional"), properties)
         item = _record(group, artifact, version, _maven_scope(scope, optional), source)
