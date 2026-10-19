@@ -6,6 +6,7 @@ import re
 from pathlib import PurePosixPath
 from typing import Any
 
+from ...core.java_parser import _mask_non_code
 from ...http_semantics import HANDLER_SIGNALS_KEY
 from ...normalization import canonicalize_text
 from ...types import ComponentType
@@ -30,12 +31,14 @@ _JAVA_COOKIE_PATTERNS = (
 _PACKAGE_RE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.MULTILINE)
 _ANNOTATION_RE = re.compile(r"@\w+(?:\([^)]*\))?\s*")
 # ``Type name;`` / ``Type name =`` declarations in a class body (fields, local variables).
-_DECLARED_TYPE_RE = re.compile(r"\b([A-Z][\w.]*)(?:<[^>;{}()]*>)?\s+[a-z_]\w*\s*[;=]")
+# A lowercase package prefix is kept (``demo.agents.SupportAgent agent;``).
+_DECLARED_TYPE_RE = re.compile(
+    r"\b((?:[a-z_]\w*\.)*[A-Z]\w*(?:\.[A-Z]\w*)*)(?:<[^>;{}()]*>)?\s+[a-z_]\w*\s*[;=]"
+)
 # Simple types that are never agents; skipping them keeps the hint list short.
 _NON_AGENT_TYPES = frozenset(
     {"String", "Object", "Integer", "Long", "Double", "Boolean", "List", "Map", "Set", "Optional"}
 )
-_MAX_INJECTED_HINTS = 20
 
 
 def _constructor_parameter_type(parameter: str) -> str:
@@ -62,6 +65,11 @@ def _injected_agent_hints(
     the target's file path. Java mirrors packages in directories, so the file of an injected type
     can be derived from the controller's own path, its package and its imports. A hint whose
     target is not an agent never resolves and is dropped, so only real agents get linked.
+
+    A simple name is resolved the way Java does: a single-type import, then the controller's
+    own package, then on-demand imports. Each injected type becomes one hint carrying its
+    candidate files in that order, and the extractor takes the first one that was scanned.
+    Comments and string literals are masked first so commented-out code is not a declaration.
     """
     package_match = _PACKAGE_RE.search(content)
     package = package_match.group(1) if package_match else ""
@@ -83,7 +91,9 @@ def _injected_agent_hints(
         if method.is_constructor and method.containing_type == owner_name:
             type_names.extend(_constructor_parameter_type(item) for item in method.parameters)
     if owner is not None:
-        body = content[owner.body_start : owner.body_end + 1]
+        newlines = [match.start() for match in re.finditer(r"\n", content)]
+        masked, _, _ = _mask_non_code(content, newlines)
+        body = masked[owner.body_start : owner.body_end + 1]
         type_names.extend(_DECLARED_TYPE_RE.findall(body))
 
     explicit = {
@@ -99,40 +109,47 @@ def _injected_agent_hints(
         relative = qualified.replace(".", "/") + ".java"
         return f"{source_root}/{relative}" if source_root else relative
 
-    targets: dict[str, str] = {}
+    def _candidate(qualified: str, simple: str) -> tuple[str, str] | None:
+        target_file = _path_for(qualified)
+        if target_file is None:
+            if "." in qualified and qualified.rsplit(".", 1)[0] != package:
+                return None
+            target_file = f"{parent}/{simple}.java" if parent else f"{simple}.java"
+        return target_file, _agent_canonical(target_file, simple)
+
+    hints: dict[tuple[tuple[str, str], ...], RelationshipHint] = {}
     for type_name in type_names:
         if not type_name:
             continue
         simple = type_name.rsplit(".", 1)[-1]
         if not simple[:1].isupper() or simple == owner_name or simple in _NON_AGENT_TYPES:
             continue
-        candidates: list[str] = []
         if "." in type_name:
-            candidates.append(type_name)
+            qualified_names = [type_name]
         elif type_name in explicit:
-            candidates.append(explicit[type_name])
+            qualified_names = [explicit[type_name]]
         else:
-            candidates.append(f"{package}.{type_name}" if package else type_name)
-            candidates.extend(f"{module}.{type_name}" for module in wildcards)
-        for qualified in candidates:
-            target_file = _path_for(qualified)
-            if target_file is None:
-                if "." in qualified and qualified.rsplit(".", 1)[0] != package:
-                    continue
-                target_file = f"{parent}/{simple}.java" if parent else f"{simple}.java"
-            targets.setdefault(_agent_canonical(target_file, simple), simple)
-
-    return [
-        RelationshipHint(
-            source_canonical=agent_canonical,
-            source_type=ComponentType.AGENT,
-            target_canonical=target,
-            target_type=ComponentType.AGENT,
-            relationship_type="CALLS",
+            qualified_names = [f"{package}.{type_name}" if package else type_name]
+            qualified_names.extend(f"{module}.{type_name}" for module in wildcards)
+        candidates: list[tuple[str, str]] = []
+        for qualified in qualified_names:
+            candidate = _candidate(qualified, simple)
+            if candidate is not None and candidate not in candidates:
+                candidates.append(candidate)
+        if not candidates or any(canonical == agent_canonical for _, canonical in candidates):
+            continue
+        hints.setdefault(
+            tuple(candidates),
+            RelationshipHint(
+                source_canonical=agent_canonical,
+                source_type=ComponentType.AGENT,
+                target_canonical=candidates[0][1],
+                target_type=ComponentType.AGENT,
+                relationship_type="CALLS",
+                target_files=tuple(candidates),
+            ),
         )
-        for target in list(targets)[:_MAX_INJECTED_HINTS]
-        if target != agent_canonical
-    ]
+    return list(hints.values())
 
 
 class JavaWebAdapter(JavaFrameworkAdapter):
