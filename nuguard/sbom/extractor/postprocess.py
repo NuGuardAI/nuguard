@@ -204,7 +204,8 @@ def _dedup_model_variants(
     """
     groups: dict[tuple[str, str], set[tuple[ComponentType, str]]] = {}
     for key, acc in node_map.items():
-        if key[0] != ComponentType.MODEL:
+        # Exact declarations must not lose their namespace or format identity.
+        if key[0] != ComponentType.MODEL or _is_exact_config_model(key, acc):
             continue
         normalized = _normalize_model_variant_name(acc.display_name)
         if not normalized:

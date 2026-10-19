@@ -8,13 +8,17 @@ name and :class:`JavaAIAdapter` cannot see it. This module reads the known keys 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Generator, Iterable, Iterator
+from contextlib import closing
 from pathlib import PurePosixPath
 from typing import Any
 
 import yaml
 from yaml.constructor import ConstructorError
+from yaml.nodes import MappingNode, Node, SequenceNode
 from yaml.resolver import BaseResolver
+
+from nuguard.common.logging import get_logger
 
 from ...normalization import canonicalize_text
 from ...types import ComponentType
@@ -68,6 +72,48 @@ _MODEL_NAME_RE = re.compile(r"^\w[\w.:/@+-]{1,119}$")
 _PROP_LINE_RE = re.compile(r"^\s*(?P<key>[^\s#!=:][^\s=:]*)(?:\s*[=:]\s*|\s+)(?P<value>.*?)\s*$")
 
 _PROFILE_RE = re.compile(r"^%[\w-]+\.")
+
+
+_log = get_logger(__name__)
+_YAML_MAX_VISITS = 50_000
+_YAML_MAX_DEPTH = 128
+
+
+class _YamlWorkLimit(yaml.YAMLError):
+    """The configuration file exceeded its YAML extraction work budget."""
+
+
+class _YamlBudget:
+    """One budget shared by all documents and all alias references in a file."""
+
+    def __init__(self) -> None:
+        self.remaining = _YAML_MAX_VISITS
+
+    def visit(self, depth: int) -> None:
+        if depth > _YAML_MAX_DEPTH:
+            raise _YamlWorkLimit("YAML depth limit exceeded")
+        if self.remaining <= 0:
+            raise _YamlWorkLimit("YAML work limit exceeded")
+        self.remaining -= 1
+
+
+def _check_yaml_work(
+    node: Node,
+    budget: _YamlBudget,
+    ancestors: frozenset[int] = frozenset(),
+) -> None:
+    """Check alias expansion before constructors can expand YAML merge keys."""
+    budget.visit(len(ancestors))
+    if id(node) in ancestors:
+        return
+    next_ancestors = ancestors | {id(node)}
+    if isinstance(node, MappingNode):
+        for key, value in node.value:
+            _check_yaml_work(key, budget, next_ancestors)
+            _check_yaml_work(value, budget, next_ancestors)
+    elif isinstance(node, SequenceNode):
+        for value in node.value:
+            _check_yaml_work(value, budget, next_ancestors)
 
 
 class _MarkedMapping(dict[Any, Any]):
@@ -136,10 +182,23 @@ def _resolve_value(raw: str) -> str | None:
 
 
 def _properties_entries(content: str) -> Iterator[tuple[int, str, str]]:
-    for lineno, line in enumerate(content.splitlines(), start=1):
-        if not line.strip() or line.lstrip()[0] in "#!":
+    # Java natural lines end at CR, LF or CRLF, not at form-feed whitespace.
+    lines = iter(enumerate(re.split(r"\r\n|\r|\n", content), start=1))
+    for lineno, line in lines:
+        if not line.strip(" \t\f") or line.lstrip(" \t\f").startswith(("#", "!")):
             continue
-        match = _PROP_LINE_RE.match(line)
+        fragments: list[str] = []
+        while True:
+            continued = (len(line) - len(line.rstrip("\\"))) % 2 == 1
+            fragments.append(line[:-1] if continued else line)
+            if not continued:
+                break
+            try:
+                _, line = next(lines)
+            except StopIteration:
+                break
+            line = line.lstrip(" \t\f")
+        match = _PROP_LINE_RE.match("".join(fragments))
         if match:
             yield lineno, match.group("key"), match.group("value")
 
@@ -149,46 +208,43 @@ def _flatten(
     prefix: str = "",
     line: int = 1,
     ancestors: frozenset[int] | None = None,
+    budget: _YamlBudget | None = None,
 ) -> Iterator[tuple[int, str, str]]:
     if ancestors is None:
         ancestors = frozenset()
+    if budget is None:
+        budget = _YamlBudget()
+    budget.visit(len(ancestors))
 
     if isinstance(node, dict):
         node_id = id(node)
         if node_id in ancestors:
             return
-
         next_ancestors = ancestors | {node_id}
         key_lines = node.key_lines if isinstance(node, _MarkedMapping) else {}
-
         for key, value in node.items():
             path = f"{prefix}.{key}" if prefix else str(key)
-            yield from _flatten(
-                value,
-                path,
-                key_lines.get(key, line),
-                next_ancestors,
-            )
-
+            yield from _flatten(value, path, key_lines.get(key, line), next_ancestors, budget)
     elif isinstance(node, list):
         node_id = id(node)
         if node_id in ancestors:
             return
-
         next_ancestors = ancestors | {node_id}
         for index, value in enumerate(node):
             path = f"{prefix}.{index}" if prefix else str(index)
-            yield from _flatten(value, path, line, next_ancestors)
-
+            yield from _flatten(value, path, line, next_ancestors, budget)
     elif isinstance(node, (str, int, float)) and not isinstance(node, bool):
         yield line, prefix, str(node)
 
 
-def _load_yaml_documents(content: str) -> Iterator[Any]:
+def _load_yaml_documents(content: str, budget: _YamlBudget) -> Generator[Any, None, None]:
     loader = _MarkedSafeLoader(content)
     try:
-        while loader.check_data():
-            yield loader.get_data()
+        while loader.check_node():
+            node = loader.get_node()
+            if node is not None:
+                _check_yaml_work(node, budget)
+                yield loader.construct_document(node)
     finally:
         loader.dispose()
 
@@ -197,10 +253,13 @@ def _entries(content: str, file_path: str) -> Iterator[tuple[int, str, str]]:
     if file_path.lower().endswith(".properties"):
         yield from _properties_entries(content)
         return
-
+    budget = _YamlBudget()
     try:
-        for document in _load_yaml_documents(content):
-            yield from _flatten(document)
+        with closing(_load_yaml_documents(content, budget)) as documents:
+            for document in documents:
+                yield from _flatten(document, budget=budget)
+    except _YamlWorkLimit as exc:
+        _log.warning("java_config: stopped YAML model extraction for %s: %s", file_path, exc)
     except (yaml.YAMLError, RecursionError):
         return
 

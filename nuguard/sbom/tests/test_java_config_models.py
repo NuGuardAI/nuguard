@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from nuguard.sbom import AiSbomConfig, AiSbomExtractor
+from nuguard.sbom.adapters.java import java_config
 from nuguard.sbom.adapters.java.java_config import (
     extract_java_config_models,
     is_java_app_config_name,
@@ -317,3 +318,196 @@ def test_extractor_preserves_distinct_exact_prefix_models(
         models["gpt-4o"].id,
         models["gpt-4o-mini"].id,
     } <= hint_targets
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_properties_continuations_preserve_start_line(newline: str) -> None:
+    content = newline.join(
+        [
+            "# header",
+            "langchain4j.open-ai.chat-model.model-\\",
+            " \t\fname=\\",
+            "    gpt-4o-\\",
+            "    mini",
+            "langchain4j.open-ai.streaming-chat-model.model-name=gpt-4o",
+        ]
+    )
+    assert _models(content) == [
+        ("gpt-4o-mini", 2, "openai", "langchain4j"),
+        ("gpt-4o", 6, "openai", "langchain4j"),
+    ]
+
+
+@pytest.mark.parametrize("slashes", [1, 2, 3, 4])
+def test_properties_only_odd_backslash_counts_continue(slashes: int) -> None:
+    key = "spring.ai.openai.chat.options.model"
+    content = "other=value" + "\\" * slashes + "\n continued\n" + key + "=gpt-4o\n"
+    entries = list(java_config._properties_entries(content))
+    expected = "value" + "\\" * (slashes - slashes % 2)
+    if slashes % 2:
+        expected += "continued"
+    assert entries[0] == (1, "other", expected)
+    assert entries[-1] == (3, key, "gpt-4o")
+
+
+@pytest.mark.parametrize("marker", ["#", "!"])
+def test_properties_comments_do_not_continue(marker: str) -> None:
+    content = marker + " comment\\\nlangchain4j.open-ai.chat-model.model-name=gpt-4o\n"
+    assert _models(content) == [("gpt-4o", 2, "openai", "langchain4j")]
+
+
+@pytest.mark.parametrize("kind", ["sequence", "mapping", "merge"])
+def test_yaml_alias_work_is_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    kind: str,
+) -> None:
+    monkeypatch.setattr(java_config._log, "propagate", True)
+    caplog.set_level("WARNING", logger=java_config._log.name)
+    monkeypatch.setattr(java_config, "_YAML_MAX_VISITS", 64)
+    lines = ["level0: &level0 {value: seed}"]
+    for level in range(1, 5):
+        alias = f"*level{level - 1}"
+        repeated = ", ".join([alias] * 4)
+        if kind == "mapping":
+            body = "{" + ", ".join(f"k{i}: {alias}" for i in range(4)) + "}"
+        elif kind == "merge":
+            body = "{<<: [" + repeated + "]}"
+        else:
+            body = "[" + repeated + "]"
+        lines.append(f"level{level}: &level{level} {body}")
+    content = "\n".join(lines)
+    assert _models(content, "application.yml") == []
+    assert "YAML work limit exceeded" in caplog.text
+    assert "application.yml" in caplog.text
+    if kind != "merge":
+        with pytest.raises(java_config._YamlWorkLimit, match="YAML work limit exceeded"):
+            list(java_config._flatten(java_config.yaml.safe_load(content)))
+
+
+def test_yaml_budget_is_shared_across_documents_and_reset_for_each_file(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(java_config._log, "propagate", True)
+    caplog.set_level("WARNING", logger=java_config._log.name)
+    monkeypatch.setattr(java_config, "_YAML_MAX_VISITS", 6)
+    content = "spring.ai.openai.chat.options.model: gpt-4o\n"
+    expected = [("gpt-4o", 1, "openai", "spring-ai")]
+    assert _models(content, "application.yml") == expected
+    assert "YAML work limit exceeded" not in caplog.text
+    assert _models(content + "---\n" + content, "application.yml") == expected
+    assert "YAML work limit exceeded" in caplog.text
+    caplog.clear()
+    assert _models(content, "application.yml") == expected
+    assert "YAML work limit exceeded" not in caplog.text
+
+
+def test_yaml_aliases_remain_valid_under_distinct_config_paths() -> None:
+    content = """defaults: &model
+  model-name: gpt-4o
+langchain4j:
+  open-ai:
+    chat-model: *model
+    streaming-chat-model: *model
+"""
+    detections = extract_java_config_models(content, "application.yml")
+    assert [(item.display_name, item.line) for item in detections] == [
+        ("gpt-4o", 2),
+        ("gpt-4o", 2),
+    ]
+    assert {item.metadata["config_key"] for item in detections} == {
+        "langchain4j.open-ai.chat-model.model-name",
+        "langchain4j.open-ai.streaming-chat-model.model-name",
+    }
+
+
+def test_yaml_depth_limit_is_nonfatal(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(java_config._log, "propagate", True)
+    caplog.set_level("WARNING", logger=java_config._log.name)
+    monkeypatch.setattr(java_config, "_YAML_MAX_DEPTH", 4)
+    content = "data: " + "[" * 8 + "seed" + "]" * 8
+    assert _models(content, "application.yml") == []
+    assert "YAML depth limit exceeded" in caplog.text
+
+
+@pytest.mark.parametrize("extension", ["properties", "yml"])
+@pytest.mark.parametrize(
+    "names",
+    [
+        ("team-a/custom-model", "team-b/custom-model"),
+        ("custom-model", "custom-model-q4_k_m.gguf"),
+    ],
+)
+def test_extractor_preserves_exact_model_variants_and_links(
+    tmp_path: Path,
+    extension: str,
+    names: tuple[str, str],
+) -> None:
+    first, second = names
+    config_path = f"src/main/resources/application.{extension}"
+    if extension == "properties":
+        content = (
+            f"langchain4j.open-ai.chat-model.model-name={first}\n"
+            f"langchain4j.open-ai.streaming-chat-model.model-name={second}\n"
+        )
+    else:
+        content = (
+            "langchain4j: {open-ai: {chat-model: {model-name: "
+            + first
+            + "}, streaming-chat-model: {model-name: "
+            + second
+            + "}}}\n"
+        )
+    _write(tmp_path, "src/main/java/demo/Assistant.java", _ASSISTANT)
+    _write(tmp_path, config_path, content)
+    document = AiSbomExtractor().extract_from_path(tmp_path, AiSbomConfig(enable_llm=False))
+    models = {n.name: n for n in document.nodes if n.component_type == ComponentType.MODEL}
+    assert set(models) == set(names)
+    agent = next(
+        n
+        for n in document.nodes
+        if n.component_type == ComponentType.AGENT
+        and any(e.location and e.location.path.endswith("Assistant.java") for e in n.evidence)
+    )
+    hinted = {
+        edge.target
+        for edge in document.edges
+        if edge.source == agent.id
+        and edge.derivation == "hint"
+        and getattr(edge.relationship_type, "value", edge.relationship_type) == "USES"
+    }
+    assert {models[first].id, models[second].id} <= hinted
+
+
+def test_variant_dedup_still_merges_non_config_models() -> None:
+    from nuguard.sbom.extractor.core import _NodeAccumulator
+    from nuguard.sbom.extractor.postprocess import _dedup_model_variants
+    from nuguard.sbom.models import Evidence, SourceLocation
+
+    names = ("team/custom-model-GGUF", "custom-model-Q4_K_M.gguf")
+    node_map = {
+        (ComponentType.MODEL, name): _NodeAccumulator(
+            component_type=ComponentType.MODEL,
+            canonical_name=name,
+            display_name=name,
+            adapter_name="fixture",
+            priority=20,
+            confidence=0.9,
+            evidence=[
+                Evidence(
+                    kind="regex",
+                    confidence=0.9,
+                    detail="fixture",
+                    location=SourceLocation(path="models.py", line=index),
+                )
+            ],
+        )
+        for index, name in enumerate(names, start=1)
+    }
+    _dedup_model_variants(node_map)
+    assert len(node_map) == 1
+    assert len(next(iter(node_map.values())).evidence) == 2
