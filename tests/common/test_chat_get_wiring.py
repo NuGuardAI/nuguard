@@ -140,3 +140,33 @@ async def test_bootstrap_default_still_posts_a_json_body() -> None:
     assert report.all_ok is True
     assert post.call_count == 1
     assert get.call_count == 0
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_bootstrap_accepts_a_plain_text_reply_without_a_json_warning() -> None:
+    respx.route(method="GET", host="target.test", path=ENDPOINT).mock(
+        return_value=httpx.Response(200, text="Hi, how can I help?")
+    )
+
+    report = await _bootstrapper(_EXTRAS, "GET").run()
+
+    check = report.checks[0]
+    assert check.status == "ok"
+    assert check.body_warning == ""
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_bootstrap_still_warns_when_a_non_json_reply_is_not_plain_text() -> None:
+    respx.route(method="GET", host="target.test", path=ENDPOINT).mock(
+        return_value=httpx.Response(
+            200, text="<html>login</html>", headers={"content-type": "text/html"}
+        )
+    )
+
+    report = await _bootstrapper(_EXTRAS, "GET").run()
+
+    check = report.checks[0]
+    assert check.status == "ok"
+    assert "not valid JSON" in check.body_warning

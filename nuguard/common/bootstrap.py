@@ -111,6 +111,10 @@ def _is_event_stream(resp: httpx.Response) -> bool:
     return "text/event-stream" in resp.headers.get("content-type", "").lower()
 
 
+def _is_plain_text(resp: httpx.Response) -> bool:
+    return "text/plain" in resp.headers.get("content-type", "").lower()
+
+
 class AuthBootstrapper:
     """Verifies connectivity and authentication for all declared credentials.
 
@@ -653,6 +657,10 @@ class AuthBootstrapper:
                 elif _is_event_stream(resp):
                     # SSE is not JSON by design — judge its events instead.
                     engagement_error = error_only_response(resp.text)
+                elif _is_plain_text(resp):
+                    # A plain-text reply (e.g. a controller returning a String) is a
+                    # valid chat reply, not a malformed JSON body.
+                    pass
                 else:
                     try:
                         parsed = resp.json()
