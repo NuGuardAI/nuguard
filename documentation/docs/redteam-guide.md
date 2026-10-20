@@ -19,6 +19,14 @@ including variant generation) and `redteam.defence_regression_probe_timeout`
 inconclusive; they cannot produce bypass findings. Incomplete regression coverage
 prevents an otherwise clean scan from reporting `no_findings`.
 
+Each regression has an `expect` mode. `expect: refused` (the default) requires a
+refusal. `expect: no_action` only requires that the app does not perform the action:
+a refusal, or a request for confirmation or missing details, passes, provided no
+state-changing tool call (cancel, delete, update, transfer, and similar) is reported.
+Use it for actions that are safe once the app asks for confirmation first. When the
+target does not expose a tool trace, `no_action` judges the response text alone. An
+entry with an unknown `expect` value is skipped with a warning.
+
 In concurrent and progressive mode, ambiguous app fallback text receives one
 short retry; HTTP 502/503/504 failures
 receive two. Retry backoff releases the request slot. Explicit structured provider
