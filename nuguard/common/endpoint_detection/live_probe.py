@@ -35,6 +35,7 @@ from nuguard.common.endpoint_detection.constants import (
 )
 from nuguard.common.endpoint_detection.sbom import _sbom_post_paths, _sbom_websocket_paths
 from nuguard.common.logging import get_logger
+from nuguard.common.payload_templates import build_probe_payload, contains_message_token
 from nuguard.common.response_extraction import extract_chat_text
 
 if TYPE_CHECKING:
@@ -300,6 +301,14 @@ def is_empty_session_response(response_text: str) -> bool:
     return False
 
 
+def _probe_template_shape(extras: dict[str, object] | None) -> tuple[str, bool] | None:
+    """Identify a configured message carrier; the full template remains the body."""
+    for key, value in (extras or {}).items():
+        if contains_message_token(value):
+            return key, isinstance(value, list)
+    return None
+
+
 async def _try_openapi_detection(
     client: "httpx.AsyncClient",
     timeout: float,
@@ -343,6 +352,11 @@ async def _try_openapi_detection(
         oa_template: "dict | None" = None
     else:
         oa_path, oa_key, oa_list, oa_template = config
+    template_shape = _probe_template_shape(probe_payload_extras)
+    if template_shape is not None:
+        # The configured body wins over a schema-derived field/value shape.
+        oa_key, oa_list = template_shape
+        oa_template = None
     _log.info("endpoint_detection: OpenAPI config — path=%s key=%r list=%s template=%s",
               oa_path, oa_key, oa_list, bool(oa_template))
 
@@ -357,10 +371,7 @@ async def _try_openapi_detection(
         val = [TEST_MESSAGE]
     else:
         val = TEST_MESSAGE
-    body: dict[str, object] = {}
-    if probe_payload_extras:
-        body.update(probe_payload_extras)
-    body[oa_key] = val
+    body = build_probe_payload(oa_key, val, probe_payload_extras, message=TEST_MESSAGE)
     try:
         resp = await client.post(oa_path, content=json.dumps(body))
     except Exception as exc:
@@ -376,7 +387,11 @@ async def _try_openapi_detection(
         except Exception:
             data = _try_read_first_streaming_json(resp, known_response_key) or {}
         if _looks_like_chat_response(data, known_response_key):
-            if config is None and not await _message_field_required(client, oa_path, body, oa_key):
+            if (
+                config is None
+                and template_shape is None
+                and not await _message_field_required(client, oa_path, body, oa_key)
+            ):
                 return None
             _log.info("endpoint_detection: OpenAPI selected %s (key=%r, status=%d)", oa_path, oa_key, status)
             return ProbeResult(oa_path, oa_key, oa_list, oa_template)
@@ -667,6 +682,12 @@ async def _blind_probe(
     llm: "LLMClient | None" = None,
 ) -> "ProbeResult | None":
     """Fallback: try each path with each payload shape until one responds usefully."""
+    template_shape = _probe_template_shape(probe_payload_extras)
+    if template_shape is not None:
+        # The template already declares the request contract. Probe it once per
+        # path, without adding guessed keys or sending field-omission controls.
+        payload_shapes = [template_shape]
+        known_payload_key = template_shape[0]
     server_error_fallback: ProbeResult | None = None
     known_key_rejected_fallback: ProbeResult | None = None
     streaming_error_fallback: ProbeResult | None = None
@@ -689,10 +710,7 @@ async def _blind_probe(
                 value = [TEST_MESSAGE]
             else:
                 value = TEST_MESSAGE
-            body: dict[str, object] = {}
-            if probe_payload_extras:
-                body.update(probe_payload_extras)
-            body[pay_key] = value
+            body = build_probe_payload(pay_key, value, probe_payload_extras, message=TEST_MESSAGE)
             try:
                 resp = await client.post(path, content=json.dumps(body))
             except Exception as exc:
@@ -821,10 +839,9 @@ async def _blind_probe(
                         if hint_key.lower() in MESSAGE_HISTORY_KEYS
                         else TEST_MESSAGE
                     )
-                    hint_body: dict[str, object] = {}
-                    if probe_payload_extras:
-                        hint_body.update(probe_payload_extras)
-                    hint_body[hint_key] = hint_val
+                    hint_body = build_probe_payload(
+                        hint_key, hint_val, probe_payload_extras, message=TEST_MESSAGE,
+                    )
                     try:
                         hint_resp = await client.post(path, content=json.dumps(hint_body))
                     except Exception:

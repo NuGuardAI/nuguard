@@ -22,6 +22,7 @@ from nuguard.common.errors import (
 )
 from nuguard.common.http import QUOTA_EXHAUSTED_PREFIX, quota_exhausted_detail
 from nuguard.common.logging import get_logger
+from nuguard.common.payload_templates import build_probe_payload
 from nuguard.common.transport import error_envelope_message, error_only_response
 from nuguard.models.health_report import CredentialCheckResult, TargetHealthReport
 
@@ -532,12 +533,13 @@ class AuthBootstrapper:
         # can sanity-check below.
         # Extra static fields (chat_payload_extras) are merged in so apps that crash on
         # missing required fields (e.g. vehicleState) don't trip the target_unavailable check.
-        probe_body = {
-            **self._probe_payload_extras,
-            self._payload_key: _probe_payload_value(
-                self._payload_key, self._payload_list, "Hello, how can you help me?"
-            ),
-        }
+        probe_message = "Hello, how can you help me?"
+        probe_body = build_probe_payload(
+            self._payload_key,
+            _probe_payload_value(self._payload_key, self._payload_list, probe_message),
+            self._probe_payload_extras,
+            message=probe_message,
+        )
         try:
             probe_url = await self._probe_url(identity, request_headers)
         except TargetQuotaExhaustedError as exc:
