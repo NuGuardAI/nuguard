@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.console import print_turn as _common_print_turn
+from nuguard.common.http import resolve_chat_request
 from nuguard.common.id_extractor import extract_customer_name, extract_ids
 from nuguard.common.logging import get_logger
 from nuguard.common.run_checkpoint import (
@@ -864,6 +865,8 @@ class RedteamOrchestrator:
         preflight_candidates: int = 3,
         llm_capability_dedup: bool = False,
         chat_payload_extras: dict[str, Any] | None = None,
+        chat_method: str = "POST",
+        chat_payload_in: str | None = None,
         catalog: "tuple | None" = None,
         pre_run_warmup: int = 0,
         verify_findings: bool = False,
@@ -982,6 +985,8 @@ class RedteamOrchestrator:
         self._preflight_path_params: dict[str, str] = {}
         self._llm_capability_dedup = llm_capability_dedup
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
+        self._chat_method = chat_method
+        self._chat_payload_in = chat_payload_in
         self._pre_run_warmup = max(0, pre_run_warmup)
         self._verify_findings = verify_findings
         self._golden_data: dict[str, Any] = golden_data or {}
@@ -1548,7 +1553,11 @@ class RedteamOrchestrator:
         # 0. Endpoint auto-discovery (Option A) or payload-shape detection (Option B).
         # Option A: no path configured — probe SBOM endpoints live.
         # Option B: path known but key is default "message" — detect nested shape.
-        if not self._chat_path or self._chat_payload_key == "message":
+        # A pinned GET / query-string chat endpoint cannot be shape-probed with POSTs.
+        _method, _payload_in = resolve_chat_request(self._chat_method, self._chat_payload_in)
+        _custom_request = _method != "POST" or _payload_in == "query"
+        _pinned_request = _custom_request and bool(self._chat_path_explicit)
+        if not self._chat_path or (self._chat_payload_key == "message" and not _pinned_request):
             await self._maybe_probe_endpoints()
 
         from nuguard.common.session_resolver import resolve_target_session
@@ -1566,6 +1575,8 @@ class RedteamOrchestrator:
             chat_payload_key=self._chat_payload_key,
             chat_payload_list=self._chat_payload_list,
             chat_payload_extras=self._chat_payload_extras,
+            chat_method=self._chat_method,
+            chat_payload_in=self._chat_payload_in,
             chat_response_key=self._chat_response_key,
             canary_config=self._canary_config,
             config_path=self._config_path,

@@ -213,6 +213,8 @@ class RedteamRunRequest(BaseModel):
     browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
     llm_capability_dedup: bool = False
     chat_payload_extras: dict[str, Any] | None = None
+    chat_method: Literal["GET", "POST", "PUT", "PATCH"] = "POST"
+    chat_payload_in: Literal["body", "query"] | None = None
     pre_run_warmup: int = 0
     verify_findings: bool = True
     golden_data: dict[str, Any] | None = None
@@ -551,6 +553,8 @@ async def run_redteam(
         browser_discovery=request.browser_discovery,
         llm_capability_dedup=request.llm_capability_dedup,
         chat_payload_extras=request.chat_payload_extras,
+        chat_method=request.chat_method,
+        chat_payload_in=request.chat_payload_in,
         catalog=catalog,
         pre_run_warmup=request.pre_run_warmup,
         verify_findings=request.verify_findings,
