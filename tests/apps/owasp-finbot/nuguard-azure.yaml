@@ -98,11 +98,12 @@ behavior:
 # ─── Red-team mode ────────────────────────────────────────────────────────────
 # nuguard redteam exercises adversarial scenarios to find break points.
 redteam:
+  mode: campaign                  # breadth-first across all goal types, then depth; avoids timeout storms starving families
 
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
   # cross-tenant scenarios — no extra identity config needed.
-  #canary: ./canary.json
+  canary: ./canary.json   # tenants use web_session: true — independent cookie/CSRF principals
 
   # Request body shape is auto-discovered from the SBOM (chat_endpoint node: message/false).
   # No override needed.
@@ -150,6 +151,7 @@ redteam:
   # Enable in CI to catch false-clean runs caused by a broken target.
   strict_outcome: false
   similar_miss_threshold: 4   # set to 0 to disable
+  universal_safety_probes: false  # low-signal for a finance app; policy-listed topics are still probed
 
   # Guided adversarial conversations using ConversationDirector
   guided_conversations: true        # enable adaptive multi-turn attacks
@@ -158,6 +160,7 @@ redteam:
                                     # clamps any higher cap down. Raise/lower to
                                     # trade cost for depth.
   guided_concurrency: 3             # parallel guided conversations (default: 3)
+  concurrency: 3                    # parallel scenarios; omitted => default 5, which overloaded the ACI target
   scenario_timeout: 180             # cancel any single scenario after 3 minutes
 
   # TAP tree exploration (RT-016) — branching multi-tactic search.

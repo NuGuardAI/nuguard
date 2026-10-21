@@ -429,7 +429,7 @@ class AuthBootstrapper:
         # Check each tenant session_token from canary.json
         if self._canary:
             for tenant in self._canary.tenants:
-                if not tenant.session_token:
+                if not tenant.has_credentials:
                     report.checks.append(
                         CredentialCheckResult(
                             identity=tenant.tenant_id,
@@ -440,13 +440,12 @@ class AuthBootstrapper:
                         )
                     )
                     continue
-                tenant_auth = AuthConfig.from_tenant_token(tenant.session_token)
-                # Tenant credentials are always static (bearer/api_key) —
-                # no login flow needed; use AuthConfig.to_headers() directly
+                # Tenant credentials are static (bearer/api_key/header) or an
+                # acquired cookie/CSRF web session — no login flow needed.
                 tenant_result = await self._check_one(
                     identity=tenant.tenant_id,
-                    headers=tenant_auth.to_headers(),
-                    auth_type=tenant_auth.type,
+                    headers=tenant.auth_headers(),
+                    auth_type="web_session" if tenant.session_headers else AuthConfig.from_tenant_token(tenant.session_token).type,
                 )
                 report.checks.append(tenant_result)
 

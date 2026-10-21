@@ -10998,6 +10998,7 @@
         "type": "object"
       },
       "CanaryTenant": {
+        "description": "One tenant / identity.\n\nA tenant authenticates with a static ``session_token`` (bearer token or a\n``\"Header: value\"`` string), or \u2014 for cookie/CSRF apps with anonymous\nsessions \u2014 ``web_session: true``, which acquires an independent cookie +\nCSRF session at run start (see :func:`acquire_web_session_tenants`).",
         "properties": {
           "tenant_id": {
             "title": "Tenant Id",
@@ -11007,6 +11008,25 @@
             "default": "",
             "title": "Session Token",
             "type": "string"
+          },
+          "web_session": {
+            "default": false,
+            "title": "Web Session",
+            "type": "boolean"
+          },
+          "web_session_pages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Web Session Pages",
+            "type": "array"
+          },
+          "session_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Session Headers",
+            "type": "object"
           },
           "records": {
             "items": {
@@ -11371,6 +11391,11 @@
         "default": 4,
         "title": "Similar Miss Threshold",
         "type": "integer"
+      },
+      "universal_safety_probes": {
+        "default": true,
+        "title": "Universal Safety Probes",
+        "type": "boolean"
       },
       "hard_refusal_abort_turns": {
         "default": 5,

@@ -201,6 +201,7 @@ class RedteamRunRequest(BaseModel):
     turn_delay_seconds: float = 5.0
     scenario_delay_seconds: float = 0.0
     similar_miss_threshold: int = 4
+    universal_safety_probes: bool = True
     hard_refusal_abort_turns: int = 5
     stall_abort_threshold: int = 8
     skip_discovery: bool = False
@@ -542,6 +543,7 @@ async def run_redteam(
         turn_delay_seconds=request.turn_delay_seconds,
         scenario_delay_seconds=request.scenario_delay_seconds,
         similar_miss_threshold=request.similar_miss_threshold,
+        universal_safety_probes=request.universal_safety_probes,
         hard_refusal_abort_turns=request.hard_refusal_abort_turns,
         stall_abort_threshold=request.stall_abort_threshold,
         skip_discovery=request.skip_discovery,

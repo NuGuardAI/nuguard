@@ -63,6 +63,23 @@ from nuguard.sbom.models import AiSbomDocument, NodeType
 from .executor import AttackExecutor, StepResult
 from .guided_executor import GuidedAttackExecutor
 from .similarity_miss_tracker import SimilarityMissTracker
+from .turn_latency import TurnLatencyTracker
+
+
+async def _target_is_responsive(target_url: str, timeout: float = 10.0) -> bool:
+    """Return True if *target_url* answers any HTTP request within *timeout*.
+
+    Any status code (including 404/405) proves the host is reachable, so unlike
+    ``TargetAppClient.health_check`` this does not depend on a ``/health`` route.
+    """
+    import httpx  # noqa: PLC0415
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as probe:
+            await probe.get(target_url)
+        return True
+    except Exception:  # noqa: BLE001 — any transport failure means unresponsive
+        return False
 
 _log = get_logger(__name__)
 
@@ -673,6 +690,37 @@ def _detect_cross_tenant_leak(
     return False
 
 
+
+def _drop_dead_endpoint_scenarios(
+    scenarios: list[AttackScenario], sbom: AiSbomDocument
+) -> tuple[list[AttackScenario], int]:
+    """Drop direct-HTTP-only scenarios whose every target endpoint failed liveness.
+
+    Scenario generation runs before the per-endpoint liveness ping, so scenarios
+    for endpoints just confirmed dead (``operational is False``) would otherwise
+    burn a slot and report 404s. Chat-routed scenarios are never dropped.
+    Returns ``(kept, dropped_count)``.
+    """
+    dead_ids = {
+        str(n.id)
+        for n in sbom.nodes
+        if n.component_type == NodeType.API_ENDPOINT
+        and getattr(n.metadata, "operational", None) is False
+    }
+    if not dead_ids:
+        return scenarios, 0
+    kept = [
+        s
+        for s in scenarios
+        if not (
+            _is_direct_http_only_scenario(s)
+            and s.target_node_ids
+            and all(str(nid) in dead_ids for nid in s.target_node_ids)
+        )
+    ]
+    return kept, len(scenarios) - len(kept)
+
+
 def _dedup_scenarios_by_opener(scenarios: list[AttackScenario]) -> list[AttackScenario]:
     """Discard scenarios with duplicate opener fingerprints before any HTTP calls are made.
 
@@ -855,6 +903,7 @@ class RedteamOrchestrator:
         turn_delay_seconds: float = 5.0,
         scenario_delay_seconds: float = 0.0,
         similar_miss_threshold: int = 4,
+        universal_safety_probes: bool = True,
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
         require_engagement: bool = True,
@@ -965,6 +1014,7 @@ class RedteamOrchestrator:
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
         self._scenario_delay_seconds = max(0.0, scenario_delay_seconds)
         self._similar_miss_threshold = max(1, similar_miss_threshold)
+        self._universal_safety_probes = universal_safety_probes
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
         # Engagement gate: fail fast when the chat endpoint only ever answers
@@ -1864,14 +1914,38 @@ class RedteamOrchestrator:
         )
         if _endpoint_plan is not None:
             self.config_notes.extend(_endpoint_plan.notes)
+        if self._canary_config is not None and any(
+            t.web_session and not t.has_credentials for t in self._canary_config.tenants
+        ):
+            from nuguard.redteam.target.canary import acquire_web_session_tenants  # noqa: PLC0415
+
+            _failed_tenants = await acquire_web_session_tenants(
+                self._canary_config,
+                self._target_url,
+                headers=getattr(self._target_session_config, "effective_headers", None),
+            )
+            if _failed_tenants:
+                self.config_notes.append(
+                    "Canary web-session tenant(s) without a session: "
+                    + ", ".join(_failed_tenants)
+                    + " — cross-tenant scenarios fall back to synthetic tenant ids."
+                )
         generator = ScenarioGenerator(
             self._sbom,
             effective_policy,
             canary_config=self._canary_config,
             endpoint_plan=_endpoint_plan,
+            universal_safety_probes=self._universal_safety_probes,
         )
         all_scenarios = generator.generate(with_guided=_with_guided, progressive=_progressive)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
+        if self._coverage_tracker is not None:
+            self._coverage_tracker.set_expected(
+                [
+                    (str(n.id), getattr(n.component_type, "value", str(n.component_type)), n.name)
+                    for n in generator.effective_nodes
+                ]
+            )
         self.config_notes.extend(generator.skipped_endpoint_notes)
 
         # 1b. Catalog scenarios — merged into the SBOM-driven set above.
@@ -2137,6 +2211,12 @@ class RedteamOrchestrator:
                     _liveness.checked, _liveness.cached, _liveness.operational,
                     _liveness.non_operational, _liveness.skipped,
                 )
+                scenarios, _dead_dropped = _drop_dead_endpoint_scenarios(scenarios, self._sbom)
+                if _dead_dropped:
+                    _log.info(
+                        "Redteam: dropped %d direct-HTTP scenario(s) targeting dead endpoints",
+                        _dead_dropped,
+                    )
             except Exception as exc:
                 _log.warning("Redteam: endpoint liveness check failed (non-fatal): %s", exc)
 
@@ -2514,6 +2594,8 @@ class RedteamOrchestrator:
         # Similarity miss tracker: skip scenarios whose payloads closely resemble
         # already-failed attacks once the miss count exceeds the threshold.
         miss_tracker = SimilarityMissTracker(miss_threshold=self._similar_miss_threshold)
+        # Observed seconds-per-turn, used to stretch the timeout of guided scenarios.
+        turn_latency = TurnLatencyTracker()
         # Code-gen escalation: allow at most one escalation per run.
         _codegen_escalation_done = False
 
@@ -2752,8 +2834,18 @@ class RedteamOrchestrator:
                     )
 
                 _timeout = self._scenario_timeout if self._scenario_timeout > 0 else None
+                if _timeout is not None and _is_guided and scenario.guided_conversation is not None:
+                    _timeout = turn_latency.timeout_for(
+                        _timeout, scenario.guided_conversation.max_turns
+                    )
+                _t_start = time.perf_counter()
                 try:
                     result = await asyncio.wait_for(_execute_body(), timeout=_timeout)
+                    if _is_guided:
+                        turn_latency.observe(
+                            time.perf_counter() - _t_start,
+                            getattr(result[2], "turns_used", 0),
+                        )
                     # A scenario that completed without raising can still signal a
                     # structurally broken target — e.g. every step got "[HTTP 405]"
                     # and the per-chain/per-conversation circuit breaker aborted it
@@ -2805,10 +2897,26 @@ class RedteamOrchestrator:
                     return result
                 except asyncio.TimeoutError:
                     consecutive_unavailable += 1
-                    if consecutive_unavailable >= _ABORT_THRESHOLD:
+                    if consecutive_unavailable >= _ABORT_THRESHOLD and await _target_is_responsive(
+                        self._target_url
+                    ):
+                        # Slow scenarios (e.g. multi-turn guided conversations
+                        # against a high-latency target) time out without the
+                        # target being down. Only a failed liveness probe may
+                        # abort the run.
+                        _log.warning(
+                            "Scenario %s timed out after %.0f s (%d consecutive) but the "
+                            "target still responds — continuing.",
+                            scenario.scenario_id,
+                            self._scenario_timeout,
+                            consecutive_unavailable,
+                        )
+                        consecutive_unavailable = 0
+                    elif consecutive_unavailable >= _ABORT_THRESHOLD:
                         _log.error(
                             "Scenario %s timed out after %.0f s — %d consecutive "
-                            "timeouts, aborting remaining scenarios.",
+                            "timeouts and the target is unresponsive, aborting remaining "
+                            "scenarios.",
                             scenario.scenario_id,
                             self._scenario_timeout,
                             consecutive_unavailable,
