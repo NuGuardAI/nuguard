@@ -363,3 +363,53 @@ def test_session_headers_pin_client_fingerprint() -> None:
     for name, value in PINNED_SESSION_HEADERS.items():
         assert headers[name] == value
     assert WebSession().headers() == {}
+
+
+class TestMountedRoutes:
+    """SBOM routes declared without the UI mount prefix are found under it."""
+
+    @pytest.mark.asyncio
+    async def test_resolver_adopts_mounted_path_and_crawls_to_token_page(self) -> None:
+        mount_chat = "/vendor/api/v1/copilot/chat"
+        sbom = _sbom("/api/v1/copilot/chat")
+
+        def chat(request: httpx.Request) -> httpx.Response:
+            if request.headers.get("x-csrf-token") != TOKEN_VALUE:
+                return httpx.Response(403, json={"detail": "CSRF token missing"})
+            if b'"message"' not in request.content:
+                return httpx.Response(400, text="<html>bad request</html>")
+            return httpx.Response(200, json={"response": "Hello! How can I help?"})
+
+        with respx.mock(base_url=BASE, assert_all_called=False) as mock:
+            mock.get("/openapi.json").mock(return_value=httpx.Response(404))
+            mock.get("/").mock(return_value=httpx.Response(
+                200, text='<a href="/portals">p</a>', headers={"content-type": "text/html"},
+            ))
+            mock.get("/portals").mock(return_value=httpx.Response(
+                200, text='<a href="/vendor">v</a>', headers={"content-type": "text/html"},
+            ))
+            mock.get("/vendor").mock(return_value=httpx.Response(
+                200,
+                text=f'<meta name="csrf-token" content="{TOKEN_VALUE}">',
+                headers={"content-type": "text/html", "set-cookie": f"s={COOKIE_VALUE}; Path=/"},
+            ))
+            mock.post(mount_chat).mock(side_effect=chat)
+            # CSRF middleware runs before routing: unknown routes 403 without a token.
+            mock.route(method="POST").mock(
+                side_effect=lambda req: httpx.Response(404)
+                if req.headers.get("x-csrf-token") == TOKEN_VALUE
+                else httpx.Response(403, json={"detail": "CSRF token missing"})
+            )
+            resolved = await resolve_chat_endpoint(BASE, sbom)
+        assert resolved.path == mount_chat
+        assert resolved.session_headers["X-CSRF-Token"] == TOKEN_VALUE
+
+    def test_extract_page_links(self) -> None:
+        from nuguard.common.web_session import extract_page_links
+
+        html = (
+            '<a href="/about">a</a><a href="/static/x.css">c</a><a href="#top">t</a>'
+            '<a href="https://other.example/x">o</a><a href="http://app.test/vendor?x=1">v</a>'
+            '<form action="/auth/login"></form><a href="mailto:a@b.c">m</a>'
+        )
+        assert extract_page_links(html, "app.test") == ["/about", "/vendor", "/auth/login"]

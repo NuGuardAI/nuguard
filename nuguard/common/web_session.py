@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import deque
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
@@ -52,6 +53,11 @@ PINNED_SESSION_HEADERS: dict[str, str] = {
     "Accept-Encoding": "identity",
 }
 _MAX_CANDIDATE_PAGES = 6
+_MAX_CRAWL_FETCHES = 12
+_MAX_CRAWL_DEPTH = 2
+_MAX_VALIDATION_PATHS = 40
+_LINK_RE = re.compile(r"""(?:href|action)\s*=\s*["']([^"'#]+)["']""", re.IGNORECASE)
+_ASSET_RE = re.compile(r"\.(?:css|js|png|jpe?g|gif|svg|ico|woff2?|ttf|map|json|xml|pdf)(?:\?|$)", re.IGNORECASE)
 
 
 @dataclass
@@ -111,6 +117,11 @@ class WebSession:
     csrf_header_name: str = DEFAULT_CSRF_HEADER
     csrf_token: str = ""
     source_page: str = ""
+
+    @property
+    def root(self) -> str | None:
+        """UI mount prefix of the page that issued the session (e.g. ``/vendor/``)."""
+        return ui_root_for(self.source_page) if self.source_page else None
 
     def headers(self) -> dict[str, str]:
         """Return request headers carrying the session; empty when nothing was acquired."""
@@ -192,13 +203,32 @@ def cookies_from_set_cookie(lines: Iterable[str]) -> dict[str, str]:
     return out
 
 
+def extract_page_links(html: str, base_netloc: str = "") -> list[str]:
+    """Same-origin page paths linked from *html* (no assets, fragments or queries), in order."""
+    out: dict[str, None] = {}
+    for raw in _LINK_RE.findall(html):
+        parts = urlsplit(raw.strip())
+        if parts.scheme in ("http", "https"):
+            if not base_netloc or parts.netloc != base_netloc:
+                continue
+        elif parts.scheme or parts.netloc or not parts.path.startswith("/"):
+            continue
+        path = parts.path or "/"
+        if _ASSET_RE.search(path) or path.startswith("/static/"):
+            continue
+        out.setdefault(path, None)
+    return list(out)
+
+
 def _cookie_header(cookies: httpx.Cookies) -> str:
     return "; ".join(f"{c.name}={c.value}" for c in cookies.jar)
 
 
 def candidate_pages(signals: SessionSignals | None, extra: list[str] | None = None) -> list[str]:
-    """Ordered, de-duplicated UI pages to GET: probe-derived roots, caller hints, then ``/``."""
-    ordered = [*(signals.ui_roots if signals else []), *(extra or []), "/"]
+    """Ordered, de-duplicated UI pages to start the session crawl from."""
+    # Caller/SBOM-derived roots first, then "/" (the crawl root), then roots guessed from
+    # rejected probe paths — those include many fallback routes and are the least reliable.
+    ordered = [*(extra or []), "/", *(signals.ui_roots if signals else [])]
     seen: dict[str, None] = {}
     for page in ordered:
         seen.setdefault(page, None)
@@ -218,29 +248,62 @@ class WebSessionBootstrapper:
         }
         self._headers.update(PINNED_SESSION_HEADERS)
 
-    async def acquire(self, pages: list[str]) -> WebSession | None:
-        """GET each candidate page; return the first session carrying a cookie or CSRF token."""
+    async def acquire(
+        self,
+        pages: list[str],
+        *,
+        accept: "Callable[[WebSession], Awaitable[bool]] | None" = None,
+    ) -> WebSession | None:
+        """Crawl from *pages* for a session; return the first one that passes *accept*.
+
+        Pages are fetched breadth-first (bounded by ``_MAX_CRAWL_FETCHES`` and
+        ``_MAX_CRAWL_DEPTH``). A page carrying a CSRF token is preferred; when a page
+        yields none, its same-origin links are queued so a token living on a portal
+        page (e.g. ``/vendor/``) linked from ``/`` is still found. A cookie-only
+        session is the fallback when no page offers a token.
+        """
+        queue: deque[tuple[str, int]] = deque((p, 0) for p in pages)
+        seen: set[str] = set(pages)
+        fetched = 0
+        fallback: WebSession | None = None
         async with httpx.AsyncClient(
             base_url=self._base_url,
             timeout=httpx.Timeout(self._timeout),
             headers=self._headers,
             follow_redirects=True,
         ) as client:
-            for page in pages:
+            netloc = urlsplit(self._base_url).netloc
+            while queue and fetched < _MAX_CRAWL_FETCHES:
+                page, depth = queue.popleft()
                 try:
                     resp = await client.get(page)
                 except Exception as exc:  # noqa: BLE001 - network errors degrade to "no session"
                     _log.debug("web_session: GET %s failed: %s", page, type(exc).__name__)
                     continue
+                fetched += 1
                 if resp.status_code >= 400:
                     continue
                 name, token = extract_csrf_token(resp, client.cookies)
                 cookie = _cookie_header(client.cookies)
-                if cookie or token:
-                    session = WebSession(cookie, name or DEFAULT_CSRF_HEADER, token, page)
-                    _log.info("web_session: acquired session from %s %r", page, session)
-                    return session
-        _log.debug("web_session: no session cookie or CSRF token found on %s", pages)
+                landed = resp.url.path or page
+                if token:
+                    session = WebSession(cookie, name or DEFAULT_CSRF_HEADER, token, landed)
+                    if accept is None or await accept(session):
+                        _log.info("web_session: acquired session from %s %r", landed, session)
+                        return session
+                    # A token that did not clear the rejected routes (e.g. a site-wide
+                    # token on a public page) — keep crawling for the portal's own.
+                elif cookie and fallback is None:
+                    fallback = WebSession(cookie, DEFAULT_CSRF_HEADER, "", landed)
+                if depth < _MAX_CRAWL_DEPTH and "html" in resp.headers.get("content-type", "").lower():
+                    for link in extract_page_links(resp.text, netloc):
+                        if link not in seen:
+                            seen.add(link)
+                            queue.append((link, depth + 1))
+        if fallback is not None and (accept is None or await accept(fallback)):
+            _log.info("web_session: acquired cookie-only session %r", fallback)
+            return fallback
+        _log.debug("web_session: no usable session found (fetched %d pages)", fetched)
         return None
 
     async def validate(
@@ -249,24 +312,37 @@ class WebSessionBootstrapper:
         probe_path: str,
         probe_body: dict[str, Any] | None = None,
     ) -> bool:
-        """Return True when the session moves *probe_path* out of the CSRF/session rejection class.
+        """Return True when the session moves *probe_path* out of the CSRF/session rejection class."""
+        return await self.validate_any(session, [probe_path], probe_body) is not None
 
-        An empty body should reach schema validation (400/422) rather than a CSRF 403/419.
+    async def validate_any(
+        self,
+        session: WebSession,
+        probe_paths: list[str],
+        probe_body: dict[str, Any] | None = None,
+    ) -> str | None:
+        """Return the first of *probe_paths* the session clears (400/422/2xx), else ``None``.
+
+        An empty body should reach schema validation rather than a CSRF 403/419.
+        404/405 mean the route does not exist and are skipped.
         """
         headers = {**self._headers, "Content-Type": "application/json", **session.headers()}
         try:
             async with httpx.AsyncClient(
                 base_url=self._base_url, timeout=httpx.Timeout(self._timeout), headers=headers,
             ) as client:
-                resp = await client.post(probe_path, json=probe_body if probe_body is not None else {})
+                for path in list(dict.fromkeys(probe_paths))[:_MAX_VALIDATION_PATHS]:
+                    resp = await client.post(path, json=probe_body if probe_body is not None else {})
+                    if resp.status_code in (401, 403, 419, 404, 405):
+                        continue
+                    if resp.status_code == 400 and _CSRF_HINT_RE.search(resp.text[:2000]):
+                        continue
+                    if resp.status_code >= 500:
+                        continue
+                    return path
         except Exception as exc:  # noqa: BLE001
             _log.debug("web_session: validation request failed: %s", type(exc).__name__)
-            return False
-        if resp.status_code in (401, 403, 419, 404, 405):
-            return False
-        if resp.status_code == 400 and _CSRF_HINT_RE.search(resp.text[:2000]):
-            return False
-        return True
+        return None
 
 
 def is_session_rejection(status: int, text: str) -> bool:

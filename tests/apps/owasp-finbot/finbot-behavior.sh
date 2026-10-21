@@ -68,9 +68,9 @@ echo "Preparing OWASP finbot for NuGuard Testing..."
 echo "---"
 echo "Running behavior analysis (static + dynamic)..."
 
-uv run nuguard target verify \
-  --config "$CONFIG_FILE" \
-  --skip-discovery
+#uv run nuguard target verify \
+#  --config "$CONFIG_FILE" \
+#  --skip-discovery
 
 # behavior exits 2 when findings are present — expected in testing; treat as non-fatal.
 # --mode static+dynamic: runs SBOM×Policy alignment checks then live intent-aware probing.

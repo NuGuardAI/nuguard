@@ -38,6 +38,7 @@ from nuguard.common.logging import get_logger
 from nuguard.common.response_extraction import extract_chat_text
 from nuguard.common.web_session import (
     SessionSignals,
+    WebSession,
     WebSessionBootstrapper,
     candidate_pages,
     ui_root_for,
@@ -405,6 +406,12 @@ def _is_streaming_response(resp: "httpx.Response") -> bool:
     return ct in STREAMING_CONTENT_TYPES
 
 
+def _has_stream_frames(resp: "httpx.Response") -> bool:
+    """True when a streaming response body carries at least one non-error ``data:``/JSON frame."""
+    text = resp.text or ""
+    return bool(text.strip()) and "data:" in text and '"error"' not in text[:400]
+
+
 def _try_read_first_streaming_json(
     resp: "httpx.Response", response_key: str | None = None,
 ) -> "dict | None":
@@ -662,6 +669,35 @@ async def _message_field_required(
     return False
 
 
+async def _omission_rejected(
+    client: httpx.AsyncClient, path: str, body: dict[str, object], key: str,
+    *, omission_responses: dict[str, httpx.Response] | None = None,
+) -> bool:
+    """True when the same request minus *key* is rejected with 400/422.
+
+    A 2xx stream that flips to a validation failure once the field is dropped shows the
+    route requires it, even when the failure body is not parseable JSON (e.g. an HTML
+    error page). Reuses the cached omission response from :func:`_message_field_required`.
+    """
+    control = json.dumps({n: v for n, v in body.items() if n != key}, sort_keys=True)
+    response = omission_responses.get(control) if omission_responses is not None else None
+    if response is None:
+        try:
+            response = await client.post(path, content=control)
+        except Exception:  # noqa: BLE001 - no evidence on transport failure
+            return False
+        if omission_responses is not None:
+            omission_responses[control] = response
+    if response.status_code not in (400, 422):
+        return False
+    try:
+        parsed = response.json()
+    except ValueError:
+        return True  # opaque (e.g. HTML) validation page — status flip is the only evidence
+    # A parseable JSON error is judged by the stricter _message_field_required.
+    return not isinstance(parsed, dict)
+
+
 async def _blind_probe(
     client: "httpx.AsyncClient",
     paths: list[str],
@@ -770,6 +806,8 @@ async def _blind_probe(
                     if not confirmed:
                         confirmed = await _message_field_required(
                             client, path, body, pay_key, omission_responses=omission_responses,
+                        ) or await _omission_rejected(
+                            client, path, body, pay_key, omission_responses=omission_responses,
                         )
                     if confirmed:
                         _log.info("endpoint_detection: selected %s (key=%r, status=%d)", path, pay_key, status)
@@ -803,6 +841,23 @@ async def _blind_probe(
                         continue
                     # A streaming content type alone cannot confirm reply content
                     # or a request field (progress frames and empty streams exist).
+                    # An SSE/NDJSON reply carrying data frames to a route that also
+                    # rejects the request without this field is a real chat stream.
+                    if (
+                        status < 300
+                        and _has_stream_frames(resp)
+                        and (
+                            known_payload_key
+                            or await _message_field_required(
+                                client, path, body, pay_key, omission_responses=omission_responses,
+                            )
+                            or await _omission_rejected(
+                                client, path, body, pay_key, omission_responses=omission_responses,
+                            )
+                        )
+                    ):
+                        _log.info("endpoint_detection: selected streaming %s (key=%r)", path, pay_key)
+                        return ProbeResult(path, pay_key, pay_list)
                     continue
                 _log.debug("endpoint_detection: %s key=%r → %d but not chat-like", path, pay_key, status)
                 continue
@@ -1156,9 +1211,11 @@ async def probe_chat_endpoints(
 
     signals = SessionSignals() if session_bootstrap else None
 
-    async def _detect(request_headers: dict[str, str]) -> "ProbeResult | None":
+    async def _detect(
+        request_headers: dict[str, str], request_paths: list[str],
+    ) -> "ProbeResult | None":
         return await _detect_chat_endpoint(
-            base, paths, request_headers, timeout,
+            base, request_paths, request_headers, timeout,
             known_response_key, probe_payload_extras,
             known_payload_key=known_payload_key,
             known_payload_list=known_payload_list,
@@ -1167,17 +1224,18 @@ async def probe_chat_endpoints(
             signals=signals,
         )
 
-    result = await _detect(headers)
+    result = await _detect(headers, paths)
     if (
         (result is None or not result.confirmed)
         and signals is not None
         and signals.triggered
         and not _has_session_header(headers)
     ):
-        session_headers = await _acquire_web_session(base, headers, timeout, signals, paths)
-        if session_headers:
+        acquired = await _acquire_web_session(base, headers, timeout, signals, paths)
+        if acquired is not None:
+            session_headers, retry_paths = acquired
             _log.info("endpoint_detection: retrying probe with auto-acquired web session")
-            retry = await _detect({**headers, **session_headers})
+            retry = await _detect({**headers, **session_headers}, retry_paths)
             if retry is not None and retry.confirmed:
                 if session_sink is not None:
                     session_sink.update(session_headers)
@@ -1191,23 +1249,42 @@ def _has_session_header(headers: "dict[str, str]") -> bool:
     return bool(lowered & {"cookie", "x-csrf-token", "x-xsrf-token"})
 
 
+def _mounted_paths(root: str | None, paths: list[str]) -> list[str]:
+    """Candidate paths under the session's UI mount first (``/vendor/`` + ``api/v1/chat``), then as-is."""
+    mounted = [f"{root.rstrip('/')}{p}" for p in paths if p.startswith("/")] if root else []
+    return list(dict.fromkeys([*mounted, *paths]))
+
+
 async def _acquire_web_session(
     base: str,
     headers: "dict[str, str]",
     timeout: float,
     signals: "SessionSignals",
     paths: list[str],
-) -> "dict[str, str]":
-    """Fetch and validate a cookie/CSRF session; return its headers or ``{}``."""
+) -> "tuple[dict[str, str], list[str]] | None":
+    """Fetch a cookie/CSRF session that clears a rejected route.
+
+    Returns ``(session_headers, probe_paths)`` where *probe_paths* lists the candidate
+    routes re-prefixed with the session's UI mount (apps mounted under e.g. ``/vendor``
+    declare their routes without it), or ``None`` when no session could be validated.
+    """
     bootstrapper = WebSessionBootstrapper(base, timeout=timeout, headers=headers)
-    session = await bootstrapper.acquire(candidate_pages(signals, [ui_root_for(p) or "" for p in paths[:1]]))
+    chosen: dict[str, list[str]] = {}
+
+    async def _accept(session: "WebSession") -> bool:
+        candidates = _mounted_paths(session.root, [*signals.rejected_paths, *paths])
+        hit = await bootstrapper.validate_any(session, candidates)
+        if hit is not None:
+            chosen["paths"] = _mounted_paths(session.root, paths)
+        return hit is not None
+
+    session = await bootstrapper.acquire(
+        candidate_pages(signals, [ui_root_for(p) or "" for p in paths[:1]]), accept=_accept,
+    )
     if session is None:
-        return {}
-    probe_path = signals.rejected_paths[0] if signals.rejected_paths else (paths[0] if paths else "")
-    if probe_path and not await bootstrapper.validate(session, probe_path):
-        _log.debug("endpoint_detection: acquired web session did not clear the rejection at %s", probe_path)
-        return {}
-    return session.headers()
+        _log.debug("endpoint_detection: no web session cleared the rejected routes")
+        return None
+    return session.headers(), chosen.get("paths", paths)
 
 
 def normalize_probe_result(result: ProbeResult | None) -> ProbeResult | None:

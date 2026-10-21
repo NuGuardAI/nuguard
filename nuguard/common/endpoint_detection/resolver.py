@@ -212,6 +212,13 @@ async def resolve_chat_endpoint(
             resolved_list = False
             payload_source = EndpointSource.SBOM
         if not is_websocket and resolved_key != "__websocket__":
+            confirmed_probes: list[ProbeResult] = []
+
+            def _capture_probe(result: ProbeResult) -> None:
+                confirmed_probes.append(result)
+                if probe_result_callback is not None:
+                    probe_result_callback(result)
+
             inferred = await detect_payload_shape(
                 target_url,
                 sbom,
@@ -226,8 +233,23 @@ async def resolve_chat_endpoint(
                 timeout=timeout,
                 probe_payload_extras=probe_payload_extras,
                 llm=llm,
-                probe_result_callback=probe_result_callback,
+                probe_result_callback=_capture_probe,
             )
+            # A hinted probe only ever returns the hinted path, unless an auto-acquired
+            # web session revealed that the route lives under the session's UI mount
+            # (e.g. SBOM '/api/v1/chat' served at '/vendor/api/v1/chat'). Adopt that path.
+            if (
+                confirmed_probes
+                and confirmed_probes[-1].path != resolved_path
+                and not endpoint_is_explicit
+                and session_sink
+            ):
+                notes.append(
+                    f"Endpoint {resolved_path!r} is served under a mount prefix — "
+                    f"using {confirmed_probes[-1].path!r}."
+                )
+                resolved_path = confirmed_probes[-1].path
+                path_source = EndpointSource.PROBE
             if not key_is_explicit:
                 resolved_key = inferred.key
             if not list_is_explicit:

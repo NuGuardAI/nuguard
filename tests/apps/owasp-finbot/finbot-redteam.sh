@@ -18,6 +18,8 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
   source "$SCRIPT_DIR/.env"
   set +a
 fi
+CONFIG_FILE="$SCRIPT_DIR/nuguard-azure.yaml"
+
 mkdir -p "$SCRIPT_DIR/reports"
 LOG_FILE="$SCRIPT_DIR/reports/finbot-security-$(date +%Y%m%dT%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
