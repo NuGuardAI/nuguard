@@ -341,6 +341,7 @@ def redteam(
         scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
         similar_miss_threshold=cfg.redteam_similar_miss_threshold,
         universal_safety_probes=cfg.redteam_universal_safety_probes,
+        workflows=cfg.redteam_workflows or None,
         hard_refusal_abort_turns=cfg.redteam_hard_refusal_abort_turns,
         stall_abort_threshold=cfg.redteam_stall_abort_threshold,
         skip_discovery=cfg.redteam_skip_discovery,
@@ -651,6 +652,7 @@ async def _run_redteam(
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
     universal_safety_probes: bool = True,
+    workflows: "list[dict[str, Any]] | None" = None,
     hard_refusal_abort_turns: int = 5,
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
@@ -823,6 +825,7 @@ async def _run_redteam(
                 scenario_delay_seconds=scenario_delay_seconds,
                 similar_miss_threshold=similar_miss_threshold,
                 universal_safety_probes=universal_safety_probes,
+                workflows=workflows,
                 hard_refusal_abort_turns=hard_refusal_abort_turns,
                 stall_abort_threshold=stall_abort_threshold,
                 skip_discovery=skip_discovery,
@@ -901,6 +904,7 @@ async def _run_redteam(
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
         universal_safety_probes=universal_safety_probes,
+        workflows=workflows,
         hard_refusal_abort_turns=hard_refusal_abort_turns,
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
@@ -969,6 +973,7 @@ async def _run_orchestrator(  # noqa: C901
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
     universal_safety_probes: bool = True,
+    workflows: "list[dict[str, Any]] | None" = None,
     hard_refusal_abort_turns: int = 5,
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
@@ -1006,6 +1011,7 @@ async def _run_orchestrator(  # noqa: C901
     from nuguard.redteam.campaign.config import CampaignConfig
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
     from nuguard.redteam.public_api import RedteamAuthConfig, RedteamRunRequest, run_redteam
+    from nuguard.redteam.workflows import WorkflowSpec
 
     redteam_llm: LLMClient | None = None
     if redteam_llm_model:
@@ -1077,6 +1083,7 @@ async def _run_orchestrator(  # noqa: C901
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
         universal_safety_probes=universal_safety_probes,
+        workflows=[WorkflowSpec.model_validate(w) for w in workflows or []],
         hard_refusal_abort_turns=hard_refusal_abort_turns,
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,

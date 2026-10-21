@@ -904,6 +904,7 @@ class RedteamOrchestrator:
         scenario_delay_seconds: float = 0.0,
         similar_miss_threshold: int = 4,
         universal_safety_probes: bool = True,
+        workflows: "list[dict[str, Any]] | None" = None,
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
         require_engagement: bool = True,
@@ -1015,6 +1016,9 @@ class RedteamOrchestrator:
         self._scenario_delay_seconds = max(0.0, scenario_delay_seconds)
         self._similar_miss_threshold = max(1, similar_miss_threshold)
         self._universal_safety_probes = universal_safety_probes
+        from nuguard.redteam.workflows import WorkflowSpec  # noqa: PLC0415
+
+        self._workflows = [WorkflowSpec.model_validate(w) for w in (workflows or [])]
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
         # Engagement gate: fail fast when the chat endpoint only ever answers
@@ -1514,6 +1518,57 @@ class RedteamOrchestrator:
                 len(new_findings), self.asm.probe_budget_used, self._asm_max_probe_requests,
             )
         self._asm_findings.extend(new_findings)
+
+    async def _run_workflow_pass(self, client: "TargetClient") -> None:
+        """Run configured stateful workflow attacks and judge them with their oracle.
+
+        Best-effort: a failure here must never abort the scan. Findings join the
+        pre-pass findings (``_asm_findings``) and each workflow gets a
+        ``ScenarioRecord`` so it appears in the scenario tables.
+        """
+        from nuguard.redteam.workflows import (  # noqa: PLC0415
+            WorkflowRunner,
+            build_workflow_finding,
+        )
+
+        tenant_headers = {
+            t.tenant_id: t.auth_headers()
+            for t in (self._canary_config.tenants if self._canary_config else [])
+            if t.has_credentials
+        }
+        runner = WorkflowRunner(client, tenant_headers=tenant_headers)
+        for spec in self._workflows:
+            started = time.perf_counter()
+            results = await runner.run(spec)
+            hit = next((r for r in results if r.succeeded and not r.control_matched), None)
+            if hit is not None:
+                self._asm_findings.append(build_workflow_finding(spec, hit))
+            _control_matched = any(r.control_matched for r in results)
+            _errors = [r.error for r in results if r.error]
+            self.scenario_records.append(
+                ScenarioRecord(
+                    title=f"Workflow: {spec.title}",
+                    goal_type=spec.goal_type,
+                    scenario_type="WORKFLOW_ATTACK",
+                    description=spec.description or spec.title,
+                    impact_score=7.0,
+                    affected=spec.oracle.path,
+                    chain_status=(
+                        "inconclusive:control_matched" if _control_matched
+                        else "completed" if hit is not None or not _errors
+                        else "failed"
+                    ),
+                    had_finding=hit is not None,
+                    steps=[step for r in results for step in r.steps],
+                    duration_s=time.perf_counter() - started,
+                    turns_used=sum(len(r.steps) for r in results),
+                    turns_budget=len(spec.steps) * (len(spec.payloads) + len(spec.control_payloads)),
+                )
+            )
+            _log.info(
+                "Workflow %s: %d run(s), finding=%s%s",
+                spec.id, len(results), hit is not None, f", errors={_errors}" if _errors else "",
+            )
 
     async def _run_observation_pass(self) -> None:
         """W7 passive observation-channel tap (catalog L-series).
@@ -2255,6 +2310,13 @@ class RedteamOrchestrator:
                     _log.info("Redteam pre-pass end: stage=observation elapsed=%.2fs", time.monotonic() - _phase_started)
                 except Exception as exc:
                     _log.warning("Redteam: observation pass failed (non-fatal): %s", exc)
+
+            if self._workflows:
+                try:
+                    _log.info("Redteam pre-pass start: stage=workflows count=%d", len(self._workflows))
+                    await self._run_workflow_pass(client)
+                except Exception as exc:
+                    _log.warning("Redteam: workflow pass failed (non-fatal): %s", exc)
 
             # Substitute poison server URL into all scenario step payloads that
             # contain the placeholder host.  This makes indirect injection and RAG

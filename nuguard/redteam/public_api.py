@@ -58,6 +58,7 @@ from nuguard.redteam.executor.orchestrator import (
     finding_matches_scenario_filter,
 )
 from nuguard.redteam.target.canary import CanaryConfig
+from nuguard.redteam.workflows import WorkflowSpec
 from nuguard.remediation.backfill import backfill_finding_remediation
 from nuguard.remediation.models import RemediationArtefact
 
@@ -202,6 +203,7 @@ class RedteamRunRequest(BaseModel):
     scenario_delay_seconds: float = 0.0
     similar_miss_threshold: int = 4
     universal_safety_probes: bool = True
+    workflows: list[WorkflowSpec] = Field(default_factory=list)
     hard_refusal_abort_turns: int = 5
     stall_abort_threshold: int = 8
     skip_discovery: bool = False
@@ -544,6 +546,7 @@ async def run_redteam(
         scenario_delay_seconds=request.scenario_delay_seconds,
         similar_miss_threshold=request.similar_miss_threshold,
         universal_safety_probes=request.universal_safety_probes,
+        workflows=[w.model_dump() for w in request.workflows] or None,
         hard_refusal_abort_turns=request.hard_refusal_abort_turns,
         stall_abort_threshold=request.stall_abort_threshold,
         skip_discovery=request.skip_discovery,

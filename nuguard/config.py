@@ -387,6 +387,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
     if "universal_safety_probes" in redteam:
         flat["redteam_universal_safety_probes"] = bool(redteam["universal_safety_probes"])
+    if isinstance(redteam.get("workflows"), list):
+        flat["redteam_workflows"] = list(redteam["workflows"])
     if "hard_refusal_abort_turns" in redteam:
         flat["redteam_hard_refusal_abort_turns"] = int(redteam["hard_refusal_abort_turns"])
     if "stall_abort_threshold" in redteam:
@@ -1529,6 +1531,14 @@ class NuGuardConfig(BaseSettings):
             "scenarios are suppressed (yaml: redteam.similar_miss_threshold). "
             "Prevents repeating the same failing attack angle across many scenarios. "
             "Set to 0 to disable."
+        ),
+    )
+    redteam_workflows: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Stateful workflow attacks with an outcome oracle (yaml: redteam.workflows). "
+            "Each entry is a WorkflowSpec (see nuguard.redteam.workflows). These WRITE to "
+            "the target (register vendors, submit invoices), so listing one is the opt-in."
         ),
     )
     redteam_universal_safety_probes: bool = Field(

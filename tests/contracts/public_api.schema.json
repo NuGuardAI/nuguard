@@ -11185,6 +11185,234 @@
         },
         "title": "RedteamLoginFlowConfig",
         "type": "object"
+      },
+      "WorkflowOracle": {
+        "description": "Reads back state after the workflow and decides whether the attack worked.\n\nThe predicate describes the *bad* outcome: when it matches, the attack\nsucceeded and a finding is raised.",
+        "properties": {
+          "method": {
+            "default": "GET",
+            "title": "Method",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "principal": {
+            "default": "primary",
+            "title": "Principal",
+            "type": "string"
+          },
+          "json_path": {
+            "title": "Json Path",
+            "type": "string"
+          },
+          "op": {
+            "default": "equals",
+            "enum": [
+              "equals",
+              "in",
+              "contains",
+              "gte",
+              "lte",
+              "exists"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "value": {
+            "default": null,
+            "title": "Value"
+          },
+          "poll_timeout_s": {
+            "default": 60.0,
+            "title": "Poll Timeout S",
+            "type": "number"
+          },
+          "poll_interval_s": {
+            "default": 5.0,
+            "title": "Poll Interval S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "path",
+          "json_path"
+        ],
+        "title": "WorkflowOracle",
+        "type": "object"
+      },
+      "WorkflowSpec": {
+        "description": "A stateful attack: ordered steps, an attack payload, and an outcome oracle.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "goal_type": {
+            "default": "POLICY_VIOLATION",
+            "title": "Goal Type",
+            "type": "string"
+          },
+          "severity": {
+            "default": "high",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/$defs/WorkflowStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "oracle": {
+            "$ref": "#/$defs/WorkflowOracle"
+          },
+          "payloads": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Payloads",
+            "type": "array"
+          },
+          "control_payloads": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Control Payloads",
+            "type": "array"
+          },
+          "remediation": {
+            "default": "",
+            "title": "Remediation",
+            "type": "string"
+          },
+          "owasp_llm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Llm Ref"
+          },
+          "owasp_asi_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Asi Ref"
+          },
+          "stop_on_success": {
+            "default": true,
+            "title": "Stop On Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "steps",
+          "oracle",
+          "payloads"
+        ],
+        "title": "WorkflowSpec",
+        "type": "object"
+      },
+      "WorkflowStep": {
+        "description": "One HTTP request in a workflow.\n\n``path``, ``body`` string values and ``params`` may reference ``{payload}``\n(the attack text under test) and any name captured by an earlier step\n(e.g. ``{vendor_id}``).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "title": "Method",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Body"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "capture": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Capture",
+            "type": "object"
+          },
+          "expect_status": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Expect Status",
+            "type": "array"
+          },
+          "principal": {
+            "default": "primary",
+            "title": "Principal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "path"
+        ],
+        "title": "WorkflowStep",
+        "type": "object"
       }
     },
     "description": "JSON-safe input for :func:`run_redteam`.\n\nMirrors ``RedteamOrchestrator.__init__``'s scalar and config-object\nparameters with identical defaults. Large domain objects (``sbom``,\n``policy``), live/stateful collaborators (``redteam_llm``, ``eval_llm``,\n``app_log_reader``), and objects that may hold compiled callables\n(``policy_controls``, ``catalog``) are intentionally kept OUT of this\nmodel and passed as separate keyword arguments to :func:`run_redteam`\ninstead \u2014 the same separation :mod:`nuguard.common.discovery` uses for\n``client``/``session``.",
@@ -11396,6 +11624,13 @@
         "default": true,
         "title": "Universal Safety Probes",
         "type": "boolean"
+      },
+      "workflows": {
+        "items": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "title": "Workflows",
+        "type": "array"
       },
       "hard_refusal_abort_turns": {
         "default": 5,
