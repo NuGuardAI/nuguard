@@ -197,6 +197,17 @@ def _profile_version_uncertain(
                 may_equal(_text(candidate, "type"), "pom")
                 and may_equal(_text(candidate, "scope"), "import")
             ):
+                if any(
+                    _resolve(_text(entry, "groupId"), properties) == group
+                    and _resolve(_text(entry, "artifactId"), properties) == artifact
+                    and _concrete_version(_resolve(_text(entry, "version"), properties))
+                    and not (
+                        may_equal(_text(entry, "type"), "pom")
+                        and may_equal(_text(entry, "scope"), "import")
+                    )
+                    for entry in local_managed
+                ):
+                    continue
                 return True
             if (
                 _text(candidate, "version")
