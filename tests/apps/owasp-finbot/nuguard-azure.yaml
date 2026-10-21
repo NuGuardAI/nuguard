@@ -35,17 +35,9 @@ target:
   # it automatically (extracted from AZURE_WEBAPP_NAME in .github/workflows/deploy-azure.yml).
   #url: http://127.0.0.1:8250   # local dev backend (pnpm dev or python -m uvicorn api:app)
   url: http://finbot-demo.eastus2.azurecontainer.io:8000   # ACI deployment (deploy-azure.sh)
-  # FinBot's vendor chat API uses a temporary session plus a matching CSRF token.
-  # The test wrappers source prepare-session.sh before loading this configuration.
-  endpoint: /vendor/api/v1/chat
-  chat_payload_key: message
-  chat_payload_list: false
-  headers:
-    Cookie: ${FINBOT_SESSION_COOKIE}
-    X-CSRF-Token: ${FINBOT_CSRF_TOKEN}
-    User-Agent: NuGuard-FinBot/1.0
-    Accept-Language: en-US
-    Accept-Encoding: identity
+  # FinBot's vendor chat API needs a temporary session cookie plus a matching CSRF token.
+  # NuGuard detects the rejection during discovery and acquires the session itself —
+  # no endpoint, headers or helper script are needed here.
   # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
   #auth:
   #  type: login_flow

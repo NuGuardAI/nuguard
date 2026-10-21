@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from typing import Any
@@ -43,7 +43,14 @@ _XSRF_COOKIE_NAMES = frozenset({"xsrf-token", "csrf-token", "csrftoken"})
 
 DEFAULT_CSRF_HEADER = "X-CSRF-Token"
 XSRF_CSRF_HEADER = "X-XSRF-TOKEN"
-_ACQUIRE_USER_AGENT = "nuguard-probe/1.0"
+# Servers (e.g. FinBot) may bind a session to the client fingerprint seen when it was
+# issued. These headers are sent during acquisition and re-sent with the session on
+# every later request, so every NuGuard component presents the same fingerprint.
+PINNED_SESSION_HEADERS: dict[str, str] = {
+    "User-Agent": "nuguard-session/1.0",
+    "Accept-Language": "en-US",
+    "Accept-Encoding": "identity",
+}
 _MAX_CANDIDATE_PAGES = 6
 
 
@@ -108,6 +115,8 @@ class WebSession:
     def headers(self) -> dict[str, str]:
         """Return request headers carrying the session; empty when nothing was acquired."""
         out: dict[str, str] = {}
+        if self.cookie_header or self.csrf_token:
+            out.update(PINNED_SESSION_HEADERS)
         if self.cookie_header:
             out["Cookie"] = self.cookie_header
         if self.csrf_token:
@@ -138,26 +147,49 @@ class _CsrfParser(HTMLParser):
             self.token = a.get("value", "")
 
 
-def extract_csrf_token(resp: httpx.Response, cookies: httpx.Cookies) -> tuple[str, str]:
-    """Return ``(header_name, token)`` found in *resp*, or ``("", "")``.
+def extract_csrf_from_parts(
+    headers: Mapping[str, str], text: str, cookies: Mapping[str, str],
+) -> tuple[str, str]:
+    """Return ``(header_name, token)`` from lower-cased response headers, body text and cookies.
 
     Sources, in order: response header, HTML meta/hidden input, ``XSRF-TOKEN``-style cookie.
+    Transport-agnostic so the pinned pentest transport can reuse it.
     """
     for name in ("x-csrf-token", "x-xsrf-token"):
-        if resp.headers.get(name):
-            return DEFAULT_CSRF_HEADER, resp.headers[name]
-    if "html" in resp.headers.get("content-type", "").lower() or resp.text.lstrip().startswith("<"):
+        if headers.get(name):
+            return DEFAULT_CSRF_HEADER, headers[name]
+    if "html" in headers.get("content-type", "").lower() or text.lstrip().startswith("<"):
         parser = _CsrfParser()
         try:
-            parser.feed(resp.text)
+            parser.feed(text)
         except Exception:  # noqa: BLE001 - malformed HTML is not fatal
             pass
         if parser.token:
             return DEFAULT_CSRF_HEADER, parser.token
-    for cookie in cookies.jar:
-        if cookie.name.lower() in _XSRF_COOKIE_NAMES and cookie.value:
-            return XSRF_CSRF_HEADER, cookie.value
+    for name, value in cookies.items():
+        if name.lower() in _XSRF_COOKIE_NAMES and value:
+            return XSRF_CSRF_HEADER, value
     return "", ""
+
+
+def extract_csrf_token(resp: httpx.Response, cookies: httpx.Cookies) -> tuple[str, str]:
+    """Return ``(header_name, token)`` found in *resp*, or ``("", "")``."""
+    return extract_csrf_from_parts(
+        {k.lower(): v for k, v in resp.headers.items()},
+        resp.text,
+        {c.name: c.value for c in cookies.jar if c.value},
+    )
+
+
+def cookies_from_set_cookie(lines: Iterable[str]) -> dict[str, str]:
+    """Parse ``Set-Cookie`` header lines into ``{name: value}`` (attributes dropped)."""
+    out: dict[str, str] = {}
+    for line in lines:
+        pair = line.split(";", 1)[0]
+        name, sep, value = pair.partition("=")
+        if sep and name.strip():
+            out[name.strip()] = value.strip()
+    return out
 
 
 def _cookie_header(cookies: httpx.Cookies) -> str:
@@ -184,7 +216,7 @@ class WebSessionBootstrapper:
             k: v for k, v in (headers or {}).items()
             if k.lower() not in {"cookie", "content-type", "x-csrf-token", "x-xsrf-token"}
         }
-        self._headers.setdefault("User-Agent", _ACQUIRE_USER_AGENT)
+        self._headers.update(PINNED_SESSION_HEADERS)
 
     async def acquire(self, pages: list[str]) -> WebSession | None:
         """GET each candidate page; return the first session carrying a cookie or CSRF token."""

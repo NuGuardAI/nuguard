@@ -354,3 +354,12 @@ class TestMidRunRefresh:
         assert is_session_rejection(403, "invalid CSRF token")
         assert not is_session_rejection(403, "admin only")
         assert not is_session_rejection(500, "csrf")
+
+
+def test_session_headers_pin_client_fingerprint() -> None:
+    from nuguard.common.web_session import PINNED_SESSION_HEADERS
+
+    headers = WebSession("a=b", "X-CSRF-Token", TOKEN_VALUE).headers()
+    for name, value in PINNED_SESSION_HEADERS.items():
+        assert headers[name] == value
+    assert WebSession().headers() == {}

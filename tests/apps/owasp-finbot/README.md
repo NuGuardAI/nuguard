@@ -36,23 +36,16 @@ Run commands from the NuGuard repository root. Docker mode requires Docker Compo
    tests/apps/owasp-finbot/finbot-redteam.sh --redteam-only
    ```
 
-The wrappers obtain a temporary anonymous session from `/vendor/`, extract its
-CSRF token, and validate the pair without invoking the AI. They then target
-`/vendor/api/v1/chat` with consistent session fingerprint headers. CSRF protection
-stays enabled. Credentials remain in process memory and are refreshed each run.
+FinBot needs a temporary anonymous session cookie and a matching CSRF token.
+NuGuard's pre-scan discovery recognises the CSRF/session rejection, fetches
+`/vendor/` to obtain both, validates them, and pins the client fingerprint headers
+(`User-Agent`, `Accept-Language`, `Accept-Encoding`) the session was issued to.
+`behavior`, `redteam` and `pentest` (with `--allow-dynamic-auth`) all do this
+automatically, and `behavior`/`redteam` refresh the session if FinBot expires it
+mid-run. CSRF protection stays enabled and no helper script is required.
 Reports and logs are written under `reports/`.
 
-For direct CLI verification, load your assessment credentials, then source the
-session helper in the same shell:
-
-```bash
-SCRIPT_DIR="$PWD/tests/apps/owasp-finbot"
-source "$SCRIPT_DIR/prepare-session.sh"
-uv run nuguard target verify --config "$SCRIPT_DIR/nuguard.yaml" --skip-discovery
-```
-
 The temporary identity does not represent a verified email or privileged account.
-Long runs may need a new session if FinBot expires or rotates its cookie.
 
 ## Conventional pentest
 

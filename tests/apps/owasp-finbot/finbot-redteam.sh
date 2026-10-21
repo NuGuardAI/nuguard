@@ -26,11 +26,7 @@ if [[ "$MODE" != redteam ]]; then
   "$SCRIPT_DIR/finbot-pentest.sh"
 fi
 if [[ "$MODE" != pentest ]]; then
-  # Pentesting can invalidate sessions. Start redteam with a fresh pair at
-  # the configured chat origin, independent of the conventional scanner.
-  unset FINBOT_SESSION_URL
-  # shellcheck source=prepare-session.sh
-  source "$SCRIPT_DIR/prepare-session.sh"
+  # NuGuard acquires (and refreshes) FinBot's session cookie and CSRF token itself.
   REDTEAM_TMP="$(mktemp -d "${TMPDIR:-/tmp}/finbot-redteam.XXXXXX")"
   trap 'rm -rf "$REDTEAM_TMP"' EXIT
   status=0

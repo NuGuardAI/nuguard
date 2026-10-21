@@ -16,11 +16,6 @@ else
 fi
 
 CONFIG_FILE="$SCRIPT_DIR/nuguard-azure.yaml"
-export FINBOT_SESSION_URL="http://finbot-demo.eastus2.azurecontainer.io:8000"
-
-# Acquire a fresh cookie/token pair before NuGuard interpolates the config.
-# shellcheck source=prepare-session.sh
-source "$SCRIPT_DIR/prepare-session.sh"
 
 mkdir -p "$SCRIPT_DIR/reports"
 

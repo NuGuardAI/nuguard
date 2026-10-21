@@ -28,18 +28,10 @@ sbom_generation:
   llm: true                        # set true to enrich SBOM nodes with LLM descriptions
                                     # requires LITELLM_API_KEY to be set
 target:
-  # FinBot's vendor chat API uses a temporary session plus a matching CSRF token.
-  # The test wrappers source prepare-session.sh before loading this configuration.
+  # FinBot's vendor chat API needs a temporary session cookie plus a matching CSRF token.
+  # NuGuard detects the rejection during discovery and acquires the session itself —
+  # no endpoint, headers or helper script are needed here.
   url: http://127.0.0.1:8000
-  endpoint: /vendor/api/v1/chat
-  chat_payload_key: message
-  chat_payload_list: false
-  headers:
-    Cookie: ${FINBOT_SESSION_COOKIE}
-    X-CSRF-Token: ${FINBOT_CSRF_TOKEN}
-    User-Agent: NuGuard-FinBot/1.0
-    Accept-Language: en-US
-    Accept-Encoding: identity
   auth:
     type: none  # FinBot creates a temporary anonymous session on GET /vendor/.
 
