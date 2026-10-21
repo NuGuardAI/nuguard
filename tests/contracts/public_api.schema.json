@@ -11468,6 +11468,17 @@
             "default": "primary",
             "title": "Principal",
             "type": "string"
+          },
+          "wait_for": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/WorkflowOracle"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "required": [

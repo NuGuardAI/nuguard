@@ -8,32 +8,6 @@ from pydantic import BaseModel, Field, field_validator
 PAYLOAD_PLACEHOLDER = "{payload}"
 
 
-class WorkflowStep(BaseModel):
-    """One HTTP request in a workflow.
-
-    ``path``, ``body`` string values and ``params`` may reference ``{payload}``
-    (the attack text under test) and any name captured by an earlier step
-    (e.g. ``{vendor_id}``).
-    """
-
-    id: str
-    method: str = "POST"
-    path: str
-    body: dict[str, Any] | None = None
-    params: dict[str, str] = Field(default_factory=dict)
-    # name -> dotted JSON path in the response (e.g. ``invoice.id``).
-    capture: dict[str, str] = Field(default_factory=dict)
-    # Accepted statuses; empty means any 2xx.
-    expect_status: list[int] = Field(default_factory=list)
-    # ``primary`` (the run's own credentials) or a canary ``tenant_id``.
-    principal: str = "primary"
-
-    @field_validator("method")
-    @classmethod
-    def _upper(cls, value: str) -> str:
-        return value.upper()
-
-
 class WorkflowOracle(BaseModel):
     """Reads back state after the workflow and decides whether the attack worked.
 
@@ -54,6 +28,35 @@ class WorkflowOracle(BaseModel):
     # Back-end agents run asynchronously: poll until the predicate matches or time runs out.
     poll_timeout_s: float = 60.0
     poll_interval_s: float = 5.0
+
+    @field_validator("method")
+    @classmethod
+    def _upper(cls, value: str) -> str:
+        return value.upper()
+
+
+class WorkflowStep(BaseModel):
+    """One HTTP request in a workflow.
+
+    ``path``, ``body`` string values and ``params`` may reference ``{payload}``
+    (the attack text under test) and any name captured by an earlier step
+    (e.g. ``{vendor_id}``).
+    """
+
+    id: str
+    method: str = "POST"
+    path: str
+    body: dict[str, Any] | None = None
+    params: dict[str, str] = Field(default_factory=dict)
+    # name -> dotted JSON path in the response (e.g. ``invoice.id``).
+    capture: dict[str, str] = Field(default_factory=dict)
+    # Accepted statuses; empty means any 2xx.
+    expect_status: list[int] = Field(default_factory=list)
+    # ``primary`` (the run's own credentials) or a canary ``tenant_id``.
+    principal: str = "primary"
+    # Poll this condition before running the step (e.g. wait for a vendor to be
+    # rejected before requesting a re-review); the step fails if it never holds.
+    wait_for: WorkflowOracle | None = None
 
     @field_validator("method")
     @classmethod

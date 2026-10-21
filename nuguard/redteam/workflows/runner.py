@@ -142,6 +142,14 @@ class WorkflowRunner:
         self, step: WorkflowStep, variables: dict[str, Any]
     ) -> tuple[dict[str, Any], bool]:
         """Run one step; return ``(record, ok)`` and update *variables* with captures."""
+        if step.wait_for is not None:
+            ready, observed = await self._poll_oracle(step.wait_for, variables)
+            if not ready:
+                return (
+                    {"step_id": step.id, "method": step.method, "path": step.path, "status": 0,
+                     "response_excerpt": f"wait_for not met (last observed {observed!r})"},
+                    False,
+                )
         path = render(step.path, variables)
         body = render(step.body, variables) if step.body is not None else None
         params = render(step.params, variables)
@@ -187,7 +195,12 @@ class WorkflowRunner:
 
     async def run_payload(self, spec: WorkflowSpec, payload: str) -> WorkflowResult:
         """Run *spec* once with *payload* substituted for ``{payload}``."""
-        variables: dict[str, Any] = {PAYLOAD_PLACEHOLDER.strip("{}"): payload}
+        # ``run_id`` is unique per run so repeated runs in one session never collide
+        # on unique fields (e.g. a vendor email).
+        variables: dict[str, Any] = {
+            PAYLOAD_PLACEHOLDER.strip("{}"): payload,
+            "run_id": uuid.uuid4().hex[:8],
+        }
         result = WorkflowResult(spec_id=spec.id, payload=payload)
         try:
             for step in spec.steps:
@@ -258,9 +271,13 @@ def build_workflow_finding(spec: WorkflowSpec, result: WorkflowResult) -> Findin
         title=spec.title,
         severity=Severity(spec.severity),
         description=(
-            spec.description
-            or f"Workflow attack {spec.id!r} changed application state: "
-            f"{spec.oracle.json_path} {spec.oracle.op} {spec.oracle.value!r}."
+            (
+                spec.description
+                or f"Workflow attack {spec.id!r} changed application state: "
+                f"{spec.oracle.json_path} {spec.oracle.op} {spec.oracle.value!r}."
+            )
+            # Marker so reports that omit finding ids still identify the workflow.
+            + f" [workflow:{spec.id}]"
         ),
         affected_component=spec.oracle.path,
         remediation=spec.remediation or None,
