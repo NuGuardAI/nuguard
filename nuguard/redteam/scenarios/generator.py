@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nuguard.common.endpoint_scenario_gate import should_skip_direct_http_scenario
 from nuguard.common.logging import get_logger
@@ -118,7 +118,12 @@ from .session_metadata import (
     build_policy_version_claim,
     build_role_claim_forgery,
 )
-from .tool_abuse import build_direct_datastore_probe, build_sql_injection, build_ssrf
+from .tool_abuse import (
+    build_direct_datastore_probe,
+    build_foot_in_the_door_exec,
+    build_sql_injection,
+    build_ssrf,
+)
 
 _log = get_logger(__name__)
 
@@ -361,6 +366,19 @@ def _tool_risk_group(tool_name: str, description: str) -> tuple[str, bool]:
             return (group_label, False)
     return (_TOOL_GROUP_OTHER, False)
 
+
+
+_EXEC_TOOL_RE = re.compile(
+    r"(?:^|[_\-\s.])(?:execute|exec|run)[_\-\s]?(?:script|shell|command|cmd|code)|shell|subprocess",
+    re.IGNORECASE,
+)
+
+
+def _is_exec_tool(node: Any) -> bool:
+    """True for a TOOL node that executes scripts/commands (by privilege scope or name)."""
+    if getattr(node.metadata, "privilege_scope", None) == "code_execution":
+        return True
+    return bool(_EXEC_TOOL_RE.search(node.name or ""))
 
 
 def _drop_tool_shadow_agents(nodes: list) -> list:
@@ -1505,6 +1523,18 @@ class ScenarioGenerator:
                 out.append(build_sql_injection(tool_id=tool_id, tool_name=node.name))
             if meta.ssrf_possible:
                 out.append(build_ssrf(tool_id=tool_id, tool_name=node.name))
+            if _is_exec_tool(node) and not any(
+                sc.title.startswith("Foot-in-the-door") for sc in out
+            ):
+                entry_ids = self._compute_entry_agents() or [
+                    str(n.id) for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
+                ]
+                if entry_ids:
+                    out.append(
+                        build_foot_in_the_door_exec(
+                            agent_id=sorted(entry_ids)[0], tool_id=tool_id, tool_name=node.name
+                        )
+                    )
 
         # Direct datastore access — emitted when a DATASTORE node exposes a
         # connection string in its metadata (extras["connection_string"] or similar).

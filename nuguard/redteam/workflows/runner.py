@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import time
 import uuid
@@ -35,13 +36,18 @@ class _Client(Protocol):
     ) -> tuple[int, str, dict]: ...
 
 
-def render(value: Any, variables: dict[str, str]) -> Any:
+def render(value: Any, variables: dict[str, Any]) -> Any:
     """Substitute ``{name}`` tokens in strings, recursing into dicts and lists.
 
-    Unknown tokens are left untouched and substituted text is never re-scanned,
-    so a payload containing ``{braces}`` cannot inject further substitutions.
+    A string that is exactly one known token takes the variable's native type
+    (so a captured numeric ``file_id`` stays a number in a JSON body). Unknown
+    tokens are left untouched and substituted text is never re-scanned, so a
+    payload containing ``{braces}`` cannot inject further substitutions.
     """
     if isinstance(value, str):
+        whole = _TOKEN_RE.fullmatch(value)
+        if whole and whole.group(1) in variables:
+            return variables[whole.group(1)]
         return _TOKEN_RE.sub(lambda m: str(variables.get(m.group(1), m.group(0))), value)
     if isinstance(value, dict):
         return {k: render(v, variables) for k, v in value.items()}
@@ -51,8 +57,13 @@ def render(value: Any, variables: dict[str, str]) -> Any:
 
 
 def extract_json_path(data: Any, path: str) -> Any:
-    """Return the value at dotted *path* (``a.b.0.c``), or ``None`` when absent."""
+    """Return the value at dotted *path* (``a.b.0.c``); ``""`` selects the whole value.
+
+    Returns ``None`` when the path is absent.
+    """
     current = data
+    if not path:
+        return current
     for part in path.split("."):
         if isinstance(current, dict) and part in current:
             current = current[part]
@@ -75,7 +86,11 @@ def predicate_matches(op: str, observed: Any, expected: Any) -> bool:
         if op == "in":
             return str(observed).lower() in {str(v).lower() for v in (expected or [])}
         if op == "contains":
-            return str(expected).lower() in str(observed).lower()
+            haystack = observed if isinstance(observed, str) else json.dumps(observed, default=str)
+            return str(expected).lower() in haystack.lower()
+        if op == "matches":
+            haystack = observed if isinstance(observed, str) else json.dumps(observed, default=str)
+            return re.search(str(expected), haystack) is not None
         if op == "gte":
             return float(observed) >= float(expected)
         if op == "lte":
@@ -124,7 +139,7 @@ class WorkflowRunner:
         )
 
     async def _run_step(
-        self, step: WorkflowStep, variables: dict[str, str]
+        self, step: WorkflowStep, variables: dict[str, Any]
     ) -> tuple[dict[str, Any], bool]:
         """Run one step; return ``(record, ok)`` and update *variables* with captures."""
         path = render(step.path, variables)
@@ -143,11 +158,11 @@ class WorkflowRunner:
             for name, json_path in step.capture.items():
                 captured = extract_json_path(data, json_path)
                 if captured is not None:
-                    variables[name] = str(captured)
+                    variables[name] = captured
         return record, ok
 
     async def _poll_oracle(
-        self, oracle: WorkflowOracle, variables: dict[str, str]
+        self, oracle: WorkflowOracle, variables: dict[str, Any]
     ) -> tuple[bool, Any]:
         """Poll the oracle until its predicate matches or the timeout elapses."""
         path = render(oracle.path, variables)
@@ -158,7 +173,11 @@ class WorkflowRunner:
             status, _text, data = await self._request(
                 oracle.principal, oracle.method, path, None, params
             )
-            if 200 <= status < 300:
+            if oracle.json_path == "$status":
+                observed = status
+                if predicate_matches(oracle.op, observed, oracle.value):
+                    return True, observed
+            elif 200 <= status < 300:
                 observed = extract_json_path(data, oracle.json_path)
                 if predicate_matches(oracle.op, observed, oracle.value):
                     return True, observed
@@ -168,7 +187,7 @@ class WorkflowRunner:
 
     async def run_payload(self, spec: WorkflowSpec, payload: str) -> WorkflowResult:
         """Run *spec* once with *payload* substituted for ``{payload}``."""
-        variables: dict[str, str] = {PAYLOAD_PLACEHOLDER.strip("{}"): payload}
+        variables: dict[str, Any] = {PAYLOAD_PLACEHOLDER.strip("{}"): payload}
         result = WorkflowResult(spec_id=spec.id, payload=payload)
         try:
             for step in spec.steps:
@@ -181,17 +200,38 @@ class WorkflowRunner:
         except Exception as exc:  # noqa: BLE001 — a broken workflow must not abort the scan
             _log.warning("Workflow %s failed: %s", spec.id, exc)
             result.error = f"{type(exc).__name__}: {exc}"
+        finally:
+            await self._cleanup(spec, variables, result)
         return result
 
-    async def run(self, spec: WorkflowSpec) -> list[WorkflowResult]:
+    async def _cleanup(
+        self, spec: WorkflowSpec, variables: dict[str, Any], result: WorkflowResult
+    ) -> None:
+        """Run cleanup steps (best-effort) so the attack leaves no state behind."""
+        for step in spec.cleanup:
+            try:
+                record, ok = await self._run_step(step, variables)
+                record["cleanup"] = True
+                result.steps.append(record)
+                if not ok:
+                    _log.warning("Workflow %s: cleanup step %r returned HTTP %s", spec.id, step.id, record["status"])
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("Workflow %s: cleanup step %r failed: %s", spec.id, step.id, exc)
+
+    async def run(self, spec: WorkflowSpec, llm: Any = None) -> list[WorkflowResult]:
         """Run controls then attack payloads; return every result.
+
+        Attack payloads come from the spec or are generated (see
+        :func:`nuguard.redteam.workflows.payloads.generate_payloads`).
 
         When a control payload already satisfies the oracle the predicate is not
         attack-specific, so attack payloads are skipped and the control result is
         flagged ``control_matched``.
         """
         results: list[WorkflowResult] = []
-        for control in spec.control_payloads:
+        from nuguard.redteam.workflows.payloads import benign_control  # noqa: PLC0415
+
+        for control in benign_control(spec):
             control_result = await self.run_payload(spec, control)
             results.append(control_result)
             if control_result.succeeded:
@@ -201,7 +241,9 @@ class WorkflowRunner:
                     spec.id,
                 )
                 return results
-        for payload in spec.payloads:
+        from nuguard.redteam.workflows.payloads import generate_payloads  # noqa: PLC0415
+
+        for payload in await generate_payloads(spec, llm):
             attack_result = await self.run_payload(spec, payload)
             results.append(attack_result)
             if attack_result.succeeded and spec.stop_on_success:

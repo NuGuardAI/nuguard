@@ -11220,6 +11220,7 @@
               "equals",
               "in",
               "contains",
+              "matches",
               "gte",
               "lte",
               "exists"
@@ -11247,6 +11248,32 @@
           "json_path"
         ],
         "title": "WorkflowOracle",
+        "type": "object"
+      },
+      "WorkflowRequirements": {
+        "description": "When a bundled workflow template applies to a target.\n\nAll listed conditions must hold. Empty means \"always applicable\".",
+        "properties": {
+          "sbom_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sbom Paths",
+            "type": "array"
+          },
+          "probe_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Probe Paths",
+            "type": "array"
+          },
+          "min_tenants": {
+            "default": 0,
+            "title": "Min Tenants",
+            "type": "integer"
+          }
+        },
+        "title": "WorkflowRequirements",
         "type": "object"
       },
       "WorkflowSpec": {
@@ -11295,9 +11322,31 @@
             "items": {
               "type": "string"
             },
-            "minItems": 1,
             "title": "Payloads",
             "type": "array"
+          },
+          "payload_goal": {
+            "default": "",
+            "title": "Payload Goal",
+            "type": "string"
+          },
+          "payload_style": {
+            "default": "pretext",
+            "enum": [
+              "pretext",
+              "html_document",
+              "text_document",
+              "tool_description"
+            ],
+            "title": "Payload Style",
+            "type": "string"
+          },
+          "payload_count": {
+            "default": 2,
+            "maximum": 6,
+            "minimum": 1,
+            "title": "Payload Count",
+            "type": "integer"
           },
           "control_payloads": {
             "items": {
@@ -11305,6 +11354,21 @@
             },
             "title": "Control Payloads",
             "type": "array"
+          },
+          "auto_control": {
+            "default": true,
+            "title": "Auto Control",
+            "type": "boolean"
+          },
+          "cleanup": {
+            "items": {
+              "$ref": "#/$defs/WorkflowStep"
+            },
+            "title": "Cleanup",
+            "type": "array"
+          },
+          "requires": {
+            "$ref": "#/$defs/WorkflowRequirements"
           },
           "remediation": {
             "default": "",
@@ -11345,8 +11409,7 @@
           "id",
           "title",
           "steps",
-          "oracle",
-          "payloads"
+          "oracle"
         ],
         "title": "WorkflowSpec",
         "type": "object"
@@ -11630,6 +11693,13 @@
           "$ref": "#/$defs/WorkflowSpec"
         },
         "title": "Workflows",
+        "type": "array"
+      },
+      "workflow_templates": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Workflow Templates",
         "type": "array"
       },
       "hard_refusal_abort_turns": {

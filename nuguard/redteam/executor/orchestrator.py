@@ -905,6 +905,7 @@ class RedteamOrchestrator:
         similar_miss_threshold: int = 4,
         universal_safety_probes: bool = True,
         workflows: "list[dict[str, Any]] | None" = None,
+        workflow_templates: "list[str] | None" = None,
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
         require_engagement: bool = True,
@@ -1019,6 +1020,7 @@ class RedteamOrchestrator:
         from nuguard.redteam.workflows import WorkflowSpec  # noqa: PLC0415
 
         self._workflows = [WorkflowSpec.model_validate(w) for w in (workflows or [])]
+        self._workflow_templates = list(workflow_templates or [])
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
         # Engagement gate: fail fast when the chat endpoint only ever answers
@@ -1536,10 +1538,27 @@ class RedteamOrchestrator:
             for t in (self._canary_config.tenants if self._canary_config else [])
             if t.has_credentials
         }
+        from nuguard.redteam.workflows.library import (  # noqa: PLC0415
+            filter_applicable,
+            resolve_templates,
+        )
+
+        templated = await filter_applicable(
+            resolve_templates(self._workflow_templates),
+            sbom_paths=[
+                str(n.metadata.endpoint)
+                for n in self._sbom.nodes
+                if n.component_type == NodeType.API_ENDPOINT and n.metadata.endpoint
+            ],
+            client=client,
+            tenant_count=len(tenant_headers),
+        )
+        _explicit_ids = {s.id for s in self._workflows}
+        specs = self._workflows + [s for s in templated if s.id not in _explicit_ids]
         runner = WorkflowRunner(client, tenant_headers=tenant_headers)
-        for spec in self._workflows:
+        for spec in specs:
             started = time.perf_counter()
-            results = await runner.run(spec)
+            results = await runner.run(spec, llm=self._redteam_llm)
             hit = next((r for r in results if r.succeeded and not r.control_matched), None)
             if hit is not None:
                 self._asm_findings.append(build_workflow_finding(spec, hit))
@@ -2311,9 +2330,9 @@ class RedteamOrchestrator:
                 except Exception as exc:
                     _log.warning("Redteam: observation pass failed (non-fatal): %s", exc)
 
-            if self._workflows:
+            if self._workflows or self._workflow_templates:
                 try:
-                    _log.info("Redteam pre-pass start: stage=workflows count=%d", len(self._workflows))
+                    _log.info("Redteam pre-pass start: stage=workflows")
                     await self._run_workflow_pass(client)
                 except Exception as exc:
                     _log.warning("Redteam: workflow pass failed (non-fatal): %s", exc)

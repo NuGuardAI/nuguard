@@ -204,6 +204,7 @@ class RedteamRunRequest(BaseModel):
     similar_miss_threshold: int = 4
     universal_safety_probes: bool = True
     workflows: list[WorkflowSpec] = Field(default_factory=list)
+    workflow_templates: list[str] = Field(default_factory=list)
     hard_refusal_abort_turns: int = 5
     stall_abort_threshold: int = 8
     skip_discovery: bool = False
@@ -547,6 +548,7 @@ async def run_redteam(
         similar_miss_threshold=request.similar_miss_threshold,
         universal_safety_probes=request.universal_safety_probes,
         workflows=[w.model_dump() for w in request.workflows] or None,
+        workflow_templates=request.workflow_templates or None,
         hard_refusal_abort_turns=request.hard_refusal_abort_turns,
         stall_abort_threshold=request.stall_abort_threshold,
         skip_discovery=request.skip_discovery,
