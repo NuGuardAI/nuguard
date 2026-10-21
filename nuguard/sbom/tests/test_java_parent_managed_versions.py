@@ -437,3 +437,102 @@ def test_profile_uncertainty_reaches_the_osv_filter(tmp_path: Path) -> None:
         }
     ]
     get.assert_not_called()
+
+
+def _client_dependency(version: str = "") -> str:
+    version_xml = f"<version>{version}</version>" if version else ""
+    return (
+        "<dependency><groupId>example</groupId><artifactId>client</artifactId>"
+        f"{version_xml}</dependency>"
+    )
+
+
+def _bom(group: str = "com.acme", artifact: str = "acme-bom") -> str:
+    return (
+        f"<dependency><groupId>{group}</groupId><artifactId>{artifact}</artifactId>"
+        "<version>2.0</version><type>pom</type><scope>import</scope></dependency>"
+    )
+
+
+def _profiles(*bodies: str) -> str:
+    profiles = "".join(f"<profile><id>p{i}</id>{body}</profile>" for i, body in enumerate(bodies))
+    return f"<profiles>{profiles}</profiles>"
+
+
+def _bare_pom(profiles: str) -> str:
+    return (
+        f"<project {_NS}><modelVersion>4.0.0</modelVersion>"
+        "<groupId>demo</groupId><artifactId>demo</artifactId><version>1.0</version>"
+        f"{profiles}</project>"
+    )
+
+
+def test_profile_only_dependency_keeps_its_literal_version(tmp_path: Path) -> None:
+    pom = _bare_pom(_maven_profile(f"<dependencies>{_client_dependency('1.2.3')}</dependencies>"))
+    dep = _scan(tmp_path, pom)["example:client"]
+    assert dep["version_spec"] == "==1.2.3"
+    assert dep["purl"].endswith("@1.2.3")
+
+
+def test_competing_profile_declarations_still_make_each_other_uncertain(tmp_path: Path) -> None:
+    profiles = _profiles(
+        f"<dependencies>{_client_dependency('1.2.3')}</dependencies>",
+        f"<dependencies>{_client_dependency('1.2.4')}</dependencies>",
+    )
+    dep = _scan(tmp_path, _bare_pom(profiles))["example:client"]
+    assert dep["version_spec"] == ""
+    assert "@" not in dep["purl"]
+
+
+@pytest.mark.parametrize("parent", ["3.4.2", ""])
+def test_unrelated_profile_bom_import_keeps_a_boot_version(tmp_path: Path, parent: str) -> None:
+    dep = _web_dependency(
+        tmp_path,
+        parent=parent,
+        management=_boot_bom("3.4.2"),
+        profiles=_maven_profile(_managed_dependencies(_bom())),
+    )
+    assert dep["version_spec"] == "==3.4.2"
+    assert dep["purl"].endswith("@3.4.2")
+
+
+def test_profiles_importing_their_own_boms_do_not_drop_versions(tmp_path: Path) -> None:
+    profiles = _profiles(
+        _managed_dependencies(_bom(artifact="dev-bom")),
+        _managed_dependencies(_bom(artifact="prod-bom")),
+    )
+    deps = _scan(
+        tmp_path,
+        _boot_pom(
+            management=_client_dependency("1.2.3"),
+            profiles=profiles,
+            extra_dependencies=_client_dependency(),
+        ),
+    )
+    assert deps["org.springframework.boot:spring-boot-starter-web"]["purl"].endswith("@3.4.2")
+    assert deps["example:client"]["purl"].endswith("@1.2.3")
+
+
+def test_concrete_local_version_wins_over_a_profile_bom_import(tmp_path: Path) -> None:
+    dep = _web_dependency(
+        tmp_path,
+        management=_boot_dependency(version="3.2.9"),
+        profiles=_maven_profile(_managed_dependencies(_boot_bom())),
+    )
+    assert dep["version_spec"] == "==3.2.9"
+    assert dep["purl"].endswith("@3.2.9")
+
+
+def test_profile_bom_import_with_unresolvable_coordinates_stays_opaque(tmp_path: Path) -> None:
+    body = (
+        "<properties><bom.group>org.springframework.boot</bom.group>"
+        "<bom.artifact>spring-boot-dependencies</bom.artifact></properties>"
+        + _managed_dependencies(_bom("${bom.group}", "${bom.artifact}"))
+    )
+    dep = _web_dependency(
+        tmp_path,
+        parent="",
+        management=_boot_bom("3.4.2"),
+        profiles=_maven_profile(body),
+    )
+    assert "@" not in dep["purl"]

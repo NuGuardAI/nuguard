@@ -164,7 +164,8 @@ def _profile_version_uncertain(
     This offline scanner cannot know -P, settings.xml or environment activation.
     Even activeByDefault profiles can be disabled. Direct profile declarations
     can override direct versions; profile management only affects unversioned
-    declarations. Imported profile BOMs are conservatively treated as opaque.
+    declarations. A profile BOM import is opaque offline, so it only counts when it could
+    be the BOM behind this dependency's version; a concrete local entry outranks it.
     """
     group = _resolve(_text(dependency, "groupId"), properties)
     artifact = _resolve(_text(dependency, "artifactId"), properties)
@@ -175,6 +176,20 @@ def _profile_version_uncertain(
     def may_equal(value: str, expected: str) -> bool:
         resolved = _resolve(value, properties)
         return resolved == expected or bool(_PLACEHOLDER_RE.search(resolved))
+
+    def import_may_supply(candidate: ET.Element) -> bool:
+        # BOM contents are unreadable offline. A profile import matters only if it could be
+        # the BOM behind this dependency's version: the dependency itself, or the Spring
+        # Boot BOM for a Spring Boot dependency (the only BOM the fallback consults).
+        bom_group = _text(candidate, "groupId")
+        bom_artifact = _text(candidate, "artifactId")
+        if may_equal(bom_group, group) and may_equal(bom_artifact, artifact):
+            return True
+        return (
+            group == _SPRING_BOOT_GROUP
+            and may_equal(bom_group, _SPRING_BOOT_GROUP)
+            and may_equal(bom_artifact, "spring-boot-dependencies")
+        )
 
     if not explicit:
         local_managed, _ = _maven_dependency_elements(project)
@@ -193,11 +208,13 @@ def _profile_version_uncertain(
     for profile in _maven_profiles(project):
         managed, declared = _maven_dependency_elements(profile)
         for candidate in declared + ([] if explicit else managed):
+            if candidate is dependency:
+                continue
             if candidate in managed and (
                 may_equal(_text(candidate, "type"), "pom")
                 and may_equal(_text(candidate, "scope"), "import")
             ):
-                if any(
+                if import_may_supply(candidate) and not any(
                     _resolve(_text(entry, "groupId"), properties) == group
                     and _resolve(_text(entry, "artifactId"), properties) == artifact
                     and _concrete_version(_resolve(_text(entry, "version"), properties))
@@ -207,8 +224,8 @@ def _profile_version_uncertain(
                     )
                     for entry in local_managed
                 ):
-                    continue
-                return True
+                    return True
+                continue
             if (
                 _text(candidate, "version")
                 and may_equal(_text(candidate, "groupId"), group)
