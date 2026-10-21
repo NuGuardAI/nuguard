@@ -15,7 +15,10 @@ else
   echo "WARNING: .env not found — ensure APP_USERNAME, APP_PASSWORD, GEMINI_API_KEY are set." >&2
 fi
 
-# Acquire a fresh cookie/token pair before NuGuard interpolates nuguard.yaml.
+CONFIG_FILE="$SCRIPT_DIR/nuguard-azure.yaml"
+export FINBOT_SESSION_URL="http://finbot-demo.eastus2.azurecontainer.io:8000"
+
+# Acquire a fresh cookie/token pair before NuGuard interpolates the config.
 # shellcheck source=prepare-session.sh
 source "$SCRIPT_DIR/prepare-session.sh"
 
@@ -70,10 +73,14 @@ echo "Preparing OWASP finbot for NuGuard Testing..."
 echo "---"
 echo "Running behavior analysis (static + dynamic)..."
 
+uv run nuguard target verify \
+  --config "$CONFIG_FILE" \
+  --skip-discovery
+
 # behavior exits 2 when findings are present — expected in testing; treat as non-fatal.
 # --mode static+dynamic: runs SBOM×Policy alignment checks then live intent-aware probing.
 uv run nuguard behavior \
-  --config "$SCRIPT_DIR/nuguard.yaml" \
+  --config "$CONFIG_FILE" \
   --mode dynamic \
   --format markdown \
   -v \

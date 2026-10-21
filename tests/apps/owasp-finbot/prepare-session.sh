@@ -3,7 +3,7 @@
 # Credentials stay in the process environment and are never written to disk.
 prepare_finbot_session() {
   local session_data
-  session_data="$(uv run python - "$SCRIPT_DIR/nuguard.yaml" <<'PY'
+  session_data="$(uv run python - "${CONFIG_FILE:-$SCRIPT_DIR/nuguard.yaml}" <<'PY'
 import os
 import sys
 from html.parser import HTMLParser

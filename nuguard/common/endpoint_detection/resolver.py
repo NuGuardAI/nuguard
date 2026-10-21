@@ -45,6 +45,7 @@ async def resolve_chat_endpoint(
     probe_result_callback: Callable[[ProbeResult], None] | None = None,
     allow_live_probe: bool = True,
     browser_discovery: "BrowserDiscoveryConfig | None" = None,
+    session_bootstrap: bool = True,
 ) -> ResolvedEndpoint:
     """Resolve an endpoint and only the payload fields that are missing.
 
@@ -65,6 +66,14 @@ async def resolve_chat_endpoint(
     the authenticated pre-flight check validates and rotates the endpoint later.
     """
     notes: list[str] = []
+    # Filled by live probes when they auto-acquire a cookie/CSRF session; later
+    # probes in this resolution reuse it via _headers().
+    session_sink: dict[str, str] = {}
+
+    def _headers() -> dict[str, str] | None:
+        merged = {**(auth_headers or {}), **session_sink}
+        return merged or None
+
     endpoint_is_explicit = endpoint is not UNSET and bool(endpoint)
     resolved_path = str(endpoint) if endpoint_is_explicit else None
     path_source = EndpointSource.CONFIG if endpoint_is_explicit else EndpointSource.UNKNOWN
@@ -125,7 +134,9 @@ async def resolve_chat_endpoint(
             probe_result = await probe_endpoint(
                 target_url,
                 sbom,
-                auth_headers=auth_headers,
+                auth_headers=_headers(),
+                session_sink=session_sink,
+                session_bootstrap=session_bootstrap,
                 timeout=timeout,
                 known_payload_key=resolved_key if key_is_explicit else None,
                 known_payload_list=resolved_list or DEFAULT_PAYLOAD_LIST,
@@ -209,7 +220,9 @@ async def resolve_chat_endpoint(
                 payload_list=payload_list,
                 value_template=value_template,
                 response_key=response_key,
-                auth_headers=auth_headers,
+                auth_headers=_headers(),
+                session_sink=session_sink,
+                session_bootstrap=session_bootstrap,
                 timeout=timeout,
                 probe_payload_extras=probe_payload_extras,
                 llm=llm,
@@ -237,7 +250,9 @@ async def resolve_chat_endpoint(
                 fallback_probe = await probe_endpoint(
                     target_url,
                     sbom,
-                    auth_headers=auth_headers,
+                    auth_headers=_headers(),
+                    session_sink=session_sink,
+                    session_bootstrap=session_bootstrap,
                     timeout=timeout,
                     known_payload_key=resolved_key if key_is_explicit else None,
                     known_payload_list=resolved_list or DEFAULT_PAYLOAD_LIST,
@@ -303,7 +318,8 @@ async def resolve_chat_endpoint(
             # Verify the observed field against the selected HTTP route. A UI
             # request alone does not establish that the server can reply.
             observed = await probe_endpoint(
-                target_url, sbom, auth_headers=auth_headers, timeout=timeout,
+                target_url, sbom, auth_headers=_headers(), timeout=timeout,
+                session_sink=session_sink, session_bootstrap=session_bootstrap,
                 known_payload_key=str(payload_key) if key_is_explicit else browser_payload.key,
                 known_payload_list=bool(payload_list) if list_is_explicit else bool(browser_payload.is_list),
                 known_response_key=resolved_response, probe_payload_extras=probe_payload_extras,
@@ -359,4 +375,5 @@ async def resolve_chat_endpoint(
         path_source=path_source,
         path_explicit=endpoint_is_explicit,
         notes=tuple(notes),
+        session_headers=dict(session_sink),
     )

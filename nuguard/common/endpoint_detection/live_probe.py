@@ -36,6 +36,12 @@ from nuguard.common.endpoint_detection.constants import (
 from nuguard.common.endpoint_detection.sbom import _sbom_post_paths, _sbom_websocket_paths
 from nuguard.common.logging import get_logger
 from nuguard.common.response_extraction import extract_chat_text
+from nuguard.common.web_session import (
+    SessionSignals,
+    WebSessionBootstrapper,
+    candidate_pages,
+    ui_root_for,
+)
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
@@ -665,6 +671,7 @@ async def _blind_probe(
     *,
     known_payload_key: str | None = None,
     llm: "LLMClient | None" = None,
+    signals: "SessionSignals | None" = None,
 ) -> "ProbeResult | None":
     """Fallback: try each path with each payload shape until one responds usefully."""
     server_error_fallback: ProbeResult | None = None
@@ -700,6 +707,8 @@ async def _blind_probe(
                 break  # network error; skip remaining shapes for this path
 
             status = resp.status_code
+            if signals is not None:
+                signals.observe(resp, path)
             if status in (404, 405):
                 _log.debug("endpoint_detection: %s — %d (not found/method not allowed)", path, status)
                 break  # try next path
@@ -964,6 +973,7 @@ async def _detect_chat_endpoint(
     known_payload_list: bool = False,
     ws_paths: list[str] | None = None,
     llm: "LLMClient | None" = None,
+    signals: "SessionSignals | None" = None,
 ) -> "ProbeResult | None":
     """Ordered detection pipeline — smarter options first, blind probe as final fallback.
 
@@ -999,6 +1009,7 @@ async def _detect_chat_endpoint(
             known_response_key, probe_payload_extras,
             known_payload_key=known_payload_key,
             llm=llm,
+            signals=signals,
         )
 
 
@@ -1049,6 +1060,8 @@ async def probe_chat_endpoints(
     probe_payload_extras: "dict[str, object] | None" = None,
     hint_path: str | None = None,
     llm: "LLMClient | None" = None,
+    session_sink: "dict[str, str] | None" = None,
+    session_bootstrap: bool = True,
 ) -> "ProbeResult | None":
     """Probe SBOM POST endpoints and return the first chat-capable one.
 
@@ -1065,6 +1078,12 @@ async def probe_chat_endpoints(
     SBOM-derived candidates and the ADK fast-path, probing only the generic
     ``HTTP_ENDPOINT_FALLBACK_PATHS``/``WEBSOCKET_ENDPOINT_FALLBACK_PATHS`` list
     (issue #532 — endpoint discovery must work without an SBOM).
+
+    When no confirmed endpoint is found and the probes saw CSRF/session
+    rejections, a cookie + CSRF session is fetched from the app's UI pages
+    (:mod:`nuguard.common.web_session`) and the sweep is retried once. The
+    acquired headers are written to ``session_sink`` so the caller can reuse
+    them; ``session_bootstrap=False`` disables this.
     """
     paths = _sbom_post_paths(sbom)
     ws_paths = _sbom_websocket_paths(sbom)
@@ -1135,14 +1154,60 @@ async def probe_chat_endpoints(
     if auth_headers:
         headers.update(auth_headers)
 
-    return await _detect_chat_endpoint(
-        base, paths, headers, timeout,
-        known_response_key, probe_payload_extras,
-        known_payload_key=known_payload_key,
-        known_payload_list=known_payload_list,
-        ws_paths=ws_paths,
-        llm=llm,
-    )
+    signals = SessionSignals() if session_bootstrap else None
+
+    async def _detect(request_headers: dict[str, str]) -> "ProbeResult | None":
+        return await _detect_chat_endpoint(
+            base, paths, request_headers, timeout,
+            known_response_key, probe_payload_extras,
+            known_payload_key=known_payload_key,
+            known_payload_list=known_payload_list,
+            ws_paths=ws_paths,
+            llm=llm,
+            signals=signals,
+        )
+
+    result = await _detect(headers)
+    if (
+        (result is None or not result.confirmed)
+        and signals is not None
+        and signals.triggered
+        and not _has_session_header(headers)
+    ):
+        session_headers = await _acquire_web_session(base, headers, timeout, signals, paths)
+        if session_headers:
+            _log.info("endpoint_detection: retrying probe with auto-acquired web session")
+            retry = await _detect({**headers, **session_headers})
+            if retry is not None and retry.confirmed:
+                if session_sink is not None:
+                    session_sink.update(session_headers)
+                return retry
+    return result
+
+
+def _has_session_header(headers: "dict[str, str]") -> bool:
+    """True when the caller already supplies a cookie or CSRF header (explicit config wins)."""
+    lowered = {k.lower() for k in headers}
+    return bool(lowered & {"cookie", "x-csrf-token", "x-xsrf-token"})
+
+
+async def _acquire_web_session(
+    base: str,
+    headers: "dict[str, str]",
+    timeout: float,
+    signals: "SessionSignals",
+    paths: list[str],
+) -> "dict[str, str]":
+    """Fetch and validate a cookie/CSRF session; return its headers or ``{}``."""
+    bootstrapper = WebSessionBootstrapper(base, timeout=timeout, headers=headers)
+    session = await bootstrapper.acquire(candidate_pages(signals, [ui_root_for(p) or "" for p in paths[:1]]))
+    if session is None:
+        return {}
+    probe_path = signals.rejected_paths[0] if signals.rejected_paths else (paths[0] if paths else "")
+    if probe_path and not await bootstrapper.validate(session, probe_path):
+        _log.debug("endpoint_detection: acquired web session did not clear the rejection at %s", probe_path)
+        return {}
+    return session.headers()
 
 
 def normalize_probe_result(result: ProbeResult | None) -> ProbeResult | None:
@@ -1161,6 +1226,8 @@ async def probe_endpoint(
     probe_payload_extras: dict[str, object] | None = None,
     hint_path: str | None = None,
     llm: Any = None,
+    session_sink: dict[str, str] | None = None,
+    session_bootstrap: bool = True,
 ) -> ProbeResult | None:
     """Probe candidate routes and return endpoint plus payload metadata.
 
@@ -1178,6 +1245,8 @@ async def probe_endpoint(
         probe_payload_extras=probe_payload_extras,
         hint_path=hint_path,
         llm=llm,
+        session_sink=session_sink,
+        session_bootstrap=session_bootstrap,
     )
 
 

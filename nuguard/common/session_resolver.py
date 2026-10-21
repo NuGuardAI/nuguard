@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig, AuthSession
     from nuguard.common.bootstrap import TargetHealthReport
     from nuguard.common.browser_login.config import BrowserDiscoveryConfig
+    from nuguard.common.web_session import SessionRefresher
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
@@ -63,6 +64,9 @@ class TargetSessionConfig:
     effective_headers: dict[str, str] = field(default_factory=dict)
     endpoint_source: str = "default"
     payload_format: str = "json"
+    # Re-acquires an auto-bootstrapped cookie/CSRF session when it expires mid-run.
+    # None unless discovery had to acquire a web session itself.
+    session_refresher: "SessionRefresher | None" = field(default=None, repr=False)
 
 
 # ---------------------------------------------------------------------------
@@ -361,8 +365,13 @@ async def resolve_target_session(
         discover_login_flow_live,
         resolve_auth_config_with_sbom_fallback,
     )
+    from nuguard.common.web_session import make_session_refresher, ui_root_for  # noqa: PLC0415
 
     resolution_notes: list[str] = []
+    web_session_acquired = False
+    # Local copy: auto-acquired cookie/CSRF headers are merged in below without
+    # mutating the caller's dict.
+    extra_headers = dict(extra_headers)
     _run_id = run_id or str(_uuid.uuid4())
     configured_chat_path = chat_path
     is_endpoint_explicit = (
@@ -427,6 +436,7 @@ async def resolve_target_session(
         nonlocal _configured_field_unresolved
         nonlocal _payload_shape_validated
         nonlocal chat_payload_value_template
+        nonlocal web_session_acquired
         resolved = await resolve_chat_endpoint(
             target_url=target_url,
             sbom=sbom,
@@ -442,6 +452,15 @@ async def resolve_target_session(
             browser_discovery=browser_discovery,
         )
         resolution_notes.extend(resolved.notes)
+        if resolved.session_headers:
+            # Discovery auto-acquired a cookie/CSRF session; every later request
+            # (bootstrap health check, warmup, the real client) must carry it.
+            extra_headers.update(resolved.session_headers)
+            web_session_acquired = True
+            resolution_notes.append(
+                "Target required a web session: auto-acquired a session cookie and "
+                "anti-CSRF token from its UI pages (values not recorded)."
+            )
         _configured_field_unresolved = (
             is_endpoint_explicit
             and not payload_key_explicit
@@ -736,6 +755,16 @@ async def resolve_target_session(
                 else endpoint_source
             ),
             payload_format=payload_format,
+            session_refresher=(
+                make_session_refresher(
+                    target_url,
+                    [ui_root_for(chat_path or "") or ""],
+                    headers=extra_headers,
+                    timeout=request_timeout or 15.0,
+                )
+                if web_session_acquired
+                else None
+            ),
         ),
         health_report,
     )

@@ -35,7 +35,7 @@ if [[ "$MODE" != pentest ]]; then
   trap 'rm -rf "$REDTEAM_TMP"' EXIT
   status=0
   uv run nuguard redteam \
-    --config "$SCRIPT_DIR/nuguard.yaml" \
+    --config "$CONFIG_FILE" \
     --format markdown \
     --output "$REDTEAM_TMP/report.md" || status=$?
   if [[ "$status" -ne 0 && "$status" -ne 2 ]] || [[ ! -s "$REDTEAM_TMP/report.md" ]]; then

@@ -294,6 +294,9 @@ class AuthBootstrapper:
         if self._endpoint_resolver is not None:
             resolver_headers = {**self._extra_headers, **resolver_headers}
             resolved_endpoint = await self._endpoint_resolver(resolver_headers)
+            # Cookie/CSRF headers auto-acquired during discovery must also reach
+            # the health check below and every later request.
+            self._extra_headers.update(getattr(resolved_endpoint, "session_headers", None) or {})
             if not resolved_endpoint.path:
                 raise TargetEndpointNotFoundError(
                     "Could not discover a chat endpoint from the SBOM, HTTP probes, "
