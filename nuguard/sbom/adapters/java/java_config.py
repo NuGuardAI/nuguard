@@ -69,9 +69,10 @@ _PROVIDER_ALIASES = {
 }
 _PLACEHOLDER_RE = re.compile(r"^\$\{[^:}]+:(?P<default>[^}]*)\}$")
 _MODEL_NAME_RE = re.compile(r"^\w[\w.:/@+-]{1,119}$")
-_PROP_LINE_RE = re.compile(r"^\s*(?P<key>[^\s#!=:][^\s=:]*)(?:\s*[=:]\s*|\s+)(?P<value>.*?)\s*$")
+_PROP_SPACE = " \t\f"
+_PROP_ESCAPES = {"t": "\t", "n": "\n", "r": "\r", "f": "\f"}
 
-_PROFILE_RE = re.compile(r"^%[\w-]+\.")
+_PROFILE_RE = re.compile(r"^%[\w-]+(?:,[\w-]+)*\.")
 
 
 _log = get_logger(__name__)
@@ -181,6 +182,48 @@ def _resolve_value(raw: str) -> str | None:
     return value
 
 
+def _split_property(logical: str) -> tuple[str, str] | None:
+    """Split a logical properties line into raw key and value, honoring ``\\`` escapes."""
+    size = len(logical)
+    index = 0
+    while index < size and logical[index] in _PROP_SPACE:
+        index += 1
+    start = index
+    while index < size and logical[index] not in "=:" + _PROP_SPACE:
+        index += 2 if logical[index] == "\\" else 1
+    key = logical[start:index]
+    while index < size and logical[index] in _PROP_SPACE:
+        index += 1
+    if index < size and logical[index] in "=:":
+        index += 1
+        while index < size and logical[index] in _PROP_SPACE:
+            index += 1
+    return (key, logical[index:]) if key else None
+
+
+def _unescape_properties(text: str) -> str:
+    """Decode Java properties escapes; raise ValueError on a malformed unicode escape."""
+    out: list[str] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        index += 1
+        if char != "\\":
+            out.append(char)
+        elif index < len(text):
+            char = text[index]
+            index += 1
+            if char == "u":
+                digits = text[index : index + 4]
+                if len(digits) != 4 or any(c not in "0123456789abcdefABCDEF" for c in digits):
+                    raise ValueError("malformed unicode escape")
+                out.append(chr(int(digits, 16)))
+                index += 4
+            else:
+                out.append(_PROP_ESCAPES.get(char, char))
+    return "".join(out)
+
+
 def _properties_entries(content: str) -> Iterator[tuple[int, str, str]]:
     # Java natural lines end at CR, LF or CRLF, not at form-feed whitespace.
     lines = iter(enumerate(re.split(r"\r\n|\r|\n", content), start=1))
@@ -198,9 +241,9 @@ def _properties_entries(content: str) -> Iterator[tuple[int, str, str]]:
             except StopIteration:
                 break
             line = line.lstrip(" \t\f")
-        match = _PROP_LINE_RE.match("".join(fragments))
-        if match:
-            yield lineno, match.group("key"), match.group("value")
+        entry = _split_property("".join(fragments))
+        if entry:
+            yield lineno, entry[0], entry[1]
 
 
 def _flatten(
@@ -251,7 +294,16 @@ def _load_yaml_documents(content: str, budget: _YamlBudget) -> Generator[Any, No
 
 def _entries(content: str, file_path: str) -> Iterator[tuple[int, str, str]]:
     if file_path.lower().endswith(".properties"):
-        yield from _properties_entries(content)
+        # java.util.Properties keeps the last value of a repeated key.
+        latest: dict[str, tuple[int, str, str]] = {}
+        for line, raw_key, raw_value in _properties_entries(content):
+            try:
+                key, value = _unescape_properties(raw_key), _unescape_properties(raw_value)
+            except ValueError:
+                continue
+            latest.pop(key, None)
+            latest[key] = (line, key, value)
+        yield from latest.values()
         return
     budget = _YamlBudget()
     try:
@@ -260,7 +312,7 @@ def _entries(content: str, file_path: str) -> Iterator[tuple[int, str, str]]:
                 yield from _flatten(document, budget=budget)
     except _YamlWorkLimit as exc:
         _log.warning("java_config: stopped YAML model extraction for %s: %s", file_path, exc)
-    except (yaml.YAMLError, RecursionError):
+    except (yaml.YAMLError, RecursionError, ValueError):
         return
 
 

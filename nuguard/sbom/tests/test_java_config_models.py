@@ -545,3 +545,81 @@ def test_yaml_warning_capture_is_independent_of_parent_logging(
             "YAML depth limit exceeded",
         )
     ]
+
+
+def test_properties_repeated_key_uses_the_last_value() -> None:
+    content = "langchain4j.open-ai.chat-model.model-name=gpt-4o\n"
+    content += "langchain4j.open-ai.chat-model.model-name=gpt-4o-mini\n"
+    assert _models(content) == [("gpt-4o-mini", 2, "openai", "langchain4j")]
+
+
+def test_properties_unresolvable_override_removes_the_earlier_model() -> None:
+    content = "langchain4j.open-ai.chat-model.model-name=gpt-4o\n"
+    content += "langchain4j.open-ai.chat-model.model-name=${OPENAI_MODEL}\n"
+    assert _models(content) == []
+
+
+def test_properties_repeated_key_check_keeps_profile_keys_distinct() -> None:
+    content = "%prod.quarkus.langchain4j.openai.chat-model.model-name=gpt-4o\n"
+    content += "quarkus.langchain4j.openai.chat-model.model-name=gpt-4o-mini\n"
+    assert _models(content) == [
+        ("gpt-4o", 1, "openai", "quarkus-langchain4j"),
+        ("gpt-4o-mini", 2, "openai", "quarkus-langchain4j"),
+    ]
+
+
+def test_yaml_invalid_scalar_is_a_parse_failure_not_a_crash() -> None:
+    content = "release_date: 2026-02-30\n"
+    content += "langchain4j.open-ai.chat-model.model-name: gpt-4o\n"
+    assert _models(content, "application.yml") == []
+
+
+def test_extractor_survives_an_invalid_yaml_timestamp(tmp_path: Path) -> None:
+    _write(tmp_path, "src/main/java/demo/Assistant.java", _ASSISTANT)
+    _write(tmp_path, "src/main/resources/application.yml", "release_date: 2026-02-30\n")
+    _write(
+        tmp_path,
+        "src/main/resources/application-dev.properties",
+        "langchain4j.open-ai.chat-model.model-name=gpt-4o-mini\n",
+    )
+
+    document = AiSbomExtractor().extract_from_path(tmp_path, AiSbomConfig(enable_llm=False))
+
+    models = {n.name for n in document.nodes if n.component_type == ComponentType.MODEL}
+    assert models == {"gpt-4o-mini"}
+
+
+@pytest.mark.parametrize("profiles", ["%prod,staging.", "%dev,test,prod."])
+def test_config_quarkus_comma_separated_profile_prefix(profiles: str) -> None:
+    content = profiles + "quarkus.langchain4j.openai.chat-model.model-name=gpt-4o\n"
+    assert _models(content) == [("gpt-4o", 1, "openai", "quarkus-langchain4j")]
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ("langchain4j.ollama.chat-model.model-name=llama3\\:8b\n", ("llama3:8b", "ollama")),
+        (
+            "langchain4j.bedrock.chat-model.model-id=anthropic.claude-3-5-sonnet-v1\\:0\n",
+            ("anthropic.claude-3-5-sonnet-v1:0", "aws-bedrock"),
+        ),
+        ("langchain4j.open-ai.chat-model.model-name=gpt\\u002D4o\n", ("gpt-4o", "openai")),
+        ("langchain4j.open\\u002Dai.chat-model.model-name=gpt-4o\n", ("gpt-4o", "openai")),
+        ("langchain4j.open-ai.chat-model.model-name:gpt-4o\n", ("gpt-4o", "openai")),
+    ],
+)
+def test_properties_escapes_are_decoded(content: str, expected: tuple[str, str]) -> None:
+    assert [(m[0], m[2]) for m in _models(content)] == [expected]
+
+
+def test_properties_malformed_unicode_escape_is_skipped() -> None:
+    content = "langchain4j.open-ai.chat-model.model-name=gpt\\u00zz\n"
+    content += "langchain4j.open-ai.streaming-chat-model.model-name=gpt-4o\n"
+    assert _models(content) == [("gpt-4o", 2, "openai", "langchain4j")]
+
+
+def test_properties_escaped_separator_stays_inside_the_key() -> None:
+    assert list(java_config._properties_entries("a\\:b: v\nc\\=d=e\n")) == [
+        (1, "a\\:b", "v"),
+        (2, "c\\=d", "e"),
+    ]
