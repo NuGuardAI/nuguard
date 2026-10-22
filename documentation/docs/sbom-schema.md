@@ -675,6 +675,14 @@ A single declared package dependency from a manifest file. The scanner reads dec
 | Java | `pom.xml`, `build.gradle`, `build.gradle.kts`, `gradle/libs.versions.toml` | Resolves common Maven properties, dependency management, Gradle variables, and version-catalog references without invoking Maven or Gradle |
 | Go | `go.mod`, `go.sum` | Emits Go PURLs; indirect modules use the `optional:indirect` group |
 
+Maven profile activation is not evaluated. Competing declarations in the same POM
+are checked using both explicit versions and supported implicit management/parent
+versions. Conflicting or partly unresolved declarations produce one unversioned
+record rather than selecting a version by XML order; matching concrete versions
+are retained when no other profile uncertainty applies. Unversioned dependencies
+remain in the SBOM but are skipped by OSV. This is a limited offline lookup, not
+Maven's effective POM resolution.
+
 For Java dependencies, a resolved declaration such as `org.springframework.ai:spring-ai-openai-spring-boot-starter:1.0.1` is represented as:
 
 ```json

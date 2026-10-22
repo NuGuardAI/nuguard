@@ -154,10 +154,29 @@ def _maven_profiles(project: ET.Element) -> list[ET.Element]:
     return _children(profiles, "profile") if profiles is not None else []
 
 
+def _maven_declared_version(
+    dependency: ET.Element,
+    properties: dict[str, str],
+    managed_versions: dict[tuple[str, str], str],
+    boot_version: str,
+) -> str:
+    """Apply the same limited offline lookup to every competing declaration."""
+    version = _resolve(_text(dependency, "version"), properties)
+    if version:
+        return version
+    group = _resolve(_text(dependency, "groupId"), properties)
+    artifact = _resolve(_text(dependency, "artifactId"), properties)
+    return managed_versions.get((group, artifact), "") or (
+        boot_version if group == _SPRING_BOOT_GROUP else ""
+    )
+
+
 def _profile_version_uncertain(
     project: ET.Element,
     dependency: ET.Element,
     properties: dict[str, str],
+    managed_versions: dict[tuple[str, str], str],
+    boot_version: str,
 ) -> bool:
     """Do not select a build-profile-dependent version without activation context.
 
@@ -172,6 +191,9 @@ def _profile_version_uncertain(
     if _PLACEHOLDER_RE.search(group) or _PLACEHOLDER_RE.search(artifact):
         return True
     explicit = bool(_text(dependency, "version"))
+    current_version = _concrete_version(
+        _maven_declared_version(dependency, properties, managed_versions, boot_version)
+    )
 
     def may_equal(value: str, expected: str) -> bool:
         resolved = _resolve(value, properties)
@@ -226,10 +248,26 @@ def _profile_version_uncertain(
                 ):
                     return True
                 continue
-            if (
-                _text(candidate, "version")
-                and may_equal(_text(candidate, "groupId"), group)
+            if not (
+                may_equal(_text(candidate, "groupId"), group)
                 and may_equal(_text(candidate, "artifactId"), artifact)
+            ):
+                continue
+            if candidate in managed:
+                if _text(candidate, "version"):
+                    return True
+                continue
+            # Profile declarations can obtain their version implicitly too.
+            # An unresolved competitor cannot establish agreement; equal known
+            # versions are safe even when their explicit/implicit forms differ.
+            candidate_version = _concrete_version(
+                _maven_declared_version(candidate, properties, managed_versions, boot_version)
+            )
+            if (
+                _resolve(_text(candidate, "groupId"), properties) != group
+                or _resolve(_text(candidate, "artifactId"), properties) != artifact
+                or candidate_version is None
+                or candidate_version != current_version
             ):
                 return True
     return False
@@ -319,6 +357,29 @@ def _spring_boot_version(
     return imported_bom_versions.get((_SPRING_BOOT_GROUP, "spring-boot-dependencies"), "")
 
 
+def _collapse_maven_declarations(records: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Resolve same-POM duplicates by consensus, never by declaration order.
+
+    Conflicting or partly unresolved versions yield one unversioned record.
+    Independent manifests are not competing Maven profiles and stay separate
+    here. Existing cross-manifest and Gradle selection remains unchanged.
+    """
+    grouped: dict[tuple[str, str], list[dict[str, str]]] = {}
+    for record in records:
+        grouped.setdefault((record["source_file"], record["name"]), []).append(record)
+    result: list[dict[str, str]] = []
+    for key in sorted(grouped):
+        candidates = grouped[key]
+        # Keep scope selection stable too, preferring runtime over narrower scopes.
+        record = dict(min(candidates, key=lambda r: (r["group"] != "runtime", r["group"])))
+        versions = {(r["purl"], r["version_spec"]) for r in candidates}
+        if len(versions) > 1:
+            record["purl"] = record["purl"].split("@", 1)[0]
+            record["version_spec"] = ""
+        result.append(record)
+    return result
+
+
 def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
     try:
         project = ET.parse(path).getroot()
@@ -344,13 +405,9 @@ def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
     for dependency in declared:
         group = _resolve(_text(dependency, "groupId"), properties)
         artifact = _resolve(_text(dependency, "artifactId"), properties)
-        version = _resolve(_text(dependency, "version"), properties)
-        if not version:
-            version = managed_versions.get((group, artifact), "")
-        if not version and group == _SPRING_BOOT_GROUP:
-            version = boot_version
+        version = _maven_declared_version(dependency, properties, managed_versions, boot_version)
         if _concrete_version(version) and _profile_version_uncertain(
-            project, dependency, properties
+            project, dependency, properties, managed_versions, boot_version
         ):
             version = ""
         scope = _resolve(_text(dependency, "scope"), properties)
@@ -358,7 +415,7 @@ def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
         item = _record(group, artifact, version, _maven_scope(scope, optional), source)
         if item is not None:
             result.append(item)
-    return result
+    return _collapse_maven_declarations(result)
 
 
 def _gradle_variables(path: Path, root: Path, content: str) -> dict[str, str]:
