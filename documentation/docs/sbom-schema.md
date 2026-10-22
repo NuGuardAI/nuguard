@@ -643,6 +643,19 @@ A directed relationship between two nodes.
 
 `AGENT --ACCESSES--> DATASTORE` is inferred when an agent calls a tool that accesses the datastore, when a single agent and datastore are detected in the same source file, or when a single agent's Python file imports and uses a detected datastore client. These inferred edges carry `derivation: "fallback_heuristic"` and a confidence score.
 
+### Agent tool and model relationships
+
+The shared resolver does not fill missing `AGENT --CALLS--> TOOL` or
+`AGENT --USES--> MODEL` relationships by selecting tools or models from the scan.
+Coexistence, a shared source file or framework, name order, and model detection
+confidence do not establish these dependencies. Adapter-emitted relationship hints
+are preserved, including cross-file hints and direct calls from web controllers.
+A controller-to-agent edge does not copy the callee's tool/model edges onto the
+controller. Nodes remain in the SBOM even when their relationships are unresolved;
+a missing edge is not proof that a dependency does not exist.
+
+Other scoped structural and transitive inference rules remain unchanged.
+
 ### AccessType values
 
 | Value | Meaning |
