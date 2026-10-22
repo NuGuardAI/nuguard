@@ -761,6 +761,7 @@ async def resolve_target_session(
                     [ui_root_for(chat_path or "") or ""],
                     headers=extra_headers,
                     timeout=request_timeout or 15.0,
+                    validate_paths=[chat_path] if chat_path else None,
                 )
                 if web_session_acquired
                 else None

@@ -369,17 +369,28 @@ def make_session_refresher(
     *,
     headers: dict[str, str] | None = None,
     timeout: float = 15.0,
+    validate_paths: list[str] | None = None,
 ) -> SessionRefresher:
     """Return an async callable that re-acquires the web session and returns its headers.
 
     The callable returns ``{}`` when no fresh session could be obtained, so callers
     keep their existing behaviour. Candidate *pages* are tried in order, then ``/``.
+
+    With *validate_paths* (the routes the session must be accepted by — e.g. the chat
+    path) a candidate session is used only if it clears them, exactly as the initial
+    acquisition does. Without that check the first page carrying a CSRF token wins,
+    which can be a site-wide token on a public page that the portal's own routes
+    reject — a refresh that "succeeds" and is rejected again with a CSRF mismatch.
     """
     bootstrapper = WebSessionBootstrapper(base_url, timeout=timeout, headers=headers)
     ordered = candidate_pages(None, [p for p in pages if p])
+    probe_paths = [p for p in (validate_paths or []) if p]
+
+    async def _accept(session: WebSession) -> bool:
+        return await bootstrapper.validate_any(session, probe_paths) is not None
 
     async def _refresh() -> dict[str, str]:
-        session = await bootstrapper.acquire(ordered)
+        session = await bootstrapper.acquire(ordered, accept=_accept if probe_paths else None)
         return session.headers() if session else {}
 
     return _refresh
