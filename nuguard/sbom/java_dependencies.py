@@ -50,6 +50,37 @@ _GRADLE_CONFIG_GROUPS = {
 _PLACEHOLDER_RE = re.compile(r"\$\{([^}]+)\}|\$([A-Za-z_][\w.]*)")
 _SPRING_BOOT_GROUP = "org.springframework.boot"
 _SPRING_BOOT_PARENTS = {"spring-boot-starter-parent", "spring-boot-dependencies"}
+# Safety limits for untrusted interpolation, independent of Maven build settings.
+_MAX_PROPERTY_VALUE_CHARS = 16_384
+_MAX_PROPERTY_DEPTH = 64
+_MAX_PROPERTY_WORK = 1_000_000
+_MAX_PROPERTY_REFERENCES = 50_000
+_UNRESOLVED_PROPERTY = "${nuguard.unresolved}"
+_MavenIdentity = tuple[str, str, str, str]
+
+
+class _PropertyExpansionLimit(ValueError):
+    """An interpolation is cyclic or would exceed its resource budget."""
+
+
+class _PropertyBudget:
+    def __init__(self) -> None:
+        self.characters = _MAX_PROPERTY_WORK
+        self.references = _MAX_PROPERTY_REFERENCES
+
+    def consume(self, characters: int, references: int = 0) -> None:
+        if characters > self.characters or references > self.references:
+            raise _PropertyExpansionLimit
+        self.characters -= characters
+        self.references -= references
+
+
+class _PropertyValues(dict[str, str]):
+    """Raw properties sharing a work budget across one manifest, never pre-expanded."""
+
+    def __init__(self, values: dict[str, str] | None = None) -> None:
+        super().__init__(values or {})
+        self.budget = _PropertyBudget()
 
 
 def _local_name(tag: str) -> str:
@@ -75,21 +106,71 @@ def _text(element: ET.Element | None, name: str | None = None) -> str:
 
 
 def _resolve(value: str, properties: dict[str, str]) -> str:
-    previous = value.strip()
-    for _ in range(8):
-        current = _PLACEHOLDER_RE.sub(
-            lambda match: properties.get(match.group(1) or match.group(2), match.group(0)),
-            previous,
-        )
-        if current == previous:
-            break
-        previous = current
-    return previous.strip()
+    """Resolve acyclic references without allocating unbounded intermediate strings.
+
+    An unsafe expression remains symbolic; returning an empty string could cause
+    callers to substitute an unrelated managed/parent version. Literal fields
+    remain usable even after this manifest's interpolation budget is exhausted.
+    """
+    if len(value) > _MAX_PROPERTY_VALUE_CHARS:
+        return _UNRESOLVED_PROPERTY
+    original = value.strip()
+    budget = properties.budget if isinstance(properties, _PropertyValues) else _PropertyBudget()
+    cache: dict[str, str] = {}
+
+    def expand(text: str, active: frozenset[str]) -> str:
+        if len(text) > _MAX_PROPERTY_VALUE_CHARS or len(active) > _MAX_PROPERTY_DEPTH:
+            raise _PropertyExpansionLimit
+        if not _PLACEHOLDER_RE.search(text):
+            return text
+        budget.consume(len(text))
+        parts: list[str] = []
+        length = 0
+        end = 0
+
+        def append(piece: str) -> None:
+            nonlocal length
+            if len(piece) > _MAX_PROPERTY_VALUE_CHARS - length:
+                raise _PropertyExpansionLimit
+            budget.consume(len(piece))
+            parts.append(piece)
+            length += len(piece)
+
+        for match in _PLACEHOLDER_RE.finditer(text):
+            budget.consume(0, 1)
+            append(text[end:match.start()])
+            key = match.group(1) or match.group(2)
+            raw = properties.get(key, match.group(0))
+            if raw == match.group(0):
+                # Unknown and deliberately symbolic profile properties stay intact.
+                replacement = raw
+            elif key in active:
+                raise _PropertyExpansionLimit
+            elif key in cache:
+                replacement = cache[key]
+            else:
+                replacement = expand(raw, active | {key})
+                cache[key] = replacement
+            append(replacement)
+            end = match.end()
+        append(text[end:])
+        return "".join(parts)
+
+    try:
+        return expand(original, frozenset()).strip()
+    except _PropertyExpansionLimit:
+        return original
 
 
 def _concrete_version(value: str) -> str | None:
     version = value.strip()
     if not version or "${" in version or "$" in version:
+        return None
+    if version in {"LATEST", "RELEASE", "latest.release", "latest.integration"}:
+        return None
+    # Gradle prefix selectors share this helper; build metadata such as 1.0+build
+    # is still a literal version, while 1.+ and 1.0+ require repository resolution.
+    if version.endswith("+"):
         return None
     if version.startswith("[") or version.startswith("(") or "," in version:
         return None
@@ -103,12 +184,36 @@ def _version_spec(value: str) -> str:
     return f"=={concrete}" if concrete else value.strip()
 
 
-def _purl(group: str, artifact: str, version: str) -> str:
+def _purl(
+    group: str,
+    artifact: str,
+    version: str,
+    *,
+    dependency_type: str = "jar",
+    classifier: str = "",
+) -> str:
     namespace = quote(group.strip(), safe=".")
     name = quote(artifact.strip(), safe="._-")
     concrete = _concrete_version(version)
     base = f"pkg:maven/{namespace}/{name}"
-    return f"{base}@{quote(concrete, safe='._+-')}" if concrete else base
+    if concrete:
+        base += f"@{quote(concrete, safe='._+-')}"
+    qualifiers = {}
+    if classifier:
+        qualifiers["classifier"] = classifier
+    if dependency_type != "jar":
+        qualifiers["type"] = dependency_type
+    if qualifiers:
+        base += "?" + "&".join(
+            f"{key}={quote(value, safe='._-')}" for key, value in sorted(qualifiers.items())
+        )
+    return base
+
+
+def _maven_purl_identity(purl: str) -> str:
+    """Strip only the version; Maven coordinates and variant qualifiers are case-sensitive."""
+    coordinate, separator, qualifiers = purl.partition("?")
+    return coordinate.split("@", 1)[0] + separator + qualifiers
 
 
 def _record(
@@ -117,6 +222,9 @@ def _record(
     version: str,
     dependency_group: str,
     source_file: str,
+    *,
+    dependency_type: str = "jar",
+    classifier: str = "",
 ) -> dict[str, str] | None:
     group = group.strip()
     artifact = artifact.strip()
@@ -125,7 +233,9 @@ def _record(
     return {
         "name": f"{group}:{artifact}",
         "version_spec": _version_spec(version),
-        "purl": _purl(group, artifact, version),
+        "purl": _purl(
+            group, artifact, version, dependency_type=dependency_type, classifier=classifier,
+        ),
         "group": dependency_group,
         "source_file": source_file,
     }
@@ -154,20 +264,31 @@ def _maven_profiles(project: ET.Element) -> list[ET.Element]:
     return _children(profiles, "profile") if profiles is not None else []
 
 
+def _maven_identity(dependency: ET.Element, properties: dict[str, str]) -> _MavenIdentity:
+    """Maven management matches declared type/classifier, not artifact extension."""
+    return (
+        _resolve(_text(dependency, "groupId"), properties),
+        _resolve(_text(dependency, "artifactId"), properties),
+        _resolve(_text(dependency, "type") or "jar", properties),
+        _resolve(_text(dependency, "classifier"), properties),
+    )
+
+
 def _maven_declared_version(
     dependency: ET.Element,
     properties: dict[str, str],
-    managed_versions: dict[tuple[str, str], str],
+    managed_versions: dict[_MavenIdentity, str],
     boot_version: str,
 ) -> str:
     """Apply the same limited offline lookup to every competing declaration."""
     version = _resolve(_text(dependency, "version"), properties)
     if version:
         return version
-    group = _resolve(_text(dependency, "groupId"), properties)
-    artifact = _resolve(_text(dependency, "artifactId"), properties)
-    return managed_versions.get((group, artifact), "") or (
-        boot_version if group == _SPRING_BOOT_GROUP else ""
+    identity = _maven_identity(dependency, properties)
+    # The Boot shortcut only knows the ordinary, unclassified JAR. Variants need
+    # an explicit or exact local management entry, not an assumed Boot version.
+    return managed_versions.get(identity, "") or (
+        boot_version if identity[0] == _SPRING_BOOT_GROUP and identity[2:] == ("jar", "") else ""
     )
 
 
@@ -175,7 +296,7 @@ def _profile_version_uncertain(
     project: ET.Element,
     dependency: ET.Element,
     properties: dict[str, str],
-    managed_versions: dict[tuple[str, str], str],
+    managed_versions: dict[_MavenIdentity, str],
     boot_version: str,
 ) -> bool:
     """Do not select a build-profile-dependent version without activation context.
@@ -186,9 +307,9 @@ def _profile_version_uncertain(
     declarations. A profile BOM import is opaque offline, so it only counts when it could
     be the BOM behind this dependency's version; a concrete local entry outranks it.
     """
-    group = _resolve(_text(dependency, "groupId"), properties)
-    artifact = _resolve(_text(dependency, "artifactId"), properties)
-    if _PLACEHOLDER_RE.search(group) or _PLACEHOLDER_RE.search(artifact):
+    identity = _maven_identity(dependency, properties)
+    group, _artifact, dependency_type, classifier = identity
+    if any(_PLACEHOLDER_RE.search(part) for part in identity):
         return True
     explicit = bool(_text(dependency, "version"))
     current_version = _concrete_version(
@@ -199,16 +320,23 @@ def _profile_version_uncertain(
         resolved = _resolve(value, properties)
         return resolved == expected or bool(_PLACEHOLDER_RE.search(resolved))
 
+    def may_match(candidate: ET.Element) -> bool:
+        return all(
+            actual == expected or bool(_PLACEHOLDER_RE.search(actual))
+            for actual, expected in zip(_maven_identity(candidate, properties), identity)
+        )
+
     def import_may_supply(candidate: ET.Element) -> bool:
         # BOM contents are unreadable offline. A profile import matters only if it could be
         # the BOM behind this dependency's version: the dependency itself, or the Spring
         # Boot BOM for a Spring Boot dependency (the only BOM the fallback consults).
         bom_group = _text(candidate, "groupId")
         bom_artifact = _text(candidate, "artifactId")
-        if may_equal(bom_group, group) and may_equal(bom_artifact, artifact):
+        if may_match(candidate):
             return True
         return (
             group == _SPRING_BOOT_GROUP
+            and (dependency_type, classifier) == ("jar", "")
             and may_equal(bom_group, _SPRING_BOOT_GROUP)
             and may_equal(bom_artifact, "spring-boot-dependencies")
         )
@@ -216,15 +344,10 @@ def _profile_version_uncertain(
     if not explicit:
         local_managed, _ = _maven_dependency_elements(project)
         for candidate in local_managed:
-            candidate_group = _resolve(_text(candidate, "groupId"), properties)
-            candidate_artifact = _resolve(_text(candidate, "artifactId"), properties)
+            candidate_identity = _maven_identity(candidate, properties)
             if (
-                (
-                    _PLACEHOLDER_RE.search(candidate_group)
-                    or _PLACEHOLDER_RE.search(candidate_artifact)
-                )
-                and may_equal(candidate_group, group)
-                and may_equal(candidate_artifact, artifact)
+                any(_PLACEHOLDER_RE.search(part) for part in candidate_identity)
+                and may_match(candidate)
             ):
                 return True
     for profile in _maven_profiles(project):
@@ -237,8 +360,7 @@ def _profile_version_uncertain(
                 and may_equal(_text(candidate, "scope"), "import")
             ):
                 if import_may_supply(candidate) and not any(
-                    _resolve(_text(entry, "groupId"), properties) == group
-                    and _resolve(_text(entry, "artifactId"), properties) == artifact
+                    _maven_identity(entry, properties) == identity
                     and _concrete_version(_resolve(_text(entry, "version"), properties))
                     and not (
                         may_equal(_text(entry, "type"), "pom")
@@ -248,10 +370,7 @@ def _profile_version_uncertain(
                 ):
                     return True
                 continue
-            if not (
-                may_equal(_text(candidate, "groupId"), group)
-                and may_equal(_text(candidate, "artifactId"), artifact)
-            ):
+            if not may_match(candidate):
                 continue
             if candidate in managed:
                 if _text(candidate, "version"):
@@ -264,8 +383,7 @@ def _profile_version_uncertain(
                 _maven_declared_version(candidate, properties, managed_versions, boot_version)
             )
             if (
-                _resolve(_text(candidate, "groupId"), properties) != group
-                or _resolve(_text(candidate, "artifactId"), properties) != artifact
+                _maven_identity(candidate, properties) != identity
                 or candidate_version is None
                 or candidate_version != current_version
             ):
@@ -278,14 +396,14 @@ def _maven_properties(project: ET.Element) -> dict[str, str]:
     group_id = _text(project, "groupId") or _text(parent, "groupId")
     artifact_id = _text(project, "artifactId")
     version = _text(project, "version") or _text(parent, "version")
-    properties = {
+    properties = _PropertyValues({
         "project.groupId": group_id,
         "pom.groupId": group_id,
         "project.artifactId": artifact_id,
         "pom.artifactId": artifact_id,
         "project.version": version,
         "pom.version": version,
-    }
+    })
     properties_element = _child(project, "properties")
     if properties_element is not None:
         for child in properties_element:
@@ -300,8 +418,8 @@ def _maven_properties(project: ET.Element) -> dict[str, str]:
                 if isinstance(entry.tag, str):
                     name = _local_name(entry.tag)
                     properties[name] = "${" + name + "}"
-    for key, value in list(properties.items()):
-        properties[key] = _resolve(value, properties)
+    # Resolve lazily from the raw graph: eager in-place expansion can amplify
+    # a cycle again when the dependency subsequently resolves its version.
     return properties
 
 
@@ -366,7 +484,9 @@ def _collapse_maven_declarations(records: list[dict[str, str]]) -> list[dict[str
     """
     grouped: dict[tuple[str, str], list[dict[str, str]]] = {}
     for record in records:
-        grouped.setdefault((record["source_file"], record["name"]), []).append(record)
+        grouped.setdefault(
+            (record["source_file"], _maven_purl_identity(record["purl"])), []
+        ).append(record)
     result: list[dict[str, str]] = []
     for key in sorted(grouped):
         candidates = grouped[key]
@@ -374,7 +494,7 @@ def _collapse_maven_declarations(records: list[dict[str, str]]) -> list[dict[str
         record = dict(min(candidates, key=lambda r: (r["group"] != "runtime", r["group"])))
         versions = {(r["purl"], r["version_spec"]) for r in candidates}
         if len(versions) > 1:
-            record["purl"] = record["purl"].split("@", 1)[0]
+            record["purl"] = _maven_purl_identity(record["purl"])
             record["version_spec"] = ""
         result.append(record)
     return result
@@ -387,24 +507,23 @@ def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
         return []
     properties = _maven_properties(project)
     managed, declared = _maven_dependency_elements(project)
-    managed_versions: dict[tuple[str, str], str] = {}
+    managed_versions: dict[_MavenIdentity, str] = {}
     imported_bom_versions: dict[tuple[str, str], str] = {}
     for dependency in managed:
-        group = _resolve(_text(dependency, "groupId"), properties)
-        artifact = _resolve(_text(dependency, "artifactId"), properties)
+        identity = _maven_identity(dependency, properties)
+        group, artifact, dependency_type, classifier = identity
         version = _resolve(_text(dependency, "version"), properties)
         if group and artifact and version:
-            managed_versions[(group, artifact)] = version
-            dependency_type = _resolve(_text(dependency, "type"), properties)
             scope = _resolve(_text(dependency, "scope"), properties)
-            if dependency_type.casefold() == "pom" and scope.casefold() == "import":
+            if dependency_type == "pom" and scope == "import" and not classifier:
                 imported_bom_versions[(group, artifact)] = version
+            else:
+                managed_versions[identity] = version
     boot_version = _spring_boot_version(project, properties, imported_bom_versions)
     source = str(path.relative_to(root))
     result: list[dict[str, str]] = []
     for dependency in declared:
-        group = _resolve(_text(dependency, "groupId"), properties)
-        artifact = _resolve(_text(dependency, "artifactId"), properties)
+        group, artifact, dependency_type, classifier = _maven_identity(dependency, properties)
         version = _maven_declared_version(dependency, properties, managed_versions, boot_version)
         if _concrete_version(version) and _profile_version_uncertain(
             project, dependency, properties, managed_versions, boot_version
@@ -412,14 +531,17 @@ def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
             version = ""
         scope = _resolve(_text(dependency, "scope"), properties)
         optional = _resolve(_text(dependency, "optional"), properties)
-        item = _record(group, artifact, version, _maven_scope(scope, optional), source)
+        item = _record(
+            group, artifact, version, _maven_scope(scope, optional), source,
+            dependency_type=dependency_type, classifier=classifier,
+        )
         if item is not None:
             result.append(item)
     return _collapse_maven_declarations(result)
 
 
 def _gradle_variables(path: Path, root: Path, content: str) -> dict[str, str]:
-    variables: dict[str, str] = {}
+    variables: dict[str, str] = _PropertyValues()
     candidates = [root / "gradle.properties", path.parent / "gradle.properties"]
     for properties_path in candidates:
         if not properties_path.is_file():
@@ -571,6 +693,6 @@ def scan_java_dependencies(root: Path) -> list[dict[str, str]]:
         records.extend(_scan_version_catalog(root, path))
     seen: dict[str, dict[str, str]] = {}
     for record in records:
-        key = record["purl"].split("@", 1)[0].casefold()
+        key = _maven_purl_identity(record["purl"])
         seen.setdefault(key, record)
     return list(seen.values())

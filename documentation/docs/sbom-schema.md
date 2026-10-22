@@ -683,6 +683,27 @@ are retained when no other profile uncertainty applies. Unversioned dependencies
 remain in the SBOM but are skipped by OSV. This is a limited offline lookup, not
 Maven's effective POM resolution.
 
+Maven management and profile matching use `groupId`, `artifactId`, `type`
+(default `jar`), and `classifier` (default empty). Distinct variants retain
+case-sensitive identity throughout consolidation and dependency scanning; their
+PURLs include `type`/`classifier` qualifiers where needed. Conflicting versions of
+one variant remain unresolved without suppressing other variants. This preserves
+declared Maven types rather than guessing custom artifact-handler mappings. The
+Spring Boot shortcut applies only to ordinary unclassified JAR dependencies;
+other variants require an explicit or matching local managed version.
+
+Property interpolation is lazy and bounded: at most 16,384 characters per value,
+64 reference levels, and per-manifest budgets of 1,000,000 characters of expansion
+work and 50,000 references. Cyclic or over-budget expressions remain unresolved
+rather than falling through to a different version. Literal dependencies and
+other manifests can still be scanned. These limits bound interpolation, not the
+size of the original manifest or unrelated parsing work.
+
+Maven `LATEST`/`RELEASE` and Gradle dynamic selectors (including `1.+` and
+`latest.release`) remain raw version specifications without an exact PURL version.
+No repository metadata is fetched to resolve them, and OSV skips these unversioned
+records. Ordinary literal releases and build metadata remain queryable.
+
 For Java dependencies, a resolved declaration such as `org.springframework.ai:spring-ai-openai-spring-boot-starter:1.0.1` is represented as:
 
 ```json
