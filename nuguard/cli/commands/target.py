@@ -269,7 +269,7 @@ async def _verify_async(
     console.print(f"  Target:   {target_url}")
     console.print(f"  Auth:     {auth.type}")
     if canary_config:
-        tenant_count = len([t for t in canary_config.tenants if t.session_token])
+        tenant_count = len([t for t in canary_config.tenants if t.has_credentials or t.web_session])
         console.print(f"  Tenants:  {tenant_count} with session_token in canary.json")
     console.print()
 
