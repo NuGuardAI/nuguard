@@ -51,7 +51,4 @@ class Principal:
     @classmethod
     def from_canary_tenant(cls, tenant: Any) -> "Principal":
         """Build from a ``CanaryTenant`` that has a ``session_token``."""
-        from nuguard.common.auth import AuthConfig
-
-        headers = AuthConfig.from_tenant_token(tenant.session_token).to_headers()
-        return cls.from_headers(f"canary:{tenant.tenant_id}", headers)
+        return cls.from_headers(f"canary:{tenant.tenant_id}", tenant.auth_headers())
