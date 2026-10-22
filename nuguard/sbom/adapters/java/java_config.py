@@ -312,7 +312,7 @@ def _entries(content: str, file_path: str) -> Iterator[tuple[int, str, str]]:
                 yield from _flatten(document, budget=budget)
     except _YamlWorkLimit as exc:
         _log.warning("java_config: stopped YAML model extraction for %s: %s", file_path, exc)
-    except (yaml.YAMLError, RecursionError, ValueError):
+    except (yaml.YAMLError, RecursionError, ValueError, AttributeError):
         return
 
 

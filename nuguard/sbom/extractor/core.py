@@ -1152,7 +1152,9 @@ class AiSbomExtractor:
             content_bytes = file_size
             # Track LOC for every scanned file
             file_loc[rel_path] = content.count("\n") + 1
-            if keep_full_contents:
+            # Properties are deterministic-only input. Keep raw credentials
+            # out of every enrichment step using the LLM source cache.
+            if keep_full_contents and file_path.suffix.lower() != ".properties":
                 file_contents[rel_path] = content
                 full_cache_files += 1
                 full_cache_bytes += content_bytes

@@ -356,8 +356,10 @@ def _collapse_bulk_catalog_files(
     for key, acc in node_map.items():
         # A compose file / Bicep module legitimately declares dozens of services; each
         # workload (and its image) is a real deployed component, not catalog noise.
+        # Exact config values are declarations, not catalog noise.
         if (
-            acc.metadata.get("workload")
+            _is_exact_config_model(key, acc)
+            or acc.metadata.get("workload")
             or acc.metadata.get("fact_marker")
             or acc.metadata.get("image_role")
         ):
