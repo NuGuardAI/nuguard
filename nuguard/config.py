@@ -385,6 +385,13 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_ci_api_spot_checks"] = int(redteam["ci_api_spot_checks"])
     if "similar_miss_threshold" in redteam:
         flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
+    if "universal_safety_probes" in redteam:
+        flat["redteam_universal_safety_probes"] = bool(redteam["universal_safety_probes"])
+    if isinstance(redteam.get("workflows"), list):
+        flat["redteam_workflows"] = list(redteam["workflows"])
+    if "workflow_templates" in redteam:
+        _wt = redteam["workflow_templates"]
+        flat["redteam_workflow_templates"] = [_wt] if isinstance(_wt, str) else list(_wt or [])
     if "hard_refusal_abort_turns" in redteam:
         flat["redteam_hard_refusal_abort_turns"] = int(redteam["hard_refusal_abort_turns"])
     if "stall_abort_threshold" in redteam:
@@ -1527,6 +1534,30 @@ class NuGuardConfig(BaseSettings):
             "scenarios are suppressed (yaml: redteam.similar_miss_threshold). "
             "Prevents repeating the same failing attack angle across many scenarios. "
             "Set to 0 to disable."
+        ),
+    )
+    redteam_workflows: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Stateful workflow attacks with an outcome oracle (yaml: redteam.workflows). "
+            "Each entry is a WorkflowSpec (see nuguard.redteam.workflows). These WRITE to "
+            "the target (register vendors, submit invoices), so listing one is the opt-in."
+        ),
+    )
+    redteam_workflow_templates: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Bundled workflow-attack templates to run (yaml: redteam.workflow_templates), "
+            "e.g. [owasp-finbot], or 'auto' for every bundled template. Each template workflow "
+            "runs only when its requirements hold on the target. They WRITE to the target."
+        ),
+    )
+    redteam_universal_safety_probes: bool = Field(
+        default=True,
+        description=(
+            "Probe sexual-content / violence / self-harm refusal even when the cognitive "
+            "policy does not list them (yaml: redteam.universal_safety_probes). Set to "
+            "false for domain apps (e.g. finance) where these probes are low-signal."
         ),
     )
     redteam_hard_refusal_abort_turns: int = Field(

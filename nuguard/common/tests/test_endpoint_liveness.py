@@ -474,3 +474,49 @@ async def test_confirmed_dead_safe_endpoint_still_skips_scenarios() -> None:
     skip, reason = should_skip_direct_http_scenario(node.metadata)
     assert skip is True
     assert reason is not None and "non-operational" in reason
+
+
+@pytest.mark.parametrize("method", ["GET", "HEAD", "OPTIONS"])
+@pytest.mark.parametrize("path", [
+    "/auth/logout", "/logout/", "/account/sign-out", "/auth/sign_out/all",
+    "/auth/LogOut", "/auth/logoff", "/auth/logout-all", "/auth/%6cogout",
+    "/sessions/invalidate", "/token/revoke", "/auth/logout?next=/dashboard",
+])
+@pytest.mark.asyncio
+async def test_session_termination_is_never_probed_even_with_fresh_cache(path: str, method: str) -> None:
+    """A safe-method label must not let the startup sweep sign out the user."""
+    node = _node(
+        path, method=method, operational=True,
+        liveness_checked_at=datetime.now(timezone.utc).isoformat(),
+        mutation_semantics={"mutation_kind": "none"},
+    )
+    client = _FakeClient()
+    report = await check_endpoint_liveness(_sbom(node), client, ttl_seconds=3600)
+    assert client.calls == []
+    assert report.skipped == 1
+    assert report.cached == report.checked == report.non_operational == 0
+    assert node.metadata.operational is None
+    assert "session-changing route" in node.metadata.liveness_notes[0]
+
+
+@pytest.mark.parametrize("kind", ["auth_state", "delete", "update", "create", "payment"])
+@pytest.mark.asyncio
+async def test_declared_mutations_are_skipped_on_safe_method(kind: str) -> None:
+    node = _node("/api/action", mutation_semantics={"mutation_kind": kind})
+    client = _FakeClient()
+    report = await check_endpoint_liveness(_sbom(node), client)
+    assert client.calls == []
+    assert report.skipped == 1
+    assert node.metadata.operational is None
+
+
+@pytest.mark.asyncio
+async def test_read_only_session_routes_remain_probeable() -> None:
+    nodes = [_node(path) for path in (
+        "/auth/status", "/sessions", "/api/logout-history", "/api/catalogout",
+    )]
+    client = _FakeClient()
+    report = await check_endpoint_liveness(_sbom(*nodes), client)
+    assert report.checked == report.operational == len(nodes)
+    assert report.skipped == 0
+    assert {path for _, path in client.calls} == {node.metadata.endpoint for node in nodes}

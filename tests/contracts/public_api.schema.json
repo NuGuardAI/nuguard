@@ -10998,6 +10998,7 @@
         "type": "object"
       },
       "CanaryTenant": {
+        "description": "One tenant / identity.\n\nA tenant authenticates with a static ``session_token`` (bearer token or a\n``\"Header: value\"`` string), or \u2014 for cookie/CSRF apps with anonymous\nsessions \u2014 ``web_session: true``, which acquires an independent cookie +\nCSRF session at run start (see :func:`acquire_web_session_tenants`).",
         "properties": {
           "tenant_id": {
             "title": "Tenant Id",
@@ -11007,6 +11008,25 @@
             "default": "",
             "title": "Session Token",
             "type": "string"
+          },
+          "web_session": {
+            "default": false,
+            "title": "Web Session",
+            "type": "boolean"
+          },
+          "web_session_pages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Web Session Pages",
+            "type": "array"
+          },
+          "session_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Session Headers",
+            "type": "object"
           },
           "records": {
             "items": {
@@ -11164,6 +11184,308 @@
           }
         },
         "title": "RedteamLoginFlowConfig",
+        "type": "object"
+      },
+      "WorkflowOracle": {
+        "description": "Reads back state after the workflow and decides whether the attack worked.\n\nThe predicate describes the *bad* outcome: when it matches, the attack\nsucceeded and a finding is raised.",
+        "properties": {
+          "method": {
+            "default": "GET",
+            "title": "Method",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "principal": {
+            "default": "primary",
+            "title": "Principal",
+            "type": "string"
+          },
+          "json_path": {
+            "title": "Json Path",
+            "type": "string"
+          },
+          "op": {
+            "default": "equals",
+            "enum": [
+              "equals",
+              "in",
+              "contains",
+              "matches",
+              "gte",
+              "lte",
+              "exists"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "value": {
+            "default": null,
+            "title": "Value"
+          },
+          "poll_timeout_s": {
+            "default": 60.0,
+            "title": "Poll Timeout S",
+            "type": "number"
+          },
+          "poll_interval_s": {
+            "default": 5.0,
+            "title": "Poll Interval S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "path",
+          "json_path"
+        ],
+        "title": "WorkflowOracle",
+        "type": "object"
+      },
+      "WorkflowRequirements": {
+        "description": "When a bundled workflow template applies to a target.\n\nAll listed conditions must hold. Empty means \"always applicable\".",
+        "properties": {
+          "sbom_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sbom Paths",
+            "type": "array"
+          },
+          "probe_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Probe Paths",
+            "type": "array"
+          },
+          "min_tenants": {
+            "default": 0,
+            "title": "Min Tenants",
+            "type": "integer"
+          }
+        },
+        "title": "WorkflowRequirements",
+        "type": "object"
+      },
+      "WorkflowSpec": {
+        "description": "A stateful attack: ordered steps, an attack payload, and an outcome oracle.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "goal_type": {
+            "default": "POLICY_VIOLATION",
+            "title": "Goal Type",
+            "type": "string"
+          },
+          "severity": {
+            "default": "high",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/$defs/WorkflowStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "oracle": {
+            "$ref": "#/$defs/WorkflowOracle"
+          },
+          "payloads": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Payloads",
+            "type": "array"
+          },
+          "payload_goal": {
+            "default": "",
+            "title": "Payload Goal",
+            "type": "string"
+          },
+          "payload_style": {
+            "default": "pretext",
+            "enum": [
+              "pretext",
+              "html_document",
+              "text_document",
+              "tool_description"
+            ],
+            "title": "Payload Style",
+            "type": "string"
+          },
+          "payload_count": {
+            "default": 2,
+            "maximum": 6,
+            "minimum": 1,
+            "title": "Payload Count",
+            "type": "integer"
+          },
+          "control_payloads": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Control Payloads",
+            "type": "array"
+          },
+          "auto_control": {
+            "default": true,
+            "title": "Auto Control",
+            "type": "boolean"
+          },
+          "cleanup": {
+            "items": {
+              "$ref": "#/$defs/WorkflowStep"
+            },
+            "title": "Cleanup",
+            "type": "array"
+          },
+          "requires": {
+            "$ref": "#/$defs/WorkflowRequirements"
+          },
+          "remediation": {
+            "default": "",
+            "title": "Remediation",
+            "type": "string"
+          },
+          "owasp_llm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Llm Ref"
+          },
+          "owasp_asi_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Asi Ref"
+          },
+          "stop_on_success": {
+            "default": true,
+            "title": "Stop On Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "steps",
+          "oracle"
+        ],
+        "title": "WorkflowSpec",
+        "type": "object"
+      },
+      "WorkflowStep": {
+        "description": "One HTTP request in a workflow.\n\n``path``, ``body`` string values and ``params`` may reference ``{payload}``\n(the attack text under test) and any name captured by an earlier step\n(e.g. ``{vendor_id}``).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "title": "Method",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Body"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "capture": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Capture",
+            "type": "object"
+          },
+          "expect_status": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Expect Status",
+            "type": "array"
+          },
+          "principal": {
+            "default": "primary",
+            "title": "Principal",
+            "type": "string"
+          },
+          "wait_for": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/WorkflowOracle"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id",
+          "path"
+        ],
+        "title": "WorkflowStep",
         "type": "object"
       }
     },
@@ -11371,6 +11693,25 @@
         "default": 4,
         "title": "Similar Miss Threshold",
         "type": "integer"
+      },
+      "universal_safety_probes": {
+        "default": true,
+        "title": "Universal Safety Probes",
+        "type": "boolean"
+      },
+      "workflows": {
+        "items": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "title": "Workflows",
+        "type": "array"
+      },
+      "workflow_templates": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Workflow Templates",
+        "type": "array"
       },
       "hard_refusal_abort_turns": {
         "default": 5,
