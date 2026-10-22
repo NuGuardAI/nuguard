@@ -12,11 +12,13 @@ the after-the-fact cleanup passes independently readable.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from nuguard.common.logging import get_logger
 
 from ..models import ScanSummary
+from ..normalization import canonicalize_text
 from ..types import ComponentType
 
 if TYPE_CHECKING:
@@ -73,6 +75,72 @@ def _is_exact_config_model(
 ) -> bool:
     """Return whether a MODEL name came from a complete config scalar."""
     return key[0] == ComponentType.MODEL and bool(acc.metadata.get("config_key"))
+
+
+def _dedup_exact_config_models(
+    node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
+) -> None:
+    """Merge only equal model values into exact declarations and retarget hints.
+
+    A lossless config key must not create duplicate nodes for the same model
+    already detected in code. Match full, case-sensitive values, never slugs.
+    """
+    exact = {
+        acc.display_name: key
+        for key, acc in node_map.items()
+        if _is_exact_config_model(key, acc)
+    }
+    aliases: dict[str, str] = {}
+    for key, acc in list(node_map.items()):
+        if key[0] != ComponentType.MODEL or _is_exact_config_model(key, acc):
+            continue
+        winner_key = exact.get(acc.display_name)
+        if winner_key is None:
+            continue
+        winner = node_map[winner_key]
+        winner.evidence.extend(acc.evidence)
+        winner.relationships.extend(acc.relationships)
+        winner.source_tiers.update(acc.source_tiers)
+        if acc.best_tier_rank < winner.best_tier_rank or (
+            acc.best_tier_rank == winner.best_tier_rank and acc.priority < winner.priority
+        ):
+            winner.adapter_name = acc.adapter_name
+            winner.priority = acc.priority
+        if acc.best_tier_rank < winner.best_tier_rank:
+            winner.metadata = {
+                **winner.metadata,
+                **{name: value for name, value in acc.metadata.items() if value is not None},
+            }
+        else:
+            for name, value in acc.metadata.items():
+                if value is not None:
+                    winner.metadata.setdefault(name, value)
+        winner.best_tier_rank = min(winner.best_tier_rank, acc.best_tier_rank)
+        winner.confidence = max(winner.confidence, acc.confidence)
+        aliases[key[1]] = winner.canonical_name
+        del node_map[key]
+    if not aliases:
+        return
+
+    live_model_keys = {key[1] for key in node_map if key[0] == ComponentType.MODEL}
+
+    def remap(name: str, kind: ComponentType) -> str:
+        if kind != ComponentType.MODEL or name in live_model_keys:
+            return name
+        return aliases.get(name, aliases.get(canonicalize_text(name), name))
+
+    for acc in node_map.values():
+        acc.relationships = [
+            replace(
+                hint,
+                source_canonical=remap(hint.source_canonical, hint.source_type),
+                target_canonical=remap(hint.target_canonical, hint.target_type),
+                target_files=tuple(
+                    (path, remap(name, hint.target_type)) for path, name in hint.target_files
+                ),
+            )
+            for hint in acc.relationships
+        ]
 
 
 def _dedup_by_name_prefix(
@@ -306,8 +374,14 @@ def _dedup_by_location(
                 loser_is_exact = _is_exact_config_model(loser, node_map[loser])
                 if winner_is_exact and loser_is_exact:
                     continue
-                if winner_is_exact and loser[1] not in winner[1]:
-                    continue
+                if winner_is_exact:
+                    # Exact identities are lossless encodings, not display-name
+                    # slugs. Compare values when absorbing a heuristic truncation.
+                    if (
+                        node_map[loser].display_name.lower()
+                        not in node_map[winner].display_name.lower()
+                    ):
+                        continue
                 if not winner_is_exact and winner[1] not in loser[1] and loser[1] not in winner[1]:
                     continue
             # Absorb evidence so the winner node reflects all source locations

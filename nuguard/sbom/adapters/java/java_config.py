@@ -20,7 +20,6 @@ from yaml.resolver import BaseResolver
 
 from nuguard.common.logging import get_logger
 
-from ...normalization import canonicalize_text
 from ...types import ComponentType
 from ..base import ComponentDetection, RelationshipHint
 
@@ -87,8 +86,9 @@ class _YamlWorkLimit(yaml.YAMLError):
 class _YamlBudget:
     """One budget shared by all documents and all alias references in a file."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, reject_cycles: bool = False) -> None:
         self.remaining = _YAML_MAX_VISITS
+        self.reject_cycles = reject_cycles
 
     def visit(self, depth: int) -> None:
         if depth > _YAML_MAX_DEPTH:
@@ -106,6 +106,8 @@ def _check_yaml_work(
     """Check alias expansion before constructors can expand YAML merge keys."""
     budget.visit(len(ancestors))
     if id(node) in ancestors:
+        if budget.reject_cycles:
+            raise _YamlWorkLimit("YAML recursive alias")
         return
     next_ancestors = ancestors | {id(node)}
     if isinstance(node, MappingNode):
@@ -292,6 +294,28 @@ def _load_yaml_documents(content: str, budget: _YamlBudget) -> Generator[Any, No
         loader.dispose()
 
 
+def application_yaml_allows_scan(content: str, file_path: str) -> bool:
+    """Preflight the whole file before any unbounded downstream YAML reader.
+
+    Unlike the model-only walker, other adapters may not handle cycles. Reject
+    cyclic, malformed or over-budget input for the entire file; safe YAML still
+    follows the ordinary adapter pipeline. No values are included in diagnostics.
+    """
+    budget = _YamlBudget(reject_cycles=True)
+    try:
+        with closing(_load_yaml_documents(content, budget)) as documents:
+            for document in documents:
+                for _ in _flatten(document, budget=budget):
+                    pass
+    except _YamlWorkLimit as exc:
+        _log.warning("java_config: skipping unsafe YAML file %s: %s", file_path, exc)
+        return False
+    except (yaml.YAMLError, RecursionError, ValueError, AttributeError):
+        _log.warning("java_config: skipping invalid YAML file %s", file_path)
+        return False
+    return True
+
+
 def _entries(content: str, file_path: str) -> Iterator[tuple[int, str, str]]:
     if file_path.lower().endswith(".properties"):
         # java.util.Properties keeps the last value of a repeated key.
@@ -333,7 +357,9 @@ def extract_java_config_models(content: str, file_path: str) -> list[ComponentDe
             detections.append(
                 ComponentDetection(
                     component_type=ComponentType.MODEL,
-                    canonical_name=canonicalize_text(model.lower()),
+                    # Preserve the exact value in a namespace ordinary slug keys
+                    # cannot enter. The merge stage must not normalize this key.
+                    canonical_name=f"config_model:{model}",
                     display_name=model,
                     adapter_name="java_config",
                     priority=20,
@@ -376,7 +402,7 @@ def link_config_models(
     agents = [acc for acc in node_map.values() if acc.component_type == ComponentType.AGENT]
     added = 0
     for det in detections:
-        canonical = canonicalize_text(det.canonical_name)
+        canonical = det.canonical_name
         if (ComponentType.MODEL, canonical) not in node_map:
             continue
         scope = _config_scope(det.file_path)

@@ -70,6 +70,7 @@ from ..adapters.iac import (
 )
 from ..adapters.java._java_base import JavaFrameworkAdapter
 from ..adapters.java.java_config import (
+    application_yaml_allows_scan,
     extract_java_config_models,
     is_java_app_config_name,
     link_config_models,
@@ -138,6 +139,7 @@ from .postprocess import (
     _dedup_by_location,
     _dedup_by_name_prefix,
     _dedup_deployment_nodes,
+    _dedup_exact_config_models,
     _dedup_generic_endpoints,
     _dedup_model_variants,
     _improve_generic_node_names,
@@ -1152,13 +1154,21 @@ class AiSbomExtractor:
             content_bytes = file_size
             # Track LOC for every scanned file
             file_loc[rel_path] = content.count("\n") + 1
-            # Properties are deterministic-only input. Keep raw credentials
-            # out of every enrichment step using the LLM source cache.
-            if keep_full_contents and file_path.suffix.lower() != ".properties":
+            is_app_config = is_java_app_config_name(file_path.name)
+            if (
+                is_app_config
+                and file_path.suffix.lower() in {".yml", ".yaml"}
+                and not application_yaml_allows_scan(content, rel_path)
+            ):
+                continue  # Never reparse rejected YAML in another adapter.
+            # Raw application configuration is deterministic-only input. Exclude
+            # both the full LLM cache and the scan-summary source sample.
+            source_context_allowed = not is_app_config and file_path.suffix.lower() != ".properties"
+            if keep_full_contents and source_context_allowed:
                 file_contents[rel_path] = content
                 full_cache_files += 1
                 full_cache_bytes += content_bytes
-            if len(files_sample) < 200:
+            if source_context_allowed and len(files_sample) < 200:
                 files_sample.append((rel_path, content))
                 files_sample_bytes += content_bytes
             suffix = file_path.suffix.lower()
@@ -1723,6 +1733,10 @@ class AiSbomExtractor:
             _log.debug(
                 "cross-file datastore ACCESSES resolution failed (non-fatal): %s", _cross_ds_exc
             )
+
+        # Preserve exact identities while still merging identical code/config
+        # values and redirecting their existing adapter hints.
+        _dedup_exact_config_models(node_map)
 
         # Deduplicate nodes that share (component_type, file, line) — e.g. a
         # regex adapter and an AST adapter both firing on the same token.
@@ -2642,16 +2656,23 @@ class AiSbomExtractor:
         its adapter attribution and metadata take precedence.  Evidence from all
         tiers is always appended so the final node reflects every source.
         """
-        # Always canonicalize to ensure regex-adapter and AST-adapter nodes
-        # for the same component deduplicate correctly.
-        canon = canonicalize_text(det.canonical_name)
+        # Exact config identifiers preserve punctuation and case. Ordinary
+        # detections retain their existing normalization and hint contracts.
+        if det.component_type == ComponentType.MODEL and det.metadata.get("config_key"):
+            canon = det.canonical_name
+        else:
+            canon = canonicalize_text(det.canonical_name)
         key = (det.component_type, canon)
         acc = node_map.get(key)
 
         tier = _classify_source_tier(det.file_path, det.adapter_name, det.evidence_kind)
         tier_rank = _TIER_RANK.get(tier, 2)
 
-        if det.component_type == ComponentType.PROMPT:
+        if is_java_app_config_name(Path(det.file_path.replace("\\", "/")).name):
+            # Verification can use evidence.detail when a source is not cached.
+            # Keep the location/provenance, never a raw config-line excerpt.
+            _detail = f"{det.adapter_name}: {det.evidence_kind} (application config)"
+        elif det.component_type == ComponentType.PROMPT:
             # Content is already stored in metadata.extras["content"]; keep
             # the evidence detail as a compact location label only.
             _detail = f"{det.adapter_name}: {det.evidence_kind}"
