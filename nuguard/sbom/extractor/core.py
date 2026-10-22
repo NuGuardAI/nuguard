@@ -42,7 +42,7 @@ from nuguard.common.url_sanitization import (
     sanitize_repository_url,
 )
 
-from ..adapters._test_paths import is_jvm_test_source_path
+from ..adapters._test_paths import is_jvm_test_source_path, jvm_source_path_prefix
 from ..adapters.azure_yaml import AzureYamlAdapter, is_azure_yaml
 from ..adapters.base import (
     AdapterMatch,
@@ -3649,9 +3649,9 @@ class AiSbomExtractor:
         _gitignore_match = (
             _load_gitignore_matcher(root) if getattr(config, "honor_gitignore", True) else None
         )
-        # Preserve the "src" component when the selected scan root is project/src.
-        # Other discovery behavior remains relative to the user-selected root.
-        jvm_test_path_root = root.parent if root.name == "src" else root
+        # Restore only conventional source-set context for subtree scans.
+        # Evidence, gitignore and explicit exclusions still use the selected root.
+        jvm_test_prefix = jvm_source_path_prefix(root)
         count = 0
         for dirpath, dirnames, filenames in os.walk(root):
             # Keep traversal deterministic and prune irrelevant dirs early.
@@ -3686,7 +3686,7 @@ class AiSbomExtractor:
                         )
                     )
                     and is_jvm_test_source_path(
-                        path.relative_to(jvm_test_path_root).as_posix()
+                        (jvm_test_prefix / path.relative_to(root).as_posix()).as_posix()
                     )
                 ):
                     continue
