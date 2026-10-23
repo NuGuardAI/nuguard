@@ -567,6 +567,18 @@
             "default": null,
             "title": "Regression Paraphrase Kind"
           },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Expect"
+          },
           "dual_path_verdict": {
             "anyOf": [
               {
@@ -9845,6 +9857,18 @@
             "default": null,
             "title": "Regression Paraphrase Kind"
           },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Expect"
+          },
           "dual_path_verdict": {
             "anyOf": [
               {
@@ -12818,6 +12842,18 @@
             ],
             "default": null,
             "title": "Regression Paraphrase Kind"
+          },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Expect"
           },
           "dual_path_verdict": {
             "anyOf": [
