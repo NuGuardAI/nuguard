@@ -692,6 +692,17 @@ declared Maven types rather than guessing custom artifact-handler mappings. The
 Spring Boot shortcut applies only to ordinary unclassified JAR dependencies;
 other variants require an explicit or matching local managed version.
 
+A concrete version inherited from a recognized Spring Boot parent is not made
+uncertain merely by a profile BOM import: imported defaults cannot replace that
+inherited management. Direct profile declarations, non-import management, and
+profile-controlled parent properties still receive uncertainty checks. An
+import-only fallback is not treated as a known inherited version.
+
+Root management identities and profile entry lists are prepared once per POM.
+Concrete local entries use indexed membership checks; only unresolved local
+identities remain candidates for uncertainty matching. This avoids repeatedly
+resolving every literal management identity for every dependency.
+
 Property interpolation is lazy and bounded: at most 16,384 characters per value,
 64 reference levels, and per-manifest budgets of 1,000,000 characters of expansion
 work and 50,000 references. Cyclic or over-budget expressions remain unresolved
@@ -699,8 +710,9 @@ rather than falling through to a different version. Literal dependencies and
 other manifests can still be scanned. These limits bound interpolation, not the
 size of the original manifest or unrelated parsing work.
 
-Maven `LATEST`/`RELEASE` and Gradle dynamic selectors (including `1.+` and
-`latest.release`) remain raw version specifications without an exact PURL version.
+Maven `LATEST`/`RELEASE` and Gradle dynamic selectors (including `1.+` and every
+`latest.<status>` selector, such as `latest.milestone` or a custom status) remain raw
+version specifications without an exact PURL version.
 No repository metadata is fetched to resolve them, and OSV skips these unversioned
 records. Ordinary literal releases and build metadata remain queryable.
 

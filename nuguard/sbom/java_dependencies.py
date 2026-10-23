@@ -166,7 +166,7 @@ def _concrete_version(value: str) -> str | None:
     version = value.strip()
     if not version or "${" in version or "$" in version:
         return None
-    if version in {"LATEST", "RELEASE", "latest.release", "latest.integration"}:
+    if version in {"LATEST", "RELEASE"} or version.startswith("latest."):
         return None
     # Gradle prefix selectors share this helper; build metadata such as 1.0+build
     # is still a literal version, while 1.+ and 1.0+ require repository resolution.
@@ -292,20 +292,36 @@ def _maven_declared_version(
     )
 
 
+class _MavenManagementContext:
+    """Per-POM facts reused for every dependency's profile uncertainty check."""
+
+    def __init__(
+        self,
+        *,
+        unresolved_local: tuple[_MavenIdentity, ...],
+        concrete_local: frozenset[_MavenIdentity],
+        inherited_boot_version: str | None,
+        profile_candidates: tuple[tuple[ET.Element, bool], ...],
+    ) -> None:
+        self.unresolved_local = unresolved_local
+        self.concrete_local = concrete_local
+        self.inherited_boot_version = inherited_boot_version
+        self.profile_candidates = profile_candidates
+
+
 def _profile_version_uncertain(
-    project: ET.Element,
     dependency: ET.Element,
     properties: dict[str, str],
     managed_versions: dict[_MavenIdentity, str],
     boot_version: str,
+    context: _MavenManagementContext,
 ) -> bool:
-    """Do not select a build-profile-dependent version without activation context.
+    """Retain known versions unless a possible profile override can change them.
 
-    This offline scanner cannot know -P, settings.xml or environment activation.
-    Even activeByDefault profiles can be disabled. Direct profile declarations
-    can override direct versions; profile management only affects unversioned
-    declarations. A profile BOM import is opaque offline, so it only counts when it could
-    be the BOM behind this dependency's version; a concrete local entry outranks it.
+    This offline scanner has no activation context. Direct declarations and
+    non-import management can override inherited versions. Actual BOM imports
+    cannot replace a recognized parent's overlapping ordinary Boot JAR entries.
+    Root management identities are indexed once, not resolved for each dependency.
     """
     identity = _maven_identity(dependency, properties)
     group, _artifact, dependency_type, classifier = identity
@@ -320,16 +336,29 @@ def _profile_version_uncertain(
         resolved = _resolve(value, properties)
         return resolved == expected or bool(_PLACEHOLDER_RE.search(resolved))
 
-    def may_match(candidate: ET.Element) -> bool:
+    def identity_may_match(candidate: _MavenIdentity) -> bool:
         return all(
             actual == expected or bool(_PLACEHOLDER_RE.search(actual))
-            for actual, expected in zip(_maven_identity(candidate, properties), identity)
+            for actual, expected in zip(candidate, identity)
         )
 
+    def may_match(candidate: ET.Element) -> bool:
+        return identity_may_match(_maven_identity(candidate, properties))
+
     def import_may_supply(candidate: ET.Element) -> bool:
-        # BOM contents are unreadable offline. A profile import matters only if it could be
-        # the BOM behind this dependency's version: the dependency itself, or the Spring
-        # Boot BOM for a Spring Boot dependency (the only BOM the fallback consults).
+        # Imported entries are defaults: inherited entries already occupy the
+        # management map. Do not extend this exemption to ambiguous import/type
+        # expressions that might instead be a non-import management override.
+        if (
+            group == _SPRING_BOOT_GROUP
+            and (dependency_type, classifier) == ("jar", "")
+            and context.inherited_boot_version is not None
+            and _resolve(_text(candidate, "type"), properties) == "pom"
+            and _resolve(_text(candidate, "scope"), properties) == "import"
+            and not _resolve(_text(candidate, "classifier"), properties)
+        ):
+            return False
+        # Otherwise preserve the existing limited offline BOM scope.
         bom_group = _text(candidate, "groupId")
         bom_artifact = _text(candidate, "artifactId")
         if may_match(candidate):
@@ -341,53 +370,36 @@ def _profile_version_uncertain(
             and may_equal(bom_artifact, "spring-boot-dependencies")
         )
 
-    if not explicit:
-        local_managed, _ = _maven_dependency_elements(project)
-        for candidate in local_managed:
-            candidate_identity = _maven_identity(candidate, properties)
-            if (
-                any(_PLACEHOLDER_RE.search(part) for part in candidate_identity)
-                and may_match(candidate)
-            ):
+    if not explicit and any(
+        identity_may_match(candidate) for candidate in context.unresolved_local
+    ):
+        return True
+    for candidate, is_managed in context.profile_candidates:
+        if candidate is dependency or (explicit and is_managed):
+            continue
+        if is_managed and (
+            may_equal(_text(candidate, "type"), "pom")
+            and may_equal(_text(candidate, "scope"), "import")
+        ):
+            if import_may_supply(candidate) and identity not in context.concrete_local:
                 return True
-    for profile in _maven_profiles(project):
-        managed, declared = _maven_dependency_elements(profile)
-        for candidate in declared + ([] if explicit else managed):
-            if candidate is dependency:
-                continue
-            if candidate in managed and (
-                may_equal(_text(candidate, "type"), "pom")
-                and may_equal(_text(candidate, "scope"), "import")
-            ):
-                if import_may_supply(candidate) and not any(
-                    _maven_identity(entry, properties) == identity
-                    and _concrete_version(_resolve(_text(entry, "version"), properties))
-                    and not (
-                        may_equal(_text(entry, "type"), "pom")
-                        and may_equal(_text(entry, "scope"), "import")
-                    )
-                    for entry in local_managed
-                ):
-                    return True
-                continue
-            if not may_match(candidate):
-                continue
-            if candidate in managed:
-                if _text(candidate, "version"):
-                    return True
-                continue
-            # Profile declarations can obtain their version implicitly too.
-            # An unresolved competitor cannot establish agreement; equal known
-            # versions are safe even when their explicit/implicit forms differ.
-            candidate_version = _concrete_version(
-                _maven_declared_version(candidate, properties, managed_versions, boot_version)
-            )
-            if (
-                _maven_identity(candidate, properties) != identity
-                or candidate_version is None
-                or candidate_version != current_version
-            ):
+            continue
+        if not may_match(candidate):
+            continue
+        if is_managed:
+            if _text(candidate, "version"):
                 return True
+            continue
+        # Implicit versions compete as well. Only equal concrete values agree.
+        candidate_version = _concrete_version(
+            _maven_declared_version(candidate, properties, managed_versions, boot_version)
+        )
+        if (
+            _maven_identity(candidate, properties) != identity
+            or candidate_version is None
+            or candidate_version != current_version
+        ):
+            return True
     return False
 
 
@@ -509,9 +521,13 @@ def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
     managed, declared = _maven_dependency_elements(project)
     managed_versions: dict[_MavenIdentity, str] = {}
     imported_bom_versions: dict[tuple[str, str], str] = {}
+    unresolved_local: list[_MavenIdentity] = []
+    concrete_local: set[_MavenIdentity] = set()
     for dependency in managed:
         identity = _maven_identity(dependency, properties)
         group, artifact, dependency_type, classifier = identity
+        if any(_PLACEHOLDER_RE.search(part) for part in identity):
+            unresolved_local.append(identity)
         version = _resolve(_text(dependency, "version"), properties)
         if group and artifact and version:
             scope = _resolve(_text(dependency, "scope"), properties)
@@ -519,14 +535,31 @@ def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
                 imported_bom_versions[(group, artifact)] = version
             else:
                 managed_versions[identity] = version
+            possibly_imported = (
+                dependency_type == "pom" or bool(_PLACEHOLDER_RE.search(dependency_type))
+            ) and (scope == "import" or bool(_PLACEHOLDER_RE.search(scope)))
+            if _concrete_version(version) and not possibly_imported:
+                concrete_local.add(identity)
     boot_version = _spring_boot_version(project, properties, imported_bom_versions)
+    profile_candidates: list[tuple[ET.Element, bool]] = []
+    for profile in _maven_profiles(project):
+        profile_managed, profile_declared = _maven_dependency_elements(profile)
+        profile_candidates.extend((entry, False) for entry in profile_declared)
+        profile_candidates.extend((entry, True) for entry in profile_managed)
+    context = _MavenManagementContext(
+        unresolved_local=tuple(unresolved_local),
+        concrete_local=frozenset(concrete_local),
+        # An import-only fallback must not be mistaken for inherited management.
+        inherited_boot_version=_concrete_version(_spring_boot_version(project, properties, {})),
+        profile_candidates=tuple(profile_candidates),
+    )
     source = str(path.relative_to(root))
     result: list[dict[str, str]] = []
     for dependency in declared:
         group, artifact, dependency_type, classifier = _maven_identity(dependency, properties)
         version = _maven_declared_version(dependency, properties, managed_versions, boot_version)
         if _concrete_version(version) and _profile_version_uncertain(
-            project, dependency, properties, managed_versions, boot_version
+            dependency, properties, managed_versions, boot_version, context
         ):
             version = ""
         scope = _resolve(_text(dependency, "scope"), properties)
