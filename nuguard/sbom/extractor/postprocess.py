@@ -77,6 +77,11 @@ def _is_exact_config_model(
     return key[0] == ComponentType.MODEL and bool(acc.metadata.get("config_key"))
 
 
+def _has_only_regex_evidence(acc: "_NodeAccumulator") -> bool:
+    """Only regex-only detections are eligible as config-model truncations."""
+    return bool(acc.evidence) and all(ev.kind == "regex" for ev in acc.evidence)
+
+
 def _dedup_exact_config_models(
     node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
 ) -> None:
@@ -220,6 +225,10 @@ def _dedup_by_name_prefix(
                 # don't treat coincidental numeric-ID overlaps (prompt_407 /
                 # prompt_4078) as a truncated/full name pair.
                 if name_b[len(name_a)].isalnum():
+                    continue
+                if _is_exact_config_model(key_b, node_map[key_b]) and not _has_only_regex_evidence(
+                    node_map[key_a]
+                ):
                     continue
                 if len(name_b) > len(winner_name):
                     winner_key = key_b
@@ -375,6 +384,11 @@ def _dedup_by_location(
                 if winner_is_exact and loser_is_exact:
                     continue
                 if winner_is_exact:
+                    # Config regex evidence can coexist with a Java AST location
+                    # after exact-value merging. It must not demote a different
+                    # AST-backed model on that same line into a regex truncation.
+                    if not _has_only_regex_evidence(node_map[loser]):
+                        continue
                     # Exact identities are lossless encodings, not display-name
                     # slugs. Compare values when absorbing a heuristic truncation.
                     if (

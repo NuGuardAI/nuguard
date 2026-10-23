@@ -248,6 +248,28 @@ def _properties_entries(content: str) -> Iterator[tuple[int, str, str]]:
             yield lineno, entry[0], entry[1]
 
 
+def _yaml_child_path(prefix: str, key: Any, value: Any) -> str:
+    """Keep a nested Quarkus client name atomic without quoting dotted paths.
+
+    YAML syntax quotes do not survive parsing. At the provider boundary, a
+    mapping directly containing chat-model settings identifies a named client.
+    A key such as chat-model.model-name still denotes an ordinary dotted path.
+    """
+    segment = str(key)
+    if (
+        "." in segment
+        and not (segment.startswith('"') and segment.endswith('"'))
+        and re.fullmatch(rf"quarkus\.langchain4j\.{_NAME}", _normalize_key(prefix))
+        and isinstance(value, dict)
+        and any(
+            re.match(r"^(?:streaming-)?chat-model(?:\.|$)", _normalize_key(str(child)))
+            for child in value
+        )
+    ):
+        segment = f'"{segment}"'
+    return f"{prefix}.{segment}" if prefix else segment
+
+
 def _flatten(
     node: Any,
     prefix: str = "",
@@ -268,7 +290,7 @@ def _flatten(
         next_ancestors = ancestors | {node_id}
         key_lines = node.key_lines if isinstance(node, _MarkedMapping) else {}
         for key, value in node.items():
-            path = f"{prefix}.{key}" if prefix else str(key)
+            path = _yaml_child_path(prefix, key, value)
             yield from _flatten(value, path, key_lines.get(key, line), next_ancestors, budget)
     elif isinstance(node, list):
         node_id = id(node)
@@ -282,8 +304,21 @@ def _flatten(
         yield line, prefix, str(node)
 
 
-def _load_yaml_documents(content: str, budget: _YamlBudget) -> Generator[Any, None, None]:
-    loader = _MarkedSafeLoader(content)
+def _load_yaml_documents(
+    content: str,
+    budget: _YamlBudget,
+    *,
+    allow_intrinsic_tags: bool = False,
+) -> Generator[Any, None, None]:
+    loader_type = _MarkedSafeLoader
+    if allow_intrinsic_tags:
+        # Preflight must admit everything the existing safe IaC reader admits.
+        # Reuse its inert scalar/opaque-structured tag handling, not evaluation.
+        # Model extraction keeps the strict loader so !Ref is not a model name.
+        from ..iac import _intrinsic_loader
+
+        loader_type = _intrinsic_loader()
+    loader = loader_type(content)
     try:
         while loader.check_node():
             node = loader.get_node()
@@ -299,11 +334,13 @@ def application_yaml_allows_scan(content: str, file_path: str) -> bool:
 
     Unlike the model-only walker, other adapters may not handle cycles. Reject
     cyclic, malformed or over-budget input for the entire file; safe YAML still
-    follows the ordinary adapter pipeline. No values are included in diagnostics.
+    follows the ordinary adapter pipeline, including inert CloudFormation tags.
+    Tagged subtrees still consume the graph budget before construction.
+    No values are included in diagnostics.
     """
     budget = _YamlBudget(reject_cycles=True)
     try:
-        with closing(_load_yaml_documents(content, budget)) as documents:
+        with closing(_load_yaml_documents(content, budget, allow_intrinsic_tags=True)) as documents:
             for document in documents:
                 for _ in _flatten(document, budget=budget):
                     pass

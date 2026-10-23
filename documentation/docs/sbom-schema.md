@@ -59,6 +59,15 @@ A Node represents a detected AI component, service boundary, infrastructure reso
 
 Java source scanning uses the same component types as every other language. Current Java adapters recognize Spring AI, LangChain4j, Quarkus LangChain4j, OpenAI Java, Azure OpenAI Java, AWS Bedrock, Google Gen AI, and Vertex AI, plus Spring MVC/WebFlux and JAX-RS/Quarkus endpoints. Consumers do not need a Java-specific schema branch.
 
+Application YAML preflight accepts the same inert CloudFormation intrinsic tags as
+its IaC adapter; cycle, depth and work limits still apply to tagged subtrees before
+construction. Tags are not evaluated or treated as resolved Java model values.
+Nested Quarkus client names containing dots (such as `"tenant.one"`) retain their
+segment boundary, while dotted property keys remain supported. When equal Java
+and config model values are merged, the added config evidence cannot turn a
+different AST-backed model into a truncation candidate. Only regex-only candidates
+can be absorbed into exact config models by location or prefix truncation rules.
+
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `id` | UUID string | - | Stable UUID for edge references. Generated when omitted. |
