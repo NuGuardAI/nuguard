@@ -698,10 +698,15 @@ inherited management. Direct profile declarations, non-import management, and
 profile-controlled parent properties still receive uncertainty checks. An
 import-only fallback is not treated as a known inherited version.
 
-Root management identities and profile entry lists are prepared once per POM.
-Concrete local entries use indexed membership checks; only unresolved local
-identities remain candidates for uncertainty matching. This avoids repeatedly
-resolving every literal management identity for every dependency.
+Root management and each declared/profile dependency are resolved once per POM.
+Concrete profile identities are indexed with their supported versions, including
+implicit local/Boot versions. Repeated declarations of one identity use a version
+summary rather than pairwise comparisons. Symbolic identities and possible BOM
+imports remain separate conservative checks over cached facts. Matching does not
+spend interpolation budget, and records reuse the same resolved facts. Self-only
+and agreeing declarations retain their pins; conflicting versions, variants, and
+management precedence follow the rules above. The interpolation limits below are
+unchanged; this avoids exhausting them by repeatedly resolving unrelated profiles.
 
 Property interpolation is lazy and bounded: at most 16,384 characters per value,
 64 reference levels, and per-manifest budgets of 1,000,000 characters of expansion

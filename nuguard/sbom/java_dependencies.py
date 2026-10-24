@@ -279,12 +279,15 @@ def _maven_declared_version(
     properties: dict[str, str],
     managed_versions: dict[_MavenIdentity, str],
     boot_version: str,
+    *,
+    identity: _MavenIdentity | None = None,
 ) -> str:
     """Apply the same limited offline lookup to every competing declaration."""
     version = _resolve(_text(dependency, "version"), properties)
     if version:
         return version
-    identity = _maven_identity(dependency, properties)
+    if identity is None:
+        identity = _maven_identity(dependency, properties)
     # The Boot shortcut only knows the ordinary, unclassified JAR. Variants need
     # an explicit or exact local management entry, not an assumed Boot version.
     return managed_versions.get(identity, "") or (
@@ -292,8 +295,38 @@ def _maven_declared_version(
     )
 
 
+class _ResolvedMavenDependency:
+    """One element's facts, resolved once against this POM's property budget."""
+
+    def __init__(
+        self,
+        *,
+        element: ET.Element,
+        identity: _MavenIdentity,
+        version: str,
+        explicit: bool,
+        scope: str,
+        optional: str,
+    ) -> None:
+        self.element = element
+        self.identity = identity
+        self.version = version
+        self.explicit = explicit
+        self.scope = scope
+        self.optional = optional
+
+
+def _resolved_may_equal(actual: str, expected: str) -> bool:
+    """Match a cached field conservatively, without interpolating it again."""
+    return actual == expected or bool(_PLACEHOLDER_RE.search(actual))
+
+
+def _identity_may_match(actual: _MavenIdentity, expected: _MavenIdentity) -> bool:
+    return all(_resolved_may_equal(value, target) for value, target in zip(actual, expected))
+
+
 class _MavenManagementContext:
-    """Per-POM facts reused for every dependency's profile uncertainty check."""
+    """Cached facts and profile indexes, with no interpolation during matching."""
 
     def __init__(
         self,
@@ -301,103 +334,95 @@ class _MavenManagementContext:
         unresolved_local: tuple[_MavenIdentity, ...],
         concrete_local: frozenset[_MavenIdentity],
         inherited_boot_version: str | None,
+        dependencies: dict[ET.Element, _ResolvedMavenDependency],
         profile_candidates: tuple[tuple[ET.Element, bool], ...],
     ) -> None:
         self.unresolved_local = unresolved_local
         self.concrete_local = concrete_local
         self.inherited_boot_version = inherited_boot_version
-        self.profile_candidates = profile_candidates
+        self.dependencies = dependencies
+        # Summarize versions as well as identities: repeatedly enumerating every
+        # declaration of the same artifact would also be quadratic.
+        self.profile_versions: dict[_MavenIdentity, set[str | None]] = {}
+        self.profile_managed: set[_MavenIdentity] = set()
+        self.symbolic_profiles: list[tuple[_ResolvedMavenDependency, bool]] = []
+        self.profile_imports: list[_ResolvedMavenDependency] = []
+        for element, is_managed in profile_candidates:
+            candidate = dependencies[element]
+            if is_managed and (
+                _resolved_may_equal(candidate.identity[2], "pom")
+                and _resolved_may_equal(candidate.scope, "import")
+            ):
+                self.profile_imports.append(candidate)
+            elif any(_PLACEHOLDER_RE.search(part) for part in candidate.identity):
+                self.symbolic_profiles.append((candidate, is_managed))
+            elif is_managed:
+                if candidate.explicit:
+                    self.profile_managed.add(candidate.identity)
+            else:
+                self.profile_versions.setdefault(candidate.identity, set()).add(
+                    _concrete_version(candidate.version)
+                )
 
 
 def _profile_version_uncertain(
     dependency: ET.Element,
-    properties: dict[str, str],
-    managed_versions: dict[_MavenIdentity, str],
-    boot_version: str,
     context: _MavenManagementContext,
 ) -> bool:
-    """Retain known versions unless a possible profile override can change them.
+    """Check pre-resolved profile facts without comparing every concrete pair.
 
     This offline scanner has no activation context. Direct declarations and
     non-import management can override inherited versions. Actual BOM imports
     cannot replace a recognized parent's overlapping ordinary Boot JAR entries.
-    Root management identities are indexed once, not resolved for each dependency.
     """
-    identity = _maven_identity(dependency, properties)
+    current = context.dependencies[dependency]
+    identity = current.identity
     group, _artifact, dependency_type, classifier = identity
     if any(_PLACEHOLDER_RE.search(part) for part in identity):
         return True
-    explicit = bool(_text(dependency, "version"))
-    current_version = _concrete_version(
-        _maven_declared_version(dependency, properties, managed_versions, boot_version)
-    )
+    current_version = _concrete_version(current.version)
+    versions = context.profile_versions.get(identity)
+    # A concrete declaration agrees with its own cached version. A singleton
+    # self-entry therefore cannot make itself uncertain; other unknown/different
+    # values still conflict, regardless of profile or XML order.
+    if versions and versions != {current_version}:
+        return True
+    if not current.explicit:
+        if identity in context.profile_managed or any(
+            _identity_may_match(candidate, identity) for candidate in context.unresolved_local
+        ):
+            return True
 
-    def may_equal(value: str, expected: str) -> bool:
-        resolved = _resolve(value, properties)
-        return resolved == expected or bool(_PLACEHOLDER_RE.search(resolved))
+    # Only genuinely symbolic identities require conservative wildcard matching.
+    # Use cached facts so these comparisons cannot drain the interpolation budget.
+    for candidate, is_managed in context.symbolic_profiles:
+        if candidate.element is dependency or (current.explicit and is_managed):
+            continue
+        if _identity_may_match(candidate.identity, identity) and (
+            not is_managed or candidate.explicit
+        ):
+            return True
 
-    def identity_may_match(candidate: _MavenIdentity) -> bool:
-        return all(
-            actual == expected or bool(_PLACEHOLDER_RE.search(actual))
-            for actual, expected in zip(candidate, identity)
-        )
-
-    def may_match(candidate: ET.Element) -> bool:
-        return identity_may_match(_maven_identity(candidate, properties))
-
-    def import_may_supply(candidate: ET.Element) -> bool:
-        # Imported entries are defaults: inherited entries already occupy the
-        # management map. Do not extend this exemption to ambiguous import/type
-        # expressions that might instead be a non-import management override.
+    if current.explicit or identity in context.concrete_local:
+        return False
+    for candidate in context.profile_imports:
+        if candidate.element is dependency:
+            continue
+        bom_group, bom_artifact, bom_type, bom_classifier = candidate.identity
         if (
             group == _SPRING_BOOT_GROUP
             and (dependency_type, classifier) == ("jar", "")
             and context.inherited_boot_version is not None
-            and _resolve(_text(candidate, "type"), properties) == "pom"
-            and _resolve(_text(candidate, "scope"), properties) == "import"
-            and not _resolve(_text(candidate, "classifier"), properties)
+            and bom_type == "pom"
+            and candidate.scope == "import"
+            and not bom_classifier
         ):
-            return False
-        # Otherwise preserve the existing limited offline BOM scope.
-        bom_group = _text(candidate, "groupId")
-        bom_artifact = _text(candidate, "artifactId")
-        if may_match(candidate):
-            return True
-        return (
+            continue
+        if _identity_may_match(candidate.identity, identity) or (
             group == _SPRING_BOOT_GROUP
             and (dependency_type, classifier) == ("jar", "")
-            and may_equal(bom_group, _SPRING_BOOT_GROUP)
-            and may_equal(bom_artifact, "spring-boot-dependencies")
-        )
-
-    if not explicit and any(
-        identity_may_match(candidate) for candidate in context.unresolved_local
-    ):
-        return True
-    for candidate, is_managed in context.profile_candidates:
-        if candidate is dependency or (explicit and is_managed):
-            continue
-        if is_managed and (
-            may_equal(_text(candidate, "type"), "pom")
-            and may_equal(_text(candidate, "scope"), "import")
-        ):
-            if import_may_supply(candidate) and identity not in context.concrete_local:
-                return True
-            continue
-        if not may_match(candidate):
-            continue
-        if is_managed:
-            if _text(candidate, "version"):
-                return True
-            continue
-        # Implicit versions compete as well. Only equal concrete values agree.
-        candidate_version = _concrete_version(
-            _maven_declared_version(candidate, properties, managed_versions, boot_version)
-        )
-        if (
-            _maven_identity(candidate, properties) != identity
-            or candidate_version is None
-            or candidate_version != current_version
+            and _resolved_may_equal(bom_group, _SPRING_BOOT_GROUP)
+            and _resolved_may_equal(bom_artifact, "spring-boot-dependencies")
         ):
             return True
     return False
@@ -541,29 +566,48 @@ def _scan_pom(root: Path, path: Path) -> list[dict[str, str]]:
             if _concrete_version(version) and not possibly_imported:
                 concrete_local.add(identity)
     boot_version = _spring_boot_version(project, properties, imported_bom_versions)
+    inherited_boot_version = _concrete_version(_spring_boot_version(project, properties, {}))
     profile_candidates: list[tuple[ET.Element, bool]] = []
     for profile in _maven_profiles(project):
         profile_managed, profile_declared = _maven_dependency_elements(profile)
         profile_candidates.extend((entry, False) for entry in profile_declared)
         profile_candidates.extend((entry, True) for entry in profile_managed)
+    # Resolve each element once, including its supported implicit version. Keep
+    # these facts for both uncertainty checks and emitted records: index lookups
+    # must never spend interpolation budget or change an earlier identity.
+    dependencies: dict[ET.Element, _ResolvedMavenDependency] = {}
+    for dependency in [*declared, *(entry for entry, _ in profile_candidates)]:
+        if dependency in dependencies:
+            continue
+        identity = _maven_identity(dependency, properties)
+        dependencies[dependency] = _ResolvedMavenDependency(
+            element=dependency,
+            identity=identity,
+            version=_maven_declared_version(
+                dependency, properties, managed_versions, boot_version, identity=identity,
+            ),
+            explicit=bool(_text(dependency, "version")),
+            scope=_resolve(_text(dependency, "scope"), properties),
+            optional=_resolve(_text(dependency, "optional"), properties),
+        )
     context = _MavenManagementContext(
+        dependencies=dependencies,
         unresolved_local=tuple(unresolved_local),
         concrete_local=frozenset(concrete_local),
         # An import-only fallback must not be mistaken for inherited management.
-        inherited_boot_version=_concrete_version(_spring_boot_version(project, properties, {})),
+        inherited_boot_version=inherited_boot_version,
         profile_candidates=tuple(profile_candidates),
     )
     source = str(path.relative_to(root))
     result: list[dict[str, str]] = []
     for dependency in declared:
-        group, artifact, dependency_type, classifier = _maven_identity(dependency, properties)
-        version = _maven_declared_version(dependency, properties, managed_versions, boot_version)
-        if _concrete_version(version) and _profile_version_uncertain(
-            dependency, properties, managed_versions, boot_version, context
-        ):
+        resolved = dependencies[dependency]
+        group, artifact, dependency_type, classifier = resolved.identity
+        version = resolved.version
+        if _concrete_version(version) and _profile_version_uncertain(dependency, context):
             version = ""
-        scope = _resolve(_text(dependency, "scope"), properties)
-        optional = _resolve(_text(dependency, "optional"), properties)
+        scope = resolved.scope
+        optional = resolved.optional
         item = _record(
             group, artifact, version, _maven_scope(scope, optional), source,
             dependency_type=dependency_type, classifier=classifier,
