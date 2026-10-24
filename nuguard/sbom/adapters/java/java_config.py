@@ -67,7 +67,9 @@ _PROVIDER_ALIASES = {
     "ollama": "ollama",
 }
 _PLACEHOLDER_RE = re.compile(r"^\$\{[^:}]+:(?P<default>[^}]*)\}$")
-_MODEL_NAME_RE = re.compile(r"^\w[\w.:/@+-]{1,119}$")
+# Local OpenAI-compatible servers use filesystem paths as model IDs (/models/x, ./models/x).
+# The lookahead requires one word character so junk such as "./" or "/." stays rejected.
+_MODEL_NAME_RE = re.compile(r"^(?=[\w.:/@+-]*\w)[\w./][\w.:/@+-]{1,119}$")
 _PROP_SPACE = " \t\f"
 _PROP_ESCAPES = {"t": "\t", "n": "\n", "r": "\r", "f": "\f"}
 

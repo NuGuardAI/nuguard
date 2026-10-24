@@ -334,3 +334,51 @@ def test_config_absorbs_regex_only_truncations_not_structured_detections(
         assert len(winner.evidence) == 3
     else:
         assert len(winner.evidence) == 2
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("owner", [0, 1])
+def test_same_line_exact_models_absorb_only_their_own_regex_truncation(
+    owner: int,
+    reverse: bool,
+) -> None:
+    values = ["/models/Qwen2.5-7B-Instruct", "./models/local-chat"]
+    path = "src/main/resources/application.yml"
+    content = (
+        "langchain4j: {open-ai: {chat-model: {model-name: "
+        + values[0]
+        + "}, streaming-chat-model: {model-name: "
+        + values[1]
+        + "}}}\n"
+    )
+    configs = java_config.extract_java_config_models(content, path)
+    assert [d.display_name for d in configs] == values
+    assert {d.line for d in configs} == {1}
+    truncation = values[owner].rsplit("/", 1)[-1]
+    detections = [
+        *configs,
+        ComponentDetection(
+            component_type=ComponentType.MODEL,
+            canonical_name="model:" + truncation,
+            display_name=truncation,
+            adapter_name="fixture",
+            priority=20,
+            confidence=0.9,
+            metadata={},
+            file_path=path,
+            line=1,
+            snippet=truncation,
+            evidence_kind="regex",
+        ),
+    ]
+    if reverse:
+        detections.reverse()
+    extractor = AiSbomExtractor()
+    node_map: dict[tuple[ComponentType, str], _NodeAccumulator] = {}
+    for detection in detections:
+        extractor._merge_detection(node_map, detection)
+    _dedup_exact_config_models(node_map)
+    _dedup_by_location(node_map)
+    assert {acc.display_name for acc in node_map.values()} == set(values)
+    assert len(node_map[(ComponentType.MODEL, configs[owner].canonical_name)].evidence) == 2
+    assert len(node_map[(ComponentType.MODEL, configs[1 - owner].canonical_name)].evidence) == 1

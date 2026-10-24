@@ -623,3 +623,92 @@ def test_properties_escaped_separator_stays_inside_the_key() -> None:
         (1, "a\\:b", "v"),
         (2, "c\\=d", "e"),
     ]
+
+
+@pytest.mark.parametrize("extension", ["properties", "yml"])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "/models/Qwen2.5-7B-Instruct",
+        "./models/local-chat",
+        "../models/local-chat",
+        "/opt/models/llama-3.1-8b.gguf",
+    ],
+)
+def test_config_accepts_absolute_and_relative_path_model_ids(value: str, extension: str) -> None:
+    path = f"src/main/resources/application.{extension}"
+    if extension == "properties":
+        content = f"langchain4j.open-ai.chat-model.model-name={value}\n"
+        line = 1
+    else:
+        content = f"langchain4j:\n  open-ai:\n    chat-model:\n      model-name: {value}\n"
+        line = 4
+    assert _models(content, path) == [(value, line, "openai", "langchain4j")]
+
+
+def test_config_path_model_id_from_placeholder_default_and_quotes() -> None:
+    content = "spring.ai.openai.chat.options.model=${MODEL_PATH:/models/local-chat}\n"
+    assert _models(content) == [("/models/local-chat", 1, "openai", "spring-ai")]
+    content = 'langchain4j.open-ai.chat-model.model-name="./models/local-chat"\n'
+    assert _models(content) == [("./models/local-chat", 1, "openai", "langchain4j")]
+
+
+@pytest.mark.parametrize("value", ["./", "/.", "/", ".", "..", "../", "./.", "/:", "//", "./@+"])
+def test_config_rejects_path_values_without_a_word_character(value: str) -> None:
+    content = f"langchain4j.open-ai.chat-model.model-name={value}\n"
+    assert _models(content) == []
+
+
+def test_config_path_model_id_length_limit_is_unchanged() -> None:
+    key = "langchain4j.open-ai.chat-model.model-name="
+    assert len(_models(key + "/" + "a" * 119 + "\n")) == 1
+    assert _models(key + "/" + "a" * 120 + "\n") == []
+
+
+@pytest.mark.parametrize("extension", ["properties", "yml"])
+@pytest.mark.parametrize(
+    "names",
+    [
+        ("/models/Qwen2.5-7B-Instruct", "./models/local-chat"),
+        ("/models/a/custom-model", "/models/b/custom-model"),
+    ],
+)
+def test_extractor_preserves_path_valued_models_and_links(
+    tmp_path: Path,
+    extension: str,
+    names: tuple[str, str],
+) -> None:
+    first, second = names
+    config_path = f"src/main/resources/application.{extension}"
+    if extension == "properties":
+        content = (
+            f"langchain4j.open-ai.chat-model.model-name={first}\n"
+            f"langchain4j.open-ai.streaming-chat-model.model-name={second}\n"
+        )
+    else:
+        content = (
+            "langchain4j: {open-ai: {chat-model: {model-name: "
+            + first
+            + "}, streaming-chat-model: {model-name: "
+            + second
+            + "}}}\n"
+        )
+    _write(tmp_path, "src/main/java/demo/Assistant.java", _ASSISTANT)
+    _write(tmp_path, config_path, content)
+    document = AiSbomExtractor().extract_from_path(tmp_path, AiSbomConfig(enable_llm=False))
+    models = {n.name: n for n in document.nodes if n.component_type == ComponentType.MODEL}
+    assert set(models) == set(names)
+    agent = next(
+        n
+        for n in document.nodes
+        if n.component_type == ComponentType.AGENT
+        and any(e.location and e.location.path.endswith("Assistant.java") for e in n.evidence)
+    )
+    hinted = {
+        edge.target
+        for edge in document.edges
+        if edge.source == agent.id
+        and edge.derivation == "hint"
+        and getattr(edge.relationship_type, "value", edge.relationship_type) == "USES"
+    }
+    assert {models[first].id, models[second].id} <= hinted

@@ -308,6 +308,31 @@ def _dedup_model_variants(
         del node_map[k]
 
 
+def _location_winner(
+    first: tuple[ComponentType, str],
+    loser: tuple[ComponentType, str],
+    ranked: list[tuple[ComponentType, str]],
+    node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
+) -> tuple[ComponentType, str]:
+    """Pick the same-location node allowed to absorb ``loser``.
+
+    Several exact config declarations can share one line (a YAML flow mapping). A
+    regex truncation belongs to the declaration whose value contains it, not to
+    whichever exact declaration happens to rank first.
+    """
+    if loser[0] != ComponentType.MODEL or _is_exact_config_model(loser, node_map[loser]):
+        return first
+    name = node_map[loser].display_name.lower()
+    for key in ranked:
+        if (
+            key != loser
+            and _is_exact_config_model(key, node_map[key])
+            and name in node_map[key].display_name.lower()
+        ):
+            return key
+    return first
+
+
 def _dedup_by_location(
     node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
 ) -> None:
@@ -341,12 +366,15 @@ def _dedup_by_location(
                 not _is_exact_config_model(k, node_map[k]),
                 node_map[k].priority,
                 -node_map[k].confidence,
+                node_map[k].display_name,
+                k[1],
             ),
         )
-        winner = keys_sorted[0]
+        first = keys_sorted[0]
         for loser in keys_sorted[1:]:
             if loser in keys_to_remove:
                 continue
+            winner = _location_winner(first, loser, keys_sorted, node_map)
             # Only deduplicate when at least one node has regex evidence.
             # Two AST-only nodes at the same line are distinct components (e.g.
             # multiple imports on one line → multiple FAISS stores) and must
