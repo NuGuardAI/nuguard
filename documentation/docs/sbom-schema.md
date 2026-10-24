@@ -675,6 +675,52 @@ A single declared package dependency from a manifest file. The scanner reads dec
 | Java | `pom.xml`, `build.gradle`, `build.gradle.kts`, `gradle/libs.versions.toml` | Resolves common Maven properties, dependency management, Gradle variables, and version-catalog references without invoking Maven or Gradle |
 | Go | `go.mod`, `go.sum` | Emits Go PURLs; indirect modules use the `optional:indirect` group |
 
+Maven profile activation is not evaluated. Competing declarations in the same POM
+are checked using both explicit versions and supported implicit management/parent
+versions. Conflicting or partly unresolved declarations produce one unversioned
+record rather than selecting a version by XML order; matching concrete versions
+are retained when no other profile uncertainty applies. Unversioned dependencies
+remain in the SBOM but are skipped by OSV. This is a limited offline lookup, not
+Maven's effective POM resolution.
+
+Maven management and profile matching use `groupId`, `artifactId`, `type`
+(default `jar`), and `classifier` (default empty). Distinct variants retain
+case-sensitive identity throughout consolidation and dependency scanning; their
+PURLs include `type`/`classifier` qualifiers where needed. Conflicting versions of
+one variant remain unresolved without suppressing other variants. This preserves
+declared Maven types rather than guessing custom artifact-handler mappings. The
+Spring Boot shortcut applies only to ordinary unclassified JAR dependencies;
+other variants require an explicit or matching local managed version.
+
+A concrete version inherited from a recognized Spring Boot parent is not made
+uncertain merely by a profile BOM import: imported defaults cannot replace that
+inherited management. Direct profile declarations, non-import management, and
+profile-controlled parent properties still receive uncertainty checks. An
+import-only fallback is not treated as a known inherited version.
+
+Root management and each declared/profile dependency are resolved once per POM.
+Concrete profile identities are indexed with their supported versions, including
+implicit local/Boot versions. Repeated declarations of one identity use a version
+summary rather than pairwise comparisons. Symbolic identities and possible BOM
+imports remain separate conservative checks over cached facts. Matching does not
+spend interpolation budget, and records reuse the same resolved facts. Self-only
+and agreeing declarations retain their pins; conflicting versions, variants, and
+management precedence follow the rules above. The interpolation limits below are
+unchanged; this avoids exhausting them by repeatedly resolving unrelated profiles.
+
+Property interpolation is lazy and bounded: at most 16,384 characters per value,
+64 reference levels, and per-manifest budgets of 1,000,000 characters of expansion
+work and 50,000 references. Cyclic or over-budget expressions remain unresolved
+rather than falling through to a different version. Literal dependencies and
+other manifests can still be scanned. These limits bound interpolation, not the
+size of the original manifest or unrelated parsing work.
+
+Maven `LATEST`/`RELEASE` and Gradle dynamic selectors (including `1.+` and every
+`latest.<status>` selector, such as `latest.milestone` or a custom status) remain raw
+version specifications without an exact PURL version.
+No repository metadata is fetched to resolve them, and OSV skips these unversioned
+records. Ordinary literal releases and build metadata remain queryable.
+
 For Java dependencies, a resolved declaration such as `org.springframework.ai:spring-ai-openai-spring-boot-starter:1.0.1` is represented as:
 
 ```json
