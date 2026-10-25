@@ -105,6 +105,10 @@ toggleable:
 Every scanner that needs a binary is **skipped, not failed**, when that binary isn't installed —
 `nuguard analyze` always completes and the report's Tool Coverage table shows exactly what ran.
 
+Opengrep applies its default ignores when scanning a directory: paths under `tests/` and `test/`
+and paths excluded by `.gitignore` are not scanned. Semgrep also skips these for directory scans.
+Scan the source tree itself, not a copy placed under a `tests/` path, if its findings are needed.
+
 pip-audit reports no severity, so its findings are rated MEDIUM unless another scanner rates the
 same advisory. Advisories reported by several scanners under different IDs (for example OSV's
 `PYSEC-…` and Trivy's `CVE-…`, linked by the advisory's aliases) are merged into one finding. The
