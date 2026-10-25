@@ -117,8 +117,10 @@ report's **Recommended Actions** section lists one de-duplicated action per vuln
 
 Gitleaks runs `gitleaks dir` with `--redact`, so the matched secret never reaches NuGuard's output,
 JSON, or SARIF. Gitleaks reports no severity, so every leak is rated HIGH. Rotate the credential
-regardless of type, and purge it from git history if it was committed. Gitleaks scans every file
-under each source path, including test fixtures and build artifacts; it does not read `.gitignore`.
+regardless of type, and purge it from git history if it was committed. Leaks under a directory named
+`test` or `tests` (relative to each source root) are excluded by default, since test fixtures often
+contain intentionally fake credentials. Other files under the source paths, including build artifacts,
+are still scanned; gitleaks does not read `.gitignore`.
 
 **Example finding** (`NGA-SC-004`, rendered Markdown):
 

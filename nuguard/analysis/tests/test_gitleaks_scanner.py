@@ -163,3 +163,38 @@ def test_analysis_request_gitleaks_defaults_and_validation() -> None:
 
 def test_gitleaks_is_a_registered_plugin_name() -> None:
     assert GitleaksScannerPlugin.name == "gitleaks"
+
+
+@pytest.mark.parametrize(
+    "file_path",
+    [
+        "tests/test_secrets.py",
+        "pkg/tests/fixtures/creds.py",
+        "pkg/test/data.env",
+        "/src/tests/creds.py",
+        "/src/pkg/tests/creds.py",
+    ],
+)
+def test_parse_excludes_leaks_under_test_directories(file_path: str) -> None:
+    leak = {"RuleID": "aws-access-token", "Description": "AWS", "File": file_path, "StartLine": 1}
+    assert _parse_gitleaks_output([leak], "/src") == []
+
+
+@pytest.mark.parametrize(
+    "file_path",
+    [
+        "config.py",
+        "pkg/testing_utils.py",
+        "pkg/test.py",
+        "pkg/contest/creds.py",
+        "/src/pkg/creds.py",
+    ],
+)
+def test_parse_keeps_leaks_outside_test_directories(file_path: str) -> None:
+    leak = {"RuleID": "aws-access-token", "Description": "AWS", "File": file_path, "StartLine": 1}
+    assert len(_parse_gitleaks_output([leak], "/src")) == 1
+
+
+def test_scan_root_named_tests_is_not_excluded() -> None:
+    leak = {"RuleID": "aws-access-token", "Description": "AWS", "File": "/repo/tests/app/creds.py", "StartLine": 1}
+    assert len(_parse_gitleaks_output([leak], "/repo/tests/app")) == 1

@@ -17,6 +17,10 @@ parser keeps only the rule, location, and description of each leak.
 Gitleaks does not report a severity, so every finding is rated HIGH. A
 committed credential should be rotated regardless of its type.
 
+Leaks in files under a directory named ``test`` or ``tests`` (relative to the
+scanned source root) are excluded by default, because test fixtures often
+carry intentionally fake credentials.
+
 Usage
 -----
 ::
@@ -34,6 +38,7 @@ Config keys
 
 from __future__ import annotations
 
+import os
 import shutil
 from typing import Any
 
@@ -46,6 +51,9 @@ _log = get_logger("analysis.plugins.gitleaks")
 
 _BINARY = "gitleaks"
 _SEVERITY = "HIGH"
+# Directory names whose contents are excluded from gitleaks results by default.
+# Test fixtures often contain intentionally fake credentials.
+_EXCLUDED_DIR_NAMES = frozenset({"test", "tests"})
 
 
 class GitleaksScannerPlugin(AnalysisPlugin):
@@ -105,6 +113,25 @@ def _gitleaks_command(binary: str, src_path: str) -> list[str]:
     ]
 
 
+def _in_excluded_dir(file_path: str, scan_path: str) -> bool:
+    """Return True when ``file_path`` sits under a ``test``/``tests`` directory.
+
+    The check is relative to ``scan_path``, so a source root that itself lives
+    under a directory named ``tests`` is still scanned. A bare file named
+    ``test`` is not excluded; only directory segments count.
+    """
+    rel = file_path
+    if os.path.isabs(file_path):
+        try:
+            rel = os.path.relpath(file_path, scan_path)
+        except ValueError:
+            return False
+    if rel.startswith(os.pardir):
+        return False
+    parts = [p for p in rel.replace("\\", "/").split("/") if p not in ("", ".")]
+    return any(part in _EXCLUDED_DIR_NAMES for part in parts[:-1])
+
+
 def _parse_gitleaks_output(data: Any, scan_path: str) -> list[dict[str, Any]]:
     """Convert gitleaks JSON leaks into nuguard finding dicts.
 
@@ -122,6 +149,8 @@ def _parse_gitleaks_output(data: Any, scan_path: str) -> list[dict[str, Any]]:
         rule_id = str(leak.get("RuleID") or "generic-secret")
         rule_desc = str(leak.get("Description") or rule_id)
         file_path = str(leak.get("File") or scan_path)
+        if _in_excluded_dir(file_path, scan_path):
+            continue
         start_line = leak.get("StartLine")
         location = f"{file_path}:{start_line}" if start_line else file_path
 
