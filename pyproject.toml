@@ -30,6 +30,7 @@ dependencies = [
     "rich>=13.0",
     "structlog>=25.5.0",
     "cyclonedx-bom>=7.2.2",
+    "cyclonedx-python-lib>=11.7.0",
     "tree-sitter>=0.23",
     "tree-sitter-javascript>=0.23",
     "tree-sitter-typescript>=0.23",
@@ -122,6 +123,25 @@ markers = [
     "redteam_judge_eval: Judge-accuracy corpus replay against a real LLM (opt-in, needs an LLM API key)",
 ]
 
+[tool.deptry]
+known_first_party = ["nuguard"]
+# Test code (including sample fixture apps, whose imports are not package dependencies) may use dev dependencies.
+exclude = ["nuguard/.*/tests/"]
+
+[tool.deptry.package_module_name_map]
+"ruamel.yaml" = ["ruamel"]
+
+[tool.deptry.per_rule_ignores]
+# Optional imports guarded by try/except ImportError (see ces_client.py, aws_security_hub.py).
+DEP001 = ["google"]
+DEP004 = ["boto3"]
+# tomli is only imported on Python < 3.11, which requires-python (>=3.12) excludes.
+DEP003 = ["tomli"]
+# Tools run as CLIs (pip, ruff, mypy), pytest and its plugins (used only by excluded tests), or runtime extras consumed without direct imports.
+# cyclonedx-bom provides the cyclonedx-py CLI invoked by sbom/cdx_tools.py.
+# respx is only imported from test directories, which are excluded above.
+DEP002 = ["pip", "ruff", "mypy", "pytest", "pytest-asyncio", "python-multipart", "starlette", "smithery", "cyclonedx-bom", "respx"]
+
 [tool.ruff]
 line-length = 100
 exclude = [
@@ -145,6 +165,7 @@ exclude = [
 [dependency-groups]
 dev = [
     "boto3>=1.42.91",
+    "deptry>=0.23",
     "mcp>=1.0",
     "mypy>=1.19.1",
     "pre-commit>=4.0.0",
