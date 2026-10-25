@@ -24,6 +24,7 @@ Major product and documentation changes for NuGuard users. See the linked guides
 - **Dockerfile and nginx detection:** `Dockerfile.*` variants are scanned, and `proxy_pass` on the same line as a `location` block is detected.
 
 ### Fixed
+- **Fresh install crash:** `nuguard --help` and every command failed with `ModuleNotFoundError: No module named 'cryptography'` on installs without the `secrets` extra, because the pentest engine imports `cryptography` at startup. `cryptography` is now a core dependency, and the CycloneDX exporter's `cyclonedx-python-lib` is declared explicitly rather than arriving transitively.
 - **Collapsed chat discovery (#628):** Browser fallback opens recognized chat widgets before interacting with visible, enabled, editable inputs. Configurable opener selectors and bounded readiness waits are shared by verification, behavior, and redteam. Background requests are ignored unless they contain the probe message; UI failures produce discovery notes without confirming an endpoint.
 - **HTTP chat discovery (#627):** Shared reply extraction recognizes outputs-only and nested text replies while rejecting empty, error-only, and metadata-only bodies. Blind discovery checks field omission rather than confirming a guessed message field from a default greeting. Ambiguous candidates cannot create validated endpoint caches; existing endpoint confirmations are revalidated. API-only targets with optional message fields can provide explicit payload configuration.
   Omitted-field errors must identify the candidate field; generic empty-body errors remain inconclusive. OpenAPI probing retains the selected route's object schema and supports arrays of message objects. Sessions preserve discovered object templates, and runtime validation supports buffered SSE/NDJSON replies and configured paths within stream frames.
@@ -31,6 +32,7 @@ Major product and documentation changes for NuGuard users. See the linked guides
 - **Dockerfile scan performance:** Malformed package-install flags no longer cause excessive regex backtracking, preventing scan stalls on crafted Dockerfiles.
 
 ### Compatibility
+- Core installs now include `cryptography` and `cyclonedx-python-lib`, so `pip install nuguard` pulls in two more packages. The `secrets` extra still exists.
 - Schema changes are additive. Code that switches exhaustively on edge `relationship_type` must handle the six new values.
 - Authenticated campaign checkpoints created with the older SHA-256 credential fingerprint cannot be resumed after the fingerprint upgrade. Start a new campaign without `--resume`; incompatible checkpoints raise `CheckpointMismatchError` before state is restored.
 
