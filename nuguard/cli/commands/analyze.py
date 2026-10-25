@@ -744,6 +744,16 @@ def _display_names(components: list[str]) -> list[str]:
     return list(dict.fromkeys(_package_base(c) for c in components))
 
 
+def _is_go_package_finding(f: Finding) -> bool:
+    """True when a finding's raw component PURL is a Go module (``pkg:golang/``).
+
+    Grype reports Go binaries' toolchain stdlib as ``pkg:golang/stdlib@<ver>``;
+    the PURL type is dropped from the normalised component label, so it is read
+    from the raw ``affected_component`` here.
+    """
+    return (f.affected_component or "").startswith("pkg:golang/")
+
+
 def _component_remediation_text(
     components: list[str],
     findings: list[Finding],
@@ -784,13 +794,23 @@ def _component_remediation_text(
             f"{candidates_note}"
         )
 
-    is_are, pkg_noun = ("is", "an OS-level package") if len(names) == 1 else ("are", "OS-level packages")
+    is_are = "is" if len(names) == 1 else "are"
     upgrade_cmd = " ".join(names)
     image_note = _image_location_note(findings)
     image_phrase = (
         f"in the container image {image_note}" if image_note
         else "baked into the container image (not declared in a project manifest)"
     )
+    if any(_is_go_package_finding(f) for f in findings):
+        # Go toolchain stdlib (e.g. stdlib@1.24.6) is compiled into Go binaries,
+        # so an OS package upgrade cannot fix it.
+        return (
+            f"{names_str} {is_are} the Go standard library linked into Go binaries "
+            f"{image_phrase} — `apk upgrade` / `apt-get` cannot fix it. Rebuild those "
+            f"binaries with Go `{best}` or newer, or bump the base image tag once a "
+            f"patched image is published.{candidates_note}"
+        )
+    pkg_noun = "an OS-level package" if len(names) == 1 else "OS-level packages"
     return (
         f"{names_str} {is_are} {pkg_noun} {image_phrase} — rebuild the image after "
         f"upgrading to `{best}` or newer, e.g. `apk upgrade {upgrade_cmd}` / "
