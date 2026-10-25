@@ -96,6 +96,7 @@ toggleable:
 | Scanner | Covers | Requires |
 |---|---|---|
 | OSV | Python/JS/Go dependency CVEs via [osv.dev](https://osv.dev) | Network access only, no binary |
+| pip-audit | Deep scan of Python dependencies as resolved by pip, including transitive packages, via OSV | `pip-audit` binary |
 | Grype | Package + container image CVEs (NVD, GHSA, distro advisories) | `grype` binary on `PATH` |
 | Checkov | IaC misconfigurations — Terraform, CloudFormation, Bicep, Kubernetes | `checkov` binary |
 | Trivy | Container image / filesystem secrets and CVEs | `trivy` binary |
@@ -103,6 +104,11 @@ toggleable:
 
 Every scanner that needs a binary is **skipped, not failed**, when that binary isn't installed —
 `nuguard analyze` always completes and the report's Tool Coverage table shows exactly what ran.
+
+pip-audit reports no severity, so its findings are rated MEDIUM unless another scanner rates the
+same advisory. Advisories reported by several scanners under different IDs (for example OSV's
+`PYSEC-…` and Trivy's `CVE-…`, linked by the advisory's aliases) are merged into one finding. The
+report's **Recommended Actions** section lists one de-duplicated action per vulnerable component.
 
 **Example finding** (`NGA-SC-004`, rendered Markdown):
 

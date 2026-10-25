@@ -16,6 +16,7 @@ rest of the vulnerability scan still runs.
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -24,6 +25,9 @@ from typing import Any
 from nuguard.common.logging import get_logger
 
 _log = get_logger("analysis.osv")
+
+# Lowest version admitted by a specifier: ``==X``, ``>=X``, ``~=X``, ``^X``, ``~X``.
+_SPEC_LOWER_BOUND = re.compile(r"(?:^|,)\s*(?:==|>=|~=|\^|~)\s*v?(\d[\w.\-+]*)")
 
 _BATCH_URL  = "https://api.osv.dev/v1/querybatch"
 _VULN_URL   = "https://api.osv.dev/v1/vulns/{id}"
@@ -102,6 +106,11 @@ def _cve_aliases(detail: dict[str, Any]) -> list[str]:
     return [a for a in (detail.get("aliases") or []) if a.startswith("CVE-")]
 
 
+def _advisory_aliases(detail: dict[str, Any], adv_id: str) -> list[str]:
+    """Every alias OSV lists for this record (CVE, GHSA, PYSEC, ...), excluding its own id."""
+    return sorted({str(a) for a in (detail.get("aliases") or []) if a and a != adv_id})
+
+
 def _affected_versions(detail: dict[str, Any]) -> str:
     """Return a compact human-readable version range string."""
     ranges: list[str] = []
@@ -110,11 +119,50 @@ def _affected_versions(detail: dict[str, Any]) -> str:
             events = r.get("events") or []
             introduced = next((e["introduced"] for e in events if "introduced" in e), None)
             fixed       = next((e["fixed"]      for e in events if "fixed"      in e), None)
+            last        = next((e["last_affected"] for e in events if "last_affected" in e), None)
             if introduced and fixed:
                 ranges.append(f">={introduced},<{fixed}")
+            elif introduced and last:
+                ranges.append(f">={introduced},<={last}")
+            elif last:
+                ranges.append(f"<={last}")
             elif introduced:
                 ranges.append(f">={introduced}")
     return "; ".join(ranges) if ranges else "see advisory"
+
+
+def _purl_version(purl: str) -> str:
+    """Return the ``@version`` embedded in a PURL, or ``""``."""
+    tail = purl.rsplit("/", 1)[-1].split("?", 1)[0]
+    return tail.partition("@")[2] if "@" in tail else ""
+
+
+def _query_version(dep: dict[str, Any]) -> str:
+    """Version to ask OSV about for one dependency, or ``""`` for all versions.
+
+    Preference: resolved ``version``, then the PURL's version, then the lowest
+    version the specifier admits. An unversioned query returns advisories for
+    every release, so a constraint like ``>=1.3.3`` would otherwise be flagged
+    for CVEs that only affect ``<1.3.3``.
+    """
+    explicit = str(dep.get("version") or "").strip()
+    if explicit:
+        return explicit
+    purl_ver = _purl_version(str(dep.get("purl") or ""))
+    if purl_ver:
+        return purl_ver
+    match = _SPEC_LOWER_BOUND.search(str(dep.get("version_spec") or ""))
+    return match.group(1) if match else ""
+
+
+def _query_purl(dep: dict[str, Any]) -> str:
+    """PURL to send to querybatch, with the query version appended when known."""
+    purl = str(dep.get("purl") or "")
+    version = _query_version(dep)
+    if not version or _purl_version(purl):
+        return purl
+    base, sep, qualifiers = purl.partition("?")
+    return f"{base}@{version}{sep}{qualifiers}"
 
 
 def query_osv(
@@ -136,7 +184,9 @@ def query_osv(
     if not purls_with_meta:
         return []
 
-    queries = [{"package": {"purl": purl}} for purl, _, _ in purls_with_meta]
+    queries = [
+        {"package": {"purl": _query_purl(dep)}} for dep in deps if dep.get("purl")
+    ]
 
     try:
         batch_resp = _post_json(_BATCH_URL, {"queries": queries}, timeout=timeout)
@@ -194,6 +244,7 @@ def query_osv(
             "purl":            purl,
             "advisory_id":     adv_id,
             "cve_ids":         cve_ids,
+            "aliases":         _advisory_aliases(detail, adv_id),
             "summary":         summary,
             "severity":        sev,
             "affected_versions": _affected_versions(detail),

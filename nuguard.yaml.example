@@ -720,6 +720,8 @@ analyze:
   checkov_total_timeout: 300        # seconds across all Checkov paths
   semgrep_timeout: 120              # seconds per scanner process
   semgrep_total_timeout: 300        # seconds across all Semgrep paths
+  pip_audit_timeout: 300            # seconds per pip-audit process (resolves transitive deps; slow)
+  pip_audit_total_timeout: 600      # seconds across all pip-audit manifests
   # llm: true                       # force LLM enrichment in the ATLAS pass on/off.
                                      # Unset = auto (on when llm.api_key above is set)
 

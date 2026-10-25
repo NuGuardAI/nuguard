@@ -151,6 +151,10 @@ class StaticAnalyzer:
     enable_semgrep:
         Run Semgrep source code scan with bundled AI-security rules.
         Defaults to ``True`` (skipped when semgrep is not installed).
+    enable_pip_audit:
+        Run pip-audit against the Python manifests in the SBOM.  It audits
+        the resolved dependency tree, including transitive packages.
+        Defaults to ``True`` (skipped when pip-audit is not installed).
     source_path:
         Optional filesystem path to the application source directory.
         When provided it is injected into SBOM node metadata so that
@@ -172,6 +176,7 @@ class StaticAnalyzer:
         enable_trivy: bool = True,
         enable_semgrep: bool = True,
         enable_supply_chain: bool = True,
+        enable_pip_audit: bool = True,
         source_path: Path | None = None,
         atlas_config: dict[str, Any] | None = None,
         min_severity: Severity = Severity.LOW,
@@ -185,9 +190,14 @@ class StaticAnalyzer:
         checkov_total_timeout: float = 300.0,
         semgrep_timeout: float = 120.0,
         semgrep_total_timeout: float = 300.0,
+        pip_audit_timeout: float = 300.0,
+        pip_audit_total_timeout: float = 600.0,
     ) -> None:
         from nuguard.analysis.plugins.scanner_runtime import positive_timeout
 
+        self.pip_audit_timeout = positive_timeout(pip_audit_timeout)
+        self.pip_audit_total_timeout = positive_timeout(pip_audit_total_timeout)
+        self.enable_pip_audit = enable_pip_audit
         self.checkov_timeout = positive_timeout(checkov_timeout)
         self.checkov_total_timeout = positive_timeout(checkov_total_timeout)
         self.semgrep_timeout = positive_timeout(semgrep_timeout)
@@ -230,7 +240,7 @@ class StaticAnalyzer:
         # `self.tool_status[key] = {...}` updates the value in place without
         # moving the key (Python dicts preserve first-insertion order).
         self.tool_status = {
-            "nga-rules": {}, "osv": {}, "grype": {}, "checkov": {},
+            "nga-rules": {}, "osv": {}, "pip-audit": {}, "grype": {}, "checkov": {},
             "trivy": {}, "semgrep": {}, "atlas": {}, "supply-chain": {},
         }
         sbom_dict = doc.model_dump()
@@ -248,6 +258,8 @@ class StaticAnalyzer:
         m1_config["checkov_total_timeout"] = self.checkov_total_timeout
         m1_config["semgrep_timeout"] = self.semgrep_timeout
         m1_config["semgrep_total_timeout"] = self.semgrep_total_timeout
+        m1_config["pip_audit_timeout"] = self.pip_audit_timeout
+        m1_config["pip_audit_total_timeout"] = self.pip_audit_total_timeout
         if self.source_path:
             m1_config["source_path"] = str(self.source_path)
         m1_config["supply_chain_profile"] = self.supply_chain_profile
@@ -308,13 +320,14 @@ class StaticAnalyzer:
                 self.tool_status[tool] = {"status": "ok", "findings": str(len(findings))}
             return findings
 
-        step_labels = ("osv", "grype", "checkov", "trivy", "semgrep")
+        step_labels = ("osv", "grype", "checkov", "trivy", "semgrep", "pip-audit")
         step_results = await asyncio.gather(
             _osv_step(),
             _grype_step(),
             _m1_step("checkov", self.enable_checkov),
             _m1_step("trivy", self.enable_trivy),
             _m1_step("semgrep", self.enable_semgrep),
+            _m1_step("pip-audit", self.enable_pip_audit),
             return_exceptions=True,
         )
         for label, result in zip(step_labels, step_results):
@@ -453,11 +466,16 @@ class StaticAnalyzer:
     def _run_m1(
         self, tool: str, sbom_dict: dict[str, Any], config: dict[str, Any] | None = None
     ) -> list[Finding]:
-        """Run a named M1 scanner plugin (checkov | trivy | semgrep)."""
+        """Run a named M1 scanner plugin (checkov | trivy | semgrep | pip-audit)."""
         cfg = config or {}
         try:
             plugin: Any
-            if tool == "checkov":
+            if tool == "pip-audit":
+                from nuguard.analysis.plugins.pip_audit_scanner import (
+                    PipAuditScannerPlugin,  # noqa: PLC0415
+                )
+                plugin = PipAuditScannerPlugin()
+            elif tool == "checkov":
                 from nuguard.analysis.plugins.checkov_scanner import (
                     CheckovScannerPlugin,  # noqa: PLC0415
                 )

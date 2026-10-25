@@ -50,6 +50,11 @@
         "title": "Enable Supply Chain",
         "type": "boolean"
       },
+      "enable_pip_audit": {
+        "default": true,
+        "title": "Enable Pip Audit",
+        "type": "boolean"
+      },
       "source_path": {
         "anyOf": [
           {
@@ -120,6 +125,20 @@
         "description": "Total wall-clock scanner budget across all paths in seconds.",
         "exclusiveMinimum": 0,
         "title": "Semgrep Total Timeout",
+        "type": "number"
+      },
+      "pip_audit_timeout": {
+        "default": 300.0,
+        "description": "Per-process wall-clock pip-audit deadline in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Pip Audit Timeout",
+        "type": "number"
+      },
+      "pip_audit_total_timeout": {
+        "default": 600.0,
+        "description": "Total wall-clock pip-audit budget across all manifests in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Pip Audit Total Timeout",
         "type": "number"
       },
       "supply_chain_profile": {

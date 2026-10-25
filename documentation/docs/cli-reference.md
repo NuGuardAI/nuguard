@@ -240,6 +240,9 @@ nuguard analyze --sbom app.sbom.json --format json --format markdown --output re
 | `--source`, `-s` | — | Source directory for supply-chain, Checkov, Trivy, and Semgrep scans |
 | `--atlas` / `--no-atlas` | on | MITRE ATLAS native graph checks |
 | `--osv` / `--no-osv` | on | OSV dependency CVE scan |
+| `--pip-audit` / `--no-pip-audit` | on | Deep scan of resolved Python dependencies (including transitive) via pip-audit with OSV (requires `pip-audit` on PATH; skipped otherwise) |
+| `--pip-audit-timeout` | `300` (sec) | Per-process timeout for pip-audit |
+| `--pip-audit-total-timeout` | `600` (sec) | Total pip-audit budget across all Python manifests |
 | `--grype` / `--no-grype` | on | Grype CVE scan (requires `grype` on PATH) |
 | `--grype-timeout` | `180` (sec) | Per-invocation timeout for Grype |
 | `--grype-retries` | `3` | Retry attempts when Grype times out |
@@ -255,6 +258,8 @@ nuguard analyze --sbom app.sbom.json --format json --format markdown --output re
 | `--policy` | — | *Reserved* — accepted but not yet wired to a policy check in this command; use [`nuguard policy check`](#nuguard-policy) instead |
 
 **Source path resolution for Checkov:** When `--source` is provided, IaC file paths found in SBOM nodes are resolved relative to that directory. If no IaC nodes exist, Checkov scans the entire source directory. The SBOM `target` field is used as a fallback when `--source` is not set.
+
+**Recommended Actions:** The markdown report opens with one bullet per vulnerable component, after the Summary. Each bullet gives the highest severity, the number of advisories, the fix version, and the scanners that reported it. Advisories that several scanners report under different IDs are merged before this section is built, so each advisory is counted once.
 
 **Exit codes**
 
@@ -293,6 +298,7 @@ nuguard scan --source . --supply-chain-profile full
 | `--llm` | off | LLM enrichment in the ATLAS annotation pass |
 | `--no-atlas` | — | Skip ATLAS pass |
 | `--no-osv` | — | Skip OSV scan |
+| `--no-pip-audit` | — | Skip the pip-audit deep scan |
 | `--no-grype` | — | Skip Grype scan |
 | `--no-checkov` | — | Skip Checkov scan |
 | `--no-trivy` | — | Skip Trivy scan |
