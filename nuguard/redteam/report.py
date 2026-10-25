@@ -91,6 +91,7 @@ def to_json(
         ]
     if scenario_records:
         payload["phases"] = _phase_summary_rows(findings, scenario_records)
+        payload["coverage"] = _coverage_counts(scenario_records)
     if campaign_coverage is not None or efficiency is not None:
         from nuguard.redteam.campaign.report import to_json_fields
 
@@ -453,10 +454,18 @@ def _phase_summary_rows(findings: list, scenario_records: list) -> list[dict]:
     from nuguard.redteam.scenarios.phases import PROGRESSIVE_PHASES, progressive_phase_for
 
     scenario_counts: dict[int, int] = {}
+    outcome_counts: dict[int, dict[str, int]] = {}
     for rec in scenario_records:
         st = getattr(rec, "scenario_type", None) or (rec.get("scenario_type") if isinstance(rec, dict) else "")
         phase_id = progressive_phase_for(str(st or ""))
-        scenario_counts[phase_id] = scenario_counts.get(phase_id, 0) + 1
+        outcome = _scenario_outcome(rec)
+        bucket = outcome_counts.setdefault(
+            phase_id, dict.fromkeys(("similarity_excluded", *_OUTCOME_KEYS), 0)
+        )
+        bucket[outcome] += 1
+        scenario_counts.setdefault(phase_id, 0)
+        if outcome != "similarity_excluded":
+            scenario_counts[phase_id] += 1
 
     finding_counts: dict[int, dict[str, int]] = {}
     for f in findings:
@@ -471,11 +480,15 @@ def _phase_summary_rows(findings: list, scenario_records: list) -> list[dict]:
     for phase in PROGRESSIVE_PHASES:
         if phase.id not in scenario_counts and phase.id not in finding_counts:
             continue
+        oc = outcome_counts.get(phase.id, {})
         rows.append(
             {
                 "phase_id": phase.id,
                 "name": phase.name,
                 "scenarios_run": scenario_counts.get(phase.id, 0),
+                "similarity_excluded": oc.get("similarity_excluded", 0),
+                "executed": scenario_counts.get(phase.id, 0) - oc.get("not_tested", 0),
+                "evaluated": oc.get("defended", 0) + oc.get("finding", 0),
                 "findings_by_severity": finding_counts.get(phase.id, {}),
             }
         )
@@ -519,18 +532,113 @@ _GOAL_LABEL = {
 _INVALID_RUN_COVERAGE_PCT = 50
 
 
+_SIMILARITY_EXCLUDED = "similar_miss"
+_NOT_TESTED_STATUSES = {"skipped", "failed", "target_unreachable", "timeout"}
+_ENDPOINT_UNREACHABLE_STATUSES = {"completed:endpoint_not_found"}
+# Clean chain endings: the attack ran to its designed end (a bare "aborted" is a
+# designed on_failure="abort" stop after a clean miss, see _attack_coverage_summary).
+_EVALUATED_STATUSES = {"completed", "succeeded", "aborted"}
+_OUTCOME_KEYS = ("not_tested", "not_reached", "inconclusive", "defended", "finding")
+
+
+def _pct_cell(pct: int | None) -> str:
+    return "n/a" if pct is None else f"{pct}%"
+
+
+def _pct(part: int, whole: int) -> int | None:
+    return round(part / whole * 100) if whole else None
+
+
+def _scenario_outcome(r: Any) -> str:
+    """Classify one scenario record into exactly one accounting outcome.
+
+    ``similarity_excluded`` is audit-only (not eligible). Every eligible record
+    is then one of ``not_tested`` (no target request recorded), ``not_reached``
+    (requests made, every one a 404), ``inconclusive`` (requests made, but the
+    objective was not validly evaluated: timeout, guided stop such as hard
+    refusal/stall/turn budget, breaker abort, no-auth IDOR), ``finding`` or
+    ``defended``. Execution participation = every eligible outcome except
+    ``not_tested``; objective evaluation = ``finding`` + ``defended``.
+    """
+    status = _r(r, "chain_status", "completed") or "completed"
+    if status == _SIMILARITY_EXCLUDED:
+        return "similarity_excluded"
+    if status in _ENDPOINT_UNREACHABLE_STATUSES:
+        return "not_reached"
+    steps, turns = _r(r, "steps", None), _r(r, "turns_used", None)
+    if steps is None and turns is None:
+        # No execution evidence on the record: fall back to the status.
+        participated = not (
+            status in _NOT_TESTED_STATUSES
+            or status.startswith(("aborted:", "skipped"))
+        )
+    else:
+        # A recorded request counts even when the scenario later timed out.
+        participated = bool(turns) or bool(steps)
+    if not participated:
+        return "not_tested"
+    if _r(r, "had_finding", False):
+        return "finding"
+    return "defended" if status in _EVALUATED_STATUSES else "inconclusive"
+
+
+def _coverage_counts(scenario_records: list) -> dict[str, Any]:
+    """Shared coverage accounting for the Markdown summary and the JSON report.
+
+    selected = every scenario record; similarity_excluded = ``similar_miss``
+    suppressions (audit-only); eligible = selected - similarity_excluded.
+    Eligible scenarios split into the outcomes of :func:`_scenario_outcome`.
+    ``executed`` (execution participation) and ``evaluated`` (valid objective
+    evaluation) are reported separately; their pcts, and ``coverage_pct``
+    (eligible minus not_tested/not_reached), are ``None`` when nothing was eligible.
+    """
+    keys = ("selected", "similarity_excluded", "eligible", *_OUTCOME_KEYS)
+    by_goal: dict[str, dict[str, int]] = {}
+    for r in scenario_records:
+        gt = _r(r, "goal_type", None) or "UNKNOWN"
+        d = by_goal.setdefault(gt, dict.fromkeys(keys, 0))
+        d["selected"] += 1
+        outcome = _scenario_outcome(r)
+        if outcome == "similarity_excluded":
+            d["similarity_excluded"] += 1
+            continue
+        d["eligible"] += 1
+        d[outcome] += 1
+
+    totals = {k: sum(d[k] for d in by_goal.values()) for k in keys}
+    eligible = totals["eligible"]
+    executed = eligible - totals["not_tested"]
+    evaluated = totals["defended"] + totals["finding"]
+    completed = eligible - totals["not_tested"] - totals["not_reached"]
+    return {
+        **totals,
+        "executed": executed,
+        "evaluated": evaluated,
+        "execution_pct": _pct(executed, eligible),
+        "evaluation_pct": _pct(evaluated, eligible),
+        "coverage_pct": _pct(completed, eligible),
+        "by_goal_type": by_goal,
+    }
+
+
 def _attack_coverage_summary(scenario_records: list) -> list[str]:
     """Return Markdown lines for the Attack Coverage bullets + breakdown table in Summary.
 
     Emits:
     - **Attack Coverage**: N goal type(s)
-    - **Coverage**: XX% (N/N scenarios completed)
+    - **Coverage**: XX% (N/N eligible scenarios completed)
+    - **Execution Participation** / **Objective Evaluated**: separate shares of eligible
+    - **Similarity Excluded**: N (only when non-zero)
 
     Followed by a per-goal-type breakdown table with a Not Tested column.
     Goal types are derived from actual scenario records (no hardcoded universe).
 
-    Not Tested = the scenario never actually executed against the target:
-    chain_status in {skipped, similar_miss, failed, target_unreachable,
+    ``similar_miss`` scenarios (suppressed by the runtime similarity tracker) are
+    excluded from the eligible total and reported separately for auditability.
+
+    Not Tested = an eligible scenario with no recorded target request (see
+    ``_scenario_outcome``; records without step/turn evidence fall back to the
+    status): chain_status in {skipped, failed, target_unreachable,
     timeout}, or a circuit-breaker abort (``"aborted:<reason>"``, e.g.
     ``"aborted:consecutive_request_failures"``). A *bare* ``"aborted"`` status
     is deliberately excluded — builders like ``build_idor``/
@@ -550,37 +658,45 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
     ``chain_status == "completed:endpoint_not_found"`` (see
     ``orchestrator._maybe_mark_endpoint_not_found``).
     """
-    _NOT_TESTED = {"skipped", "similar_miss", "failed", "target_unreachable", "timeout"}
-    _ENDPOINT_UNREACHABLE = {"completed:endpoint_not_found"}
-
-    # Accumulate per-goal-type counts
-    goal_data: dict[str, dict[str, int]] = {}
-    for r in scenario_records:
-        gt = _r(r, "goal_type", None) or "UNKNOWN"
-        status = _r(r, "chain_status", "completed") or "completed"
-        if gt not in goal_data:
-            goal_data[gt] = {"total": 0, "not_tested": 0, "not_reached": 0}
-        goal_data[gt]["total"] += 1
-        if status in _ENDPOINT_UNREACHABLE:
-            goal_data[gt]["not_reached"] += 1
-        elif status in _NOT_TESTED or status.startswith("aborted:"):
-            goal_data[gt]["not_tested"] += 1
-
-    total_all = sum(d["total"] for d in goal_data.values())
-    total_not_tested = sum(d["not_tested"] for d in goal_data.values())
-    total_not_reached = sum(d["not_reached"] for d in goal_data.values())
+    counts = _coverage_counts(scenario_records)
+    goal_data = counts["by_goal_type"]
+    total_selected = counts["selected"]
+    total_excluded = counts["similarity_excluded"]
+    total_all = counts["eligible"]
+    total_not_tested = counts["not_tested"]
+    total_not_reached = counts["not_reached"]
     total_completed = total_all - total_not_tested - total_not_reached
-    overall_pct = round(total_completed / total_all * 100) if total_all else 0
+    overall_pct = counts["coverage_pct"]
 
     # Sort by scenario count descending
-    sorted_types = sorted(goal_data.items(), key=lambda x: -x[1]["total"])
+    sorted_types = sorted(goal_data.items(), key=lambda x: -x[1]["selected"])
 
     lines: list[str] = [
         f"- **Attack Coverage**: {len(sorted_types)} goal type(s)",
         "",
-        f"- **Coverage**: {overall_pct}% ({total_completed}/{total_all} scenarios completed)",
+        f"- **Coverage**: {_pct_cell(overall_pct)} ({total_completed}/{total_all} eligible "
+        f"scenarios completed)",
         "",
     ]
+    if total_all:
+        lines.append(
+            f"- **Execution Participation**: {_pct_cell(counts['execution_pct'])} "
+            f"({counts['executed']}/{total_all} eligible scenarios sent target requests)"
+        )
+        lines.append("")
+        lines.append(
+            f"- **Objective Evaluated**: {_pct_cell(counts['evaluation_pct'])} "
+            f"({counts['evaluated']}/{total_all} — {counts['finding']} finding(s), "
+            f"{counts['defended']} defended, {counts['inconclusive']} inconclusive, "
+            f"{total_not_tested} not tested, {total_not_reached} not reached)"
+        )
+        lines.append("")
+    if total_excluded:
+        lines.append(
+            f"- **Similarity Excluded**: {total_excluded} of {total_selected} selected "
+            f"scenario(s) suppressed as similar to earlier misses (not counted as eligible)"
+        )
+        lines.append("")
     if total_all and overall_pct < _INVALID_RUN_COVERAGE_PCT:
         lines.insert(
             0,
@@ -605,14 +721,14 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
     lines.append(sep)
     for gt, data in sorted_types:
         label = _GOAL_LABEL.get(gt, gt.replace("_", " ").title())
-        total = data["total"]
+        total = data["eligible"]
         not_tested = data["not_tested"]
         not_reached = data["not_reached"]
-        pct = round((total - not_tested - not_reached) / total * 100) if total else 0
+        pct = round((total - not_tested - not_reached) / total * 100) if total else None
         row = f"| {label} | {total} | {not_tested} |"
         if total_not_reached:
             row += f" {not_reached} |"
-        row += f" {pct}% |"
+        row += f" {_pct_cell(pct)} |"
         lines.append(row)
     lines.append("")
     return lines
@@ -635,7 +751,6 @@ def _universal_safety_summary(scenario_records: list) -> list[str]:
     """
     # Bare "aborted" excluded — see _attack_coverage_summary's docstring for
     # why a clean on_failure="abort" miss is a completed run, not a skip.
-    _NOT_TESTED = {"skipped", "similar_miss", "failed", "target_unreachable"}
     by_category: dict[str, dict[str, int]] = {}
     for r in scenario_records:
         m = _UNIVERSAL_SAFETY_TITLE_RE.match(_r(r, "title", "") or "")
@@ -643,9 +758,11 @@ def _universal_safety_summary(scenario_records: list) -> list[str]:
             continue
         cat = m.group(1)
         d = by_category.setdefault(cat, {"total": 0, "not_tested": 0, "findings": 0})
-        d["total"] += 1
         status = _r(r, "chain_status", "completed") or "completed"
-        if status in _NOT_TESTED or status.startswith("aborted:"):
+        if status == _SIMILARITY_EXCLUDED:
+            continue  # suppressed, not eligible — see _coverage_counts
+        d["total"] += 1
+        if status in _NOT_TESTED_STATUSES - {"timeout"} or status.startswith("aborted:"):
             d["not_tested"] += 1
         if _r(r, "had_finding", False):
             d["findings"] += 1

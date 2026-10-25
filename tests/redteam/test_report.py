@@ -40,7 +40,8 @@ class TestUniversalSafetySummary:
         lines = _universal_safety_summary(records)
         text = "\n".join(lines)
         assert "sexual_content`: 3/3 tested, 0 finding(s)" in text
-        assert "violence`: 1/2 tested, 0 finding(s)" in text
+        # similar_miss is suppressed, not eligible: it leaves the denominator.
+        assert "violence`: 1/1 tested, 0 finding(s)" in text
         # self_harm's third record has a bare "aborted" status — a normal,
         # designed chain-stop after a clean miss (on_failure="abort"), not a
         # target-health failure, so it counts as tested (2/3, not 1/3).
