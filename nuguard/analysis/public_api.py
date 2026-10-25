@@ -60,6 +60,9 @@ class AnalysisRunRequest(BaseModel):
     semgrep_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds.")
     pip_audit_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock pip-audit deadline in seconds.")
     pip_audit_total_timeout: float = Field(default=600.0, gt=0, allow_inf_nan=False, description="Total wall-clock pip-audit budget across all manifests in seconds.")
+    enable_gitleaks: bool = True
+    gitleaks_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock gitleaks deadline in seconds.")
+    gitleaks_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock gitleaks budget across all paths in seconds.")
     supply_chain_profile: str = "standard"
     supply_chain_verify_artifacts: str = "off"
     supply_chain_threat_intel_feeds: list[str] | None = None
@@ -156,6 +159,9 @@ async def run_analysis(
         semgrep_total_timeout=request.semgrep_total_timeout,
         pip_audit_timeout=request.pip_audit_timeout,
         pip_audit_total_timeout=request.pip_audit_total_timeout,
+        enable_gitleaks=request.enable_gitleaks,
+        gitleaks_timeout=request.gitleaks_timeout,
+        gitleaks_total_timeout=request.gitleaks_total_timeout,
         supply_chain_profile=request.supply_chain_profile,
         supply_chain_verify_artifacts=request.supply_chain_verify_artifacts,
         supply_chain_threat_intel_feeds=request.supply_chain_threat_intel_feeds,

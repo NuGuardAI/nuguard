@@ -97,6 +97,7 @@ toggleable:
 |---|---|---|
 | OSV | Python/JS/Go dependency CVEs via [osv.dev](https://osv.dev) | Network access only, no binary |
 | pip-audit | Deep scan of Python dependencies as resolved by pip, including transitive packages, via OSV | `pip-audit` binary |
+| Gitleaks | Hardcoded secrets (cloud keys, tokens, private keys) in source; secret values are redacted in output | `gitleaks` binary |
 | Grype | Package + container image CVEs (NVD, GHSA, distro advisories) | `grype` binary on `PATH` |
 | Checkov | IaC misconfigurations — Terraform, CloudFormation, Bicep, Kubernetes | `checkov` binary |
 | Trivy | Container image / filesystem secrets and CVEs | `trivy` binary |
@@ -113,6 +114,11 @@ pip-audit reports no severity, so its findings are rated MEDIUM unless another s
 same advisory. Advisories reported by several scanners under different IDs (for example OSV's
 `PYSEC-…` and Trivy's `CVE-…`, linked by the advisory's aliases) are merged into one finding. The
 report's **Recommended Actions** section lists one de-duplicated action per vulnerable component.
+
+Gitleaks runs `gitleaks dir` with `--redact`, so the matched secret never reaches NuGuard's output,
+JSON, or SARIF. Gitleaks reports no severity, so every leak is rated HIGH. Rotate the credential
+regardless of type, and purge it from git history if it was committed. Gitleaks scans every file
+under each source path, including test fixtures and build artifacts; it does not read `.gitignore`.
 
 **Example finding** (`NGA-SC-004`, rendered Markdown):
 

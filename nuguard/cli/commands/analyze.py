@@ -4,7 +4,7 @@ Exit codes
 ----------
 0  No findings at or above ``--fail-on`` threshold (default: high)
 1  One or more findings at or above ``--fail-on`` threshold
-2  Analysis error (SBOM could not be read / parsed, or incomplete Checkov/Semgrep scan)
+2  Analysis error (SBOM could not be read / parsed, or incomplete Checkov/Semgrep/gitleaks scan)
 3  Not implemented / reserved
 """
 
@@ -141,6 +141,10 @@ def analyze(
     semgrep_total_timeout: Optional[float] = typer.Option(None, "--semgrep-total-timeout", min=0.001, help="Total scanner budget across all paths in seconds. [default: 300]"),
     pip_audit_timeout: Optional[float] = typer.Option(None, "--pip-audit-timeout", min=0.001, help="Per-process pip-audit deadline in seconds. [default: 300]"),
     pip_audit_total_timeout: Optional[float] = typer.Option(None, "--pip-audit-total-timeout", min=0.001, help="Total pip-audit budget across all manifests in seconds. [default: 600]"),
+    gitleaks_timeout: Optional[float] = typer.Option(None, "--gitleaks-timeout", min=0.001, help="Per-process gitleaks deadline in seconds. [default: 120]"),
+    gitleaks_total_timeout: Optional[float] = typer.Option(None, "--gitleaks-total-timeout", min=0.001, help="Total gitleaks budget across all paths in seconds. [default: 300]"),
+    gitleaks: bool = typer.Option(True, "--gitleaks/--no-gitleaks",
+                                  help="Scan source for hardcoded secrets with gitleaks (requires gitleaks on PATH)."),
     pip_audit: bool = typer.Option(True, "--pip-audit/--no-pip-audit",
                                    help="Run pip-audit against resolved Python dependencies (requires pip-audit on PATH)."),
     checkov: bool = typer.Option(True, "--checkov/--no-checkov",
@@ -261,7 +265,7 @@ def analyze(
 
     # NGA-only mode: disable all external scans
     if nga:
-        osv = grype = checkov = trivy = semgrep = atlas = pip_audit = False
+        osv = grype = checkov = trivy = semgrep = atlas = pip_audit = gitleaks = False
 
     # ------------------------------------------------------------------
     # Load SBOM
@@ -365,6 +369,7 @@ def analyze(
             enable_trivy=trivy,
             enable_semgrep=semgrep,
             enable_pip_audit=pip_audit,
+            enable_gitleaks=gitleaks,
             enable_supply_chain=supply_chain,
             supply_chain_profile=sc_profile,
             supply_chain_verify_artifacts=sc_verify,
@@ -379,6 +384,8 @@ def analyze(
             semgrep_total_timeout=semgrep_total_timeout if semgrep_total_timeout is not None else cfg.analyze_semgrep_total_timeout,
             pip_audit_timeout=pip_audit_timeout if pip_audit_timeout is not None else cfg.analyze_pip_audit_timeout,
             pip_audit_total_timeout=pip_audit_total_timeout if pip_audit_total_timeout is not None else cfg.analyze_pip_audit_total_timeout,
+            gitleaks_timeout=gitleaks_timeout if gitleaks_timeout is not None else cfg.analyze_gitleaks_timeout,
+            gitleaks_total_timeout=gitleaks_total_timeout if gitleaks_total_timeout is not None else cfg.analyze_gitleaks_total_timeout,
             grype_retries=grype_retries if grype_retries is not None else 3,
         )
         result = asyncio.run(run_analysis(request, sbom=doc, llm_client=llm_client))
@@ -461,8 +468,8 @@ def analyze(
         typer.echo(_render(formats[0]))
 
     # Coverage failures take precedence over a finding-based pass/fail.
-    if any(tool_status.get(tool, {}).get("status") == "error" for tool in ("checkov", "semgrep")):
-        typer.echo("Analysis incomplete: Checkov or Semgrep failed; see scanner logs and tool coverage.", err=True)
+    if any(tool_status.get(tool, {}).get("status") == "error" for tool in ("checkov", "semgrep", "gitleaks")):
+        typer.echo("Analysis incomplete: Checkov, Semgrep, or gitleaks failed; see scanner logs and tool coverage.", err=True)
         raise typer.Exit(code=2)
 
     # Exit 1 if any findings meet the fail-on severity threshold
@@ -573,9 +580,9 @@ def _canonical_vuln_id(f: Finding) -> str | None:
     Returns the CVE-XXXX-XXXXX id when available (preferred), then GHSA-...,
     then PYSEC-... (OSV's own advisory id for PyPI packages when no CVE/GHSA
     alias exists), then None for structural findings (NGA, ATLAS, semgrep,
-    checkov) that are not package vulnerabilities and should never be merged.
+    checkov, gitleaks) that are not package vulnerabilities and should never be merged.
     """
-    if _source_tool(f) in ("nga", "atlas", "semgrep", "checkov"):
+    if _source_tool(f) in ("nga", "atlas", "semgrep", "checkov", "gitleaks"):
         return None
     # CVE embedded in finding_id (trivy, grype)
     m = _CVE_RE.search(f.finding_id)
@@ -600,7 +607,7 @@ def _canonical_vuln_id(f: Finding) -> str | None:
     return None
 
 
-_STRUCTURAL_TOOLS = frozenset({"nga", "atlas", "semgrep", "checkov"})
+_STRUCTURAL_TOOLS = frozenset({"nga", "atlas", "semgrep", "checkov", "gitleaks"})
 _ASSUMED_SEVERITY_TOOLS = frozenset({"pip-audit"})
 
 

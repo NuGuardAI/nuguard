@@ -48,7 +48,7 @@ from typing import Any
 
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
-from nuguard.analysis.plugins.scanner_runtime import run_scanner
+from nuguard.analysis.plugins.scanner_runtime import collect_sbom_source_paths, run_scanner
 from nuguard.common.logging import get_logger
 
 _log = get_logger("analysis.plugins.semgrep")
@@ -111,7 +111,7 @@ class SemgrepScannerPlugin(AnalysisPlugin):
                 message="opengrep not installed — code scan skipped",
             )
 
-        src_paths = _collect_source_paths(sbom, config)
+        src_paths = collect_sbom_source_paths(sbom, config)
         if not src_paths:
             _log.info("%s: no source paths found in SBOM nodes", engine)
             return AnalysisResult(
@@ -140,29 +140,6 @@ class SemgrepScannerPlugin(AnalysisPlugin):
         result.details["engine"] = engine
         return result
 
-
-
-def _collect_source_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:
-    """Collect source code paths from SBOM node metadata.
-
-    Falls back to ``config["source_path"]`` when no paths are found in SBOM
-    nodes so that Semgrep can still scan when path metadata is absent.
-    """
-    paths: set[str] = set()
-    for node in sbom.get("nodes") or []:
-        meta = node.get("metadata") or {}
-        extras = meta.get("extras") or {}
-        for key in ("source_path", "root_path", "repo_path"):
-            p = meta.get(key) or extras.get(key)
-            if p and Path(str(p)).exists():
-                paths.add(str(p))
-
-    # Fallback to config-supplied source path
-    sp = config.get("source_path")
-    if sp and Path(str(sp)).is_dir():
-        paths.add(str(sp))
-
-    return paths
 
 
 def _semgrep_command(binary: str, src_path: str, rule_files: list[str], exclude_tests: bool) -> list[str]:

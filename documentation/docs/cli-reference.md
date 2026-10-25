@@ -243,6 +243,9 @@ nuguard analyze --sbom app.sbom.json --format json --format markdown --output re
 | `--pip-audit` / `--no-pip-audit` | on | Deep scan of resolved Python dependencies (including transitive) via pip-audit with OSV (requires `pip-audit` on PATH; skipped otherwise) |
 | `--pip-audit-timeout` | `300` (sec) | Per-process timeout for pip-audit |
 | `--pip-audit-total-timeout` | `600` (sec) | Total pip-audit budget across all Python manifests |
+| `--gitleaks` / `--no-gitleaks` | on | Hardcoded-secret scan via gitleaks (requires `gitleaks` on PATH; skipped otherwise). Secret values are redacted |
+| `--gitleaks-timeout` | `120` (sec) | Per-process timeout for gitleaks |
+| `--gitleaks-total-timeout` | `300` (sec) | Total gitleaks budget across all source paths |
 | `--grype` / `--no-grype` | on | Grype CVE scan (requires `grype` on PATH) |
 | `--grype-timeout` | `180` (sec) | Per-invocation timeout for Grype |
 | `--grype-retries` | `3` | Retry attempts when Grype times out |
@@ -299,6 +302,7 @@ nuguard scan --source . --supply-chain-profile full
 | `--no-atlas` | — | Skip ATLAS pass |
 | `--no-osv` | — | Skip OSV scan |
 | `--no-pip-audit` | — | Skip the pip-audit deep scan |
+| `--no-gitleaks` | — | Skip the gitleaks secret scan |
 | `--no-grype` | — | Skip Grype scan |
 | `--no-checkov` | — | Skip Checkov scan |
 | `--no-trivy` | — | Skip Trivy scan |

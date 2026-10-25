@@ -77,6 +77,7 @@ _TOOL_DISPLAY: dict[str, str] = {
     "trivy":         "Trivy        ",
     "trivy-misconfig": "Trivy      ",
     "semgrep":       "Opengrep     ",
+    "gitleaks":      "Gitleaks     ",
 }
 
 
@@ -226,6 +227,7 @@ def print_terminal_report(
                     "checkov": "  (install: pip install checkov)",
                     "trivy":   "  (install: https://aquasecurity.github.io/trivy)",
                     "semgrep": "  (install: https://github.com/opengrep/opengrep)",
+                    "gitleaks": "  (install: https://github.com/gitleaks/gitleaks)",
                 }
                 hint = _install_hints.get(tool.lower(), "")
             w(f"  {col}{icon}{_RESET}  {display.strip():<14}  {col}{status.upper()}{_RESET}{_DIM}{hint}{_RESET}")

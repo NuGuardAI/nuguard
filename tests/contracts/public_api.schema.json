@@ -141,6 +141,25 @@
         "title": "Pip Audit Total Timeout",
         "type": "number"
       },
+      "enable_gitleaks": {
+        "default": true,
+        "title": "Enable Gitleaks",
+        "type": "boolean"
+      },
+      "gitleaks_timeout": {
+        "default": 120.0,
+        "description": "Per-process wall-clock gitleaks deadline in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Gitleaks Timeout",
+        "type": "number"
+      },
+      "gitleaks_total_timeout": {
+        "default": 300.0,
+        "description": "Total wall-clock gitleaks budget across all paths in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Gitleaks Total Timeout",
+        "type": "number"
+      },
       "supply_chain_profile": {
         "default": "standard",
         "title": "Supply Chain Profile",
