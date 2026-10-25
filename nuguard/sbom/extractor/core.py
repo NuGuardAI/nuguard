@@ -1113,6 +1113,9 @@ class AiSbomExtractor:
                 if _setter is not None:
                     _setter(*_args)
 
+        # Relative paths of every scanned .java file, so _resolve_edges can apply Java name
+        # shadowing (a same-package class hides a wildcard-imported one).
+        _java_scanned: set[str] = set()
         for file_path, file_size in self._iter_files(root, config):
             try:
                 content = file_path.read_text(encoding="utf-8-sig", errors="ignore")
@@ -1137,6 +1140,8 @@ class AiSbomExtractor:
 
             files_scanned += 1
             rel_path = str(file_path.relative_to(root))
+            if file_path.suffix.lower() in _JAVA_EXTENSIONS:
+                _java_scanned.add(rel_path)
             content_bytes = file_size
             # Track LOC for every scanned file
             file_loc[rel_path] = content.count("\n") + 1
@@ -2132,7 +2137,12 @@ class AiSbomExtractor:
             doc.nodes.append(node)
 
         disambiguate_endpoint_names(doc.nodes)
-        self._resolve_edges(doc, node_map, imported_assets=_imported_assets)
+        self._resolve_edges(
+            doc,
+            node_map,
+            imported_assets=_imported_assets,
+            scanned_files=_java_scanned,
+        )
 
         # Deduplicate DEPLOYMENT nodes: merge github-actions workflow nodes into
         # the cloud-provider service nodes they deploy to.
@@ -2782,6 +2792,7 @@ class AiSbomExtractor:
         node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
         *,
         imported_assets: dict[str, set[tuple[ComponentType, str]]] | None = None,
+        scanned_files: set[str] | None = None,
     ) -> None:
         """Turn RelationshipHints into Edge objects using built node UUIDs.
 
@@ -2815,6 +2826,27 @@ class AiSbomExtractor:
             "DEPENDS_ON": RelationshipType.DEPENDS_ON,
         }
 
+        def _lookup(canonical: str) -> Any:
+            return canonical_to_id.get(canonical) or canonical_to_id.get(
+                canonicalize_text(canonical)
+            )
+
+        def _hint_target_id(hint: RelationshipHint) -> Any:
+            candidates = getattr(hint, "target_files", ())
+            if not candidates:
+                return _lookup(hint.target_canonical)
+            # Ordered by the language's name-shadowing rules: the first candidate whose file
+            # was scanned decides, even when that file holds no node (a plain class that hides
+            # a later agent). Without a scanned-file set, fall back to the first node found.
+            for candidate_file, canonical in candidates:
+                if scanned_files is None:
+                    found = _lookup(canonical)
+                    if found is not None:
+                        return found
+                elif candidate_file in scanned_files:
+                    return _lookup(canonical)
+            return None
+
         # Process explicit relationship hints
         seen_edges: set[tuple[Any, Any, str]] = set()
         for acc in node_map.values():
@@ -2824,9 +2856,7 @@ class AiSbomExtractor:
                 src_id = canonical_to_id.get(hint.source_canonical) or canonical_to_id.get(
                     canonicalize_text(hint.source_canonical)
                 )
-                tgt_id = canonical_to_id.get(hint.target_canonical) or canonical_to_id.get(
-                    canonicalize_text(hint.target_canonical)
-                )
+                tgt_id = _hint_target_id(hint)
                 if src_id is None or tgt_id is None:
                     continue
                 rel = rel_type_map.get(hint.relationship_type, RelationshipType.USES)

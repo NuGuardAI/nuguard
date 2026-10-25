@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "FinBot canary seed. FinBot sessions are anonymous cookie + CSRF sessions, so tenants use",
+    "web_session: true — NuGuard acquires an independent session (its own FinBot namespace) for",
+    "each tenant at run start; no static token is needed. Copy to canary.json and, optionally,",
+    "register vendors in each session and list their unique strings under watch_values."
+  ],
+  "global_watch_values": ["NUGUARD-CANARY-FINBOT-7f3a9b2e"],
+  "tenants": [
+    {
+      "tenant_id": "canary-vendor-a",
+      "web_session": true,
+      "web_session_pages": ["/vendor/"],
+      "records": [
+        {
+          "resource": "vendors",
+          "id": "canary-vendor-a",
+          "fields": {"company_name": "Canary Alpha LLC", "tin": "99-1234567"},
+          "watch_values": ["Canary Alpha LLC", "99-1234567"]
+        }
+      ]
+    },
+    {
+      "tenant_id": "canary-vendor-b",
+      "web_session": true,
+      "web_session_pages": ["/vendor/"],
+      "records": [
+        {
+          "resource": "vendors",
+          "id": "canary-vendor-b",
+          "fields": {"company_name": "Canary Beta LLC", "tin": "99-7654321"},
+          "watch_values": ["Canary Beta LLC", "99-7654321"]
+        }
+      ]
+    }
+  ]
+}

@@ -58,6 +58,7 @@ from nuguard.redteam.executor.orchestrator import (
     finding_matches_scenario_filter,
 )
 from nuguard.redteam.target.canary import CanaryConfig
+from nuguard.redteam.workflows import WorkflowSpec
 from nuguard.remediation.backfill import backfill_finding_remediation
 from nuguard.remediation.models import RemediationArtefact
 
@@ -201,6 +202,9 @@ class RedteamRunRequest(BaseModel):
     turn_delay_seconds: float = 5.0
     scenario_delay_seconds: float = 0.0
     similar_miss_threshold: int = 4
+    universal_safety_probes: bool = True
+    workflows: list[WorkflowSpec] = Field(default_factory=list)
+    workflow_templates: list[str] = Field(default_factory=list)
     hard_refusal_abort_turns: int = 5
     stall_abort_threshold: int = 8
     skip_discovery: bool = False
@@ -514,6 +518,9 @@ async def run_redteam(
         log_path=log_path,
         chat_path=request.chat_path,
         chat_payload_key=request.chat_payload_key,
+        chat_payload_key_explicit=bool(
+            {"chat_payload_key", "chat_payload_list"} & request.model_fields_set
+        ),
         chat_payload_list=request.chat_payload_list,
         chat_response_key=request.chat_response_key,
         concurrency=request.concurrency,
@@ -541,6 +548,9 @@ async def run_redteam(
         turn_delay_seconds=request.turn_delay_seconds,
         scenario_delay_seconds=request.scenario_delay_seconds,
         similar_miss_threshold=request.similar_miss_threshold,
+        universal_safety_probes=request.universal_safety_probes,
+        workflows=[w.model_dump() for w in request.workflows] or None,
+        workflow_templates=request.workflow_templates or None,
         hard_refusal_abort_turns=request.hard_refusal_abort_turns,
         stall_abort_threshold=request.stall_abort_threshold,
         skip_discovery=request.skip_discovery,

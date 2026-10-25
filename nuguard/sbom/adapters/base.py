@@ -113,6 +113,10 @@ class RelationshipHint:
     target_type: ComponentType
     relationship_type: str  # "USES", "CALLS", "ACCESSES", etc.
     access_type: str | None = None  # "read" | "write" | "readwrite" for ACCESSES hints
+    # Ordered ``(file_path, canonical_name)`` alternatives for ``target_canonical``. The first
+    # candidate whose file was scanned is the target, so a language's name-shadowing rules
+    # (Java: a same-package class hides a wildcard-imported one) decide, not mere existence.
+    target_files: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass
