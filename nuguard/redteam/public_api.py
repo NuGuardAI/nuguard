@@ -368,6 +368,8 @@ async def _build_remediation_plan(
             "scenario_type": f.scenario_type or "",
             "evidence_quote": f.evidence_quote or "",
             "reasoning": f.reasoning or "",
+            "regression_paraphrase_kind": f.regression_paraphrase_kind or "",
+            "regression_expect": f.regression_expect or "",
         }
         for f in findings
     ]
