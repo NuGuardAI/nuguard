@@ -154,7 +154,10 @@ def test_directory_coverage_deduplicates_nested_paths(tmp_path):
 
 def test_plugin_errors_do_not_become_clean_scans(tmp_path):
     with (
-        patch("nuguard.analysis.plugins.semgrep_scanner._semgrep_path", return_value="semgrep"),
+        patch(
+            "nuguard.analysis.plugins.semgrep_scanner._engine_path",
+            return_value=("semgrep", "semgrep"),
+        ),
         patch.object(runtime, "_execute", return_value=({}, None, 0)),
     ):
         result = SemgrepScannerPlugin().run({}, {"source_path": str(tmp_path)})

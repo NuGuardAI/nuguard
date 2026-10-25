@@ -13,7 +13,7 @@ Pipeline
 4. **Checkov IaC scans** — subprocess; skipped when checkov absent or no IaC
    paths found.  Requires ``source_path`` or IaC paths in SBOM node metadata.
 5. **Trivy** — subprocess; skipped when trivy absent or no scan targets found.
-6. **Semgrep** — subprocess; skipped when semgrep absent or no source paths.
+6. **Opengrep** (Semgrep fallback) — subprocess; skipped when neither `opengrep` nor `semgrep` is on PATH or no source paths.
 7. **MITRE ATLAS native checks** (NC-001..004) — offline graph checks that are
    not already covered by NGA rules (e.g. NC-003: MODEL→DEPLOYMENT without
    AUTH).  ``skip_nga=True`` is passed so the atlas annotator does not re-run
@@ -149,8 +149,8 @@ class StaticAnalyzer:
         Run Trivy container/fs scan.  Defaults to ``True`` (skipped when
         trivy is not installed or no scan targets are found).
     enable_semgrep:
-        Run Semgrep source code scan with bundled AI-security rules.
-        Defaults to ``True`` (skipped when semgrep is not installed).
+        Run the Opengrep (or Semgrep fallback) source scan with bundled AI-security rules.
+        Defaults to ``True`` (skipped when neither engine is installed).
     enable_pip_audit:
         Run pip-audit against the Python manifests in the SBOM.  It audits
         the resolved dependency tree, including transitive packages.

@@ -76,7 +76,7 @@ _TOOL_DISPLAY: dict[str, str] = {
     "checkov":       "Checkov (IaC)",
     "trivy":         "Trivy        ",
     "trivy-misconfig": "Trivy      ",
-    "semgrep":       "Semgrep      ",
+    "semgrep":       "Opengrep     ",
 }
 
 
@@ -225,7 +225,7 @@ def print_terminal_report(
                     "grype":   "  (install: https://github.com/anchore/grype)",
                     "checkov": "  (install: pip install checkov)",
                     "trivy":   "  (install: https://aquasecurity.github.io/trivy)",
-                    "semgrep": "  (install: pip install semgrep)",
+                    "semgrep": "  (install: https://github.com/opengrep/opengrep)",
                 }
                 hint = _install_hints.get(tool.lower(), "")
             w(f"  {col}{icon}{_RESET}  {display.strip():<14}  {col}{status.upper()}{_RESET}{_DIM}{hint}{_RESET}")

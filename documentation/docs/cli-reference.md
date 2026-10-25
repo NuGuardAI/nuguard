@@ -215,7 +215,7 @@ Runs up to seven scanners in sequence. External scanners are silently skipped wh
 | **Grype** | Package / container CVEs | `grype` on PATH |
 | **Checkov** | Infrastructure-as-code misconfigurations | `checkov` on PATH |
 | **Trivy** | Container / filesystem vulnerabilities | `trivy` on PATH |
-| **Semgrep** | AI-security source-code patterns | `semgrep` on PATH |
+| **Opengrep** (Semgrep fallback) | AI-security source-code patterns | `opengrep` on PATH, or `semgrep` if Opengrep is absent |
 
 NGA rules always run. Use `--nga` to run **only** NGA rules and skip everything else, including the MITRE ATLAS annotation pass.
 
@@ -248,7 +248,7 @@ nuguard analyze --sbom app.sbom.json --format json --format markdown --output re
 | `--grype-retries` | `3` | Retry attempts when Grype times out |
 | `--checkov` / `--no-checkov` | on | Checkov IaC scan (requires `checkov` on PATH) |
 | `--trivy` / `--no-trivy` | on | Trivy container/fs scan (requires `trivy` on PATH) |
-| `--semgrep` / `--no-semgrep` | on | Semgrep AI-security rules (requires `semgrep` on PATH) |
+| `--semgrep` / `--no-semgrep` | on | AI-security source rules via Opengrep (falls back to `semgrep` on PATH) |
 | `--supply-chain` / `--no-supply-chain` | on | Supply-chain threat pack (NGA-SC-001–027) |
 | `--supply-chain-profile` | `standard` | `ci` \| `standard` \| `full` — `full` adds git-history checks |
 | `--supply-chain-verify` | `off` | Artifact registry verification: `off` \| `warn` \| `fail` |

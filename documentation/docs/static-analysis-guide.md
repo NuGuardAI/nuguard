@@ -100,7 +100,7 @@ toggleable:
 | Grype | Package + container image CVEs (NVD, GHSA, distro advisories) | `grype` binary on `PATH` |
 | Checkov | IaC misconfigurations — Terraform, CloudFormation, Bicep, Kubernetes | `checkov` binary |
 | Trivy | Container image / filesystem secrets and CVEs | `trivy` binary |
-| Semgrep | AI-security source patterns and code smells, via NuGuard's bundled rule pack | `semgrep` binary |
+| Opengrep (Semgrep fallback) | AI-security source patterns and code smells, via NuGuard's bundled rule pack | `opengrep` on PATH (or `semgrep` as fallback) |
 
 Every scanner that needs a binary is **skipped, not failed**, when that binary isn't installed —
 `nuguard analyze` always completes and the report's Tool Coverage table shows exactly what ran.
