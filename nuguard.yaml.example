@@ -723,13 +723,16 @@ redteam:
 # ─── Static analysis ──────────────────────────────────────────────────────────
 analyze:
   min_severity: medium              # critical | high | medium | low | info
-  nga_only: false                   # true → run only NGA-001–018, skip external scans
+  nga_only: false                   # true → run only NGA-001–030, skip other analysis passes
   checkov_timeout: 120              # seconds per scanner process; finite and positive
   checkov_total_timeout: 300        # seconds across all Checkov paths
+  # Opengrep is preferred; Semgrep is a fallback. Keep semgrep_* keys for compatibility.
   semgrep_timeout: 120              # seconds per scanner process
-  semgrep_total_timeout: 300        # seconds across all Semgrep paths
+  semgrep_total_timeout: 300        # seconds across all Opengrep/Semgrep paths
   pip_audit_timeout: 300            # seconds per pip-audit process (resolves transitive deps; slow)
   pip_audit_total_timeout: 600      # seconds across all pip-audit manifests
+  gitleaks_timeout: 120            # seconds per redacted secret-scan process
+  gitleaks_total_timeout: 300      # seconds across all Gitleaks source paths
   # llm: true                       # force LLM enrichment in the ATLAS pass on/off.
                                      # Unset = auto (on when llm.api_key above is set)
 
