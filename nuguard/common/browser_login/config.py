@@ -1,12 +1,9 @@
 """Config schema for the ``target.browser_discovery`` nuguard.yaml override block.
 
-This model is read directly from raw parsed YAML by
-``nuguard/cli/commands/target_browser.py`` — it intentionally does NOT flow
-through ``NuGuardConfig``/``_flatten_yaml`` in ``nuguard/config.py``, since it
-is consumed by exactly one command (``nuguard target discover-browser``) and
-never by ``behavior``/``redteam`` runners. This keeps the blast radius of this
-feature small: no new fields on the shared settings model, no new flattening
-branch, no new path-rebasing entry needed for this block itself.
+Shared settings apply to target verification and browser fallback in behavior
+and redteam. Capability-specific browser_discovery fields override shared
+values. The explicit discover-browser command reads this block directly.
+Settings do not activate browser fallback or require Playwright at import time.
 """
 from __future__ import annotations
 
@@ -16,9 +13,9 @@ from pydantic import BaseModel, Field
 class BrowserDiscoveryConfig(BaseModel):
     """Optional per-app overrides for the generic browser-login heuristics.
 
-    Every field defaults to empty, which means "fall back to the generic
-    heuristics in heuristics.py for this step." A non-empty value is always
-    tried first, ahead of the heuristic candidate list.
+    Empty selector fields use generic heuristics. Configured selectors are
+    tried first. chat_ui_timeout_ms bounds widget opening and input readiness,
+    independently of navigation and outgoing-request capture timeouts.
     """
 
     login_button_text: list[str] = Field(default_factory=list)
@@ -28,6 +25,8 @@ class BrowserDiscoveryConfig(BaseModel):
     post_login_wait_selector: str = ""
     identity_endpoint: str = ""
     chat_input_selector: str = ""
+    chat_opener_selector: str = ""
+    chat_ui_timeout_ms: int = Field(default=10000, ge=1, le=60000)
     send_button_selector: str = ""
     extra_wait_ms: int = 500
     navigation_timeout_ms: int = 30000

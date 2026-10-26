@@ -237,7 +237,10 @@ async def test_resolver_uses_browser_after_unconfirmed_http_discovery() -> None:
         ),
         patch(
             "nuguard.common.endpoint_detection.resolver.probe_endpoint",
-            new=AsyncMock(return_value=ProbeResult("/api/chat/message", "message", False, confirmed=False)),
+            new=AsyncMock(side_effect=[
+                ProbeResult("/api/chat/message", "message", False, confirmed=False),
+                ProbeResult("/extract", "text", False),
+            ]),
         ),
         patch(
             "nuguard.common.endpoint_detection.resolver.detect_with_browser",

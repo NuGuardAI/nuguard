@@ -30,6 +30,26 @@ def _expand_flatten(yaml_text: str) -> dict:
 
 
 class TestFlattenYamlValidateSection:
+    def test_browser_discovery_overrides_preserve_shared_fields(self) -> None:
+        flat = _flatten("""
+            target:
+                browser_discovery:
+                    chat_opener_selector: '#open-chat'
+                    chat_ui_timeout_ms: 1500
+            behavior:
+                browser_discovery:
+                    chat_input_selector: '#behavior-input'
+            redteam:
+                browser_discovery:
+                    chat_ui_timeout_ms: 2500
+                """)
+        cfg = NuGuardConfig(**flat)
+        assert cfg.target_browser_discovery.chat_ui_timeout_ms == 1500
+        assert cfg.redteam_browser_discovery.chat_ui_timeout_ms == 2500
+        assert cfg.redteam_browser_discovery.chat_opener_selector == "#open-chat"
+        assert cfg.behavior_config.browser_discovery.chat_ui_timeout_ms == 1500
+        assert cfg.behavior_config.browser_discovery.chat_input_selector == "#behavior-input"
+
     def test_validate_target_goes_to_validate_config(self) -> None:
         flat = _flatten("""
             validate:

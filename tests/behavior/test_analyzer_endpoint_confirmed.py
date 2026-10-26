@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 
 from nuguard.behavior.analyzer import BehaviorAnalyzer
+from nuguard.common.endpoint_detection.constants import CHAT_CONTRACT_VERSION
 from nuguard.config import BehaviorConfig
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
@@ -38,7 +39,7 @@ def test_confirmed_when_node_has_runtime_probe_source_and_payload_key() -> None:
         chat_payload_key="prompt",
         chat_payload_list=False,
         response_text_key="answer",
-        extras={"source": "runtime_probe"},
+        extras={"source": "runtime_probe", "chat_contract_version": CHAT_CONTRACT_VERSION},
     )
     analyzer = _analyzer(AiSbomDocument(target="./app", nodes=[node]))
 

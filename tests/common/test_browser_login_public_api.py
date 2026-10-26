@@ -92,3 +92,24 @@ async def test_discover_browser_propagates_browser_login_error(monkeypatch, tmp_
 
     with pytest.raises(BrowserLoginError):
         await discover_browser(request, cookie_file=tmp_path / "cookies.txt")
+
+
+def test_browser_configuration_round_trips_and_shared_defaults_apply() -> None:
+    from nuguard.config import NuGuardConfig, _flatten_yaml
+
+    settings = {"chat_opener_selector": "#open-chat", "chat_ui_timeout_ms": 1500}
+    request = BrowserDiscoveryRequest(target_url="http://target", browser_discovery=settings)
+    restored = BrowserDiscoveryRequest.model_validate_json(request.model_dump_json())
+    assert restored == request
+    assert BrowserDiscoveryRequest(target_url="http://target").browser_discovery.chat_ui_timeout_ms == 10000
+    cfg = NuGuardConfig(**_flatten_yaml({"target": {"browser_discovery": settings}}))
+    assert cfg.behavior_config.browser_discovery == restored.browser_discovery
+    assert cfg.redteam_browser_discovery == restored.browser_discovery
+
+
+@pytest.mark.parametrize("timeout", [0, -1, 60001])
+def test_browser_configuration_rejects_unbounded_timeout(timeout: int) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        BrowserDiscoveryConfig(chat_ui_timeout_ms=timeout)

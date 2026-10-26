@@ -27,6 +27,7 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from nuguard.common.auth import LoginFlowConfig, infer_auth_type
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.errors import ConfigError
 from nuguard.common.logging import get_logger
 
@@ -241,6 +242,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     # precedence and override the shared values when present.
     shared_target = data.get("target", {}) or {}
     if isinstance(shared_target, dict):
+        if isinstance(shared_target.get("browser_discovery"), dict):
+            flat["target_browser_discovery"] = shared_target["browser_discovery"]
+            flat["redteam_browser_discovery"] = shared_target["browser_discovery"]
         if "url" in shared_target:
             flat["target_url"] = shared_target["url"]
         if "endpoint" in shared_target:
@@ -314,6 +318,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     # Precedence matches the shared block: ``endpoint`` wins over
     # ``target_endpoint`` when both are set in the same block.
     redteam = {k: v for k, v in (data.get("redteam", {}) or {}).items() if v is not None}
+    if isinstance(redteam.get("browser_discovery"), dict):
+        flat["redteam_browser_discovery"] = {
+            **flat.get("redteam_browser_discovery", {}), **redteam["browser_discovery"]
+        }
     if "target" in redteam:
         flat["target_url"] = redteam["target"]
     if "endpoint" in redteam:
@@ -377,6 +385,13 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_ci_api_spot_checks"] = int(redteam["ci_api_spot_checks"])
     if "similar_miss_threshold" in redteam:
         flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
+    if "universal_safety_probes" in redteam:
+        flat["redteam_universal_safety_probes"] = bool(redteam["universal_safety_probes"])
+    if isinstance(redteam.get("workflows"), list):
+        flat["redteam_workflows"] = list(redteam["workflows"])
+    if "workflow_templates" in redteam:
+        _wt = redteam["workflow_templates"]
+        flat["redteam_workflow_templates"] = [_wt] if isinstance(_wt, str) else list(_wt or [])
     if "hard_refusal_abort_turns" in redteam:
         flat["redteam_hard_refusal_abort_turns"] = int(redteam["hard_refusal_abort_turns"])
     if "stall_abort_threshold" in redteam:
@@ -507,7 +522,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_eval_llm_api_base"] = redteam_eval_llm["api_base"]
 
     # Behavior section — shared target block keys are the baseline; behavior.* overrides them
-    if "behavior" in data:
+    if "behavior" in data or (
+        isinstance(shared_target, dict) and isinstance(shared_target.get("browser_discovery"), dict)
+    ):
         b = data.get("behavior") or {}
         if isinstance(b, dict):
             # A YAML key written with no value (e.g. "workflows:") parses to None,
@@ -521,6 +538,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             # Keys already present in the behavior block take precedence.
             if isinstance(shared_target, dict):
                 _shared_for_behavior: dict[str, Any] = {}
+                if isinstance(shared_target.get("browser_discovery"), dict):
+                    b["browser_discovery"] = {
+                        **shared_target["browser_discovery"], **(b.get("browser_discovery") or {})
+                    }
                 if "url" in shared_target:
                     _shared_for_behavior["target"] = shared_target["url"]
                 if "endpoint" in shared_target:
@@ -629,7 +650,11 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
-    for key in ("checkov_timeout", "checkov_total_timeout", "semgrep_timeout", "semgrep_total_timeout"):
+    for key in (
+        "checkov_timeout", "checkov_total_timeout", "semgrep_timeout", "semgrep_total_timeout",
+        "pip_audit_timeout", "pip_audit_total_timeout",
+        "gitleaks_timeout", "gitleaks_total_timeout",
+    ):
         if key in analyze:
             flat[f"analyze_{key}"] = analyze[key]
     if "min_severity" in analyze:
@@ -749,6 +774,7 @@ class BehaviorConfig(BaseModel):
     """Configuration for nuguard behavior mode."""
 
     target: str = ""
+    browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
     target_endpoint: str = ""
     auth: AppAuthConfig = Field(default_factory=AppAuthConfig)
     headers: dict[str, str] = Field(
@@ -1514,6 +1540,30 @@ class NuGuardConfig(BaseSettings):
             "Set to 0 to disable."
         ),
     )
+    redteam_workflows: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Stateful workflow attacks with an outcome oracle (yaml: redteam.workflows). "
+            "Each entry is a WorkflowSpec (see nuguard.redteam.workflows). These WRITE to "
+            "the target (register vendors, submit invoices), so listing one is the opt-in."
+        ),
+    )
+    redteam_workflow_templates: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Bundled workflow-attack templates to run (yaml: redteam.workflow_templates), "
+            "e.g. [owasp-finbot], or 'auto' for every bundled template. Each template workflow "
+            "runs only when its requirements hold on the target. They WRITE to the target."
+        ),
+    )
+    redteam_universal_safety_probes: bool = Field(
+        default=True,
+        description=(
+            "Probe sexual-content / violence / self-harm refusal even when the cognitive "
+            "policy does not list them (yaml: redteam.universal_safety_probes). Set to "
+            "false for domain apps (e.g. finance) where these probes are low-signal."
+        ),
+    )
     redteam_hard_refusal_abort_turns: int = Field(
         default=5,
         description=(
@@ -1595,6 +1645,8 @@ class NuGuardConfig(BaseSettings):
             "Ignored when the chat endpoint is set explicitly."
         ),
     )
+    target_browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
+    redteam_browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
     redteam_browser_discover_endpoints: bool = Field(
         default=False,
         description=(
@@ -1934,6 +1986,10 @@ class NuGuardConfig(BaseSettings):
     analyze_checkov_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.checkov_total_timeout).")
     analyze_semgrep_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds (yaml: analyze.semgrep_timeout).")
     analyze_semgrep_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.semgrep_total_timeout).")
+    analyze_pip_audit_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock pip-audit deadline in seconds (yaml: analyze.pip_audit_timeout).")
+    analyze_pip_audit_total_timeout: float = Field(default=600.0, gt=0, allow_inf_nan=False, description="Total wall-clock pip-audit budget across all manifests in seconds (yaml: analyze.pip_audit_total_timeout).")
+    analyze_gitleaks_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock gitleaks deadline in seconds (yaml: analyze.gitleaks_timeout).")
+    analyze_gitleaks_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock gitleaks budget across all paths in seconds (yaml: analyze.gitleaks_total_timeout).")
     analyze_min_severity: str = Field(
         default="medium",
         description=(

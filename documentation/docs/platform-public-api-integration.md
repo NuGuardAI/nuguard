@@ -32,6 +32,23 @@ Schema lock for platform-facing models:
 
 ## Public API module map
 
+### Collapsed chat widgets
+
+Pass `browser_discovery` on target verification/session and redteam requests, or
+`config.browser_discovery` on behavior requests. The JSON-safe configuration
+supports `chat_opener_selector`, `chat_input_selector`, `send_button_selector`, and
+`chat_ui_timeout_ms` (default 10000, range 1-60000). YAML uses shared
+`target.browser_discovery`; behavior/redteam fields override shared fields.
+
+Automatic discovery tries recognizable chat openers only when no eligible input
+is visible. A visible loading input is not mistaken for a collapsed widget.
+Requests must contain the probe message and must pass HTTP reply validation before
+being confirmed or cached. UI failure details appear in warnings/discovery notes,
+without raw Playwright exception text. Cancellation is not converted to failure.
+`verify_target` returns `endpoint_not_found` when endpoint discovery fails; platform
+handlers should map that result rather than treating it as an unexpected HTTP 500.
+Iframe and closed-shadow-root traversal are not added by this change.
+
 | Domain | Public module | Entry points |
 |---|---|---|
 | Static analysis | `nuguard.analysis.public_api` | `run_analysis` |
@@ -52,7 +69,15 @@ Module: `nuguard.analysis.public_api`
 
 Request model:
 - `AnalysisRunRequest`
-  - Checkov and Semgrep accept finite positive `*_timeout` (120 seconds per process) and `*_total_timeout` (300 seconds per scanner) settings. Failed or incomplete scans retain partial findings and expose `tool_status[tool].status = "error"`; callers should distinguish this from complete coverage. Worker cleanup is bounded; cancelling the async caller leaves scanner threads bounded by their configured deadlines.
+  - Checkov, Opengrep (Semgrep fallback), and Gitleaks accept finite positive `*_timeout` (120 seconds per process) and `*_total_timeout` (300 seconds per scanner) settings. Failed or incomplete scans retain partial findings and expose `tool_status[tool].status = "error"`; callers should distinguish this from complete coverage. Worker cleanup is bounded; cancelling the async caller leaves scanner threads bounded by their configured deadlines.
+
+Opengrep is the preferred source scanner. Keep using `enable_semgrep`, `semgrep_timeout`,
+`semgrep_total_timeout`, and `tool_status["semgrep"]`; these names remain compatible.
+`enable_pip_audit` and `enable_gitleaks` default to `True` and skip when the binary or inputs
+are missing. pip-audit audits resolved Python dependencies via OSV with `pip_audit_timeout`
+(default 300 seconds) and `pip_audit_total_timeout` (600 seconds). Gitleaks scans source for
+secrets with `gitleaks_timeout` (120 seconds) and `gitleaks_total_timeout` (300 seconds);
+matched secret values are redacted. All deadlines must be finite and positive.
 
 Response model:
 - `AnalysisRunResult`
@@ -276,6 +301,21 @@ Entry points:
 - `await export_validation_report(request, redteam_run_result=..., behavior_run_result=...)`
 
 ### Target verify/session contracts
+
+HTTP chat discovery accepts actual reply text, including outputs-only replies
+and configured nested response paths. A successful response alone does not
+establish an unknown request field: blind discovery uses an omitted-field
+validation control naming that specific field, while declared or browser-observed
+fields retain their
+provenance. Ambiguous greetings cannot create an endpoint confirmation.
+If no usable contract can be resolved, Target Verify reports
+`all_ok=false` with an `endpoint_not_found` check; API-only callers can supply
+`chat_payload_key` and `chat_response_key` explicitly. This is contract and
+connectivity validation, not a guarantee of semantic message processing.
+
+Legacy endpoint confirmations are revalidated under the new rules. Transport
+exceptions in preflight retain the existing fail-open scan behavior, but do not
+write a validated endpoint cache entry. Public request/result schemas are unchanged.
 
 Module: `nuguard.common.target_verify_public_api`
 

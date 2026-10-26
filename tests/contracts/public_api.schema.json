@@ -50,6 +50,11 @@
         "title": "Enable Supply Chain",
         "type": "boolean"
       },
+      "enable_pip_audit": {
+        "default": true,
+        "title": "Enable Pip Audit",
+        "type": "boolean"
+      },
       "source_path": {
         "anyOf": [
           {
@@ -120,6 +125,39 @@
         "description": "Total wall-clock scanner budget across all paths in seconds.",
         "exclusiveMinimum": 0,
         "title": "Semgrep Total Timeout",
+        "type": "number"
+      },
+      "pip_audit_timeout": {
+        "default": 300.0,
+        "description": "Per-process wall-clock pip-audit deadline in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Pip Audit Timeout",
+        "type": "number"
+      },
+      "pip_audit_total_timeout": {
+        "default": 600.0,
+        "description": "Total wall-clock pip-audit budget across all manifests in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Pip Audit Total Timeout",
+        "type": "number"
+      },
+      "enable_gitleaks": {
+        "default": true,
+        "title": "Enable Gitleaks",
+        "type": "boolean"
+      },
+      "gitleaks_timeout": {
+        "default": 120.0,
+        "description": "Per-process wall-clock gitleaks deadline in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Gitleaks Timeout",
+        "type": "number"
+      },
+      "gitleaks_total_timeout": {
+        "default": 300.0,
+        "description": "Total wall-clock gitleaks budget across all paths in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Gitleaks Total Timeout",
         "type": "number"
       },
       "supply_chain_profile": {
@@ -566,6 +604,18 @@
             ],
             "default": null,
             "title": "Regression Paraphrase Kind"
+          },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Expect"
           },
           "dual_path_verdict": {
             "anyOf": [
@@ -1149,6 +1199,9 @@
             "title": "Target",
             "type": "string"
           },
+          "browser_discovery": {
+            "$ref": "#/$defs/BrowserDiscoveryConfig"
+          },
           "target_endpoint": {
             "default": "",
             "title": "Target Endpoint",
@@ -1476,6 +1529,77 @@
           }
         },
         "title": "BehaviorConfig",
+        "type": "object"
+      },
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
         "type": "object"
       },
       "GoogleADKConfig": {
@@ -2763,6 +2887,9 @@
             "title": "Target",
             "type": "string"
           },
+          "browser_discovery": {
+            "$ref": "#/$defs/BrowserDiscoveryConfig"
+          },
           "target_endpoint": {
             "default": "",
             "title": "Target Endpoint",
@@ -3252,6 +3379,77 @@
         ],
         "title": "BehaviorScenarioType",
         "type": "string"
+      },
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
+        "type": "object"
       },
       "DiscoveredProfile": {
         "description": "Real user data extracted from the live agent during pre-scan discovery.\n\nA plain Pydantic model \u2014 JSON-serializable via ``.model_dump()`` /\n``.model_dump_json()`` and constructible from a plain dict via\n``DiscoveredProfile.model_validate(data)`` \u2014 so code outside the CLI (and\noutside the behavior/redteam packages) can consume or construct golden-data\nprofiles without importing any live connection objects.",
@@ -4349,6 +4547,330 @@
     "title": "BehaviorRunResult",
     "type": "object"
   },
+  "common.browser_login.BrowserDiscoveryConfig": {
+    "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+    "properties": {
+      "login_button_text": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Login Button Text",
+        "type": "array"
+      },
+      "username_selector": {
+        "default": "",
+        "title": "Username Selector",
+        "type": "string"
+      },
+      "password_selector": {
+        "default": "",
+        "title": "Password Selector",
+        "type": "string"
+      },
+      "submit_selector": {
+        "default": "",
+        "title": "Submit Selector",
+        "type": "string"
+      },
+      "post_login_wait_selector": {
+        "default": "",
+        "title": "Post Login Wait Selector",
+        "type": "string"
+      },
+      "identity_endpoint": {
+        "default": "",
+        "title": "Identity Endpoint",
+        "type": "string"
+      },
+      "chat_input_selector": {
+        "default": "",
+        "title": "Chat Input Selector",
+        "type": "string"
+      },
+      "chat_opener_selector": {
+        "default": "",
+        "title": "Chat Opener Selector",
+        "type": "string"
+      },
+      "chat_ui_timeout_ms": {
+        "default": 10000,
+        "maximum": 60000,
+        "minimum": 1,
+        "title": "Chat Ui Timeout Ms",
+        "type": "integer"
+      },
+      "send_button_selector": {
+        "default": "",
+        "title": "Send Button Selector",
+        "type": "string"
+      },
+      "extra_wait_ms": {
+        "default": 500,
+        "title": "Extra Wait Ms",
+        "type": "integer"
+      },
+      "navigation_timeout_ms": {
+        "default": 30000,
+        "title": "Navigation Timeout Ms",
+        "type": "integer"
+      }
+    },
+    "title": "BrowserDiscoveryConfig",
+    "type": "object"
+  },
+  "common.browser_login.BrowserDiscoveryRequest": {
+    "$defs": {
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
+        "type": "object"
+      }
+    },
+    "description": "JSON-safe input for :func:`discover_browser`.",
+    "properties": {
+      "target_url": {
+        "title": "Target Url",
+        "type": "string"
+      },
+      "auth_type": {
+        "default": "none",
+        "title": "Auth Type",
+        "type": "string"
+      },
+      "auth_value": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Value"
+      },
+      "auth_username": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Username"
+      },
+      "auth_password": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Password"
+      },
+      "headless": {
+        "default": true,
+        "title": "Headless",
+        "type": "boolean"
+      },
+      "timeout_s": {
+        "default": 30,
+        "title": "Timeout S",
+        "type": "integer"
+      },
+      "sniff_chat": {
+        "default": true,
+        "title": "Sniff Chat",
+        "type": "boolean"
+      },
+      "chat_message": {
+        "default": "Hello",
+        "title": "Chat Message",
+        "type": "string"
+      },
+      "browser_discovery": {
+        "$ref": "#/$defs/BrowserDiscoveryConfig"
+      }
+    },
+    "required": [
+      "target_url"
+    ],
+    "title": "BrowserDiscoveryRequest",
+    "type": "object"
+  },
+  "common.browser_login.BrowserDiscoveryResult": {
+    "description": "JSON-safe result of a :func:`discover_browser` run.",
+    "properties": {
+      "cookies_written_to": {
+        "title": "Cookies Written To",
+        "type": "string"
+      },
+      "identity_url": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Identity Url"
+      },
+      "identity_payload": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Identity Payload"
+      },
+      "sniffed_endpoint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Sniffed Endpoint"
+      },
+      "sniffed_chat_request": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Sniffed Chat Request"
+      },
+      "candidate_extra_fields": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Candidate Extra Fields",
+        "type": "object"
+      },
+      "ambiguous_fields": {
+        "additionalProperties": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": "Ambiguous Fields",
+        "type": "object"
+      },
+      "warnings": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Warnings",
+        "type": "array"
+      },
+      "bearer_token": {
+        "anyOf": [
+          {
+            "format": "password",
+            "type": "string",
+            "writeOnly": true
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Bearer Token"
+      }
+    },
+    "required": [
+      "cookies_written_to"
+    ],
+    "title": "BrowserDiscoveryResult",
+    "type": "object"
+  },
   "common.discovery.TargetDiscoveryResult": {
     "$defs": {
       "DiscoveredProfile": {
@@ -4872,6 +5394,77 @@
   },
   "common.target_verify.TargetSessionResolveRequest": {
     "$defs": {
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
+        "type": "object"
+      },
       "LoginFlowConfig": {
         "description": "Configuration for apps that require a login request to obtain a JWT.\n\nExample nuguard.yaml block::\n\n    auth:\n      type: login_flow\n      login_flow:\n        endpoint: /login\n        payload:\n          username: ${APP_USERNAME}\n          password: ${APP_PASSWORD}\n        token_response_key: access_token\n        token_header: \"Authorization: Bearer\"\n        refresh_on_401: true",
         "properties": {
@@ -4930,6 +5523,9 @@
       "target_url": {
         "title": "Target Url",
         "type": "string"
+      },
+      "browser_discovery": {
+        "$ref": "#/$defs/BrowserDiscoveryConfig"
       },
       "chat_path": {
         "anyOf": [
@@ -5215,6 +5811,77 @@
   },
   "common.target_verify.TargetVerifyRequest": {
     "$defs": {
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
+        "type": "object"
+      },
       "LoginFlowConfig": {
         "description": "Configuration for apps that require a login request to obtain a JWT.\n\nExample nuguard.yaml block::\n\n    auth:\n      type: login_flow\n      login_flow:\n        endpoint: /login\n        payload:\n          username: ${APP_USERNAME}\n          password: ${APP_PASSWORD}\n        token_response_key: access_token\n        token_header: \"Authorization: Bearer\"\n        refresh_on_401: true",
         "properties": {
@@ -5273,6 +5940,9 @@
       "target_url": {
         "title": "Target Url",
         "type": "string"
+      },
+      "browser_discovery": {
+        "$ref": "#/$defs/BrowserDiscoveryConfig"
       },
       "chat_path": {
         "anyOf": [
@@ -5396,6 +6066,12 @@
       "discovery_max_turns": {
         "default": 3,
         "title": "Discovery Max Turns",
+        "type": "integer"
+      },
+      "preflight_candidates": {
+        "default": 3,
+        "description": "How many alternative SBOM candidates to test when the resolved chat endpoint's reply isn't clearly conversational, before running pre-scan discovery \u2014 mirrors redteam.preflight_candidates / behavior.preflight_candidates so Target Verify validates the same endpoint candidate pool a subsequent Behavior/Redteam run would.",
+        "title": "Preflight Candidates",
         "type": "integer"
       }
     },
@@ -5537,6 +6213,7 @@
         "type": "object"
       }
     },
+    "description": "``all_ok`` is False both when a credential check fails and when every\ncredential checks out but no working chat endpoint could be validated\n(see ``checks`` for an entry with ``identity=\"endpoint\"`` in that case \u2014\nendpoint-preflight failure is always structurally visible there, not\nonly in ``discovery_notes``).",
     "properties": {
       "all_ok": {
         "title": "All Ok",
@@ -9218,6 +9895,18 @@
             "default": null,
             "title": "Regression Paraphrase Kind"
           },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Expect"
+          },
           "dual_path_verdict": {
             "anyOf": [
               {
@@ -10109,6 +10798,77 @@
   },
   "redteam.RedteamRunRequest": {
     "$defs": {
+      "BrowserDiscoveryConfig": {
+        "description": "Optional per-app overrides for the generic browser-login heuristics.\n\nEmpty selector fields use generic heuristics. Configured selectors are\ntried first. chat_ui_timeout_ms bounds widget opening and input readiness,\nindependently of navigation and outgoing-request capture timeouts.",
+        "properties": {
+          "login_button_text": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Login Button Text",
+            "type": "array"
+          },
+          "username_selector": {
+            "default": "",
+            "title": "Username Selector",
+            "type": "string"
+          },
+          "password_selector": {
+            "default": "",
+            "title": "Password Selector",
+            "type": "string"
+          },
+          "submit_selector": {
+            "default": "",
+            "title": "Submit Selector",
+            "type": "string"
+          },
+          "post_login_wait_selector": {
+            "default": "",
+            "title": "Post Login Wait Selector",
+            "type": "string"
+          },
+          "identity_endpoint": {
+            "default": "",
+            "title": "Identity Endpoint",
+            "type": "string"
+          },
+          "chat_input_selector": {
+            "default": "",
+            "title": "Chat Input Selector",
+            "type": "string"
+          },
+          "chat_opener_selector": {
+            "default": "",
+            "title": "Chat Opener Selector",
+            "type": "string"
+          },
+          "chat_ui_timeout_ms": {
+            "default": 10000,
+            "maximum": 60000,
+            "minimum": 1,
+            "title": "Chat Ui Timeout Ms",
+            "type": "integer"
+          },
+          "send_button_selector": {
+            "default": "",
+            "title": "Send Button Selector",
+            "type": "string"
+          },
+          "extra_wait_ms": {
+            "default": 500,
+            "title": "Extra Wait Ms",
+            "type": "integer"
+          },
+          "navigation_timeout_ms": {
+            "default": 30000,
+            "title": "Navigation Timeout Ms",
+            "type": "integer"
+          }
+        },
+        "title": "BrowserDiscoveryConfig",
+        "type": "object"
+      },
       "CampaignConfig": {
         "additionalProperties": false,
         "description": "Bounds and policy knobs for a campaign run.\n\nRun-level budgets default to ``None`` (no hidden cap); per-objective and\nper-branch limits are always bounded.\n\nExample:\n    >>> CampaignConfig(max_turns_per_branch=12).max_turns_per_branch\n    12",
@@ -10300,6 +11060,7 @@
         "type": "object"
       },
       "CanaryTenant": {
+        "description": "One tenant / identity.\n\nA tenant authenticates with a static ``session_token`` (bearer token or a\n``\"Header: value\"`` string), or \u2014 for cookie/CSRF apps with anonymous\nsessions \u2014 ``web_session: true``, which acquires an independent cookie +\nCSRF session at run start (see :func:`acquire_web_session_tenants`).",
         "properties": {
           "tenant_id": {
             "title": "Tenant Id",
@@ -10309,6 +11070,25 @@
             "default": "",
             "title": "Session Token",
             "type": "string"
+          },
+          "web_session": {
+            "default": false,
+            "title": "Web Session",
+            "type": "boolean"
+          },
+          "web_session_pages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Web Session Pages",
+            "type": "array"
+          },
+          "session_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Session Headers",
+            "type": "object"
           },
           "records": {
             "items": {
@@ -10466,6 +11246,308 @@
           }
         },
         "title": "RedteamLoginFlowConfig",
+        "type": "object"
+      },
+      "WorkflowOracle": {
+        "description": "Reads back state after the workflow and decides whether the attack worked.\n\nThe predicate describes the *bad* outcome: when it matches, the attack\nsucceeded and a finding is raised.",
+        "properties": {
+          "method": {
+            "default": "GET",
+            "title": "Method",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "principal": {
+            "default": "primary",
+            "title": "Principal",
+            "type": "string"
+          },
+          "json_path": {
+            "title": "Json Path",
+            "type": "string"
+          },
+          "op": {
+            "default": "equals",
+            "enum": [
+              "equals",
+              "in",
+              "contains",
+              "matches",
+              "gte",
+              "lte",
+              "exists"
+            ],
+            "title": "Op",
+            "type": "string"
+          },
+          "value": {
+            "default": null,
+            "title": "Value"
+          },
+          "poll_timeout_s": {
+            "default": 60.0,
+            "title": "Poll Timeout S",
+            "type": "number"
+          },
+          "poll_interval_s": {
+            "default": 5.0,
+            "title": "Poll Interval S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "path",
+          "json_path"
+        ],
+        "title": "WorkflowOracle",
+        "type": "object"
+      },
+      "WorkflowRequirements": {
+        "description": "When a bundled workflow template applies to a target.\n\nAll listed conditions must hold. Empty means \"always applicable\".",
+        "properties": {
+          "sbom_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sbom Paths",
+            "type": "array"
+          },
+          "probe_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Probe Paths",
+            "type": "array"
+          },
+          "min_tenants": {
+            "default": 0,
+            "title": "Min Tenants",
+            "type": "integer"
+          }
+        },
+        "title": "WorkflowRequirements",
+        "type": "object"
+      },
+      "WorkflowSpec": {
+        "description": "A stateful attack: ordered steps, an attack payload, and an outcome oracle.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "goal_type": {
+            "default": "POLICY_VIOLATION",
+            "title": "Goal Type",
+            "type": "string"
+          },
+          "severity": {
+            "default": "high",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/$defs/WorkflowStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "oracle": {
+            "$ref": "#/$defs/WorkflowOracle"
+          },
+          "payloads": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Payloads",
+            "type": "array"
+          },
+          "payload_goal": {
+            "default": "",
+            "title": "Payload Goal",
+            "type": "string"
+          },
+          "payload_style": {
+            "default": "pretext",
+            "enum": [
+              "pretext",
+              "html_document",
+              "text_document",
+              "tool_description"
+            ],
+            "title": "Payload Style",
+            "type": "string"
+          },
+          "payload_count": {
+            "default": 2,
+            "maximum": 6,
+            "minimum": 1,
+            "title": "Payload Count",
+            "type": "integer"
+          },
+          "control_payloads": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Control Payloads",
+            "type": "array"
+          },
+          "auto_control": {
+            "default": true,
+            "title": "Auto Control",
+            "type": "boolean"
+          },
+          "cleanup": {
+            "items": {
+              "$ref": "#/$defs/WorkflowStep"
+            },
+            "title": "Cleanup",
+            "type": "array"
+          },
+          "requires": {
+            "$ref": "#/$defs/WorkflowRequirements"
+          },
+          "remediation": {
+            "default": "",
+            "title": "Remediation",
+            "type": "string"
+          },
+          "owasp_llm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Llm Ref"
+          },
+          "owasp_asi_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Asi Ref"
+          },
+          "stop_on_success": {
+            "default": true,
+            "title": "Stop On Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "steps",
+          "oracle"
+        ],
+        "title": "WorkflowSpec",
+        "type": "object"
+      },
+      "WorkflowStep": {
+        "description": "One HTTP request in a workflow.\n\n``path``, ``body`` string values and ``params`` may reference ``{payload}``\n(the attack text under test) and any name captured by an earlier step\n(e.g. ``{vendor_id}``).",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "title": "Method",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Body"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Params",
+            "type": "object"
+          },
+          "capture": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Capture",
+            "type": "object"
+          },
+          "expect_status": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Expect Status",
+            "type": "array"
+          },
+          "principal": {
+            "default": "primary",
+            "title": "Principal",
+            "type": "string"
+          },
+          "wait_for": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/WorkflowOracle"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id",
+          "path"
+        ],
+        "title": "WorkflowStep",
         "type": "object"
       }
     },
@@ -10674,6 +11756,25 @@
         "title": "Similar Miss Threshold",
         "type": "integer"
       },
+      "universal_safety_probes": {
+        "default": true,
+        "title": "Universal Safety Probes",
+        "type": "boolean"
+      },
+      "workflows": {
+        "items": {
+          "$ref": "#/$defs/WorkflowSpec"
+        },
+        "title": "Workflows",
+        "type": "array"
+      },
+      "workflow_templates": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Workflow Templates",
+        "type": "array"
+      },
       "hard_refusal_abort_turns": {
         "default": 5,
         "title": "Hard Refusal Abort Turns",
@@ -10720,6 +11821,9 @@
         "minimum": 0,
         "title": "Preflight Candidates",
         "type": "integer"
+      },
+      "browser_discovery": {
+        "$ref": "#/$defs/BrowserDiscoveryConfig"
       },
       "llm_capability_dedup": {
         "default": false,
@@ -11776,6 +12880,18 @@
             ],
             "default": null,
             "title": "Regression Paraphrase Kind"
+          },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Expect"
           },
           "dual_path_verdict": {
             "anyOf": [
@@ -13437,8 +14553,64 @@
               }
             ],
             "default": null,
-            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery. Only trusted when discovered_profile_fingerprint matches the current run's target_url/auth identity \u2014 see nuguard.common.discovery.cached_discovery_profile.",
             "title": "Discovered Profile"
+          },
+          "discovered_profile_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of the target_url + auth identity discovered_profile was captured against (see nuguard.common.discovery.profile_cache_fingerprint). A cached discovered_profile is only reused when this matches the current run's target/auth \u2014 otherwise it's treated as a cache miss and live discovery runs again. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Discovered Profile Fingerprint"
+          },
+          "resolved_chat_endpoint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached result of a live-validated chat-endpoint preflight (a serialized nuguard.common.endpoint_preflight.CachedEndpointResolution: chat_path, chat_payload_key, chat_payload_list, chat_response_key, endpoint_source), persisted here after Target Verify/Behavior/Redteam successfully validates (and possibly rotates to) a chat endpoint. Later runs \u2014 by any of the three tools, in any order \u2014 reuse it instead of re-probing the target live. Delete or regenerate the enriched SBOM file to force fresh validation. Only trusted when resolved_chat_endpoint_fingerprint matches the current run's target_url/auth identity and this path's currently-declared path_param_sources \u2014 see nuguard.common.endpoint_preflight.cached_endpoint_resolution.",
+            "title": "Resolved Chat Endpoint"
+          },
+          "resolved_path_param_values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path param values (e.g. a bootstrapped conversation :id obtained by POSTing to a declared path_param_sources creation endpoint) bound onto resolved_chat_endpoint's chat_path during preflight. Reused alongside resolved_chat_endpoint whenever resolved_chat_endpoint_fingerprint matches the current run.",
+            "title": "Resolved Path Param Values"
+          },
+          "resolved_chat_endpoint_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of target_url + auth identity + resolved_chat_endpoint's chat_path + that path's current path_param_sources declaration (see nuguard.common.endpoint_preflight.endpoint_cache_fingerprint). A cached resolved_chat_endpoint/resolved_path_param_values pair is only reused when this matches \u2014 a target/auth change, or the SBOM being regenerated with a different path_param_sources declaration for this path, is treated as a cache miss and preflight re-runs live. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Resolved Chat Endpoint Fingerprint"
           }
         },
         "required": [
@@ -17807,8 +18979,64 @@
               }
             ],
             "default": null,
-            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery. Only trusted when discovered_profile_fingerprint matches the current run's target_url/auth identity \u2014 see nuguard.common.discovery.cached_discovery_profile.",
             "title": "Discovered Profile"
+          },
+          "discovered_profile_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of the target_url + auth identity discovered_profile was captured against (see nuguard.common.discovery.profile_cache_fingerprint). A cached discovered_profile is only reused when this matches the current run's target/auth \u2014 otherwise it's treated as a cache miss and live discovery runs again. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Discovered Profile Fingerprint"
+          },
+          "resolved_chat_endpoint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached result of a live-validated chat-endpoint preflight (a serialized nuguard.common.endpoint_preflight.CachedEndpointResolution: chat_path, chat_payload_key, chat_payload_list, chat_response_key, endpoint_source), persisted here after Target Verify/Behavior/Redteam successfully validates (and possibly rotates to) a chat endpoint. Later runs \u2014 by any of the three tools, in any order \u2014 reuse it instead of re-probing the target live. Delete or regenerate the enriched SBOM file to force fresh validation. Only trusted when resolved_chat_endpoint_fingerprint matches the current run's target_url/auth identity and this path's currently-declared path_param_sources \u2014 see nuguard.common.endpoint_preflight.cached_endpoint_resolution.",
+            "title": "Resolved Chat Endpoint"
+          },
+          "resolved_path_param_values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path param values (e.g. a bootstrapped conversation :id obtained by POSTing to a declared path_param_sources creation endpoint) bound onto resolved_chat_endpoint's chat_path during preflight. Reused alongside resolved_chat_endpoint whenever resolved_chat_endpoint_fingerprint matches the current run.",
+            "title": "Resolved Path Param Values"
+          },
+          "resolved_chat_endpoint_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of target_url + auth identity + resolved_chat_endpoint's chat_path + that path's current path_param_sources declaration (see nuguard.common.endpoint_preflight.endpoint_cache_fingerprint). A cached resolved_chat_endpoint/resolved_path_param_values pair is only reused when this matches \u2014 a target/auth change, or the SBOM being regenerated with a different path_param_sources declaration for this path, is treated as a cache miss and preflight re-runs live. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Resolved Chat Endpoint Fingerprint"
           }
         },
         "required": [
@@ -22412,8 +23640,64 @@
               }
             ],
             "default": null,
-            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery. Only trusted when discovered_profile_fingerprint matches the current run's target_url/auth identity \u2014 see nuguard.common.discovery.cached_discovery_profile.",
             "title": "Discovered Profile"
+          },
+          "discovered_profile_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of the target_url + auth identity discovered_profile was captured against (see nuguard.common.discovery.profile_cache_fingerprint). A cached discovered_profile is only reused when this matches the current run's target/auth \u2014 otherwise it's treated as a cache miss and live discovery runs again. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Discovered Profile Fingerprint"
+          },
+          "resolved_chat_endpoint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached result of a live-validated chat-endpoint preflight (a serialized nuguard.common.endpoint_preflight.CachedEndpointResolution: chat_path, chat_payload_key, chat_payload_list, chat_response_key, endpoint_source), persisted here after Target Verify/Behavior/Redteam successfully validates (and possibly rotates to) a chat endpoint. Later runs \u2014 by any of the three tools, in any order \u2014 reuse it instead of re-probing the target live. Delete or regenerate the enriched SBOM file to force fresh validation. Only trusted when resolved_chat_endpoint_fingerprint matches the current run's target_url/auth identity and this path's currently-declared path_param_sources \u2014 see nuguard.common.endpoint_preflight.cached_endpoint_resolution.",
+            "title": "Resolved Chat Endpoint"
+          },
+          "resolved_path_param_values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path param values (e.g. a bootstrapped conversation :id obtained by POSTing to a declared path_param_sources creation endpoint) bound onto resolved_chat_endpoint's chat_path during preflight. Reused alongside resolved_chat_endpoint whenever resolved_chat_endpoint_fingerprint matches the current run.",
+            "title": "Resolved Path Param Values"
+          },
+          "resolved_chat_endpoint_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of target_url + auth identity + resolved_chat_endpoint's chat_path + that path's current path_param_sources declaration (see nuguard.common.endpoint_preflight.endpoint_cache_fingerprint). A cached resolved_chat_endpoint/resolved_path_param_values pair is only reused when this matches \u2014 a target/auth change, or the SBOM being regenerated with a different path_param_sources declaration for this path, is treated as a cache miss and preflight re-runs live. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Resolved Chat Endpoint Fingerprint"
           }
         },
         "required": [
@@ -26690,8 +27974,64 @@
               }
             ],
             "default": null,
-            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery.",
+            "description": "Cached pre-scan identity discovery result (a serialized nuguard.common.discovery.DiscoveredProfile), persisted here after a behavior/redteam run successfully discovers the authenticated test user's real identity via a live DISCOVER conversation. Later runs against this SBOM reuse it instead of re-running discovery. Delete or regenerate the enriched SBOM file to force a fresh discovery. Only trusted when discovered_profile_fingerprint matches the current run's target_url/auth identity \u2014 see nuguard.common.discovery.cached_discovery_profile.",
             "title": "Discovered Profile"
+          },
+          "discovered_profile_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of the target_url + auth identity discovered_profile was captured against (see nuguard.common.discovery.profile_cache_fingerprint). A cached discovered_profile is only reused when this matches the current run's target/auth \u2014 otherwise it's treated as a cache miss and live discovery runs again. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Discovered Profile Fingerprint"
+          },
+          "resolved_chat_endpoint": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Cached result of a live-validated chat-endpoint preflight (a serialized nuguard.common.endpoint_preflight.CachedEndpointResolution: chat_path, chat_payload_key, chat_payload_list, chat_response_key, endpoint_source), persisted here after Target Verify/Behavior/Redteam successfully validates (and possibly rotates to) a chat endpoint. Later runs \u2014 by any of the three tools, in any order \u2014 reuse it instead of re-probing the target live. Delete or regenerate the enriched SBOM file to force fresh validation. Only trusted when resolved_chat_endpoint_fingerprint matches the current run's target_url/auth identity and this path's currently-declared path_param_sources \u2014 see nuguard.common.endpoint_preflight.cached_endpoint_resolution.",
+            "title": "Resolved Chat Endpoint"
+          },
+          "resolved_path_param_values": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Path param values (e.g. a bootstrapped conversation :id obtained by POSTing to a declared path_param_sources creation endpoint) bound onto resolved_chat_endpoint's chat_path during preflight. Reused alongside resolved_chat_endpoint whenever resolved_chat_endpoint_fingerprint matches the current run.",
+            "title": "Resolved Path Param Values"
+          },
+          "resolved_chat_endpoint_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hash of target_url + auth identity + resolved_chat_endpoint's chat_path + that path's current path_param_sources declaration (see nuguard.common.endpoint_preflight.endpoint_cache_fingerprint). A cached resolved_chat_endpoint/resolved_path_param_values pair is only reused when this matches \u2014 a target/auth change, or the SBOM being regenerated with a different path_param_sources declaration for this path, is treated as a cache miss and preflight re-runs live. Absent on SBOMs persisted before this field existed, which are therefore always treated as a miss.",
+            "title": "Resolved Chat Endpoint Fingerprint"
           }
         },
         "required": [

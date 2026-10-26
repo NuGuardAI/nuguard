@@ -30,6 +30,8 @@ if TYPE_CHECKING:
 
     from nuguard.common.auth import AuthConfig, AuthSession
     from nuguard.common.bootstrap import TargetHealthReport
+    from nuguard.common.browser_login.config import BrowserDiscoveryConfig
+    from nuguard.common.web_session import SessionRefresher
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
@@ -62,6 +64,9 @@ class TargetSessionConfig:
     effective_headers: dict[str, str] = field(default_factory=dict)
     endpoint_source: str = "default"
     payload_format: str = "json"
+    # Re-acquires an auto-bootstrapped cookie/CSRF session when it expires mid-run.
+    # None unless discovery had to acquire a web session itself.
+    session_refresher: "SessionRefresher | None" = field(default=None, repr=False)
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +290,7 @@ async def resolve_target_session(
     payload_key_explicit: bool = False,
     response_key_explicit: bool = False,
     endpoint_source_hint: str | None = None,
+    browser_discovery: "BrowserDiscoveryConfig | None" = None,
 ) -> tuple[TargetSessionConfig, "TargetHealthReport"]:
     """Resolve all target-connection config and return a :class:`TargetSessionConfig`.
 
@@ -306,8 +312,8 @@ async def resolve_target_session(
         target_url: Base URL of the target application (may be a static-hosting URL).
         sbom: Parsed AI-SBOM used for endpoint and auth discovery, when available.
         auth_config: Structured auth config; ``None`` falls back to *extra_headers*.
-        extra_headers: Static headers (legacy auth or custom).  Used when *auth_config*
-            is ``None`` or ``type='none'``.
+        extra_headers: Static headers (legacy auth or custom), included in discovery,
+            bootstrap and target requests. Identity auth headers take precedence.
         chat_path: Chat endpoint path from config; empty = auto-discover.
         chat_payload_key: JSON body key for the message (default ``"message"``).
         chat_payload_list: Whether to wrap the message value in a list.
@@ -347,6 +353,7 @@ async def resolve_target_session(
         is_empty_session_response,
         probe_endpoint,
     )
+    from nuguard.common.endpoint_detection.payload import _sbom_payload_contract  # noqa: PLC0415
     from nuguard.common.endpoint_detection.resolver import (  # noqa: PLC0415
         resolve_chat_endpoint,
     )
@@ -358,8 +365,13 @@ async def resolve_target_session(
         discover_login_flow_live,
         resolve_auth_config_with_sbom_fallback,
     )
+    from nuguard.common.web_session import make_session_refresher, ui_root_for  # noqa: PLC0415
 
     resolution_notes: list[str] = []
+    web_session_acquired = False
+    # Local copy: auto-acquired cookie/CSRF headers are merged in below without
+    # mutating the caller's dict.
+    extra_headers = dict(extra_headers)
     _run_id = run_id or str(_uuid.uuid4())
     configured_chat_path = chat_path
     is_endpoint_explicit = (
@@ -414,10 +426,17 @@ async def resolve_target_session(
     )
     endpoint_source = "config" if is_endpoint_explicit else "default"
     _chat_path_unknown_at_bootstrap = False
+    _configured_field_unresolved = False
+    _payload_shape_validated = False
+    chat_payload_value_template: "dict[str, object] | None" = None
 
     async def _resolve_endpoint(auth_headers: dict[str, str] | None):
         nonlocal chat_path, chat_payload_key, chat_payload_list
         nonlocal chat_response_key, endpoint_source, _chat_path_unknown_at_bootstrap
+        nonlocal _configured_field_unresolved
+        nonlocal _payload_shape_validated
+        nonlocal chat_payload_value_template
+        nonlocal web_session_acquired
         resolved = await resolve_chat_endpoint(
             target_url=target_url,
             sbom=sbom,
@@ -425,14 +444,35 @@ async def resolve_target_session(
             payload_key=chat_payload_key if payload_key_explicit else UNSET,
             payload_list=chat_payload_list if payload_key_explicit else UNSET,
             response_key=chat_response_key if response_key_explicit else UNSET,
-            auth_headers=auth_headers,
+            auth_headers={**extra_headers, **(auth_headers or {})},
             timeout=request_timeout or 15.0,
             probe_payload_extras=_probe_extras or None,
             enable_browser_fallback=not is_endpoint_explicit,
             browser_auth_config=effective_auth,
+            browser_discovery=browser_discovery,
         )
         resolution_notes.extend(resolved.notes)
+        if resolved.session_headers:
+            # Discovery auto-acquired a cookie/CSRF session; every later request
+            # (bootstrap health check, warmup, the real client) must carry it.
+            extra_headers.update(resolved.session_headers)
+            web_session_acquired = True
+            resolution_notes.append(
+                "Target required a web session: auto-acquired a session cookie and "
+                "anti-CSRF token from its UI pages (values not recorded)."
+            )
+        _configured_field_unresolved = (
+            is_endpoint_explicit
+            and not payload_key_explicit
+            and resolved.payload.source.value == "fallback"
+            and not _sbom_payload_contract(sbom, resolved.path or "")[0]
+        )
         if not resolved.path:
+            if is_endpoint_explicit:
+                # Preserve auth/transport diagnostics on the configured route.
+                # A healthy route still needs a confirmed field before use.
+                _configured_field_unresolved = True
+                return resolved
             raise TargetEndpointNotFoundError(
                 "Could not discover a chat endpoint from the SBOM, authenticated HTTP probes, "
                 "or browser fallback. Set target_endpoint explicitly or verify the target URL "
@@ -440,10 +480,12 @@ async def resolve_target_session(
                 url=target_url,
             )
         chat_path = resolved.path
+        _payload_shape_validated = resolved.payload.source.value in {"probe", "browser"}
         if not payload_key_explicit and resolved.payload_key:
             chat_payload_key = resolved.payload_key
         if not payload_key_explicit:
             chat_payload_list = resolved.payload_list
+            chat_payload_value_template = resolved.payload.value_template
         if not response_key_explicit and resolved.response_key:
             chat_response_key = resolved.response_key
         endpoint_source = resolved.path_source.value
@@ -493,7 +535,7 @@ async def resolve_target_session(
         target_url=target_url,
         sbom=sbom,
         endpoint=(
-            configured_chat_path
+            (configured_chat_path if is_endpoint_explicit else None)
             or ("/ws" if is_websocket else chat_path or "/chat")
         ),
         auth_config=auth_runtime.auth_config,
@@ -507,7 +549,14 @@ async def resolve_target_session(
         payload_key=chat_payload_key,
         payload_list=chat_payload_list,
         endpoint_resolver=endpoint_resolver,
+        extra_headers=extra_headers,
     )
+    if _configured_field_unresolved and health_report.all_ok:
+        raise TargetEndpointNotFoundError(
+            "The configured endpoint is reachable, but its chat message field could not be confirmed. "
+            "Set target.chat_payload_key (and target.chat_response_key for a custom response format).",
+            url=target_url,
+        )
     bootstrap_headers = bootstrapper.session.headers()
     effective_headers = dict(extra_headers)
     if bootstrap_headers:
@@ -553,7 +602,6 @@ async def resolve_target_session(
     # Both options run without an SBOM too (issue #532) — probe_endpoint falls
     # back to the generic HTTP_ENDPOINT_FALLBACK_PATHS candidate list when
     # sbom=None, so a target without an SBOM can still be discovered.
-    chat_payload_value_template: "dict[str, object] | None" = None
     if not chat_path:
         # Option A: discover both path and key
         probe_result = await probe_endpoint(
@@ -564,12 +612,12 @@ async def resolve_target_session(
             known_payload_list=chat_payload_list,
             probe_payload_extras=_probe_extras or None,
         )
-        if probe_result is not None:
+        if probe_result is not None and probe_result.confirmed:
             chat_path, chat_payload_key, chat_payload_list = probe_result
             chat_payload_value_template = probe_result.value_template
             endpoint_source = "probe"
             _log.info("resolve_target_session: live probe selected endpoint %s", chat_path)
-    elif not payload_key_explicit and chat_payload_key == "message":
+    elif not payload_key_explicit and not _payload_shape_validated and chat_payload_key == "message":
         # Option B: path is known but key is still the default — detect key only
         probe_result = await probe_endpoint(
             target_url=target_url,
@@ -580,7 +628,7 @@ async def resolve_target_session(
             probe_payload_extras=_probe_extras or None,
             hint_path=chat_path,
         )
-        if probe_result is not None:
+        if probe_result is not None and probe_result.confirmed:
             _probe_path, chat_payload_key, chat_payload_list = probe_result
             chat_payload_value_template = probe_result.value_template
             # Keep the user's path — only the key and list are updated
@@ -612,6 +660,7 @@ async def resolve_target_session(
             sbom=sbom,
             endpoint=chat_path,
             auth_config=auth_runtime.auth_config,
+            extra_headers=extra_headers,
             canary_config=canary_config,
             run_id=_run_id,
             probe_payload_extras=_probe_extras or None,
@@ -706,6 +755,17 @@ async def resolve_target_session(
                 else endpoint_source
             ),
             payload_format=payload_format,
+            session_refresher=(
+                make_session_refresher(
+                    target_url,
+                    [ui_root_for(chat_path or "") or ""],
+                    headers=extra_headers,
+                    timeout=request_timeout or 15.0,
+                    validate_paths=[chat_path] if chat_path else None,
+                )
+                if web_session_acquired
+                else None
+            ),
         ),
         health_report,
     )

@@ -17,6 +17,35 @@ pip install nuguard
 
 ## Core pattern
 
+### Browser chat discovery settings
+
+`TargetVerifyRequest`, `TargetSessionResolveRequest`, and `RedteamRunRequest` accept
+an optional `browser_discovery` configuration. Behavior requests use
+`config.browser_discovery`. Existing requests remain valid without this field.
+
+```python
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
+from nuguard.common.target_verify_public_api import TargetVerifyRequest
+
+request = TargetVerifyRequest(
+    target_url="https://app.example.com",
+    browser_discovery=BrowserDiscoveryConfig(
+        chat_opener_selector="#open-chat",
+        chat_input_selector="#chat-input",
+        send_button_selector="#chat-send",
+        chat_ui_timeout_ms=10000,
+    ),
+)
+```
+
+The readiness timeout accepts 1-60000 milliseconds and defaults to 10000. It
+covers widget opening and input readiness, not navigation or request capture.
+Visible but disabled inputs are awaited without toggling their widget. Settings
+do not enable a new browser-discovery mode; existing fallback activation remains
+unchanged. Playwright and Chromium are required only when browser discovery runs.
+Expected UI failures become warnings or discovery notes; cancellation propagates.
+An observed request still needs HTTP reply validation before endpoint confirmation.
+
 Most public entry points follow this shape:
 
 - A `*Request` Pydantic model for JSON-safe run settings.
@@ -170,9 +199,11 @@ result = await run_analysis(
 
 `AnalysisRunResult` includes `findings`, `tool_status`, `nga_audit`, `sc_audit`, `token_usage`, and `remediation_plan`.
 
-`AnalysisRunRequest` accepts `checkov_timeout` and `semgrep_timeout` (120 seconds per process), plus `checkov_total_timeout` and `semgrep_total_timeout` (300 seconds per scanner across all paths). Values must be finite and positive. `StaticAnalyzer` accepts the same arguments. CLI flags use hyphens, for example `--checkov-total-timeout 180`; YAML places these keys under `analyze`.
+Source rules use Opengrep when available and fall back to Semgrep. The `enable_semgrep` parameter, `semgrep_*` settings, and `semgrep` finding-source and tool-status keys are retained for compatibility.
 
-Timeouts terminate scanner workers and reap the parent, with bounded cleanup beyond the scan deadline. Launch, exit, output, and scanner-reported parsing errors set the tool's status to `error`; partial findings remain available. The CLI writes the report and exits with code 2 for incomplete Checkov or Semgrep scans. Missing binaries or paths are `skipped`. Logs identify each path, duration, return code, and outcome, with a heartbeat every 15 seconds during execution. Raw scanner output is omitted from error logs. Cancelling the async caller does not immediately cancel scanner threads; their configured deadlines still apply.
+`AnalysisRunRequest` accepts `checkov_timeout` and `semgrep_timeout` (120 seconds per process), plus `checkov_total_timeout` and `semgrep_total_timeout` (300 seconds per scanner across all paths). `pip_audit_timeout` (300 seconds per process) and `pip_audit_total_timeout` (600 seconds across all manifests) control the pip-audit deep scan, `enable_pip_audit` (default `True`) turns it off. `gitleaks_timeout` (120 seconds per process) and `gitleaks_total_timeout` (300 seconds across all source paths) control the gitleaks secret scan, and `enable_gitleaks` (default `True`) turns it off. Values must be finite and positive. `StaticAnalyzer` accepts the same arguments. CLI flags use hyphens, for example `--checkov-total-timeout 180`; YAML places these keys under `analyze`.
+
+Timeouts terminate scanner workers and reap the parent, with bounded cleanup beyond the scan deadline. Launch, exit, output, and scanner-reported parsing errors set the tool's status to `error`; partial findings remain available. The CLI writes the report and exits with code 2 for incomplete Checkov, Opengrep (Semgrep fallback), or Gitleaks scans. Missing binaries or paths are `skipped`. Logs identify each path, duration, return code, and outcome, with a heartbeat every 15 seconds during execution. Raw scanner output is omitted from error logs. Cancelling the async caller does not immediately cancel scanner threads; their configured deadlines still apply.
 
 ## Behavior APIs
 
@@ -365,6 +396,29 @@ Module: `nuguard.common.target_verify_public_api`
 - `resolve_target_session_public(request, *, sbom=None)`
 
 These APIs handle endpoint selection (config/SBOM/probe/default), auth bootstrapping, and target health checks before scans.
+
+HTTP discovery and runtime use shared reply extraction, including nonempty
+`outputs[].text`, message lists, completion envelopes, and configured nested
+paths such as `chat_response_key="outputs[0].text"`. Empty or error-only bodies
+and metadata alone do not validate a chat reply. Raw JSON retained for reporting
+is not reply-validation evidence.
+
+When the message field is unknown, blind HTTP discovery checks whether omitting
+the candidate field causes a validation rejection naming that field. Generic
+empty-body errors and errors naming other fields remain inconclusive. The control
+keeps configured
+payload extras and adds at most one request per distinct omitted-field body on a
+candidate route. A greeting that also appears without the field leaves the
+candidate unconfirmed. SBOM/OpenAPI declarations or observed browser requests can
+provide field evidence; browser observation is followed by HTTP reply validation.
+This validates the request contract, not the semantic correctness of an AI answer.
+For API-only targets that accept missing fields, explicitly provide
+`chat_payload_key` and, for custom replies, `chat_response_key`.
+
+Unconfirmed candidates are not cached as validated endpoints. Older endpoint
+confirmations are revalidated once under the updated contract rules; unrelated
+profile caches are retained. Browser discovery remains subject to the caller's
+existing enablement rules, and explicitly configured endpoints are not rotated.
 
 When an SBOM is supplied, `resolve_target_session_public()` resolves a static-hosting target URL to the SBOM deployment URL before endpoint probing and session bootstrap. The returned `effective_target_url` reports the URL used for the resolved session.
 

@@ -91,12 +91,22 @@ DEFAULT_SUBMIT_SELECTORS: list[str] = [
 ]
 
 DEFAULT_CHAT_INPUT_SELECTORS: list[str] = [
-    "textarea",
-    "[contenteditable='true']",
     "input[placeholder*='message' i]",
     "input[placeholder*='ask' i]",
     "input[placeholder*='chat' i]",
+    "textarea[placeholder*='message' i]",
     "textarea[placeholder*='ask' i]",
+    "textarea[placeholder*='chat' i]",
+    "textarea",
+    "[contenteditable='true']",
+]
+
+DEFAULT_CHAT_OPENER_SELECTORS: list[str] = [
+    "button[aria-label='Open chat' i]",
+    "button[aria-label='Open chat window' i]",
+    "button[aria-expanded='false'][aria-controls*='chat' i]",
+    "button:text-is('Open chat')",
+    "button:text-is('Chat with us')",
 ]
 
 DEFAULT_SEND_BUTTON_SELECTORS: list[str] = [

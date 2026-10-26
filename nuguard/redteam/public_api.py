@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal
 from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 from nuguard.common.auth import AuthConfig, LoginFlowConfig
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.logging import get_logger
 from nuguard.common.run_checkpoint import PartialRunError, RunCheckpoint
 from nuguard.common.stream_runtime import StreamRunHandle, create_stream_handle
@@ -57,6 +58,7 @@ from nuguard.redteam.executor.orchestrator import (
     finding_matches_scenario_filter,
 )
 from nuguard.redteam.target.canary import CanaryConfig
+from nuguard.redteam.workflows import WorkflowSpec
 from nuguard.remediation.backfill import backfill_finding_remediation
 from nuguard.remediation.models import RemediationArtefact
 
@@ -200,6 +202,9 @@ class RedteamRunRequest(BaseModel):
     turn_delay_seconds: float = 5.0
     scenario_delay_seconds: float = 0.0
     similar_miss_threshold: int = 4
+    universal_safety_probes: bool = True
+    workflows: list[WorkflowSpec] = Field(default_factory=list)
+    workflow_templates: list[str] = Field(default_factory=list)
     hard_refusal_abort_turns: int = 5
     stall_abort_threshold: int = 8
     skip_discovery: bool = False
@@ -209,6 +214,7 @@ class RedteamRunRequest(BaseModel):
     capability_discovery: bool = True
     liveness_cache_ttl_seconds: float = 3600.0
     preflight_candidates: int = Field(default=3, ge=0, le=10)
+    browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
     llm_capability_dedup: bool = False
     chat_payload_extras: dict[str, Any] | None = None
     pre_run_warmup: int = 0
@@ -362,6 +368,8 @@ async def _build_remediation_plan(
             "scenario_type": f.scenario_type or "",
             "evidence_quote": f.evidence_quote or "",
             "reasoning": f.reasoning or "",
+            "regression_paraphrase_kind": f.regression_paraphrase_kind or "",
+            "regression_expect": f.regression_expect or "",
         }
         for f in findings
     ]
@@ -510,6 +518,9 @@ async def run_redteam(
         log_path=log_path,
         chat_path=request.chat_path,
         chat_payload_key=request.chat_payload_key,
+        chat_payload_key_explicit=bool(
+            {"chat_payload_key", "chat_payload_list"} & request.model_fields_set
+        ),
         chat_payload_list=request.chat_payload_list,
         chat_response_key=request.chat_response_key,
         concurrency=request.concurrency,
@@ -537,6 +548,9 @@ async def run_redteam(
         turn_delay_seconds=request.turn_delay_seconds,
         scenario_delay_seconds=request.scenario_delay_seconds,
         similar_miss_threshold=request.similar_miss_threshold,
+        universal_safety_probes=request.universal_safety_probes,
+        workflows=[w.model_dump() for w in request.workflows] or None,
+        workflow_templates=request.workflow_templates or None,
         hard_refusal_abort_turns=request.hard_refusal_abort_turns,
         stall_abort_threshold=request.stall_abort_threshold,
         skip_discovery=request.skip_discovery,
@@ -546,6 +560,7 @@ async def run_redteam(
         capability_discovery=request.capability_discovery,
         liveness_cache_ttl_seconds=request.liveness_cache_ttl_seconds,
         preflight_candidates=request.preflight_candidates,
+        browser_discovery=request.browser_discovery,
         llm_capability_dedup=request.llm_capability_dedup,
         chat_payload_extras=request.chat_payload_extras,
         catalog=catalog,

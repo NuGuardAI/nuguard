@@ -9,6 +9,7 @@ import pytest
 import respx
 
 from nuguard.common.auth import AuthConfig
+from nuguard.common.endpoint_detection.constants import CHAT_CONTRACT_VERSION
 from nuguard.config import ValidateBoundaryAssertion, ValidateConfig
 from nuguard.models.validate import ValidateFindingType
 
@@ -115,7 +116,7 @@ def test_confirmed_endpoint_from_sbom_requires_runtime_probe_source() -> None:
         chat_payload_key="prompt",
         chat_payload_list=False,
         response_text_key="answer",
-        extras={"source": "runtime_probe"},
+        extras={"source": "runtime_probe", "chat_contract_version": CHAT_CONTRACT_VERSION},
     )
     cfg = _make_config(target_endpoint="")
     runner = ValidateRunner(
@@ -133,6 +134,10 @@ def test_confirmed_endpoint_from_sbom_requires_runtime_probe_source() -> None:
         sbom=AiSbomDocument(target="./app", nodes=[node_unconfirmed]),
     )
     assert runner2._confirmed_endpoint_from_sbom("/api/chat") is None
+
+    for version in (None, CHAT_CONTRACT_VERSION - 1):
+        node.metadata.extras["chat_contract_version"] = version
+        assert runner._confirmed_endpoint_from_sbom("/api/chat") is None
 
 
 @respx.mock
@@ -152,7 +157,7 @@ async def test_confirmed_sbom_endpoint_skips_live_resolver():
         "/api/chat",
         chat_payload_key="message",
         chat_payload_list=False,
-        extras={"source": "runtime_probe"},
+        extras={"source": "runtime_probe", "chat_contract_version": CHAT_CONTRACT_VERSION},
     )
     cfg = _make_config(workflows=["happy_path"], target_endpoint="")
     runner = ValidateRunner(

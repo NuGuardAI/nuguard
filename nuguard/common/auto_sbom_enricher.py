@@ -949,9 +949,14 @@ def persist_probe_result_to_sbom(
 
     target_node.metadata.chat_payload_key = result.key
     target_node.metadata.chat_payload_list = result.is_list
+    if getattr(result, "response_key", None) is not None:
+        target_node.metadata.response_text_key = result.response_key
     extras: ProbeExtras = cast(ProbeExtras, dict(target_node.metadata.extras or {}))
     extras["source"] = PROBE_SOURCE_RUNTIME_PROBE
     extras["confirmed_at"] = datetime.now(timezone.utc).isoformat()
+    from nuguard.common.endpoint_detection.constants import CHAT_CONTRACT_VERSION  # noqa: PLC0415
+
+    extras["chat_contract_version"] = CHAT_CONTRACT_VERSION
     if result.value_template is not None:
         extras["probe_value_template"] = result.value_template
     else:
@@ -1001,6 +1006,17 @@ def persist_liveness_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
     (see :mod:`nuguard.common.endpoint_liveness`) survives across runs and a
     later run — behavior after redteam, or vice versa — can skip re-pinging
     endpoints whose cached result is still fresh.
+    """
+    return _persist_enriched_sbom(sbom, sbom_path)
+
+
+def persist_endpoint_resolution_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
+    """Persist *sbom* (with ``sbom.resolved_chat_endpoint`` /
+    ``resolved_path_param_values`` / ``resolved_chat_endpoint_fingerprint``
+    already set) so a live-validated chat-endpoint resolution (see
+    :mod:`nuguard.common.endpoint_preflight`) survives across runs and Target
+    Verify/Behavior/Redteam can share one validated resolution instead of
+    each re-probing the target live.
     """
     return _persist_enriched_sbom(sbom, sbom_path)
 

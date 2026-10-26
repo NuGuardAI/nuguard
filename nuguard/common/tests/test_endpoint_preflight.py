@@ -17,13 +17,16 @@ if TYPE_CHECKING:
 _NS = uuid.NAMESPACE_URL
 
 
-async def _validate(client: Any, sbom: AiSbomDocument, **kwargs: Any) -> PreflightOutcome:
+async def _validate(client: Any, sbom: AiSbomDocument | None, **kwargs: Any) -> PreflightOutcome:
     """Test-only shim: these fakes are structurally, not nominally, TargetAppClient."""
     return await validate_and_rotate_chat_endpoint(cast("TargetAppClient", client), sbom, **kwargs)
 
 
 class _DummyClient:
     """Minimal TargetAppClient stand-in — mirrors the fake used in behavior tests."""
+
+    last_raw_response: dict | None = None
+    _detected_response_key: str | None = None
 
     def __init__(
         self, working_path: str | None, initial_path: str = "/chat",
@@ -81,6 +84,67 @@ async def test_ok_when_first_response_is_not_404_405() -> None:
     assert outcome.ok is True
     assert outcome.rotated_endpoint is None
     assert client.called_paths == ["/chat"]
+
+
+@pytest.mark.asyncio
+async def test_metadata_auto_detection_is_not_reply_evidence() -> None:
+    client = _DummyClient(working_path="/chat")
+    client.last_raw_response = None
+    client._detected_response_key = "description"
+
+    async def send(message: str, session: object) -> tuple[str, list[dict]]:
+        client.last_raw_response = {"description": "Metadata description that is longer than thirty characters"}
+        return client.last_raw_response["description"], []
+
+    with patch.object(client, "send", new=send):
+        outcome = await _validate(client, None, has_explicit_endpoint=True)
+    assert not outcome.ok and not outcome.cacheable
+
+
+@pytest.mark.asyncio
+async def test_transport_exception_remains_fail_open_but_cannot_be_cached() -> None:
+    client = _DummyClient(working_path="/chat")
+    with patch.object(client, "send", new=AsyncMock(side_effect=RuntimeError("transport failed"))):
+        outcome = await _validate(client, _sbom_with_candidates("/chat"), has_explicit_endpoint=False)
+    assert outcome.ok
+    assert not outcome.cacheable
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply", ["[HTTP 500] backend unavailable", "[HTTP 401] unauthorized", "[TIMEOUT]"])
+async def test_transport_failure_markers_cannot_confirm_cache(reply: str) -> None:
+    client = _DummyClient(working_path=None, failure_response=reply)
+    outcome = await _validate(client, None, has_explicit_endpoint=True)
+    assert outcome.ok and not outcome.cacheable
+    assert "transport failed" not in str(outcome.model_dump())
+
+
+@pytest.mark.asyncio
+async def test_unconfirmed_probe_cannot_be_promoted_by_preflight() -> None:
+    from nuguard.common.endpoint_detection.live_probe import ProbeResult
+
+    client = _DummyClient(working_path=None)
+    with (
+        patch("nuguard.common.endpoint_detection.live_probe.probe_endpoint", new=AsyncMock(
+            return_value=ProbeResult("/other/chat", "message", False, confirmed=False),
+        )),
+        patch("nuguard.common.browser_login.session.sniff_chat_endpoint_headless", new=AsyncMock(return_value=None)),
+    ):
+        outcome = await _validate(client, _sbom_with_candidates("/chat"), has_explicit_endpoint=False)
+    assert not outcome.ok and not outcome.cacheable
+
+
+@pytest.mark.asyncio
+async def test_browser_observation_without_reply_cannot_be_cached() -> None:
+    client = _DummyClient(working_path=None)
+    with (
+        patch("nuguard.common.endpoint_detection.live_probe.probe_endpoint", new=AsyncMock(return_value=None)),
+        patch("nuguard.common.browser_login.session.sniff_chat_endpoint_headless", new=AsyncMock(
+            return_value=("/observed/chat", "text", False),
+        )),
+    ):
+        outcome = await _validate(client, _sbom_with_candidates("/chat"), has_explicit_endpoint=False)
+    assert not outcome.ok and not outcome.cacheable
 
 
 @pytest.mark.asyncio
