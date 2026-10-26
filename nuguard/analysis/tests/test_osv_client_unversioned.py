@@ -58,3 +58,31 @@ def test_only_unversioned_dependencies_means_no_request_at_all() -> None:
         findings = osv_client.query_osv([_dep("a", "pkg:maven/g/a"), _dep("b", "pkg:pypi/b")])
     assert findings == []
     post.assert_not_called()
+
+
+def test_specifier_lower_bound_is_still_queried_and_results_stay_aligned() -> None:
+    """Develop queries a specifier's lowest version; the unversioned filter must keep that."""
+    deps = [
+        _dep("a", "pkg:maven/g/a"),
+        {"purl": "pkg:pypi/c", "name": "c", "version_spec": ">=1.3.3"},
+        _dep("b", "pkg:maven/g/b@1.2.3"),
+    ]
+    sent: list[dict] = []
+
+    def _fake_post(url: str, payload: dict, timeout: float = 15.0):
+        sent.append(payload)
+        return {"results": [{"vulns": []}, {"vulns": [{"id": "GHSA-BBBB"}]}]}
+
+    with (
+        patch.object(osv_client, "_post_json", side_effect=_fake_post),
+        patch.object(
+            osv_client, "_get_json", return_value={"id": "GHSA-BBBB", "summary": "issue b"}
+        ),
+    ):
+        findings = osv_client.query_osv(deps)
+
+    assert [q["package"]["purl"] for q in sent[0]["queries"]] == [
+        "pkg:pypi/c@1.3.3",
+        "pkg:maven/g/b@1.2.3",
+    ]
+    assert {(f["dep_name"], f["advisory_id"]) for f in findings} == {("b", "GHSA-BBBB")}
