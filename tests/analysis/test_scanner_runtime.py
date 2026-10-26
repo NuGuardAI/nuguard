@@ -21,8 +21,10 @@ from nuguard.config import NuGuardConfig, _flatten_yaml
 
 
 @pytest.fixture(autouse=True)
-def capture_scanner_logs(monkeypatch):
-    monkeypatch.setattr(runtime._log, "propagate", True)
+def capture_scanner_logs(caplog, monkeypatch):
+    # A configured parent logger can stop propagation before records reach root.
+    monkeypatch.setattr(runtime._log, "handlers", [*runtime._log.handlers, caplog.handler])
+    caplog.set_level(logging.INFO, logger=runtime._log.name)
 
 
 @pytest.mark.parametrize(
