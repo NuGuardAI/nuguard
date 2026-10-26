@@ -721,6 +721,28 @@ version specifications without an exact PURL version.
 No repository metadata is fetched to resolve them, and OSV skips these unversioned
 records. Ordinary literal releases and build metadata remain queryable.
 
+Known limitations of Java dependency resolution. The scanner reads declarations
+statically and never runs Maven or Gradle. When a version depends on something it
+cannot read, the record stays unversioned (and OSV skips it) instead of being guessed:
+
+- Only the manifest itself is read. Parent POMs, parent chains, `relativePath`
+  modules, and properties or dependency management defined in a parent are not
+  loaded. Only a `spring-boot-starter-parent` or `spring-boot-dependencies` parent
+  contributes a version, and only its own `<version>`. Any other parent disables the
+  imported-BOM fallback, because its management could take precedence over the import.
+- Only an imported `spring-boot-dependencies` BOM is consulted; other imported BOMs
+  are not read.
+- Profile activation is not evaluated. Competing or uncertain profile declarations,
+  imports, management entries and properties leave the version unresolved.
+- `LATEST`, `RELEASE`, version ranges and Gradle dynamic selectors stay unresolved.
+- Gradle files are read declaratively. Platforms and BOMs, dependency-management
+  plugins, constraints and resolution strategies are not applied.
+- Across manifests one record per coordinate is kept (the first found), so modules
+  that pin different versions of one coordinate are reported once.
+
+Fully accurate resolution would require running Maven itself (for example
+`mvn help:effective-pom`), which is outside the scope of this scanner.
+
 For Java dependencies, a resolved declaration such as `org.springframework.ai:spring-ai-openai-spring-boot-starter:1.0.1` is represented as:
 
 ```json

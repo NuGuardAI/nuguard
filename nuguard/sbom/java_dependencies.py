@@ -3,6 +3,30 @@
 This module does not execute Maven or Gradle.  It parses common declarative
 forms from ``pom.xml``, ``build.gradle``, ``build.gradle.kts``, and Gradle
 version catalogs and returns dictionaries accepted by ``PackageDep``.
+
+Known limitations.  This is a conservative offline lookup, not Maven's effective
+model.  When a version depends on something it cannot read, the dependency stays
+unversioned (and OSV skips it) instead of being guessed:
+
+* Only the manifest itself is read.  Parent POMs, parent chains, ``relativePath``
+  modules, and properties or dependency management defined in a parent are not
+  loaded.  Only a ``spring-boot-starter-parent`` or ``spring-boot-dependencies``
+  parent contributes a version, and only its own ``<version>``.  Any other parent
+  disables the imported-BOM fallback, because its management could take
+  precedence over the import.
+* Only an imported ``spring-boot-dependencies`` BOM is consulted.  The contents of
+  other imported BOMs are not read.
+* Profile activation is not evaluated.  Competing or uncertain profile
+  declarations, imports, management entries and properties leave the version
+  unresolved rather than selecting one.
+* ``LATEST``, ``RELEASE``, version ranges and Gradle dynamic selectors (``1.+``,
+  ``latest.<status>``) stay unresolved.  No repository metadata is fetched.
+* Gradle files are read declaratively (string and map notations, simple string
+  assignments, ``gradle.properties`` and version catalogs).  Platforms and BOMs,
+  dependency-management plugins, constraints and resolution strategies are not
+  applied.
+* Across manifests one record per coordinate is kept (the first found), so
+  modules that pin different versions of one coordinate are reported once.
 """
 
 from __future__ import annotations
@@ -500,6 +524,7 @@ def _spring_boot_version(
     Inherited management precedes imported BOM entries for overlapping artifacts.
     Explicit dependency and local managed versions are handled by the caller.
     A recognized parent with an unresolved version must not fall through to a BOM.
+    Neither may an unrecognized parent, whose management is not read.
     """
     parent = _child(project, "parent")
     if parent is not None:
@@ -509,6 +534,9 @@ def _spring_boot_version(
             return ""
         if group == _SPRING_BOOT_GROUP and artifact in _SPRING_BOOT_PARENTS:
             return _resolve(_text(parent, "version"), properties)
+        # Any other parent's management is not read here and may take precedence
+        # over an imported BOM, so the import must not supply the version.
+        return ""
     return imported_bom_versions.get((_SPRING_BOOT_GROUP, "spring-boot-dependencies"), "")
 
 

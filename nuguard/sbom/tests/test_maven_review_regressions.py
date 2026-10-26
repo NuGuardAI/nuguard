@@ -379,3 +379,22 @@ def test_literal_management_identity_work_scales_linearly(
         counts.append(calls["identity"])
     assert counts[1] <= 2 * counts[0] + 12
     assert counts[2] <= 2 * counts[1] + 12
+
+
+@pytest.mark.parametrize(
+    "parent",
+    [
+        _parent(artifact="not-a-boot-parent"),
+        "<parent><groupId>org.example</groupId><artifactId>corporate-parent</artifactId>"
+        "<version>7</version></parent>",
+    ],
+    ids=["boot_group_other_artifact", "other_group"],
+)
+def test_unrecognized_parent_management_may_precede_an_imported_bom(
+    tmp_path: Path,
+    parent: str,
+) -> None:
+    """An unreadable parent may manage the starter; the BOM import must not be used instead."""
+    record = _scan(tmp_path, _pom(_dep(), parent=parent, managed=_import("3.4.2")))[_BOOT]
+    assert "@" not in record["purl"]
+    assert not record["version_spec"].startswith("==")
