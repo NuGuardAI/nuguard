@@ -366,6 +366,8 @@ def _dedup_by_location(
                 not _is_exact_config_model(k, node_map[k]),
                 node_map[k].priority,
                 -node_map[k].confidence,
+                # Same token read twice: the full model identifier beats its truncation.
+                -len(node_map[k].display_name) if k[0] == ComponentType.MODEL else 0,
                 node_map[k].display_name,
                 k[1],
             ),

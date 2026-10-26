@@ -326,7 +326,17 @@ def _load_yaml_documents(
             node = loader.get_node()
             if node is not None:
                 _check_yaml_work(node, budget)
-                yield loader.construct_document(node)
+                try:
+                    document = loader.construct_document(node)
+                except yaml.YAMLError:
+                    # Includes _YamlWorkLimit: callers handle it on its own path.
+                    raise
+                except Exception as exc:
+                    # PyYAML's scalar constructors raise whatever a bad value happens to
+                    # trigger (ValueError, AttributeError, KeyError, IndexError, ...).
+                    # Any constructor failure is an invalid file, not a broken scan.
+                    raise yaml.YAMLError("invalid YAML value") from exc
+                yield document
     finally:
         loader.dispose()
 

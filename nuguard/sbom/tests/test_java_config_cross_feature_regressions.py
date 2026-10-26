@@ -382,3 +382,43 @@ def test_same_line_exact_models_absorb_only_their_own_regex_truncation(
     assert {acc.display_name for acc in node_map.values()} == set(values)
     assert len(node_map[(ComponentType.MODEL, configs[owner].canonical_name)].evidence) == 2
     assert len(node_map[(ComponentType.MODEL, configs[1 - owner].canonical_name)].evidence) == 1
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_location_tie_keeps_the_full_model_name_over_its_truncation(reverse: bool) -> None:
+    """``model_generic`` reads ``gemini-2.0`` and ``google/gemini-2.0-flash`` from one token."""
+    pairs = [("gemini-2.0", "gemini-2.0"), ("gemini-2.0-flash", "google/gemini-2.0-flash")]
+    detections = [
+        ComponentDetection(
+            component_type=ComponentType.MODEL,
+            canonical_name=canonical,
+            display_name=display,
+            adapter_name="model_generic",
+            priority=110,
+            confidence=0.53,
+            metadata={},
+            file_path="src/agent.py",
+            line=7,
+            snippet=display,
+            evidence_kind="regex",
+        )
+        for canonical, display in pairs
+    ]
+    if reverse:
+        detections.reverse()
+    extractor = AiSbomExtractor()
+    node_map: dict[tuple[ComponentType, str], _NodeAccumulator] = {}
+    for detection in detections:
+        extractor._merge_detection(node_map, detection)
+    _dedup_by_location(node_map)
+    assert {acc.display_name for acc in node_map.values()} == {"google/gemini-2.0-flash"}
+    assert len(next(iter(node_map.values())).evidence) == 2
+
+
+def test_extractor_keeps_the_full_model_name_when_two_regexes_read_one_token(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "agent.py").write_text('model_id = "google/gemini-2.0-flash"\n', encoding="utf-8")
+    document = AiSbomExtractor().extract_from_path(tmp_path, AiSbomConfig(enable_llm=False))
+    names = {n.name for n in document.nodes if n.component_type == ComponentType.MODEL}
+    assert "google/gemini-2.0-flash" in names

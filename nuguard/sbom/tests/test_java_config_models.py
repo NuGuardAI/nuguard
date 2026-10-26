@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from yaml.constructor import BaseConstructor
 
 from nuguard.sbom import AiSbomConfig, AiSbomExtractor
 from nuguard.sbom.adapters.java import java_config
@@ -587,6 +589,45 @@ def test_extractor_survives_an_invalid_yaml_timestamp(tmp_path: Path) -> None:
 
     models = {n.name for n in document.nodes if n.component_type == ComponentType.MODEL}
     assert models == {"gpt-4o-mini"}
+
+
+def _failing_constructor(error: type[Exception]) -> Callable[..., None]:
+    def construct_document(self: object, node: object) -> None:
+        raise error("constructor failed")
+
+    return construct_document
+
+
+@pytest.mark.parametrize("error", [RuntimeError, KeyError, IndexError, ZeroDivisionError])
+def test_any_yaml_constructor_failure_is_a_parse_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    error: type[Exception],
+) -> None:
+    _capture_java_config_logs(monkeypatch, caplog)
+    monkeypatch.setattr(BaseConstructor, "construct_document", _failing_constructor(error))
+    content = "langchain4j.open-ai.chat-model.model-name: gpt-4o\n"
+    assert _models(content, "application.yml") == []
+    assert java_config.application_yaml_allows_scan(content, "application.yml") is False
+    assert "invalid YAML file" in caplog.text
+
+
+def test_work_limit_raised_by_a_constructor_keeps_its_own_handling(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    _capture_java_config_logs(monkeypatch, caplog)
+    failing = _failing_constructor(java_config._YamlWorkLimit)
+    monkeypatch.setattr(BaseConstructor, "construct_document", failing)
+    content = "langchain4j.open-ai.chat-model.model-name: gpt-4o\n"
+    assert java_config.application_yaml_allows_scan(content, "application.yml") is False
+    assert "unsafe YAML file" in caplog.text
+    assert "constructor failed" in caplog.text
+    assert "invalid YAML file" not in caplog.text
+    caplog.clear()
+    assert _models(content, "application.yml") == []
+    assert "stopped YAML model extraction" in caplog.text
+    assert "constructor failed" in caplog.text
 
 
 @pytest.mark.parametrize("profiles", ["%prod,staging.", "%dev,test,prod."])

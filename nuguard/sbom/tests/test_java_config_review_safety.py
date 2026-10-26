@@ -117,7 +117,10 @@ def test_properties_credentials_never_reach_llm_prompts(
 
 
 @pytest.mark.parametrize("suffix", ["yml", "yaml"])
-@pytest.mark.parametrize("invalid", ["!!timestamp invalid", "2026-02-30"])
+@pytest.mark.parametrize(
+    "invalid",
+    ["!!timestamp invalid", "2026-02-30", "!!bool invalid", "!!int ''"],
+)
 def test_invalid_yaml_constructor_does_not_abort_other_config_files(
     tmp_path: Path,
     suffix: str,
