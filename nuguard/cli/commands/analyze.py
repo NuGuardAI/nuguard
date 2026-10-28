@@ -4,7 +4,7 @@ Exit codes
 ----------
 0  No findings at or above ``--fail-on`` threshold (default: high)
 1  One or more findings at or above ``--fail-on`` threshold
-2  Analysis error (SBOM could not be read / parsed, or incomplete Checkov/Semgrep scan)
+2  Analysis error (SBOM could not be read / parsed, or incomplete Checkov/Semgrep/gitleaks scan)
 3  Not implemented / reserved
 """
 
@@ -139,6 +139,14 @@ def analyze(
     checkov_total_timeout: Optional[float] = typer.Option(None, "--checkov-total-timeout", min=0.001, help="Total scanner budget across all paths in seconds. [default: 300]"),
     semgrep_timeout: Optional[float] = typer.Option(None, "--semgrep-timeout", min=0.001, help="Per-process scanner deadline in seconds. [default: 120]"),
     semgrep_total_timeout: Optional[float] = typer.Option(None, "--semgrep-total-timeout", min=0.001, help="Total scanner budget across all paths in seconds. [default: 300]"),
+    pip_audit_timeout: Optional[float] = typer.Option(None, "--pip-audit-timeout", min=0.001, help="Per-process pip-audit deadline in seconds. [default: 300]"),
+    pip_audit_total_timeout: Optional[float] = typer.Option(None, "--pip-audit-total-timeout", min=0.001, help="Total pip-audit budget across all manifests in seconds. [default: 600]"),
+    gitleaks_timeout: Optional[float] = typer.Option(None, "--gitleaks-timeout", min=0.001, help="Per-process gitleaks deadline in seconds. [default: 120]"),
+    gitleaks_total_timeout: Optional[float] = typer.Option(None, "--gitleaks-total-timeout", min=0.001, help="Total gitleaks budget across all paths in seconds. [default: 300]"),
+    gitleaks: bool = typer.Option(True, "--gitleaks/--no-gitleaks",
+                                  help="Scan source for hardcoded secrets with gitleaks (requires gitleaks on PATH)."),
+    pip_audit: bool = typer.Option(True, "--pip-audit/--no-pip-audit",
+                                   help="Run pip-audit against resolved Python dependencies (requires pip-audit on PATH)."),
     checkov: bool = typer.Option(True, "--checkov/--no-checkov",
                                  help="Run Checkov IaC scan (requires checkov on PATH)."),
     trivy: bool = typer.Option(True, "--trivy/--no-trivy",
@@ -257,7 +265,7 @@ def analyze(
 
     # NGA-only mode: disable all external scans
     if nga:
-        osv = grype = checkov = trivy = semgrep = atlas = False
+        osv = grype = checkov = trivy = semgrep = atlas = pip_audit = gitleaks = False
 
     # ------------------------------------------------------------------
     # Load SBOM
@@ -360,6 +368,8 @@ def analyze(
             enable_checkov=checkov,
             enable_trivy=trivy,
             enable_semgrep=semgrep,
+            enable_pip_audit=pip_audit,
+            enable_gitleaks=gitleaks,
             enable_supply_chain=supply_chain,
             supply_chain_profile=sc_profile,
             supply_chain_verify_artifacts=sc_verify,
@@ -372,6 +382,10 @@ def analyze(
             checkov_total_timeout=checkov_total_timeout if checkov_total_timeout is not None else cfg.analyze_checkov_total_timeout,
             semgrep_timeout=semgrep_timeout if semgrep_timeout is not None else cfg.analyze_semgrep_timeout,
             semgrep_total_timeout=semgrep_total_timeout if semgrep_total_timeout is not None else cfg.analyze_semgrep_total_timeout,
+            pip_audit_timeout=pip_audit_timeout if pip_audit_timeout is not None else cfg.analyze_pip_audit_timeout,
+            pip_audit_total_timeout=pip_audit_total_timeout if pip_audit_total_timeout is not None else cfg.analyze_pip_audit_total_timeout,
+            gitleaks_timeout=gitleaks_timeout if gitleaks_timeout is not None else cfg.analyze_gitleaks_timeout,
+            gitleaks_total_timeout=gitleaks_total_timeout if gitleaks_total_timeout is not None else cfg.analyze_gitleaks_total_timeout,
             grype_retries=grype_retries if grype_retries is not None else 3,
         )
         result = asyncio.run(run_analysis(request, sbom=doc, llm_client=llm_client))
@@ -454,8 +468,8 @@ def analyze(
         typer.echo(_render(formats[0]))
 
     # Coverage failures take precedence over a finding-based pass/fail.
-    if any(tool_status.get(tool, {}).get("status") == "error" for tool in ("checkov", "semgrep")):
-        typer.echo("Analysis incomplete: Checkov or Semgrep failed; see scanner logs and tool coverage.", err=True)
+    if any(tool_status.get(tool, {}).get("status") == "error" for tool in ("checkov", "semgrep", "gitleaks")):
+        typer.echo("Analysis incomplete: Checkov, Semgrep, or gitleaks failed; see scanner logs and tool coverage.", err=True)
         raise typer.Exit(code=2)
 
     # Exit 1 if any findings meet the fail-on severity threshold
@@ -513,6 +527,9 @@ def _source_tool(f: Finding) -> str:
     ``osv-GHSA-...``, ``nga-NGA-001-...``.
     """
     prefix = f.finding_id.split("-")[0].lower()
+    # pip-audit ids contain a hyphen, so the first segment alone reads as "pip".
+    if f.finding_id.lower().startswith("pip-audit-"):
+        return "pip-audit"
     # known prefixes
     if prefix in ("trivy", "osv", "grype", "nga", "checkov", "semgrep", "atlas"):
         return prefix
@@ -563,9 +580,9 @@ def _canonical_vuln_id(f: Finding) -> str | None:
     Returns the CVE-XXXX-XXXXX id when available (preferred), then GHSA-...,
     then PYSEC-... (OSV's own advisory id for PyPI packages when no CVE/GHSA
     alias exists), then None for structural findings (NGA, ATLAS, semgrep,
-    checkov) that are not package vulnerabilities and should never be merged.
+    checkov, gitleaks) that are not package vulnerabilities and should never be merged.
     """
-    if _source_tool(f) in ("nga", "atlas", "semgrep", "checkov"):
+    if _source_tool(f) in ("nga", "atlas", "semgrep", "checkov", "gitleaks"):
         return None
     # CVE embedded in finding_id (trivy, grype)
     m = _CVE_RE.search(f.finding_id)
@@ -590,46 +607,91 @@ def _canonical_vuln_id(f: Finding) -> str | None:
     return None
 
 
+_STRUCTURAL_TOOLS = frozenset({"nga", "atlas", "semgrep", "checkov", "gitleaks"})
+_ASSUMED_SEVERITY_TOOLS = frozenset({"pip-audit"})
+
+
+def _vuln_ids(f: Finding) -> set[str]:
+    """Every CVE/GHSA/PYSEC identifier a package finding is known by.
+
+    Collected from the finding_id and title, where OSV and pip-audit carry
+    their advisory id and registered aliases.  Structural findings have none.
+    """
+    if _source_tool(f) in _STRUCTURAL_TOOLS:
+        return set()
+    ids: set[str] = set()
+    for text in (f.finding_id, f.title or ""):
+        for pattern in (_CVE_RE, _GHSA_RE, _PYSEC_RE):
+            ids.update(m.group().upper() for m in pattern.finditer(text))
+    return ids
+
+
+def _group_by_shared_ids(findings: list[Finding]) -> list[list[Finding]]:
+    """Merge findings that share any vulnerability identifier (union-find).
+
+    Two advisories reported under different ids (for example OSV's PYSEC id
+    and Trivy's CVE id, linked by an alias) end up in one group.  Findings
+    with no identifier are returned as singleton groups.
+    """
+    parent = list(range(len(findings)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    owner: dict[str, int] = {}
+    for i, f in enumerate(findings):
+        for vid in _vuln_ids(f):
+            if vid in owner:
+                parent[find(i)] = find(owner[vid])
+            else:
+                owner[vid] = i
+
+    buckets: dict[int, list[Finding]] = {}
+    for i, f in enumerate(findings):
+        buckets.setdefault(find(i), []).append(f)
+    return list(buckets.values())
+
+
 def _dedup_component_findings(
     flist: list[Finding],
 ) -> list[tuple[Finding, list[str]]]:
-    """Deduplicate findings within a component by CVE/GHSA identity.
+    """Deduplicate findings within a component by shared vulnerability identity.
 
     Returns a list of (canonical_finding, [source_tool, ...]) tuples.
-    When multiple tools report the same CVE:
+    When multiple tools report the same vulnerability (directly or via an
+    alias such as PYSEC-to-CVE):
       - OSV is preferred as canonical (for its osv.dev link and remediation text)
       - All originating tool names are collected for display
+      - Severity is the worst rating from scanners that report one; pip-audit
+        does not report severity, so its assumed MEDIUM is used only when no
+        other source rated the advisory
     Non-CVE findings (NGA structural rules, ATLAS, …) pass through unchanged.
     """
-    groups: dict[str, list[Finding]] = {}
-    no_key: list[Finding] = []
-    for f in flist:
-        key = _canonical_vuln_id(f)
-        if key is None:
-            no_key.append(f)
-        else:
-            groups.setdefault(key, []).append(f)
+    keyed = [f for f in flist if _vuln_ids(f)]
+    unkeyed = [f for f in flist if not _vuln_ids(f)]
 
     result: list[tuple[Finding, list[str]]] = []
-    for _key, group in groups.items():
+    for group in _group_by_shared_ids(keyed):
         sources = sorted({_source_tool(f) for f in group})
         # Prefer OSV as canonical — it carries osv.dev links and remediation guidance
         osv_findings = [f for f in group if _source_tool(f) == "osv"]
         canonical = osv_findings[0] if osv_findings else group[0]
         # Severity should reflect the worst-case rating across all sources
-        # reporting this CVE, not whichever source happened to be canonical —
-        # scanners can disagree on severity for the same vulnerability.
-        worst = min(group, key=lambda f: _SEV_ORDER.get(f.severity.value, 99))
+        # reporting this vulnerability, not whichever source happened to be
+        # canonical — scanners can disagree on severity for the same advisory.
+        rated = [f for f in group if _source_tool(f) not in _ASSUMED_SEVERITY_TOOLS] or group
+        worst = min(rated, key=lambda f: _SEV_ORDER.get(f.severity.value, 99))
         if worst.severity != canonical.severity:
             canonical = canonical.model_copy(update={"severity": worst.severity})
         result.append((canonical, sources))
-
-    for f in no_key:
+    for f in unkeyed:
         result.append((f, [_source_tool(f)]))
 
     result.sort(key=lambda x: _SEV_ORDER.get(x[0].severity.value, 99))
     return result
-
 
 _FIX_VERSION_RE = re.compile(r"fix available:\s*([^)]+)\)")
 
@@ -677,6 +739,21 @@ def _manifest_line_number(source_root: Path | None, source_file: str, dep_name: 
     return None
 
 
+def _display_names(components: list[str]) -> list[str]:
+    """Unique package base names (``name@version`` -> ``name``), in first-seen order."""
+    return list(dict.fromkeys(_package_base(c) for c in components))
+
+
+def _is_go_package_finding(f: Finding) -> bool:
+    """True when a finding's raw component PURL is a Go module (``pkg:golang/``).
+
+    Grype reports Go binaries' toolchain stdlib as ``pkg:golang/stdlib@<ver>``;
+    the PURL type is dropped from the normalised component label, so it is read
+    from the raw ``affected_component`` here.
+    """
+    return (f.affected_component or "").startswith("pkg:golang/")
+
+
 def _component_remediation_text(
     components: list[str],
     findings: list[Finding],
@@ -691,7 +768,7 @@ def _component_remediation_text(
     back to image-rebuild guidance for OS packages that aren't declared in
     any project manifest (grype/trivy scan the container image directly).
     """
-    names = [c.rpartition("@")[0] or c for c in components]
+    names = _display_names(components)
     names_str = ", ".join(f"`{n}`" for n in names)
     fix_candidates = [v for v in (_fixed_version_for_finding(f) for f in findings) if v]
 
@@ -717,13 +794,23 @@ def _component_remediation_text(
             f"{candidates_note}"
         )
 
-    is_are, pkg_noun = ("is", "an OS-level package") if len(names) == 1 else ("are", "OS-level packages")
+    is_are = "is" if len(names) == 1 else "are"
     upgrade_cmd = " ".join(names)
     image_note = _image_location_note(findings)
     image_phrase = (
         f"in the container image {image_note}" if image_note
         else "baked into the container image (not declared in a project manifest)"
     )
+    if any(_is_go_package_finding(f) for f in findings):
+        # Go toolchain stdlib (e.g. stdlib@1.24.6) is compiled into Go binaries,
+        # so an OS package upgrade cannot fix it.
+        return (
+            f"{names_str} {is_are} the Go standard library linked into Go binaries "
+            f"{image_phrase} — `apk upgrade` / `apt-get` cannot fix it. Rebuild those "
+            f"binaries with Go `{best}` or newer, or bump the base image tag once a "
+            f"patched image is published.{candidates_note}"
+        )
+    pkg_noun = "an OS-level package" if len(names) == 1 else "OS-level packages"
     return (
         f"{names_str} {is_are} {pkg_noun} {image_phrase} — rebuild the image after "
         f"upgrading to `{best}` or newer, e.g. `apk upgrade {upgrade_cmd}` / "
@@ -808,6 +895,17 @@ class _ComponentGroup(NamedTuple):
     entries: list[tuple[Finding, list[str]]]        # (finding, sources) rows
 
 
+def _entries_vuln_ids(entries: list[tuple[Finding, list[str]]]) -> set[str]:
+    """Union of advisory identifiers across a component's deduped entries."""
+    return {vid for f, _ in entries for vid in _vuln_ids(f)}
+
+
+def _package_base(label: str) -> str:
+    """Strip a trailing ``@version`` from a component label, keeping npm scopes."""
+    idx = label.rfind("@")
+    return label[:idx] if idx > 0 else label
+
+
 def _merge_overlapping_components(
     grouped_deduped: list[tuple[str, list[tuple[Finding, list[str]]]]],
 ) -> list[_ComponentGroup]:
@@ -824,13 +922,19 @@ def _merge_overlapping_components(
     """
     groups: list[_ComponentGroup] = []
     for comp, entries in grouped_deduped:
-        vuln_ids = {vid for f, _ in entries if (vid := _canonical_vuln_id(f)) is not None}
+        vuln_ids = _entries_vuln_ids(entries)
 
         target: _ComponentGroup | None = None
         if vuln_ids:
             for g in groups:
-                g_vuln_ids = {vid for f, _ in g.entries if (vid := _canonical_vuln_id(f)) is not None}
-                if vuln_ids <= g_vuln_ids:
+                g_vuln_ids = _entries_vuln_ids(g.entries)
+                same_package = any(
+                    _package_base(c) == _package_base(comp) for c in g.components
+                )
+                # Same package reported under another label (e.g. OSV's
+                # "chromadb" vs pip-audit's "chromadb@1.5.9") folds on any
+                # shared advisory; other components must be a subset.
+                if vuln_ids <= g_vuln_ids or (same_package and vuln_ids & g_vuln_ids):
                     target = g
                     break
 
@@ -839,18 +943,17 @@ def _merge_overlapping_components(
             continue
 
         target.components.append(comp)
-        by_vuln_id = {
-            vid: i for i, (f, _) in enumerate(target.entries)
-            if (vid := _canonical_vuln_id(f)) is not None
-        }
         appended = False
         for f, sources in entries:
-            vid = _canonical_vuln_id(f)
-            if vid is not None and vid in by_vuln_id:
-                # Same CVE already present in the target group — merge sources only.
-                i = by_vuln_id[vid]
-                ef, esources = target.entries[i]
-                target.entries[i] = (ef, sorted(set(esources) | set(sources)))
+            fids = _vuln_ids(f)
+            match = next(
+                (i for i, (ef, _) in enumerate(target.entries) if fids & _vuln_ids(ef)),
+                None,
+            ) if fids else None
+            if match is not None:
+                # Same advisory already present in the target group — merge sources only.
+                ef, esources = target.entries[match]
+                target.entries[match] = (ef, sorted(set(esources) | set(sources)))
             else:
                 # Structural finding tied to this specific component (or a CVE
                 # somehow missing from the target, shouldn't happen given the
@@ -948,6 +1051,53 @@ def _compute_component_groups(
     return _merge_overlapping_components(grouped_deduped)
 
 
+def _recommended_actions_lines(
+    component_groups: list[Any],
+    deps_by_name: dict[str, Any],
+    source_root: Path | None,
+) -> list[str]:
+    """One de-duplicated action per vulnerable component, plus a count of the rest.
+
+    Each dependency group is reduced to a single bullet: its highest severity,
+    how many advisories it resolves, the fix, and which scanners reported it.
+    Structural (NGA / ATLAS) findings are summarised as a count, since they
+    need individual review rather than a version bump.
+    """
+    lines: list[str] = ["## Recommended Actions", ""]
+    structural_count = 0
+    bullets: list[str] = []
+    for g in component_groups:
+        dep_entries = [(f, s) for f, s in g.entries if _canonical_vuln_id(f) is not None]
+        structural_count += len(g.entries) - len(dep_entries)
+        if not dep_entries:
+            continue
+        top_sev = min(
+            (f.severity.value for f, _ in dep_entries),
+            key=lambda v: _SEV_ORDER.get(v, 99),
+        )
+        emoji = _SEV_EMOJI.get(top_sev, "")
+        n = len(dep_entries)
+        remediation = _component_remediation_text(
+            g.components, [f for f, _ in dep_entries], deps_by_name, source_root
+        )
+        sources = sorted({s for _, srcs in dep_entries for s in srcs})
+        sources_str = ", ".join(_display_tool_name(s) for s in sources)
+        bullets.append(
+            f"- {emoji} **{top_sev.upper()}** `{g.components[0]}` — "
+            f"{n} advisor{'y' if n == 1 else 'ies'}. {remediation} _(reported by {sources_str})_"
+        )
+    if not bullets and not structural_count:
+        return []
+    lines += bullets
+    if structural_count:
+        lines.append(
+            f"- {structural_count} structural finding(s) (NGA / ATLAS rules) need review; "
+            "see Findings below."
+        )
+    lines.append("")
+    return lines
+
+
 def _render_markdown(
     findings: list[Finding],
     sbom_path: Path,
@@ -997,6 +1147,8 @@ def _render_markdown(
                     f"{emoji} **{sev.upper()}:** {len(grp)} finding(s) across {comps} component(s)"
                 )
         lines += ["## Summary", ""] + [f"- {p}" for p in summary_parts] + [""]
+
+        lines += _recommended_actions_lines(component_groups, deps_by_name, source_root)
 
         # Top component groups by unique finding count
         top_n = component_groups[:5]
@@ -1052,7 +1204,7 @@ def _render_markdown(
             # every CVE it resolves.
             if dep_entries:
                 n = len(dep_entries)
-                names = [c.rpartition("@")[0] or c for c in g.components]
+                names = _display_names(g.components)
                 summary = f"{n} known vulnerabilit{'y' if n == 1 else 'ies'} in {', '.join(names)}."
                 remediation = _component_remediation_text(
                     g.components, [f for f, _ in dep_entries], deps_by_name, source_root
@@ -1177,7 +1329,7 @@ def _render_csv(
 
         if dep_entries:
             n = len(dep_entries)
-            names = [c.rpartition("@")[0] or c for c in g.components]
+            names = _display_names(g.components)
             title = f"{n} known vulnerabilit{'y' if n == 1 else 'ies'} in {', '.join(names)}"
             vuln_ids = "; ".join(_canonical_vuln_id(f) or "" for f, _ in dep_entries)
             summary = f"{title}: {vuln_ids}."
