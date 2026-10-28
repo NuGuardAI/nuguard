@@ -906,3 +906,21 @@ The `test_committed_schema_matches_models` test enforces that the committed `aib
 ## Example
 
 Generated SBOM examples are available under `tests/apps/*/*.sbom.json`. The committed `docs/sample-sbom.json` may lag behind the current schema until regenerated, so prefer `nuguard sbom schema` or `nuguard/sbom/schemas/aibom.schema.json` as the source of truth for validation.
+
+## SPDX dependency identifiers
+
+SPDX dependency package IDs retain a readable name segment and include a SHA-256
+suffix derived from the complete PURL, including its version, qualifiers (such as
+Maven type/classifier), and subpath. Distinct variants or releases with the same
+display name therefore remain separate package elements and SBOM membership
+references. Dependency ordering, source-file location, scope, and export time do
+not affect the ID for an otherwise identical record. The PURL is hashed as
+supplied; this does not introduce another package-URL normalization policy.
+
+For a caller-supplied dependency with an empty PURL, the name and version specifier
+provide a deterministic fallback. Package names, version fields, and external
+PURL identifiers are otherwise unchanged. Node and relationship IDs are unchanged.
+
+Dependency IDs now differ from earlier name-only exports. Consumers should use
+the exported `spdxId` values and references rather than constructing dependency
+IDs from package names. No Pydantic fields or committed JSON schemas change.
