@@ -161,9 +161,19 @@ _DOCKERFILE_NAMES = {"dockerfile"}  # lower-cased stem match
 
 
 def _is_dockerfile_name(name: str) -> bool:
-    """``Dockerfile``, ``Dockerfile.dev``, ``Dockerfile-api`` and ``api.dockerfile``."""
+    """``Dockerfile``, ``Dockerfile.dev``, ``Dockerfile-api`` and ``api.dockerfile``.
+
+    Source files that merely start with ``dockerfile.`` (e.g. ``dockerfile.py``)
+    are excluded; otherwise their ``import`` lines parse as ``FROM`` images.
+    """
     lower = name.lower()
     if lower.endswith((".dockerignore", ".md", ".txt")):
+        return False
+    source_suffixes = (
+        _PYTHON_EXTENSIONS | _TYPESCRIPT_EXTENSIONS | _GO_EXTENSIONS
+        | _CSHARP_EXTENSIONS | _JAVA_EXTENSIONS | _SQL_EXTENSIONS | _NOTEBOOK_EXTENSIONS
+    )
+    if Path(lower).suffix in source_suffixes:
         return False
     return (
         lower in _DOCKERFILE_NAMES

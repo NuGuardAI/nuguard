@@ -650,7 +650,11 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
-    for key in ("checkov_timeout", "checkov_total_timeout", "semgrep_timeout", "semgrep_total_timeout"):
+    for key in (
+        "checkov_timeout", "checkov_total_timeout", "semgrep_timeout", "semgrep_total_timeout",
+        "pip_audit_timeout", "pip_audit_total_timeout",
+        "gitleaks_timeout", "gitleaks_total_timeout",
+    ):
         if key in analyze:
             flat[f"analyze_{key}"] = analyze[key]
     if "min_severity" in analyze:
@@ -1982,6 +1986,10 @@ class NuGuardConfig(BaseSettings):
     analyze_checkov_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.checkov_total_timeout).")
     analyze_semgrep_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds (yaml: analyze.semgrep_timeout).")
     analyze_semgrep_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.semgrep_total_timeout).")
+    analyze_pip_audit_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock pip-audit deadline in seconds (yaml: analyze.pip_audit_timeout).")
+    analyze_pip_audit_total_timeout: float = Field(default=600.0, gt=0, allow_inf_nan=False, description="Total wall-clock pip-audit budget across all manifests in seconds (yaml: analyze.pip_audit_total_timeout).")
+    analyze_gitleaks_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock gitleaks deadline in seconds (yaml: analyze.gitleaks_timeout).")
+    analyze_gitleaks_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock gitleaks budget across all paths in seconds (yaml: analyze.gitleaks_total_timeout).")
     analyze_min_severity: str = Field(
         default="medium",
         description=(

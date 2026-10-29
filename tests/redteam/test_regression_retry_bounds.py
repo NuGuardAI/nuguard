@@ -21,7 +21,9 @@ from nuguard.redteam.target.session import AttackSession
 
 @pytest.mark.asyncio
 async def test_prepass_deadline_cancels_probe_and_logs_identity(caplog, monkeypatch):
-    monkeypatch.setattr("nuguard.redteam.defence_regressions.evaluator._log.propagate", True)
+    logger = logging.getLogger("nuguard.redteam.defence_regressions.evaluator")
+    # Capture directly: the configured nuguard parent does not propagate to root.
+    monkeypatch.setattr(logger, "handlers", [*logger.handlers, caplog.handler])
     cancelled = asyncio.Event()
 
     async def blocked_send(*args, **kwargs):
@@ -32,7 +34,7 @@ async def test_prepass_deadline_cancels_probe_and_logs_identity(caplog, monkeypa
 
     client = AsyncMock()
     client.send.side_effect = blocked_send
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO, logger=logger.name):
         results, summary = await DefenceRegressionEvaluator(client).run(
             [DefenceRegressionSpec(name="probe-id", message="fixture-secret")],
             5,
