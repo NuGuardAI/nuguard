@@ -2806,8 +2806,9 @@ class AiSbomExtractor:
     ) -> None:
         """Turn RelationshipHints into Edge objects using built node UUIDs.
 
-        Falls back to simple type-based edge inference for any agents that
-        don't already have explicit relationships.
+        Preserve adapter hints and the scoped structural inference below.
+        Missing agent-to-tool/model hints do not establish dependencies: never
+        fill them from the repository-wide tool or model catalog.
         """
         # Build canonical_name → node.id lookup
         canonical_to_id: dict[str, Any] = {}
@@ -2914,36 +2915,6 @@ class AiSbomExtractor:
             adapter_name = fw.metadata.extras.get("adapter", "")
             if adapter_name:
                 fw_name_to_id.setdefault(adapter_name, fw.id)
-
-        model_ids: set[Any] = {n.id for n in by_type.get(ComponentType.MODEL, [])}
-
-        # Track which agents already have tool vs. model edges separately so
-        # the fallback can add only what is missing.
-        agent_ids_with_tool_edges: set[Any] = set()
-        agent_ids_with_model_edges: set[Any] = set()
-        for e in doc.edges:
-            if e.relationship_type == RelationshipType.CALLS and e.target in {
-                n.id for n in by_type.get(ComponentType.TOOL, [])
-            }:
-                agent_ids_with_tool_edges.add(e.source)
-            if e.relationship_type == RelationshipType.USES and e.target in model_ids:
-                agent_ids_with_model_edges.add(e.source)
-
-        # Fallback: AGENT → TOOL (CALLS) for agents with no tool edges
-        for agent in by_type.get(ComponentType.AGENT, []):
-            if agent.id in agent_ids_with_tool_edges:
-                continue
-            for tool in sorted(by_type.get(ComponentType.TOOL, []), key=lambda n: n.name)[:5]:
-                _add_edge(agent.id, tool.id, "CALLS")
-
-        # Fallback: AGENT → MODEL (USES) for agents with no model edges
-        for agent in by_type.get(ComponentType.AGENT, []):
-            if agent.id in agent_ids_with_model_edges:
-                continue
-            for model in sorted(by_type.get(ComponentType.MODEL, []), key=lambda n: -n.confidence)[
-                :3
-            ]:
-                _add_edge(agent.id, model.id, "USES")
 
         # A prompt detected independently of an agent adapter (for example a
         # module-level constant or a prompt in an exported JSON graph) has no
