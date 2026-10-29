@@ -515,6 +515,10 @@ _GOAL_LABEL = {
 }
 
 
+# Below this completed-scenario percentage the report flags the run as unrepresentative.
+_INVALID_RUN_COVERAGE_PCT = 50
+
+
 def _attack_coverage_summary(scenario_records: list) -> list[str]:
     """Return Markdown lines for the Attack Coverage bullets + breakdown table in Summary.
 
@@ -577,6 +581,13 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
         f"- **Coverage**: {overall_pct}% ({total_completed}/{total_all} scenarios completed)",
         "",
     ]
+    if total_all and overall_pct < _INVALID_RUN_COVERAGE_PCT:
+        lines.insert(
+            0,
+            f"> **Run not representative**: only {total_completed}/{total_all} scenarios "
+            f"({overall_pct}%) executed. A clean result here does not mean the target is "
+            f"secure — fix the cause (timeouts, target outage) and re-run.\n",
+        )
     if total_not_reached:
         lines.append(
             f"- **Not Reached**: {total_not_reached} scenario(s) hit a dead/stale "
@@ -792,11 +803,14 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         )
 
     n = len(records)
-    avg_scenario = _fmt_duration(total_duration / n if n else 0)
+    # Averages cover scenarios that actually ran; skipped / breaker-aborted
+    # records carry no duration and would otherwise drag the mean toward 0.
+    n_executed = sum(1 for r in records if (_r(r, "duration_s", 0.0) or 0.0) > 0)
+    avg_scenario = _fmt_duration(total_duration / n_executed if n_executed else 0)
     avg_turn = _fmt_avg(total_duration, total_turns)
     lines.append("")
     lines.append(
-        f"_{n} scenario(s) executed — {findings_count} finding(s). "
+        f"_{n} scenario(s) listed, {n_executed} executed — {findings_count} finding(s). "
         f"Total: {_fmt_duration(total_duration)} | "
         f"Avg per scenario: {avg_scenario} | Avg per turn: {avg_turn}_"
     )

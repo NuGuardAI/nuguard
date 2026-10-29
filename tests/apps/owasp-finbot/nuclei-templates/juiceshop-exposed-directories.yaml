@@ -1,0 +1,32 @@
+id: juiceshop-exposed-directories
+
+info:
+  name: OWASP Juice Shop - Sensitive Directory Listing Exposed
+  author: security-tester
+  severity: medium
+  description: >
+    Several backend directories that should require authentication or be
+    unreachable entirely (FTP-style backup drop, encryption key storage,
+    support log archive) instead return a public directory listing to any
+    unauthenticated request, disclosing filenames that are themselves often
+    sensitive (e.g. legacy backups, key material, access logs).
+  tags: juiceshop, exposure, misconfig
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/ftp"
+      - "{{BaseURL}}/encryptionkeys"
+      - "{{BaseURL}}/support/logs"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        part: body
+        words:
+          - "listing directory"
+# digest: 4a0a0047304502200fcf1543bd8b12ac6dbf7eb494952b7cdf1233cbcebcf23992a2cfb8b89902710221009bcdbcafff80440a21c0d9c816c2a4aaffd3dde612468e56e8406c9214c60dd6:2ded6eed97d125cafacc29c18bc0d60c

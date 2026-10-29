@@ -335,9 +335,9 @@ Run static risk analysis on an AI-SBOM.
 | `enable_grype` | bool | `true` | Grype CVE scan |
 | `enable_checkov` | bool | `true` | Checkov IaC scan |
 | `enable_trivy` | bool | `true` | Trivy container scan |
-| `enable_semgrep` | bool | `true` | Semgrep AI rules |
+| `enable_semgrep` | bool | `true` | Opengrep AI rules (Semgrep fallback; parameter name retained for compatibility) |
 | `llm` | bool | `false` | LLM enrichment in ATLAS pass |
-| `source` | string | — | Source directory for Checkov / Trivy / Semgrep |
+| `source` | string | — | Source directory for Checkov / Trivy / Opengrep |
 | `config_path` | string | — | Path to `nuguard.yaml` |
 
 </details>

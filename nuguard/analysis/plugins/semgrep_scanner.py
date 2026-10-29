@@ -1,4 +1,9 @@
-"""Semgrep static code analysis plugin for nuguard.
+"""Static code analysis plugin for nuguard, backed by Opengrep (Semgrep fallback).
+
+The plugin name, config keys (``semgrep_*``), and finding source label remain
+``semgrep`` for compatibility; the engine is the ``opengrep`` binary when it is
+on PATH, otherwise the ``semgrep`` binary. Opengrep is an LGPL-2.1 fork that
+accepts Semgrep rule files, so the bundled rules run unchanged.
 
 Runs three bundled rulesets — ``ai-security.yaml`` (AI/LLM-specific
 anti-patterns, Python/Go), ``java-ai-security.yaml`` (Java AI security),
@@ -13,7 +18,7 @@ coverage: ``ai-security.yaml`` targets Python/Go AI code,
 NuGuard's AI-security rules don't otherwise touch.
 
 The plugin is skipped (returns status ``"skipped"``) when:
-- ``semgrep`` is not installed / not on PATH
+- ``opengrep`` (or fallback ``semgrep``) is not installed / not on PATH
 - No source paths are found in the SBOM
 
 Execution and output errors are reported as incomplete scans.
@@ -43,7 +48,7 @@ from typing import Any
 
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
-from nuguard.analysis.plugins.scanner_runtime import run_scanner
+from nuguard.analysis.plugins.scanner_runtime import collect_sbom_source_paths, run_scanner
 from nuguard.common.logging import get_logger
 
 _log = get_logger("analysis.plugins.semgrep")
@@ -64,8 +69,20 @@ _SEV_MAP: dict[str, str] = {
 }
 
 
-def _semgrep_path() -> str | None:
-    return shutil.which("semgrep")
+_ENGINE_BINARIES: tuple[str, ...] = ("opengrep", "semgrep")
+
+
+def _engine_path() -> tuple[str | None, str | None]:
+    """Return ``(binary_path, engine_name)`` for the first available SAST engine.
+
+    Opengrep is preferred (LGPL-2.1, usable in the commercial product); Semgrep
+    is used as a fallback when Opengrep is not on PATH.
+    """
+    for name in _ENGINE_BINARIES:
+        path = shutil.which(name)
+        if path:
+            return path, name
+    return None, None
 
 
 class SemgrepScannerPlugin(AnalysisPlugin):
@@ -82,25 +99,25 @@ class SemgrepScannerPlugin(AnalysisPlugin):
         included; additional rules can be specified via
         ``config["semgrep_rules"]``.
         """
-        binary = _semgrep_path()
-        if binary is None:
+        binary, engine = _engine_path()
+        if binary is None or engine is None:
             _log.info(
-                "semgrep not found on PATH; install from https://semgrep.dev "
-                "to enable static code analysis"
+                "opengrep not found on PATH (semgrep fallback also missing); install "
+                "opengrep from https://github.com/opengrep/opengrep to enable static code analysis"
             )
             return AnalysisResult(
                 status="skipped",
                 plugin=self.name,
-                message="semgrep not installed — code scan skipped",
+                message="opengrep not installed — code scan skipped",
             )
 
-        src_paths = _collect_source_paths(sbom, config)
+        src_paths = collect_sbom_source_paths(sbom, config)
         if not src_paths:
-            _log.info("semgrep: no source paths found in SBOM nodes")
+            _log.info("%s: no source paths found in SBOM nodes", engine)
             return AnalysisResult(
                 status="skipped",
                 plugin=self.name,
-                message="no source paths found in SBOM — semgrep scan skipped",
+                message=f"no source paths found in SBOM — {engine} scan skipped",
             )
 
         rule_files: list[str] = [str(p) for p in _BUNDLED_RULES]
@@ -120,36 +137,20 @@ class SemgrepScannerPlugin(AnalysisPlugin):
         )
         result.details["paths_scanned"] = result.details.get("scanned_paths", [])
         result.details["rule_files"] = rule_files
+        result.details["engine"] = engine
         return result
 
 
 
-def _collect_source_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:
-    """Collect source code paths from SBOM node metadata.
-
-    Falls back to ``config["source_path"]`` when no paths are found in SBOM
-    nodes so that Semgrep can still scan when path metadata is absent.
-    """
-    paths: set[str] = set()
-    for node in sbom.get("nodes") or []:
-        meta = node.get("metadata") or {}
-        extras = meta.get("extras") or {}
-        for key in ("source_path", "root_path", "repo_path"):
-            p = meta.get(key) or extras.get(key)
-            if p and Path(str(p)).exists():
-                paths.add(str(p))
-
-    # Fallback to config-supplied source path
-    sp = config.get("source_path")
-    if sp and Path(str(sp)).is_dir():
-        paths.add(str(sp))
-
-    return paths
-
-
 def _semgrep_command(binary: str, src_path: str, rule_files: list[str], exclude_tests: bool) -> list[str]:
-    """Build a local Semgrep scan, avoiding optional version-check network calls."""
-    cmd = [binary, "scan", "--json", "--quiet", "--disable-version-check", "--metrics", "off"]
+    """Build a local scan command, avoiding optional version-check and telemetry network calls.
+
+    ``--metrics`` is only understood by Semgrep; Opengrep rejects it, so it is
+    passed only when the resolved binary is Semgrep.
+    """
+    cmd = [binary, "scan", "--json", "--quiet", "--disable-version-check"]
+    if Path(binary).name.startswith("semgrep"):
+        cmd += ["--metrics", "off"]
     for rf in rule_files:
         cmd += ["--config", rf]
     if exclude_tests:

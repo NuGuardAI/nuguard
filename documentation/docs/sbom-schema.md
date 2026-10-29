@@ -6,7 +6,9 @@ Use this as a reference when writing code that reads or generates AI-SBOMs direc
 
 Current schema version: **1.7.0**
 
-Schema URI: `https://nuguard.ai/schemas/aibom/1.7.0/aibom.schema.json`
+Schema source: [NuGuardAI/nuguard — aibom.schema.json](https://github.com/NuGuardAI/nuguard/blob/develop/nuguard/sbom/schemas/aibom.schema.json)
+
+Schema identifier (`$id`): `https://nuguard.ai/schemas/aibom/1.7.0/aibom.schema.json`
 
 The schema is language-neutral. Current extractors normalize Python, TypeScript/JavaScript, Go, C#, and Java application evidence into the same nodes, edges, dependencies, and summary fields.
 
