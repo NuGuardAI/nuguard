@@ -132,6 +132,20 @@ def test_mcp_detected_from_url() -> None:
     assert C.MCP_SERVER in profile.capabilities
 
 
+def test_mcp_detected_from_namespaced_tool_name() -> None:
+    agent = _agent("assistant")
+    tool = _tool("findrive__get_file", "fetch a stored file")
+    sbom = _sbom([agent, tool], [_edge(agent, tool)])
+    assert C.MCP_SERVER in CapabilityDetector(sbom).build().capabilities
+
+
+def test_plain_snake_case_tool_is_not_mcp() -> None:
+    agent = _agent("assistant")
+    tool = _tool("get_file", "fetch a stored file")
+    sbom = _sbom([agent, tool], [_edge(agent, tool)])
+    assert C.MCP_SERVER not in CapabilityDetector(sbom).build().capabilities
+
+
 def test_datastore_pii_detected() -> None:
     agent = _agent("assistant")
     ds = _datastore("user-db", pii_fields=["name", "email", "phone"])

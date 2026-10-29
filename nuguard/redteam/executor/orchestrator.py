@@ -63,6 +63,23 @@ from nuguard.sbom.models import AiSbomDocument, NodeType
 from .executor import AttackExecutor, StepResult
 from .guided_executor import GuidedAttackExecutor
 from .similarity_miss_tracker import SimilarityMissTracker
+from .turn_latency import TurnLatencyTracker
+
+
+async def _target_is_responsive(target_url: str, timeout: float = 10.0) -> bool:
+    """Return True if *target_url* answers any HTTP request within *timeout*.
+
+    Any status code (including 404/405) proves the host is reachable, so unlike
+    ``TargetAppClient.health_check`` this does not depend on a ``/health`` route.
+    """
+    import httpx  # noqa: PLC0415
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as probe:
+            await probe.get(target_url)
+        return True
+    except Exception:  # noqa: BLE001 — any transport failure means unresponsive
+        return False
 
 _log = get_logger(__name__)
 
@@ -673,6 +690,37 @@ def _detect_cross_tenant_leak(
     return False
 
 
+
+def _drop_dead_endpoint_scenarios(
+    scenarios: list[AttackScenario], sbom: AiSbomDocument
+) -> tuple[list[AttackScenario], int]:
+    """Drop direct-HTTP-only scenarios whose every target endpoint failed liveness.
+
+    Scenario generation runs before the per-endpoint liveness ping, so scenarios
+    for endpoints just confirmed dead (``operational is False``) would otherwise
+    burn a slot and report 404s. Chat-routed scenarios are never dropped.
+    Returns ``(kept, dropped_count)``.
+    """
+    dead_ids = {
+        str(n.id)
+        for n in sbom.nodes
+        if n.component_type == NodeType.API_ENDPOINT
+        and getattr(n.metadata, "operational", None) is False
+    }
+    if not dead_ids:
+        return scenarios, 0
+    kept = [
+        s
+        for s in scenarios
+        if not (
+            _is_direct_http_only_scenario(s)
+            and s.target_node_ids
+            and all(str(nid) in dead_ids for nid in s.target_node_ids)
+        )
+    ]
+    return kept, len(scenarios) - len(kept)
+
+
 def _dedup_scenarios_by_opener(scenarios: list[AttackScenario]) -> list[AttackScenario]:
     """Discard scenarios with duplicate opener fingerprints before any HTTP calls are made.
 
@@ -855,6 +903,9 @@ class RedteamOrchestrator:
         turn_delay_seconds: float = 5.0,
         scenario_delay_seconds: float = 0.0,
         similar_miss_threshold: int = 4,
+        universal_safety_probes: bool = True,
+        workflows: "list[dict[str, Any]] | None" = None,
+        workflow_templates: "list[str] | None" = None,
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
         require_engagement: bool = True,
@@ -884,6 +935,7 @@ class RedteamOrchestrator:
         resume_checkpoint: dict[str, Any] | None = None,
         resume_checkpoint_path: Path | None = None,
         browser_discovery: BrowserDiscoveryConfig | None = None,
+        chat_payload_key_explicit: bool = False,
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
@@ -964,6 +1016,11 @@ class RedteamOrchestrator:
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
         self._scenario_delay_seconds = max(0.0, scenario_delay_seconds)
         self._similar_miss_threshold = max(1, similar_miss_threshold)
+        self._universal_safety_probes = universal_safety_probes
+        from nuguard.redteam.workflows import WorkflowSpec  # noqa: PLC0415
+
+        self._workflows = [WorkflowSpec.model_validate(w) for w in (workflows or [])]
+        self._workflow_templates = list(workflow_templates or [])
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
         # Engagement gate: fail fast when the chat endpoint only ever answers
@@ -1025,6 +1082,10 @@ class RedteamOrchestrator:
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             discover_chat_config_from_sbom(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
+        self._chat_payload_key_explicit = chat_payload_key_explicit
+        if chat_payload_key_explicit:
+            self._chat_payload_key = chat_payload_key
+            self._chat_payload_list = chat_payload_list
         # Payload value template from OpenAPI schema detection (ProbeResult.value_template).
         # Populated by _maybe_probe_endpoints when the schema reveals a nested shape.
         self._chat_payload_value_template: "dict | None" = None
@@ -1460,6 +1521,74 @@ class RedteamOrchestrator:
             )
         self._asm_findings.extend(new_findings)
 
+    async def _run_workflow_pass(self, client: "TargetClient") -> None:
+        """Run configured stateful workflow attacks and judge them with their oracle.
+
+        Best-effort: a failure here must never abort the scan. Findings join the
+        pre-pass findings (``_asm_findings``) and each workflow gets a
+        ``ScenarioRecord`` so it appears in the scenario tables.
+        """
+        from nuguard.redteam.workflows import (  # noqa: PLC0415
+            WorkflowRunner,
+            build_workflow_finding,
+        )
+
+        tenant_headers = {
+            t.tenant_id: t.auth_headers()
+            for t in (self._canary_config.tenants if self._canary_config else [])
+            if t.has_credentials
+        }
+        from nuguard.redteam.workflows.library import (  # noqa: PLC0415
+            filter_applicable,
+            resolve_templates,
+        )
+
+        templated = await filter_applicable(
+            resolve_templates(self._workflow_templates),
+            sbom_paths=[
+                str(n.metadata.endpoint)
+                for n in self._sbom.nodes
+                if n.component_type == NodeType.API_ENDPOINT and n.metadata.endpoint
+            ],
+            client=client,
+            tenant_count=len(tenant_headers),
+        )
+        _explicit_ids = {s.id for s in self._workflows}
+        specs = self._workflows + [s for s in templated if s.id not in _explicit_ids]
+        runner = WorkflowRunner(client, tenant_headers=tenant_headers)
+        for spec in specs:
+            started = time.perf_counter()
+            results = await runner.run(spec, llm=self._redteam_llm)
+            hit = next((r for r in results if r.succeeded and not r.control_matched), None)
+            if hit is not None:
+                self._asm_findings.append(build_workflow_finding(spec, hit))
+            _control_matched = any(r.control_matched for r in results)
+            _errors = [r.error for r in results if r.error]
+            self.scenario_records.append(
+                ScenarioRecord(
+                    title=f"Workflow: {spec.title}",
+                    goal_type=spec.goal_type,
+                    scenario_type="WORKFLOW_ATTACK",
+                    description=spec.description or spec.title,
+                    impact_score=7.0,
+                    affected=spec.oracle.path,
+                    chain_status=(
+                        "inconclusive:control_matched" if _control_matched
+                        else "completed" if hit is not None or not _errors
+                        else "failed"
+                    ),
+                    had_finding=hit is not None,
+                    steps=[step for r in results for step in r.steps],
+                    duration_s=time.perf_counter() - started,
+                    turns_used=sum(len(r.steps) for r in results),
+                    turns_budget=len(spec.steps) * (len(spec.payloads) + len(spec.control_payloads)),
+                )
+            )
+            _log.info(
+                "Workflow %s: %d run(s), finding=%s%s",
+                spec.id, len(results), hit is not None, f", errors={_errors}" if _errors else "",
+            )
+
     async def _run_observation_pass(self) -> None:
         """W7 passive observation-channel tap (catalog L-series).
 
@@ -1548,7 +1677,9 @@ class RedteamOrchestrator:
         # 0. Endpoint auto-discovery (Option A) or payload-shape detection (Option B).
         # Option A: no path configured — probe SBOM endpoints live.
         # Option B: path known but key is default "message" — detect nested shape.
-        if not self._chat_path or self._chat_payload_key == "message":
+        if not self._chat_path or (
+            self._chat_payload_key == "message" and not self._chat_payload_key_explicit
+        ):
             await self._maybe_probe_endpoints()
 
         from nuguard.common.session_resolver import resolve_target_session
@@ -1572,7 +1703,9 @@ class RedteamOrchestrator:
             request_timeout=self._request_timeout,
             browser_discovery=self._browser_discovery,
             endpoint_explicit=self._chat_path_source == "config" or _keep_resolved,
-            payload_key_explicit=_keep_resolved or self._chat_payload_key != "message",
+            payload_key_explicit=(
+                self._chat_payload_key_explicit or _keep_resolved or self._chat_payload_key != "message"
+            ),
             response_key_explicit=bool(self._chat_response_key),
             endpoint_source_hint=self._chat_path_source if _keep_resolved else None,
         )
@@ -1855,14 +1988,38 @@ class RedteamOrchestrator:
         )
         if _endpoint_plan is not None:
             self.config_notes.extend(_endpoint_plan.notes)
+        if self._canary_config is not None and any(
+            t.web_session and not t.has_credentials for t in self._canary_config.tenants
+        ):
+            from nuguard.redteam.target.canary import acquire_web_session_tenants  # noqa: PLC0415
+
+            _failed_tenants = await acquire_web_session_tenants(
+                self._canary_config,
+                self._target_url,
+                headers=getattr(self._target_session_config, "effective_headers", None),
+            )
+            if _failed_tenants:
+                self.config_notes.append(
+                    "Canary web-session tenant(s) without a session: "
+                    + ", ".join(_failed_tenants)
+                    + " — cross-tenant scenarios fall back to synthetic tenant ids."
+                )
         generator = ScenarioGenerator(
             self._sbom,
             effective_policy,
             canary_config=self._canary_config,
             endpoint_plan=_endpoint_plan,
+            universal_safety_probes=self._universal_safety_probes,
         )
         all_scenarios = generator.generate(with_guided=_with_guided, progressive=_progressive)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
+        if self._coverage_tracker is not None:
+            self._coverage_tracker.set_expected(
+                [
+                    (str(n.id), getattr(n.component_type, "value", str(n.component_type)), n.name)
+                    for n in generator.effective_nodes
+                ]
+            )
         self.config_notes.extend(generator.skipped_endpoint_notes)
 
         # 1b. Catalog scenarios — merged into the SBOM-driven set above.
@@ -2128,6 +2285,12 @@ class RedteamOrchestrator:
                     _liveness.checked, _liveness.cached, _liveness.operational,
                     _liveness.non_operational, _liveness.skipped,
                 )
+                scenarios, _dead_dropped = _drop_dead_endpoint_scenarios(scenarios, self._sbom)
+                if _dead_dropped:
+                    _log.info(
+                        "Redteam: dropped %d direct-HTTP scenario(s) targeting dead endpoints",
+                        _dead_dropped,
+                    )
             except Exception as exc:
                 _log.warning("Redteam: endpoint liveness check failed (non-fatal): %s", exc)
 
@@ -2166,6 +2329,13 @@ class RedteamOrchestrator:
                     _log.info("Redteam pre-pass end: stage=observation elapsed=%.2fs", time.monotonic() - _phase_started)
                 except Exception as exc:
                     _log.warning("Redteam: observation pass failed (non-fatal): %s", exc)
+
+            if self._workflows or self._workflow_templates:
+                try:
+                    _log.info("Redteam pre-pass start: stage=workflows")
+                    await self._run_workflow_pass(client)
+                except Exception as exc:
+                    _log.warning("Redteam: workflow pass failed (non-fatal): %s", exc)
 
             # Substitute poison server URL into all scenario step payloads that
             # contain the placeholder host.  This makes indirect injection and RAG
@@ -2505,6 +2675,8 @@ class RedteamOrchestrator:
         # Similarity miss tracker: skip scenarios whose payloads closely resemble
         # already-failed attacks once the miss count exceeds the threshold.
         miss_tracker = SimilarityMissTracker(miss_threshold=self._similar_miss_threshold)
+        # Observed seconds-per-turn, used to stretch the timeout of guided scenarios.
+        turn_latency = TurnLatencyTracker()
         # Code-gen escalation: allow at most one escalation per run.
         _codegen_escalation_done = False
 
@@ -2743,8 +2915,18 @@ class RedteamOrchestrator:
                     )
 
                 _timeout = self._scenario_timeout if self._scenario_timeout > 0 else None
+                if _timeout is not None and _is_guided and scenario.guided_conversation is not None:
+                    _timeout = turn_latency.timeout_for(
+                        _timeout, scenario.guided_conversation.max_turns
+                    )
+                _t_start = time.perf_counter()
                 try:
                     result = await asyncio.wait_for(_execute_body(), timeout=_timeout)
+                    if _is_guided:
+                        turn_latency.observe(
+                            time.perf_counter() - _t_start,
+                            getattr(result[2], "turns_used", 0),
+                        )
                     # A scenario that completed without raising can still signal a
                     # structurally broken target — e.g. every step got "[HTTP 405]"
                     # and the per-chain/per-conversation circuit breaker aborted it
@@ -2796,10 +2978,26 @@ class RedteamOrchestrator:
                     return result
                 except asyncio.TimeoutError:
                     consecutive_unavailable += 1
-                    if consecutive_unavailable >= _ABORT_THRESHOLD:
+                    if consecutive_unavailable >= _ABORT_THRESHOLD and await _target_is_responsive(
+                        self._target_url
+                    ):
+                        # Slow scenarios (e.g. multi-turn guided conversations
+                        # against a high-latency target) time out without the
+                        # target being down. Only a failed liveness probe may
+                        # abort the run.
+                        _log.warning(
+                            "Scenario %s timed out after %.0f s (%d consecutive) but the "
+                            "target still responds — continuing.",
+                            scenario.scenario_id,
+                            self._scenario_timeout,
+                            consecutive_unavailable,
+                        )
+                        consecutive_unavailable = 0
+                    elif consecutive_unavailable >= _ABORT_THRESHOLD:
                         _log.error(
                             "Scenario %s timed out after %.0f s — %d consecutive "
-                            "timeouts, aborting remaining scenarios.",
+                            "timeouts and the target is unresponsive, aborting remaining "
+                            "scenarios.",
                             scenario.scenario_id,
                             self._scenario_timeout,
                             consecutive_unavailable,
@@ -4156,7 +4354,7 @@ class RedteamOrchestrator:
         # chat-like (e.g. "/extract"). Respects an explicitly configured
         # endpoint: only that exact path's confirmation is consulted, never a
         # different cached one.
-        if self._sbom is not None:
+        if self._sbom is not None and not self._chat_payload_key_explicit:
             _confirmed = find_confirmed_chat_endpoint(
                 self._sbom,
                 expected_path=self._chat_path if self._chat_path_explicit else None,
@@ -4210,10 +4408,10 @@ class RedteamOrchestrator:
             endpoint=self._chat_path if self._chat_path_explicit else UNSET,
             payload_key=(
                 self._chat_payload_key
-                if self._chat_payload_key != "message"
+                if self._chat_payload_key_explicit or self._chat_payload_key != "message"
                 else UNSET
             ),
-            payload_list=UNSET,
+            payload_list=self._chat_payload_list if self._chat_payload_key_explicit else UNSET,
             response_key=self._chat_response_key or UNSET,
             auth_headers=self._extra_headers or None,
             timeout=min(self._request_timeout, 15.0),
