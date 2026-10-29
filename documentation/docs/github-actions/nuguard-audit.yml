@@ -24,18 +24,23 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install nuguard
         run: pip install nuguard
 
-      # ── Install optional scanning tools (all degrade gracefully) ─────────
-      - name: Install Checkov (IaC security)
-        run: pip install checkov
+      # Missing binaries leave coverage gaps; inspect the report's Tool Coverage.
+      # For Gitleaks secret scanning, also install its binary on PATH:
+      # https://github.com/gitleaks/gitleaks#installing
+      # ── Install optional scanning tools ─────────────────────────────────
+      - name: Install Checkov and pip-audit (IaC + Python dependencies)
+        run: pip install checkov pip-audit
         continue-on-error: true
 
-      - name: Install Semgrep (code patterns)
-        run: pip install semgrep
+      - name: Install Opengrep (code patterns)
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
+          echo "$HOME/.opengrep/cli/latest" >> "$GITHUB_PATH"
         continue-on-error: true
 
       - name: Install Trivy (container + filesystem)
