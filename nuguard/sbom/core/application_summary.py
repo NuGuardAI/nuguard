@@ -1437,6 +1437,7 @@ class _PythonInstrumentationVisitor(ast.NodeVisitor):
         if resolved is None:
             return
         binding, attributes = resolved
+        path: tuple[str, ...] | None
         if binding[0] == "langsmith_symbol":
             path = (binding[1], *attributes)
         elif binding[0] == "langsmith_module":
@@ -2800,7 +2801,7 @@ def _javascript_active_tracing_tools(content: str) -> set[str]:
         r"\b(?P<require>require)\(\s*[\"'](?P<module>[^\"']+)[\"']\s*\)"
         r"(?P<chain>(?:\s*\.\s*[A-Za-z_$][\w$]*)+)\s*\("
     )
-    canonical_commonjs_chains = {
+    canonical_commonjs_chains: dict[str, set[tuple[str, ...]]] = {
         "opentelemetry": {("trace", "getTracer")},
         "datadog": {("init",), ("startSpan",), ("trace",), ("wrap",)},
         "jaeger": {("initTracer",)},

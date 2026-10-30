@@ -927,8 +927,9 @@ def _rule_nga009_no_audit_logging(
     log_paths: list[str] = summary.get("log_paths") or []
     has_log_paths = bool(log_paths)
     instrumentation = summary.get("instrumentation")
-    if hasattr(instrumentation, "model_dump"):
-        instrumentation = instrumentation.model_dump(mode="python")
+    model_dump = getattr(instrumentation, "model_dump", None)
+    if callable(model_dump):
+        instrumentation = model_dump(mode="python")
     has_instrumentation = bool(
         isinstance(instrumentation, dict)
         and (
