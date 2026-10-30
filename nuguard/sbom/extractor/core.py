@@ -28,6 +28,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from bisect import bisect_right
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -42,6 +43,7 @@ from nuguard.common.url_sanitization import (
     sanitize_repository_url,
 )
 
+from ..adapters._test_paths import looks_like_test_path
 from ..adapters.azure_yaml import AzureYamlAdapter, is_azure_yaml
 from ..adapters.base import (
     AdapterMatch,
@@ -79,7 +81,7 @@ from ..adapters.json_adapters import (
 )
 from ..adapters.nginx import NginxAdapter, is_nginx_file
 from ..adapters.prompt_sql import PromptSQLAdapter
-from ..adapters.registry import default_framework_adapters, default_registry
+from ..adapters.registry import MODEL_NAME_PATTERNS, default_framework_adapters, default_registry
 from ..adapters.sparkflows import (
     SparkflowsAgentAdapter,
     SparkflowsAnalyticsAppAdapter,
@@ -190,6 +192,137 @@ _TIER_DOCS = "docs"
 # Lower rank number = higher precedence during dedup
 _TIER_RANK: dict[str, int] = {_TIER_CODE: 0, _TIER_IAC: 1, _TIER_DOCS: 2}
 
+_JSON_DATASTORE_ANCESTOR_KEYS = frozenset(
+    {
+        "database",
+        "databases",
+        "datastore",
+        "datastores",
+        "db",
+        "storage",
+        "connection",
+        "connections",
+        "dependencies",
+    }
+)
+_JSON_DATASTORE_PAIR_KEYS = frozenset({"driver", "engine", "image", "url"})
+_JSON_TOKEN_RE = re.compile(
+    r'"(?:\\.|[^"\\])*"|[{}\[\]:,]|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null'
+)
+
+
+def _json_key_parts(key: str) -> set[str]:
+    snake = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key)
+    return {part for part in re.split(r"[^a-z0-9]+", snake.lower()) if part}
+
+
+def _json_string_occurrences(content: str) -> list[tuple[str, int, tuple[str, ...], bool]]:
+    """Return decoded JSON strings with line, containing-key path, and key/value role."""
+    try:
+        json.loads(content)
+    except (json.JSONDecodeError, RecursionError, TypeError):
+        return []
+
+    newline_offsets = [match.start() for match in re.finditer(r"\n", content)]
+    tokens = [
+        (match.group(0), bisect_right(newline_offsets, match.start()) + 1)
+        for match in _JSON_TOKEN_RE.finditer(content)
+    ]
+    occurrences: list[tuple[str, int, tuple[str, ...], bool]] = []
+    index = 0
+
+    def _parse_value(path: tuple[str, ...]) -> None:
+        nonlocal index
+        token, line = tokens[index]
+        if token == "{":
+            index += 1
+            while tokens[index][0] != "}":
+                key_token, key_line = tokens[index]
+                key = str(json.loads(key_token))
+                occurrences.append((key, key_line, path, True))
+                index += 2  # key and colon
+                _parse_value((*path, key))
+                if tokens[index][0] == ",":
+                    index += 1
+            index += 1
+        elif token == "[":
+            index += 1
+            while tokens[index][0] != "]":
+                _parse_value(path)
+                if tokens[index][0] == ",":
+                    index += 1
+            index += 1
+        else:
+            if token.startswith('"'):
+                occurrences.append((str(json.loads(token)), line, path, False))
+            index += 1
+
+    if tokens:
+        try:
+            _parse_value(())
+        except (IndexError, RecursionError, ValueError, json.JSONDecodeError):
+            return []
+    return occurrences
+
+
+def _is_specific_json_datastore_pair(key: str, value: str, name: str) -> bool:
+    parts = _json_key_parts(key)
+    if not parts & _JSON_DATASTORE_PAIR_KEYS:
+        return False
+    value_lower = value.strip().lower()
+    name_lower = name.lower()
+    if "url" in parts:
+        return value_lower.startswith(f"{name_lower}://")
+    if "image" in parts:
+        return bool(re.match(rf"^(?:[^/]+/)*{re.escape(name_lower)}(?=[:@/]|$)", value_lower))
+    return value_lower == name_lower
+
+
+def _contextual_json_datastore_matches(
+    content: str, matches: tuple[AdapterMatch, ...]
+) -> tuple[AdapterMatch, ...]:
+    """Return only datastore matches occurring in authoritative JSON positions."""
+    prototypes = {
+        match.snippet.strip().lower(): match
+        for match in matches
+        if match.snippet.strip()
+    }
+    contextual: list[AdapterMatch] = []
+    for value, line, path, is_key in _json_string_occurrences(content):
+        path_has_ancestor = any(
+            _json_key_parts(key) & _JSON_DATASTORE_ANCESTOR_KEYS for key in path
+        )
+        for name, prototype in prototypes.items():
+            token = re.compile(
+                rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", re.IGNORECASE
+            )
+            occurrence_count = sum(1 for _ in token.finditer(value))
+            if occurrence_count == 0:
+                continue
+            is_root_datastore_key = (
+                is_key
+                and not path
+                and re.sub(r"[^a-z0-9]+", "", value.lower())
+                == re.sub(r"[^a-z0-9]+", "", name.lower())
+            )
+            is_specific_pair = (
+                not is_key
+                and bool(path)
+                and _is_specific_json_datastore_pair(path[-1], value, name)
+            )
+            if not (path_has_ancestor or is_root_datastore_key or is_specific_pair):
+                continue
+            contextual.extend(
+                AdapterMatch(
+                    pattern=prototype.pattern,
+                    line=line,
+                    snippet=prototype.snippet,
+                    groups=prototype.groups,
+                )
+                for _ in range(occurrence_count)
+            )
+    return tuple(contextual)
+
 
 def _strip_notebook_outputs(content: str) -> str:
     """Return notebook source code only, removing cell outputs to avoid base64 false matches.
@@ -238,6 +371,128 @@ def _strip_python_comments(content: str) -> str:
     the line for other pattern matching.
     """
     return _PYTHON_COMMENT_LINE_RE.sub("", content)
+
+
+_MODEL_PRICING_FILENAMES = frozenset(
+    {
+        "cost.toml",
+        "costs.toml",
+        "model_costs.toml",
+        "model_prices.toml",
+        "price.toml",
+        "prices.toml",
+        "pricing.toml",
+        "ratecard.toml",
+        "ratecards.toml",
+    }
+)
+_TOML_TABLE_HEADER_RE = re.compile(r"^\s*\[\[?([^\]]+)\]\]?\s*(?:#.*)?$")
+_TOML_RUNTIME_REGISTRY_ROOTS = frozenset(
+    {"agents", "defaults", "llms", "model", "models", "providers", "registry", "runtime"}
+)
+_TOML_PRICING_TABLE_ROOTS = frozenset(
+    {"cost", "costing", "costs", "price", "prices", "pricing", "ratecard", "ratecards"}
+)
+_TOML_STRONG_PRICE_FIELD_RE = re.compile(
+    r"\b(?:cost|price|pricing|rate|usd_per_million_tokens|"
+    r"(?:batch_input|batch_output|cache_read|cache_write|input|output)_"
+    r"(?:cost|mtok|per_million_tokens|per_token|price|rate))\b\s*=",
+    re.IGNORECASE,
+)
+_TOML_INPUT_FIELD_RE = re.compile(r"\binput\b\s*=", re.IGNORECASE)
+_TOML_OUTPUT_FIELD_RE = re.compile(r"\boutput\b\s*=", re.IGNORECASE)
+_TOML_MODEL_BINDING_FIELD_RE = re.compile(r"\bmodel\b\s*=", re.IGNORECASE)
+
+
+def _strip_non_runtime_toml_model_pricing(content: str, rel_path: str) -> str:
+    """Blank non-runtime model pricing rows while preserving line numbers.
+
+    A pricing TOML can contain both a real runtime binding and model-shaped
+    table keys, for example ``default_model = "claude-haiku-5-5"`` followed by
+    ``[claude-haiku-5-5.long_context]``.  The latter is a price tier, not a
+    selectable model, and must not absorb the base model during prefix dedup.
+    This scrub is deliberately limited to clearly named pricing/cost TOML files
+    and generic regex scanning; AST and structured adapter evidence is untouched.
+    """
+    path = PurePosixPath(rel_path.replace("\\", "/"))
+    if path.suffix.lower() != ".toml":
+        return content
+    pricing_filename = path.name.lower() in _MODEL_PRICING_FILENAMES
+
+    def _blank(line: str) -> str:
+        return re.sub(r"[^\r\n]", " ", line)
+
+    def _contains_model_name(value: str) -> bool:
+        return any(pattern.search(value) for pattern in MODEL_NAME_PATTERNS)
+
+    def _proves_price_metadata(
+        value: str,
+        *,
+        pricing_filename_context: bool,
+        pricing_table_context: bool = False,
+    ) -> bool:
+        if _TOML_STRONG_PRICE_FIELD_RE.search(value):
+            return pricing_table_context or pricing_filename_context
+        return bool(
+            (pricing_table_context or pricing_filename_context)
+            and _TOML_INPUT_FIELD_RE.search(value)
+            and _TOML_OUTPUT_FIELD_RE.search(value)
+            and (
+                pricing_table_context
+                or not _TOML_MODEL_BINDING_FIELD_RE.search(value)
+            )
+        )
+
+    lines = content.splitlines(keepends=True)
+    table_starts = [
+        index for index, line in enumerate(lines) if _TOML_TABLE_HEADER_RE.match(line)
+    ]
+    scrub_indexes: set[int] = set()
+    runtime_indexes: set[int] = set()
+    for position, start in enumerate(table_starts):
+        end = table_starts[position + 1] if position + 1 < len(table_starts) else len(lines)
+        table_match = _TOML_TABLE_HEADER_RE.match(lines[start])
+        if table_match is None:
+            continue
+        table_name = table_match.group(1).strip().strip("\"'")
+        root_name = re.split(r"[.\s]", table_name, maxsplit=1)[0].strip("\"'").lower()
+        if root_name in _TOML_RUNTIME_REGISTRY_ROOTS:
+            runtime_indexes.update(range(start, end))
+            continue
+        block = "".join(lines[start:end])
+        if _contains_model_name(block) and _proves_price_metadata(
+            block,
+            pricing_filename_context=pricing_filename,
+            pricing_table_context=root_name in _TOML_PRICING_TABLE_ROOTS,
+        ):
+            scrub_indexes.update(range(start, end))
+
+    inline_price_indexes = {
+        index
+        for index, line in enumerate(lines)
+        if index not in runtime_indexes
+        and _contains_model_name(line)
+        and _proves_price_metadata(
+            line, pricing_filename_context=pricing_filename
+        )
+    }
+    verified_pricing_file = pricing_filename and bool(
+        scrub_indexes or inline_price_indexes
+    )
+    scrubbed: list[str] = []
+    for index, line in enumerate(lines):
+        pricing_model_comment = (
+            verified_pricing_file
+            and line.lstrip().startswith("#")
+            and _contains_model_name(line)
+        )
+        should_blank = (
+            index in scrub_indexes
+            or index in inline_price_indexes
+            or pricing_model_comment
+        )
+        scrubbed.append(_blank(line) if should_blank else line)
+    return "".join(scrubbed)
 
 
 # Pattern for variable names that explicitly indicate prompt content.
@@ -702,6 +957,67 @@ class _NodeAccumulator:
     # Source-tier tracking (populated by _merge_detection)
     source_tiers: set[str] = field(default_factory=set)
     best_tier_rank: int = 99  # 0=code, 1=iac, 2=docs; 99=uninitialised
+
+
+_DATASTORE_TECH_ALIASES = {
+    "aiosqlite": "sqlite",
+    "sqlite3": "sqlite",
+    "postgres": "postgresql",
+}
+
+
+def _datastore_technology(acc: _NodeAccumulator) -> str:
+    raw = str(acc.metadata.get("provider") or acc.display_name).strip().lower()
+    normalized = re.sub(r"[^a-z0-9]+", "", raw)
+    return _DATASTORE_TECH_ALIASES.get(normalized, normalized)
+
+
+def _dedup_generic_datastores_against_specific(
+    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
+) -> None:
+    """Merge same-location generic datastore evidence into its specific detection."""
+    specific_by_location: dict[
+        tuple[str, int | None], list[tuple[ComponentType, str]]
+    ] = {}
+    generic_keys: list[tuple[ComponentType, str]] = []
+    for key, acc in node_map.items():
+        if key[0] != ComponentType.DATASTORE:
+            continue
+        if acc.adapter_name == "datastore_generic":
+            generic_keys.append(key)
+            continue
+        for evidence in acc.evidence:
+            if evidence.location:
+                location = (evidence.location.path, evidence.location.line)
+                specific_by_location.setdefault(location, []).append(key)
+
+    for generic_key in generic_keys:
+        generic = node_map.get(generic_key)
+        if generic is None:
+            continue
+        generic_tech = _datastore_technology(generic)
+        candidates: set[tuple[ComponentType, str]] = set()
+        for evidence in generic.evidence:
+            if not evidence.location:
+                continue
+            location = (evidence.location.path, evidence.location.line)
+            candidates.update(
+                key
+                for key in specific_by_location.get(location, [])
+                if _datastore_technology(node_map[key]) == generic_tech
+            )
+        if not candidates:
+            continue
+        winner_key = min(
+            candidates,
+            key=lambda key: (node_map[key].priority, -node_map[key].confidence, key[1]),
+        )
+        winner = node_map[winner_key]
+        winner.evidence.extend(generic.evidence)
+        winner.relationships.extend(generic.relationships)
+        winner.source_tiers.update(generic.source_tiers)
+        winner.confidence = max(winner.confidence, generic.confidence)
+        del node_map[generic_key]
 
 
 def _load_gitignore_matcher(root: Path) -> "Callable[[str], bool] | None":
@@ -1255,7 +1571,9 @@ class AiSbomExtractor:
                                     det.component_type == ComponentType.DATASTORE
                                     and det.metadata.get("source") in ("sql_schema", "python_model")
                                 ):
-                                    _dc_metadata.append(det.metadata)
+                                    _classification_meta = dict(det.metadata)
+                                    _classification_meta["source_path"] = det.file_path
+                                    _dc_metadata.append(_classification_meta)
                                 else:
                                     self._merge_detection(node_map, det)
                                     _ds_symbol = det.metadata.get("module_level_symbol")
@@ -1306,7 +1624,9 @@ class AiSbomExtractor:
                         if det.component_type == ComponentType.DATASTORE and det.metadata.get(
                             "source"
                         ) in ("sql_schema", "python_model"):
-                            _dc_metadata.append(det.metadata)
+                            _classification_meta = dict(det.metadata)
+                            _classification_meta["source_path"] = det.file_path
+                            _dc_metadata.append(_classification_meta)
                         else:
                             self._merge_detection(node_map, det)
 
@@ -1572,7 +1892,12 @@ class AiSbomExtractor:
                     _skip_exts = getattr(rx_adapter, "skip_extensions", None)
                     if _skip_exts and suffix in _skip_exts:
                         continue
-                detection = rx_adapter.detect(_regex_content)
+                _adapter_content = _regex_content
+                if rx_adapter.name == "model_generic":
+                    _adapter_content = _strip_non_runtime_toml_model_pricing(
+                        _regex_content, rel_path
+                    )
+                detection = rx_adapter.detect(_adapter_content)
                 if detection is None:
                     continue
                 # For adapters with per-match naming (canonical_name=None on the
@@ -1581,17 +1906,27 @@ class AiSbomExtractor:
                 # type (e.g. a mock route.ts listing gpt-5, deepseek-v3.2,
                 # gemini-3-pro; or a CI workflow using both docker and vercel)
                 # gets a separate node for each instead of only the first match.
-                # Originally MODEL-only; also applies to DEPLOYMENT so distinct
-                # deployment technologies don't collapse into one "generic" node.
+                # Originally MODEL-only; also applies to DEPLOYMENT and DATASTORE
+                # so distinct technologies don't collapse into one "generic" node.
                 if detection.component_type in (
                     ComponentType.MODEL,
                     ComponentType.DEPLOYMENT,
+                    ComponentType.DATASTORE,
                 ) and not getattr(rx_adapter, "canonical_name", None):
                     # Group matches by their normalised name; keep first
                     # occurrence as the representative match for location/snippet.
                     _match_first: dict[str, AdapterMatch] = {}
                     _match_count: dict[str, int] = {}
-                    for _m in detection.matches:
+                    _candidate_matches = (
+                        _contextual_json_datastore_matches(
+                            _regex_content, detection.matches
+                        )
+                        if suffix == ".json"
+                        and detection.component_type == ComponentType.DATASTORE
+                        and detection.adapter_name == "datastore_generic"
+                        else detection.matches
+                    )
+                    for _m in _candidate_matches:
                         _key = _m.snippet.strip().lower()
                         if _key not in _match_first:
                             _match_first[_key] = _m
@@ -1735,9 +2070,20 @@ class AiSbomExtractor:
                 "cross-file datastore ACCESSES resolution failed (non-fatal): %s", _cross_ds_exc
             )
 
-        # Deduplicate nodes that share (component_type, file, line) — e.g. a
-        # regex adapter and an AST adapter both firing on the same token.
+        # Distinct datastore technologies commonly share one config/import line.
+        # Their canonical names already deduplicate identical detections, and the
+        # datastore-specific suppression pass below handles generic/AST overlap.
+        # Keep them out of location dedup so e.g. Postgres + SQLite remain separate.
+        _datastore_accumulators = {
+            key: node_map.pop(key)
+            for key in list(node_map)
+            if key[0] == ComponentType.DATASTORE
+        }
+        # Deduplicate remaining nodes that share (component_type, file, line) —
+        # e.g. a regex adapter and an AST adapter both firing on the same token.
         _dedup_by_location(node_map)
+        node_map.update(_datastore_accumulators)
+        _dedup_generic_datastores_against_specific(node_map)
         # Deduplicate nodes where one name is a prefix of another from the same
         # file — e.g. regex matches "gemini-2.0" while AST extracts the full
         # "gemini-2.0-flash" from an adjacent line of the same call.
@@ -2292,6 +2638,27 @@ class AiSbomExtractor:
                 dc_metadata=_dc_metadata,
             )
         )
+        # Node-level classification is intentionally scoped to datastores that
+        # share source evidence, but the application summary remains repo-wide.
+        # Merge raw classification metadata once so unmatched schemas remain
+        # visible without duplicating table names across datastore nodes.
+        _repo_dc_labels = {
+            label
+            for meta in _dc_metadata
+            for label in (meta.get("data_classification") or [])
+        }
+        _repo_dc_tables = {
+            table
+            for meta in _dc_metadata
+            if (table := meta.get("table_name") or meta.get("model_name"))
+        }
+        if doc.summary is not None:
+            doc.summary.data_classification = sorted(
+                set(doc.summary.data_classification) | _repo_dc_labels
+            )
+            doc.summary.classified_tables = sorted(
+                set(doc.summary.classified_tables) | _repo_dc_tables
+            )
 
         # Write total LOC and minified JS list into the summary
         if doc.summary and file_loc:
@@ -2651,6 +3018,25 @@ class AiSbomExtractor:
         its adapter attribution and metadata take precedence.  Evidence from all
         tiers is always appended so the final node reflects every source.
         """
+        # Runtime declarations in test files describe fixtures and mocks, not
+        # production assets.  Apply this once at the merge boundary so every
+        # adapter gets the same behaviour and test evidence cannot leak into a
+        # production node with the same canonical name.  Paths are relative to
+        # the scan root, so scanning a fixture directory directly still works:
+        # ``tests/fixtures/app.py`` becomes ``app.py`` for that focused scan.
+        # Keep infrastructure/configuration detections (for example DEPLOYMENT)
+        # because test and E2E directories can contain real environment facts.
+        if det.component_type in {
+            ComponentType.AGENT,
+            ComponentType.GUARDRAIL,
+            ComponentType.MCP_SERVER,
+            ComponentType.MODEL,
+            ComponentType.TOOL,
+            ComponentType.PROMPT,
+            ComponentType.FRAMEWORK,
+        } and looks_like_test_path(det.file_path):
+            return
+
         # Always canonicalize to ensure regex-adapter and AST-adapter nodes
         # for the same component deduplicate correctly.
         canon = canonicalize_text(det.canonical_name)
@@ -2734,8 +3120,9 @@ class AiSbomExtractor:
         """Merge PII/PHI classification data from schema adapters into DATASTORE nodes.
 
         Classification data (from SQL CREATE TABLE and Python model analysis) is
-        attached as metadata on every detected DATASTORE node rather than emitted
-        as separate nodes.
+        attached only when its source path identifies exactly one datastore.
+        Unmatched or ambiguous classification remains available in the repo-wide
+        application summary without being attributed to a specific datastore.
         """
         if not dc_metadata:
             return
@@ -2743,32 +3130,54 @@ class AiSbomExtractor:
         if not datastore_keys:
             return
 
-        # Aggregate labels, table names, and per-table field detail
-        all_labels: set[str] = set()
-        classified_tables: list[str] = []
-        classified_fields: dict[str, list[str]] = {}
-        # field_name -> labels, e.g. {"dob": ["PII"], "address": ["PII","PHI"]} —
-        # kept separate from `classified_fields` above (which is table -> field
-        # names, per NodeMetadata.classified_fields' documented shape) because
-        # pii_fields/phi_fields need per-field labels, not per-table field lists.
-        field_labels: dict[str, set[str]] = {}
+        datastore_paths = {
+            key: {
+                evidence.location.path
+                for evidence in node_map[key].evidence
+                if evidence.location and evidence.location.path
+            }
+            for key in datastore_keys
+        }
+        metadata_by_datastore: dict[tuple[ComponentType, str], list[dict[str, Any]]] = {
+            key: [] for key in datastore_keys
+        }
         for meta in dc_metadata:
-            all_labels.update(meta.get("data_classification") or [])
-            table = meta.get("table_name") or meta.get("model_name")
-            if table:
-                classified_tables.append(table)
-                cf = meta.get("classified_fields")
-                if cf:
-                    classified_fields[table] = sorted(cf.keys())
-                    for field_name, labels in cf.items():
-                        field_labels.setdefault(field_name, set()).update(labels or [])
+            source_path = meta.get("source_path")
+            if not source_path:
+                continue
+            matching_keys = [
+                key
+                for key, evidence_paths in datastore_paths.items()
+                if source_path in evidence_paths
+            ]
+            if len(matching_keys) == 1:
+                metadata_by_datastore[matching_keys[0]].append(meta)
 
-        pii_fields = sorted(f for f, lbls in field_labels.items() if "PII" in lbls)
-        phi_fields = sorted(f for f, lbls in field_labels.items() if "PHI" in lbls)
-
-        # Merge into every DATASTORE accumulator (project-wide enrichment)
         for key in datastore_keys:
             acc = node_map[key]
+            scoped_metadata = metadata_by_datastore[key]
+            if not scoped_metadata:
+                continue
+
+            all_labels: set[str] = set()
+            classified_tables: list[str] = []
+            classified_fields: dict[str, list[str]] = {}
+            # field_name -> labels, kept separately because pii_fields and
+            # phi_fields need labels while classified_fields stores names.
+            field_labels: dict[str, set[str]] = {}
+            for meta in scoped_metadata:
+                all_labels.update(meta.get("data_classification") or [])
+                table = meta.get("table_name") or meta.get("model_name")
+                if table:
+                    classified_tables.append(table)
+                    cf = meta.get("classified_fields")
+                    if cf:
+                        classified_fields[table] = sorted(cf.keys())
+                        for field_name, labels in cf.items():
+                            field_labels.setdefault(field_name, set()).update(labels or [])
+
+            pii_fields = sorted(f for f, labels in field_labels.items() if "PII" in labels)
+            phi_fields = sorted(f for f, labels in field_labels.items() if "PHI" in labels)
             existing_labels = set(acc.metadata.get("data_classification") or [])
             acc.metadata["data_classification"] = sorted(all_labels | existing_labels)
             existing_tables = set(acc.metadata.get("classified_tables") or [])

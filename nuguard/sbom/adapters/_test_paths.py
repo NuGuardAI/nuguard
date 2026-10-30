@@ -19,7 +19,7 @@ TEST_PATH_PARTS: frozenset[str] = frozenset(
 
 def looks_like_test_path(file_path: str) -> bool:
     """True when any path component of *file_path* names a test directory,
-    or the filename follows a common JS or pytest test-file convention."""
+    or the filename follows a common pytest/JS test naming convention."""
     path = PurePosixPath(file_path.replace("\\", "/"))
     if {part.lower() for part in path.parts} & TEST_PATH_PARTS:
         return True

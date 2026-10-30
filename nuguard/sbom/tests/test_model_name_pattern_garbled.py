@@ -8,9 +8,11 @@ generic, deterministic exclusion, not an opencode-specific patch.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
+from nuguard.sbom import AiSbomConfig, AiSbomExtractor
 from nuguard.sbom.adapters.registry import MODEL_NAME_PATTERNS
-from nuguard.sbom.config import AiSbomConfig
-from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.extractor.core import _strip_non_runtime_toml_model_pricing
 from nuguard.sbom.types import ComponentType
 
 
@@ -43,6 +45,153 @@ def test_legitimate_ollama_tag_still_matched():
 def test_cross_word_tag_still_matched():
     # Different words on each side are not self-referential and remain valid.
     assert _matches("hermes:chat")
+
+
+def _extract_toml_models(tmp_path: Path, rel_path: str, content: str) -> set[str]:
+    target = tmp_path / rel_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path,
+        AiSbomConfig(include_extensions={".toml"}, enable_llm=False),
+    )
+    return {
+        node.name
+        for node in doc.nodes
+        if node.component_type == ComponentType.MODEL
+    }
+
+
+def test_pricing_only_toml_model_is_absent(tmp_path: Path) -> None:
+    models = _extract_toml_models(
+        tmp_path,
+        "config/prices.toml",
+        '[pricing]\nclaude-haiku-5-5.long_context = { input = 2.0, output = 10.0 }\n',
+    )
+
+    assert models == set()
+
+
+def test_runtime_default_survives_pricing_tier_without_promotion(tmp_path: Path) -> None:
+    models = _extract_toml_models(
+        tmp_path,
+        "config/prices.toml",
+        'default_model = "claude-haiku-5-5"\n'
+        "[claude-haiku-5-5.long_context]\n"
+        "input = 2.0\n"
+        "output = 10.0\n",
+    )
+
+    assert models == {"claude-haiku-5-5"}
+
+
+def test_arbitrary_runtime_toml_model_is_retained(tmp_path: Path) -> None:
+    models = _extract_toml_models(
+        tmp_path,
+        "config/custom.toml",
+        'creative = "gpt-5.4"\n',
+    )
+
+    assert models == {"gpt-5.4"}
+
+
+def test_runtime_toml_registry_model_is_retained(tmp_path: Path) -> None:
+    models = _extract_toml_models(
+        tmp_path,
+        "config/models.toml",
+        '[models]\nfast = "claude-sonnet-4-6"\n',
+    )
+
+    assert models == {"claude-sonnet-4-6"}
+
+
+def test_pricing_directory_does_not_suppress_nested_runtime_toml(tmp_path: Path) -> None:
+    models = _extract_toml_models(
+        tmp_path,
+        "pricing/runtime.toml",
+        '[model.gpt-5.4]\nprovider = "openai"\ncontext_window = 128000\n',
+    )
+
+    assert models == {"gpt-5.4"}
+
+
+def test_runtime_table_price_field_does_not_suppress_model(tmp_path: Path) -> None:
+    models = _extract_toml_models(
+        tmp_path,
+        "config/runtime.toml",
+        "[openai.models.gpt-5.4]\nprice = 2.0\n",
+    )
+
+    assert models == {"gpt-5.4"}
+
+
+def test_mixed_prices_toml_preserves_runtime_registry_rows(tmp_path: Path) -> None:
+    models = _extract_toml_models(
+        tmp_path,
+        "config/prices.toml",
+        '[model.gpt-5.4]\nprovider = "openai"\n'
+        "[runtime]\n"
+        "fast = { model = 'gpt-5.4', input = 120000, output = 32000 }\n",
+    )
+
+    assert models == {"gpt-5.4"}
+
+
+def test_design_agent_prices_keep_default_and_drop_price_tier(tmp_path: Path) -> None:
+    models = _extract_toml_models(
+        tmp_path,
+        "config/prices.toml",
+        'default_model = "claude-haiku-5-5"\n'
+        "[claude-haiku-5-5.long_context]\n"
+        "input = 2.0\n"
+        "output = 10.0\n"
+        "cache_read_price = 0.2\n",
+    )
+
+    assert models == {"claude-haiku-5-5"}
+
+
+def test_design_agent_line_15_model_comment_cannot_promote_default(tmp_path: Path) -> None:
+    prefix = ['default_model = "claude-haiku-5-5"'] + [f"# note {index}" for index in range(2, 15)]
+    content = "\n".join(
+        prefix
+        + [
+            "# claude-haiku-5-5.long_context uses the higher rate",
+            "[claude-haiku-5-5.long_context]",
+            "input = 2.0",
+            "output = 10.0",
+        ]
+    ) + "\n"
+
+    models = _extract_toml_models(tmp_path, "config/prices.toml", content)
+
+    assert models == {"claude-haiku-5-5"}
+
+
+def test_pricing_comment_scrub_preserves_adjacent_comments_and_offsets() -> None:
+    content = (
+        "# ordinary pricing note\n"
+        "# gpt-5.4-mini is priced below\n"
+        "# keep this adjacent note\n"
+        "[gpt-5.4-mini]\n"
+        "input = 0.25\n"
+        "output = 2.0\n"
+    )
+
+    scrubbed = _strip_non_runtime_toml_model_pricing(content, "config/prices.toml")
+    original_lines = content.splitlines(keepends=True)
+    scrubbed_lines = scrubbed.splitlines(keepends=True)
+
+    assert scrubbed_lines[0] == original_lines[0]
+    assert scrubbed_lines[1].strip() == ""
+    assert scrubbed_lines[2] == original_lines[2]
+    assert [len(line) for line in scrubbed_lines] == [len(line) for line in original_lines]
+
+
+def test_model_comment_outside_verified_pricing_file_is_unchanged() -> None:
+    content = "# runtime fallback remains gpt-5.4-mini\n"
+
+    assert _strip_non_runtime_toml_model_pricing(content, "pricing/runtime.toml") == content
 
 
 def _model_names(doc) -> set[str]:
