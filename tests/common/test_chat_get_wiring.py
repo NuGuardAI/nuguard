@@ -170,3 +170,48 @@ async def test_bootstrap_still_warns_when_a_non_json_reply_is_not_plain_text() -
     check = report.checks[0]
     assert check.status == "ok"
     assert "not valid JSON" in check.body_warning
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "payload_in", "probed"),
+    [("GET", None, False), ("POST", "query", False), ("POST", "body", True)],
+    ids=["get-query", "post-query", "post-body-control"],
+)
+async def test_orchestrator_probes_a_pinned_endpoint_only_for_the_default_post_body(
+    monkeypatch: pytest.MonkeyPatch, method: str, payload_in: str, probed: bool
+) -> None:
+    """The startup payload-shape probe sends POSTs, so it must skip a pinned GET/query endpoint.
+
+    The probe condition combines develop's ``not _chat_payload_key_explicit`` with this PR's
+    ``not _pinned_request``; dropping either half changes one of these outcomes or develop's
+    own precedence tests.
+    """
+    from unittest.mock import AsyncMock
+
+    from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
+    from nuguard.sbom.models import AiSbomDocument
+
+    orchestrator = RedteamOrchestrator(
+        sbom=AiSbomDocument(target="./app", nodes=[], edges=[]),
+        target_url=TARGET,
+        chat_path=ENDPOINT,
+        chat_method=method,
+        chat_payload_in=payload_in,
+    )
+    probe = AsyncMock()
+    monkeypatch.setattr(orchestrator, "_maybe_probe_endpoints", probe)
+    seen: dict[str, Any] = {}
+
+    async def stop_after_resolution(**kwargs: Any) -> None:
+        seen.update(kwargs)
+        raise RuntimeError("captured startup resolution")
+
+    monkeypatch.setattr(
+        "nuguard.common.session_resolver.resolve_target_session", stop_after_resolution
+    )
+    with pytest.raises(RuntimeError, match="captured startup resolution"):
+        await orchestrator.run()
+
+    assert (probe.await_count == 1) is probed
+    assert seen["chat_method"] == method and seen["chat_payload_in"] == payload_in

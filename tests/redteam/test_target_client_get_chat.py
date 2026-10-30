@@ -220,3 +220,59 @@ async def test_send_stream_get_uses_query_string_and_reads_plain_text() -> None:
     assert dict(seen[0].url.params) == {"sessionId": "s1", "userMessage": "hello"}
     assert seen[0].content == b""
     await client.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("method", "payload_in"), [("GET", None), ("PUT", "body")], ids=["get-query", "put-body"]
+)
+async def test_expired_web_session_is_refreshed_for_non_post_chat_turns(
+    method: str, payload_in: str | None
+) -> None:
+    """A rejected cookie/CSRF session is refreshed and the SAME request is replayed once.
+
+    Develop refreshes the session inside the chat send path; this PR makes that path
+    method-aware. Both must hold: the replay keeps the configured method and payload
+    location, and only one extra request is made.
+    """
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.headers.get("x-csrf-token") != "fresh":
+            return httpx.Response(403, json={"detail": "CSRF token expired"})
+        return httpx.Response(200, text="Your order ships Monday.")
+
+    refreshed: list[int] = []
+
+    async def refresher() -> dict[str, str]:
+        refreshed.append(1)
+        return {"X-CSRF-Token": "fresh"}
+
+    client = TargetAppClient(
+        base_url=_BASE,
+        chat_path="/customerSupportAgent",
+        chat_method=method,
+        chat_payload_in=payload_in,
+        chat_payload_extras=_EXTRAS,
+    )
+    client.set_session_refresher(refresher)
+    await _serve(client, handler)  # replaces the httpx client, so set the stale header after
+    client.update_default_headers({"X-CSRF-Token": "stale"})
+
+    text, _ = await client.send("where is my order?", _session())
+
+    assert text == "Your order ships Monday."
+    assert len(refreshed) == 1
+    assert [r.method for r in seen] == [method, method]
+    assert [r.headers["x-csrf-token"] for r in seen] == ["stale", "fresh"]
+    assert seen[0].url == seen[1].url and seen[0].content == seen[1].content
+    if payload_in == "body":
+        assert seen[0].content and not seen[0].url.params
+    else:
+        assert not seen[0].content
+        assert dict(seen[0].url.params) == {
+            "sessionId": "s1",
+            "userMessage": "where is my order?",
+        }
+    await client.aclose()

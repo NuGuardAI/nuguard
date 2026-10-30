@@ -22,6 +22,7 @@ from nuguard.common.http import quota_exhausted_detail, resolve_chat_request, to
 from nuguard.common.logging import get_logger
 from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KEYS
 from nuguard.common.transport import is_provider_blocked, strip_known_boilerplate
+from nuguard.common.web_session import SessionRefresher, is_session_rejection
 from nuguard.redteam.campaign.transport.context import RetryDeferred
 
 from .session import AttackSession
@@ -420,6 +421,11 @@ class TargetAppClient:
         # (falls straight through to the existing "[HTTP <status>]" behaviour).
         self._heal_llm: "LLMClient | None" = heal_llm
         self._heal_attempts_used = 0
+        # Optional web-session refresher (cookie + CSRF). Set via
+        # set_session_refresher(); lets a long run survive session expiry.
+        self._session_refresher: SessionRefresher | None = None
+        self._session_generation = 0
+        self._session_refresh_lock = asyncio.Lock()
 
     def _parse_retry_after_seconds(self, value: str | None) -> float | None:
         if not value:
@@ -724,6 +730,61 @@ class TargetAppClient:
         if transport is None or not transport.extras_overlay:
             return self._chat_payload_extras
         return {**self._chat_payload_extras, **transport.extras_overlay}
+
+    def set_session_refresher(self, refresher: SessionRefresher | None) -> None:
+        """Install a callable that re-acquires the cookie/CSRF session on expiry."""
+        self._session_refresher = refresher
+
+    async def _refresh_web_session(self, generation: int) -> bool:
+        """Refresh the session once per expiry, shared by concurrent requests.
+
+        *generation* is the value read before the rejected request; if another
+        task already refreshed since, the caller just retries with the new headers.
+        """
+        if self._session_refresher is None:
+            return False
+        async with self._session_refresh_lock:
+            if generation != self._session_generation:
+                return True
+            try:
+                fresh = await self._session_refresher()
+            except Exception as exc:  # noqa: BLE001 - refresh is best effort
+                _log.warning("Web session refresh failed: %s", type(exc).__name__)
+                return False
+            if not fresh:
+                return False
+            self.update_default_headers(fresh)
+            self._session_generation += 1
+            _log.info("Target web session refreshed after cookie/CSRF rejection")
+            return True
+
+    async def _post_chat(
+        self, chat_path: str, body: Any, headers: dict[str, str] | None,
+    ) -> httpx.Response:
+        """Send the chat turn (configured method and payload location), refreshing the web
+        session once on a cookie/CSRF rejection."""
+
+        async def _once() -> httpx.Response:
+            if self._chat_method != "POST" or self._chat_payload_in != "body":
+                return await self._client.request(
+                    self._chat_method,
+                    chat_path,
+                    headers=headers,
+                    **self._chat_request_kwargs(body),
+                )
+            if self._chat_payload_format == "form":
+                return await self._client.post(chat_path, data=body, headers=headers)
+            return await self._client.post(chat_path, json=body, headers=headers)
+
+        generation = self._session_generation
+        resp = await _once()
+        if (
+            self._session_refresher is not None
+            and is_session_rejection(resp.status_code, resp.text or "")
+            and await self._refresh_web_session(generation)
+        ):
+            resp = await _once()
+        return resp
 
     def _chat_request_kwargs(self, body: Any) -> dict[str, Any]:
         """httpx keyword arguments carrying *body* as query, form or JSON."""
@@ -1107,17 +1168,7 @@ class TargetAppClient:
                     chat_path,
                     json.dumps(body, default=str),
                 )
-                if self._chat_method != "POST" or self._chat_payload_in != "body":
-                    resp = await self._client.request(
-                        self._chat_method,
-                        chat_path,
-                        headers=_req_headers,
-                        **self._chat_request_kwargs(body),
-                    )
-                elif self._chat_payload_format == "form":
-                    resp = await self._client.post(chat_path, data=body, headers=_req_headers)
-                else:
-                    resp = await self._client.post(chat_path, json=body, headers=_req_headers)
+                resp = await self._post_chat(chat_path, body, _req_headers)
                 if transport is not None:
                     transport.absorb_response_cookies(resp.cookies)
                 if is_provider_blocked(resp.text):
@@ -1396,6 +1447,7 @@ class TargetAppClient:
                         request.headers.update(extra_headers)
                     resp = await self._client.send(request)
                 else:
+                    _generation = self._session_generation
                     resp = await self._client.request(
                         method=method.upper(),
                         url=path,
@@ -1403,6 +1455,18 @@ class TargetAppClient:
                         params=params,
                         headers=_hdrs or {},
                     )
+                    if (
+                        self._session_refresher is not None
+                        and is_session_rejection(resp.status_code, resp.text or "")
+                        and await self._refresh_web_session(_generation)
+                    ):
+                        resp = await self._client.request(
+                            method=method.upper(),
+                            url=path,
+                            json=body,
+                            params=params,
+                            headers=_hdrs or {},
+                        )
                     if transport is not None:
                         transport.absorb_response_cookies(resp.cookies)
                 if resp.status_code == 429 and attempt < self._max_429_retries:

@@ -21,6 +21,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
+from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel, Field
 
@@ -81,13 +82,23 @@ _DEAD_STATUS_CODES = frozenset({400, 404, 405, 422})
 # this node — never lingers and gets mistaken for a current result.
 _SAFE_LIVENESS_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
+# Some applications expose logout/session invalidation as GET handlers. Even
+# HEAD can execute the same handler, so changing the method is not sufficient.
+_SESSION_CHANGING_PATH_RE = re.compile(
+    r"(?:^|/)(?:log[-_]?out|sign[-_]?out|log[-_]?off|sign[-_]?off)"
+    r"(?:[-_]?all)?(?:/|$)"
+    r"|(?:^|/)(?:auth|sessions?|tokens?)/(?:revoke|invalidate|destroy|clear|reset|terminate)"
+    r"(?:/|$)",
+    re.IGNORECASE,
+)
+
 
 def _probe_decision(meta: "NodeMetadata") -> tuple[bool, str | None]:
     """Return (allowed, skip_reason) — pure and synchronous, no I/O.
 
     Decided *before* any network call and before the cache-freshness check
     (see :func:`check_endpoint_liveness`), so a policy skip is never masked
-    by a stale cache hit from before this decision applied. Two conditions,
+    by a stale cache hit from before this decision applied. Conditions,
     evaluated in order:
 
     1. An unresolved path template (``:id``/``{id}``/``<id>``) can only
@@ -97,12 +108,20 @@ def _probe_decision(meta: "NodeMetadata") -> tuple[bool, str | None]:
        ``:id`` path returned 500 "invalid input syntax for type uuid").
     2. A mutating method (``DELETE``/``POST``/``PUT``/``PATCH``) is never
        probed — see the module-level note above.
+    3. A session-changing route or an endpoint with declared mutation effects
+       is skipped even when it advertises a safe HTTP method.
     """
     if HAS_PATH_PARAM_RE.search(meta.endpoint or ""):
         return False, "unresolved path parameter — cannot be safely probed without a real ID"
     method = (meta.method or "GET").upper()
     if method not in _SAFE_LIVENESS_METHODS:
         return False, f"{method} is not a safe method (GET/HEAD/OPTIONS only) — never dynamically probed"
+    path = unquote(urlsplit(meta.endpoint or "").path)
+    if _SESSION_CHANGING_PATH_RE.search(path):
+        return False, "session-changing route — liveness must not invalidate authentication"
+    semantics = meta.mutation_semantics
+    if semantics and semantics.mutation_kind not in {"none", "unknown"}:
+        return False, f"declared {semantics.mutation_kind} mutation — never dynamically probed"
     return True, None
 
 
@@ -222,7 +241,9 @@ async def check_endpoint_liveness(
     Never sends a mutating request (``DELETE``/``POST``/``PUT``/``PATCH``) —
     see :func:`_probe_decision`. Those nodes, and nodes with an unresolved
     path parameter, are left at ``operational=None`` (never probed, not
-    confirmed dead) rather than being invoked or skipped-as-if-dead.
+    confirmed dead) rather than being invoked or skipped-as-if-dead. Routes
+    that terminate sessions and endpoints with declared mutation effects are
+    skipped even if they advertise GET, HEAD, or OPTIONS.
 
     Nodes whose ``endpoint`` value fails :func:`_looks_like_rest_path` (bind
     address, MCP/SSE annotation, ...) are also skipped entirely — never

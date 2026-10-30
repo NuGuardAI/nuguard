@@ -1086,6 +1086,7 @@ class BehaviorRunner:
                 sbom=self._sbom,
                 endpoint=endpoint or ("/ws" if _is_websocket else "/chat"),
                 auth_config=runtime.auth_config,
+                extra_headers=self._config.headers,
                 run_id=str(_uuid.uuid4()),
                 probe_payload_extras=getattr(self._config, "chat_payload_extras", None) or None,
                 chat_method=getattr(self._config, "chat_method", "POST") or "POST",

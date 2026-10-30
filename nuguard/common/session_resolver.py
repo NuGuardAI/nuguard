@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig, AuthSession
     from nuguard.common.bootstrap import TargetHealthReport
     from nuguard.common.browser_login.config import BrowserDiscoveryConfig
+    from nuguard.common.web_session import SessionRefresher
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
@@ -64,6 +65,9 @@ class TargetSessionConfig:
     effective_headers: dict[str, str] = field(default_factory=dict)
     endpoint_source: str = "default"
     payload_format: str = "json"
+    # Re-acquires an auto-bootstrapped cookie/CSRF session when it expires mid-run.
+    # None unless discovery had to acquire a web session itself.
+    session_refresher: "SessionRefresher | None" = field(default=None, repr=False)
     # HTTP method for chat turns and where the payload goes ("body" or "query").
     chat_method: str = "POST"
     chat_payload_in: str | None = None
@@ -314,8 +318,8 @@ async def resolve_target_session(
         target_url: Base URL of the target application (may be a static-hosting URL).
         sbom: Parsed AI-SBOM used for endpoint and auth discovery, when available.
         auth_config: Structured auth config; ``None`` falls back to *extra_headers*.
-        extra_headers: Static headers (legacy auth or custom).  Used when *auth_config*
-            is ``None`` or ``type='none'``.
+        extra_headers: Static headers (legacy auth or custom), included in discovery,
+            bootstrap and target requests. Identity auth headers take precedence.
         chat_path: Chat endpoint path from config; empty = auto-discover.
         chat_payload_key: JSON body key for the message (default ``"message"``).
         chat_payload_list: Whether to wrap the message value in a list.
@@ -367,8 +371,13 @@ async def resolve_target_session(
         discover_login_flow_live,
         resolve_auth_config_with_sbom_fallback,
     )
+    from nuguard.common.web_session import make_session_refresher, ui_root_for  # noqa: PLC0415
 
     resolution_notes: list[str] = []
+    web_session_acquired = False
+    # Local copy: auto-acquired cookie/CSRF headers are merged in below without
+    # mutating the caller's dict.
+    extra_headers = dict(extra_headers)
     _run_id = run_id or str(_uuid.uuid4())
     configured_chat_path = chat_path
     is_endpoint_explicit = (
@@ -440,6 +449,7 @@ async def resolve_target_session(
         nonlocal _configured_field_unresolved
         nonlocal _payload_shape_validated
         nonlocal chat_payload_value_template
+        nonlocal web_session_acquired
         resolved = await resolve_chat_endpoint(
             target_url=target_url,
             sbom=sbom,
@@ -447,7 +457,7 @@ async def resolve_target_session(
             payload_key=chat_payload_key if payload_key_explicit else UNSET,
             payload_list=chat_payload_list if payload_key_explicit else UNSET,
             response_key=chat_response_key if response_key_explicit else UNSET,
-            auth_headers=auth_headers,
+            auth_headers={**extra_headers, **(auth_headers or {})},
             timeout=request_timeout or 15.0,
             probe_payload_extras=_probe_extras or None,
             allow_live_probe=not _pinned_request,
@@ -456,6 +466,15 @@ async def resolve_target_session(
             browser_discovery=browser_discovery,
         )
         resolution_notes.extend(resolved.notes)
+        if resolved.session_headers:
+            # Discovery auto-acquired a cookie/CSRF session; every later request
+            # (bootstrap health check, warmup, the real client) must carry it.
+            extra_headers.update(resolved.session_headers)
+            web_session_acquired = True
+            resolution_notes.append(
+                "Target required a web session: auto-acquired a session cookie and "
+                "anti-CSRF token from its UI pages (values not recorded)."
+            )
         _configured_field_unresolved = (
             is_endpoint_explicit
             and not payload_key_explicit
@@ -544,6 +563,7 @@ async def resolve_target_session(
         payload_key=chat_payload_key,
         payload_list=chat_payload_list,
         endpoint_resolver=endpoint_resolver,
+        extra_headers=extra_headers,
         chat_method=chat_method,
         chat_payload_in=chat_payload_in,
     )
@@ -656,6 +676,7 @@ async def resolve_target_session(
             sbom=sbom,
             endpoint=chat_path,
             auth_config=auth_runtime.auth_config,
+            extra_headers=extra_headers,
             canary_config=canary_config,
             run_id=_run_id,
             probe_payload_extras=_probe_extras or None,
@@ -754,6 +775,17 @@ async def resolve_target_session(
                 else endpoint_source
             ),
             payload_format=payload_format,
+            session_refresher=(
+                make_session_refresher(
+                    target_url,
+                    [ui_root_for(chat_path or "") or ""],
+                    headers=extra_headers,
+                    timeout=request_timeout or 15.0,
+                    validate_paths=[chat_path] if chat_path else None,
+                )
+                if web_session_acquired
+                else None
+            ),
             chat_method=chat_method,
             chat_payload_in=chat_payload_in,
         ),

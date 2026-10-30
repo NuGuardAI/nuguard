@@ -90,6 +90,7 @@ async def bootstrap_auth_runtime(
     payload_list: bool = False,
     sbom: "AiSbomDocument | None" = None,
     endpoint_resolver: "Callable[[dict[str, str]], Awaitable[ResolvedEndpoint]] | None" = None,
+    extra_headers: dict[str, str] | None = None,
     chat_method: str = "POST",
     chat_payload_in: str | None = None,
 ) -> tuple[AuthBootstrapper, TargetHealthReport]:
@@ -102,6 +103,8 @@ async def bootstrap_auth_runtime(
     not disable recovery, only the persistence step. ``sbom``, when given,
     lets the health check resolve a templated chat endpoint's path params
     (two-step chat) instead of probing the literal placeholder.
+    Custom ``extra_headers`` apply to discovery and probes; identity auth headers
+    take precedence, matching the subsequent target client's header handling.
     """
     bootstrapper = AuthBootstrapper(
         target_url=target_url,
@@ -119,6 +122,7 @@ async def bootstrap_auth_runtime(
         payload_list=payload_list,
         sbom=sbom,
         endpoint_resolver=endpoint_resolver,
+        extra_headers=extra_headers,
         chat_method=chat_method,
         chat_payload_in=chat_payload_in,
     )
