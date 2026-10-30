@@ -125,7 +125,7 @@ class LLMClientsAdapter(FrameworkAdapter):
 
         def _first_model_arg(
             args: dict[str, Any], names: tuple[str, ...]
-        ) -> tuple[Any, str | None]:
+        ) -> tuple[Any, str | int | None]:
             for name in names:
                 if args.get(name):
                     return args[name], name

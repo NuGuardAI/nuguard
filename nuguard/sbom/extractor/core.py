@@ -28,7 +28,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
@@ -704,7 +704,7 @@ def _attach_python_model_literal_location(
 
     expected_name: str | None = None
     if det.source_call is not None and det.source_model_argument is not None:
-        parsed_calls = ()
+        parsed_calls: Iterable[Any] = ()
         name_attribute = ""
     elif det.evidence_kind == "ast_instantiation":
         parsed_calls = parse_result.instantiations
