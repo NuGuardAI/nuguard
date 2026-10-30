@@ -93,6 +93,8 @@ async def detect_payload_shape(
     probe_payload_extras: dict[str, object] | None = None,
     llm: Any = None,
     probe_result_callback: Callable[[ProbeResult], None] | None = None,
+    session_sink: dict[str, str] | None = None,
+    session_bootstrap: bool = True,
 ) -> PayloadShape:
     """Resolve missing payload fields for a known endpoint.
 
@@ -139,6 +141,8 @@ async def detect_payload_shape(
         probe_payload_extras=probe_payload_extras,
         hint_path=endpoint,
         llm=llm,
+        session_sink=session_sink,
+        session_bootstrap=session_bootstrap,
     )
     if result is not None:
         result.response_key = effective_response

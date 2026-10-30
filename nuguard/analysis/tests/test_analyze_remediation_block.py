@@ -27,12 +27,14 @@ def _finding(
     remediation: str | None = None,
     container_image: str | None = None,
     container_image_locations: list[str] | None = None,
+    affected_component: str | None = None,
 ) -> Finding:
     return Finding(
         finding_id=finding_id,
         title="t",
         severity=Severity.HIGH,
         description="d",
+        affected_component=affected_component,
         remediation=remediation,
         container_image=container_image,
         container_image_locations=container_image_locations or [],
@@ -106,6 +108,40 @@ def test_component_remediation_falls_back_to_image_rebuild_for_os_packages() -> 
     assert "container" in text
     assert "8.9.0" in text
     assert "requirements.txt" not in text
+
+
+def test_component_remediation_explains_go_stdlib_is_not_an_os_package() -> None:
+    findings = [
+        _finding(
+            "grype-GO-2025-1",
+            remediation="Upgrade stdlib to a version outside the affected range "
+            "(fix available: 1.26.10). See https://x for details.",
+            container_image="postgres:16-alpine",
+            container_image_locations=["docker-compose.yml:17"],
+            affected_component="pkg:golang/stdlib@1.24.6",
+        )
+    ]
+    text = _component_remediation_text(["stdlib@1.24.6"], findings, {}, None)
+    assert "Go standard library" in text
+    assert "Go `1.26.10`" in text
+    assert "postgres:16-alpine" in text
+    assert "cannot fix it" in text
+    assert "apk upgrade stdlib" not in text
+    assert "OS-level package" not in text
+
+
+def test_component_remediation_keeps_os_package_text_for_apk_components() -> None:
+    findings = [
+        _finding(
+            "grype-CVE-2024-2398",
+            remediation="Upgrade curl to a version outside the affected range "
+            "(fix available: 8.9.0). See https://x for details.",
+            affected_component="pkg:apk/alpine/curl@8.5.0-r0?arch=x86_64",
+        )
+    ]
+    text = _component_remediation_text(["curl@8.5.0-r0"], findings, {}, None)
+    assert "OS-level package" in text
+    assert "apk upgrade curl" in text
 
 
 def test_component_remediation_mentions_all_merged_component_names() -> None:

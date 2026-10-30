@@ -6,8 +6,26 @@ Produces a Markdown table suitable for embedding in the redteam report.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass
 from typing import Any
+
+# Tool names that warrant a coverage gate: code/shell execution, egress, deletion,
+# money movement, and storage/user management.
+_HIGH_RISK_TOOL_RE = re.compile(
+    r"exec|shell|network_request|delete|send_email|transfer|manage_storage|manage_users|"
+    r"read_config|database_maintenance",
+    re.IGNORECASE,
+)
+# Node types that must each be exercised at least once.
+_GATED_TYPES = ("AGENT", "DATASTORE", "AUTH")
+
+
+def is_gated_node(node_type: str, name: str) -> bool:
+    """True when a node of *node_type* must be covered by at least one executed scenario."""
+    if node_type in _GATED_TYPES:
+        return True
+    return node_type == "TOOL" and bool(_HIGH_RISK_TOOL_RE.search(name))
 
 
 @dataclass
@@ -33,7 +51,7 @@ def render_coverage_markdown(data: dict[str, Any]) -> str:
     policy_clauses = data.get("policy_clauses") or []
     capped_count = data.get("capped_count") or 0
 
-    if not nodes and not policy_clauses:
+    if not nodes and not policy_clauses and not data.get("uncovered"):
         return ""
 
     lines: list[str] = ["## SBOM Coverage", ""]
@@ -50,6 +68,16 @@ def render_coverage_markdown(data: dict[str, Any]) -> str:
         )
 
     lines.append("")
+
+    gaps = data.get("uncovered") or []
+    if gaps:
+        lines.append(f"### Coverage gaps ({len(gaps)} gated node(s) never executed)")
+        lines.append("")
+        lines.append("| Node | Type | Reason |")
+        lines.append("|---|---|---|")
+        for gap in gaps:
+            lines.append(f"| {gap['name'][:50]} | {gap['node_type']} | {gap['reason']} |")
+        lines.append("")
 
     if capped_count:
         lines.append(
@@ -79,6 +107,33 @@ class CoverageTracker:
         self._nodes: dict[str, CoverageEntry] = {}
         self._policy_clauses: dict[str, CoverageEntry] = {}
         self._capped_count: int = 0
+        self._expected: dict[str, tuple[str, str]] = {}
+
+    def set_expected(self, nodes: list[tuple[str, str, str]]) -> None:
+        """Register ``(node_id, node_type, name)`` of every node the run should cover.
+
+        Only gated nodes (see :func:`is_gated_node`) are kept; they surface in
+        ``uncovered`` when no scenario executed against them.
+        """
+        for node_id, node_type, name in nodes:
+            if is_gated_node(node_type, name):
+                self._expected[node_id] = (node_type, name)
+
+    @property
+    def uncovered(self) -> list[dict[str, str]]:
+        """Gated nodes with zero executed scenarios, each with the reason."""
+        out: list[dict[str, str]] = []
+        for node_id, (node_type, name) in self._expected.items():
+            entry = self._nodes.get(node_id)
+            if entry is not None and entry.executed > 0:
+                continue
+            reason = (
+                "no scenario generated"
+                if entry is None or entry.generated == 0
+                else f"{entry.generated} generated, none executed"
+            )
+            out.append({"node_id": node_id, "node_type": node_type, "name": name, "reason": reason})
+        return sorted(out, key=lambda g: (g["node_type"], g["name"]))
 
     def record_generated(self, node_id: str, node_type: str, name: str) -> None:
         entry = self._nodes.setdefault(
@@ -134,4 +189,5 @@ class CoverageTracker:
             "nodes": [asdict(e) for e in self._nodes.values()],
             "policy_clauses": [asdict(e) for e in self._policy_clauses.values()],
             "capped_count": self._capped_count,
+            "uncovered": self.uncovered,
         }

@@ -32,6 +32,8 @@ _FS_PAT = re.compile(r"\b(?:read|write|file|path|disk|storage|filesystem|directo
 _REPO_PAT = re.compile(r"\b(?:repo|git|commit|branch|pull.?request|github|gitlab)\b", re.IGNORECASE)
 _CI_PAT = re.compile(r"\b(?:ci|cd|pipeline|workflow|action|jenkins|github.actions|circleci)\b", re.IGNORECASE)
 _MCP_PAT = re.compile(r"\bmcp\b", re.IGNORECASE)
+# MCP clients namespace tools as ``<server>__<tool>`` (e.g. ``findrive__get_file``).
+_MCP_NAMESPACED_TOOL_PAT = re.compile(r"^[a-z][a-z0-9]*__[a-z][a-z0-9_]*$", re.IGNORECASE)
 _MEMORY_PAT = re.compile(r"\b(?:memory|remember|persist|long.?term|preference|profile|store)\b", re.IGNORECASE)
 _VECTOR_PAT = re.compile(r"\b(?:vector|embedding|semantic|pinecone|weaviate|chroma|qdrant|index)\b", re.IGNORECASE)
 _WRITE_SCOPES = frozenset({"db_write", "filesystem_write", "code_execution", "email_out", "network_out"})
@@ -200,7 +202,11 @@ class CapabilityDetector:
             if _is_egress_tool(tool):
                 caps.add(C.EXTERNAL_EGRESS_SINK)
                 egress_sinks.append(str(tool.id))
-            if _MCP_PAT.search(hay) or (tool.metadata and tool.metadata.mcp_server_url):
+            if (
+                _MCP_PAT.search(hay)
+                or _MCP_NAMESPACED_TOOL_PAT.match((tool.name or "").strip())
+                or (tool.metadata and tool.metadata.mcp_server_url)
+            ):
                 caps.add(C.MCP_SERVER)
                 mcp_tools.append(str(tool.id))
             if _WEB_PAT.search(hay):

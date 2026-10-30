@@ -110,8 +110,8 @@ async def test_unset_endpoint_uses_shared_resolver_before_bootstrap() -> None:
                 confidence=0.9,
                 metadata=NodeMetadata(endpoint="/api/chat/message", method="POST"),
             )]),
-            auth_config=None,
-            extra_headers={},
+            auth_config=AuthConfig(type="bearer", header="Authorization: Bearer test-token"),
+            extra_headers={"X-CSRF-Token": "test-csrf", "User-Agent": "session-client"},
             chat_path="",
             chat_payload_key="message",
             chat_payload_list=False,
@@ -123,6 +123,14 @@ async def test_unset_endpoint_uses_shared_resolver_before_bootstrap() -> None:
     _, resolve_kwargs = mock_resolve.call_args
     assert resolve_kwargs["endpoint"] is UNSET
     assert resolve_kwargs["probe_payload_extras"] == {"consumerID": "c1"}
+    assert resolve_kwargs["auth_headers"] == {
+        "Authorization": "Bearer test-token",
+        "X-CSRF-Token": "test-csrf",
+        "User-Agent": "session-client",
+    }
+    assert mock_bootstrap.call_args.kwargs["extra_headers"] == {
+        "X-CSRF-Token": "test-csrf", "User-Agent": "session-client",
+    }
     assert session_cfg.chat_path == "/extract"
     assert session_cfg.chat_payload_key == "text"
     assert session_cfg.chat_payload_value_template == resolved.payload.value_template

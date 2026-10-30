@@ -114,6 +114,7 @@ class AuthBootstrapper:
         payload_list: bool = False,
         sbom: "AiSbomDocument | None" = None,
         endpoint_resolver: "Callable[[dict[str, str]], Awaitable[ResolvedEndpoint]] | None" = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         self._target_url = target_url.rstrip("/")
         # Used to resolve a templated chat endpoint (".../:id/messages") into a
@@ -139,6 +140,7 @@ class AuthBootstrapper:
         self._is_websocket = is_websocket
         self._ws_auth_message = ws_auth_message
         self._endpoint_resolver = endpoint_resolver
+        self._extra_headers = dict(extra_headers or {})
         # Path to the loaded nuguard.yaml, when known. Passed through to
         # attempt_browser_auth_recovery() so a successful browser-login
         # recovery can be persisted back into the file (see run()); None
@@ -291,7 +293,11 @@ class AuthBootstrapper:
             else self._session.headers()
         )
         if self._endpoint_resolver is not None:
+            resolver_headers = {**self._extra_headers, **resolver_headers}
             resolved_endpoint = await self._endpoint_resolver(resolver_headers)
+            # Cookie/CSRF headers auto-acquired during discovery must also reach
+            # the health check below and every later request.
+            self._extra_headers.update(getattr(resolved_endpoint, "session_headers", None) or {})
             if not resolved_endpoint.path:
                 raise TargetEndpointNotFoundError(
                     "Could not discover a chat endpoint from the SBOM, HTTP probes, "
@@ -424,7 +430,7 @@ class AuthBootstrapper:
         # Check each tenant session_token from canary.json
         if self._canary:
             for tenant in self._canary.tenants:
-                if not tenant.session_token:
+                if not tenant.has_credentials:
                     report.checks.append(
                         CredentialCheckResult(
                             identity=tenant.tenant_id,
@@ -435,13 +441,12 @@ class AuthBootstrapper:
                         )
                     )
                     continue
-                tenant_auth = AuthConfig.from_tenant_token(tenant.session_token)
-                # Tenant credentials are always static (bearer/api_key) —
-                # no login flow needed; use AuthConfig.to_headers() directly
+                # Tenant credentials are static (bearer/api_key/header) or an
+                # acquired cookie/CSRF web session — no login flow needed.
                 tenant_result = await self._check_one(
                     identity=tenant.tenant_id,
-                    headers=tenant_auth.to_headers(),
-                    auth_type=tenant_auth.type,
+                    headers=tenant.auth_headers(),
+                    auth_type="web_session" if tenant.session_headers else AuthConfig.from_tenant_token(tenant.session_token).type,
                 )
                 report.checks.append(tenant_result)
 
@@ -522,6 +527,7 @@ class AuthBootstrapper:
         request_headers = {
             "User-Agent": "nuguard-bootstrap/1.0",
             "Content-Type": "application/json",
+            **self._extra_headers,
             **headers,
         }
         # A natural greeting rather than a terse "ping" — a real chat app is far
@@ -810,7 +816,7 @@ class AuthBootstrapper:
 
         from nuguard.redteam.target.ws_client import to_ws_url  # noqa: PLC0415
 
-        request_headers = {"User-Agent": "nuguard-bootstrap/1.0", **headers}
+        request_headers = {"User-Agent": "nuguard-bootstrap/1.0", **self._extra_headers, **headers}
         ws_url = to_ws_url(self._target_url) + self._endpoint
         start = time.monotonic()
         try:

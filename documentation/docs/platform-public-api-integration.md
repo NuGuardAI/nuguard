@@ -69,7 +69,15 @@ Module: `nuguard.analysis.public_api`
 
 Request model:
 - `AnalysisRunRequest`
-  - Checkov and Semgrep accept finite positive `*_timeout` (120 seconds per process) and `*_total_timeout` (300 seconds per scanner) settings. Failed or incomplete scans retain partial findings and expose `tool_status[tool].status = "error"`; callers should distinguish this from complete coverage. Worker cleanup is bounded; cancelling the async caller leaves scanner threads bounded by their configured deadlines.
+  - Checkov, Opengrep (Semgrep fallback), and Gitleaks accept finite positive `*_timeout` (120 seconds per process) and `*_total_timeout` (300 seconds per scanner) settings. Failed or incomplete scans retain partial findings and expose `tool_status[tool].status = "error"`; callers should distinguish this from complete coverage. Worker cleanup is bounded; cancelling the async caller leaves scanner threads bounded by their configured deadlines.
+
+Opengrep is the preferred source scanner. Keep using `enable_semgrep`, `semgrep_timeout`,
+`semgrep_total_timeout`, and `tool_status["semgrep"]`; these names remain compatible.
+`enable_pip_audit` and `enable_gitleaks` default to `True` and skip when the binary or inputs
+are missing. pip-audit audits resolved Python dependencies via OSV with `pip_audit_timeout`
+(default 300 seconds) and `pip_audit_total_timeout` (600 seconds). Gitleaks scans source for
+secrets with `gitleaks_timeout` (120 seconds) and `gitleaks_total_timeout` (300 seconds);
+matched secret values are redacted. All deadlines must be finite and positive.
 
 Response model:
 - `AnalysisRunResult`

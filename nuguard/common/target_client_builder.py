@@ -808,5 +808,6 @@ def build_target_app_client_from_session(
         chat_payload_value_template=session.chat_payload_value_template,
         framework_adapter=framework_adapter,
     )
+    client.set_session_refresher(session.session_refresher)
     client.resolution_notes = list(session.resolution_notes)
     return client

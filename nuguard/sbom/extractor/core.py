@@ -161,9 +161,19 @@ _DOCKERFILE_NAMES = {"dockerfile"}  # lower-cased stem match
 
 
 def _is_dockerfile_name(name: str) -> bool:
-    """``Dockerfile``, ``Dockerfile.dev``, ``Dockerfile-api`` and ``api.dockerfile``."""
+    """``Dockerfile``, ``Dockerfile.dev``, ``Dockerfile-api`` and ``api.dockerfile``.
+
+    Source files that merely start with ``dockerfile.`` (e.g. ``dockerfile.py``)
+    are excluded; otherwise their ``import`` lines parse as ``FROM`` images.
+    """
     lower = name.lower()
     if lower.endswith((".dockerignore", ".md", ".txt")):
+        return False
+    source_suffixes = (
+        _PYTHON_EXTENSIONS | _TYPESCRIPT_EXTENSIONS | _GO_EXTENSIONS
+        | _CSHARP_EXTENSIONS | _JAVA_EXTENSIONS | _SQL_EXTENSIONS | _NOTEBOOK_EXTENSIONS
+    )
+    if Path(lower).suffix in source_suffixes:
         return False
     return (
         lower in _DOCKERFILE_NAMES
@@ -1113,6 +1123,9 @@ class AiSbomExtractor:
                 if _setter is not None:
                     _setter(*_args)
 
+        # Relative paths of every scanned .java file, so _resolve_edges can apply Java name
+        # shadowing (a same-package class hides a wildcard-imported one).
+        _java_scanned: set[str] = set()
         for file_path, file_size in self._iter_files(root, config):
             try:
                 content = file_path.read_text(encoding="utf-8-sig", errors="ignore")
@@ -1137,6 +1150,8 @@ class AiSbomExtractor:
 
             files_scanned += 1
             rel_path = str(file_path.relative_to(root))
+            if file_path.suffix.lower() in _JAVA_EXTENSIONS:
+                _java_scanned.add(rel_path)
             content_bytes = file_size
             # Track LOC for every scanned file
             file_loc[rel_path] = content.count("\n") + 1
@@ -2132,7 +2147,12 @@ class AiSbomExtractor:
             doc.nodes.append(node)
 
         disambiguate_endpoint_names(doc.nodes)
-        self._resolve_edges(doc, node_map, imported_assets=_imported_assets)
+        self._resolve_edges(
+            doc,
+            node_map,
+            imported_assets=_imported_assets,
+            scanned_files=_java_scanned,
+        )
 
         # Deduplicate DEPLOYMENT nodes: merge github-actions workflow nodes into
         # the cloud-provider service nodes they deploy to.
@@ -2782,11 +2802,13 @@ class AiSbomExtractor:
         node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
         *,
         imported_assets: dict[str, set[tuple[ComponentType, str]]] | None = None,
+        scanned_files: set[str] | None = None,
     ) -> None:
         """Turn RelationshipHints into Edge objects using built node UUIDs.
 
-        Falls back to simple type-based edge inference for any agents that
-        don't already have explicit relationships.
+        Preserve adapter hints and the scoped structural inference below.
+        Missing agent-to-tool/model hints do not establish dependencies: never
+        fill them from the repository-wide tool or model catalog.
         """
         # Build canonical_name → node.id lookup
         canonical_to_id: dict[str, Any] = {}
@@ -2815,6 +2837,27 @@ class AiSbomExtractor:
             "DEPENDS_ON": RelationshipType.DEPENDS_ON,
         }
 
+        def _lookup(canonical: str) -> Any:
+            return canonical_to_id.get(canonical) or canonical_to_id.get(
+                canonicalize_text(canonical)
+            )
+
+        def _hint_target_id(hint: RelationshipHint) -> Any:
+            candidates = getattr(hint, "target_files", ())
+            if not candidates:
+                return _lookup(hint.target_canonical)
+            # Ordered by the language's name-shadowing rules: the first candidate whose file
+            # was scanned decides, even when that file holds no node (a plain class that hides
+            # a later agent). Without a scanned-file set, fall back to the first node found.
+            for candidate_file, canonical in candidates:
+                if scanned_files is None:
+                    found = _lookup(canonical)
+                    if found is not None:
+                        return found
+                elif candidate_file in scanned_files:
+                    return _lookup(canonical)
+            return None
+
         # Process explicit relationship hints
         seen_edges: set[tuple[Any, Any, str]] = set()
         for acc in node_map.values():
@@ -2824,9 +2867,7 @@ class AiSbomExtractor:
                 src_id = canonical_to_id.get(hint.source_canonical) or canonical_to_id.get(
                     canonicalize_text(hint.source_canonical)
                 )
-                tgt_id = canonical_to_id.get(hint.target_canonical) or canonical_to_id.get(
-                    canonicalize_text(hint.target_canonical)
-                )
+                tgt_id = _hint_target_id(hint)
                 if src_id is None or tgt_id is None:
                     continue
                 rel = rel_type_map.get(hint.relationship_type, RelationshipType.USES)
@@ -2874,36 +2915,6 @@ class AiSbomExtractor:
             adapter_name = fw.metadata.extras.get("adapter", "")
             if adapter_name:
                 fw_name_to_id.setdefault(adapter_name, fw.id)
-
-        model_ids: set[Any] = {n.id for n in by_type.get(ComponentType.MODEL, [])}
-
-        # Track which agents already have tool vs. model edges separately so
-        # the fallback can add only what is missing.
-        agent_ids_with_tool_edges: set[Any] = set()
-        agent_ids_with_model_edges: set[Any] = set()
-        for e in doc.edges:
-            if e.relationship_type == RelationshipType.CALLS and e.target in {
-                n.id for n in by_type.get(ComponentType.TOOL, [])
-            }:
-                agent_ids_with_tool_edges.add(e.source)
-            if e.relationship_type == RelationshipType.USES and e.target in model_ids:
-                agent_ids_with_model_edges.add(e.source)
-
-        # Fallback: AGENT → TOOL (CALLS) for agents with no tool edges
-        for agent in by_type.get(ComponentType.AGENT, []):
-            if agent.id in agent_ids_with_tool_edges:
-                continue
-            for tool in sorted(by_type.get(ComponentType.TOOL, []), key=lambda n: n.name)[:5]:
-                _add_edge(agent.id, tool.id, "CALLS")
-
-        # Fallback: AGENT → MODEL (USES) for agents with no model edges
-        for agent in by_type.get(ComponentType.AGENT, []):
-            if agent.id in agent_ids_with_model_edges:
-                continue
-            for model in sorted(by_type.get(ComponentType.MODEL, []), key=lambda n: -n.confidence)[
-                :3
-            ]:
-                _add_edge(agent.id, model.id, "USES")
 
         # A prompt detected independently of an agent adapter (for example a
         # module-level constant or a prompt in an exported JSON graph) has no
