@@ -10,6 +10,7 @@ and call sites suppress the affected flow instead of inventing relationships.
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Literal
@@ -194,7 +195,15 @@ def _module_scope_binding_counts(tree: ast.Module) -> dict[str, int]:
             for type_param in getattr(node, "type_params", ()):
                 self.visit(type_param)
 
-        visit_AsyncFunctionDef = visit_FunctionDef
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            bind(node.name)
+            for decorator in node.decorator_list:
+                self.visit(decorator)
+            self.visit(node.args)
+            if node.returns is not None:
+                self.visit(node.returns)
+            for type_param in getattr(node, "type_params", ()):
+                self.visit(type_param)
 
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
             bind(node.name)
@@ -247,6 +256,7 @@ def _module_attribute_is_stable(module: _Module, local: str, attribute: str) -> 
             if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
                 continue
             targets: list[ast.expr]
+            value: ast.expr | None
             if isinstance(node, ast.Assign):
                 targets = node.targets
                 value = node.value
@@ -600,19 +610,19 @@ class _FlowResolver:
         if kind == "tool" and isinstance(expr, ast.ListComp):
             return _structured_tool_comprehension_targets(module, function, expr)
         if isinstance(expr, (ast.List, ast.Tuple)):
-            found: list[DeepAgentFlowTarget] = []
+            collection_targets: list[DeepAgentFlowTarget] = []
             for item in expr.elts:
                 if isinstance(item, ast.Starred):
-                    found.extend(
+                    collection_targets.extend(
                         self._resolve_collection(
                             module, function, item.value, kind, depth + 1, seen
                         )
                     )
                 else:
-                    target = self._resolve_item(module, function, item, kind, depth, seen)
-                    if target:
-                        found.extend(target)
-            return _dedup(found)
+                    item_targets = self._resolve_item(module, function, item, kind, depth, seen)
+                    if item_targets:
+                        collection_targets.extend(item_targets)
+            return _dedup(collection_targets)
         if isinstance(expr, ast.Name):
             key = (module.path, f"{function.name}:{expr.id}:{kind}")
             if key in seen:
@@ -620,31 +630,39 @@ class _FlowResolver:
             states = _collection_states(function, expr.id)
             if states is None:
                 return ()
-            found: list[DeepAgentFlowTarget] = []
+            name_targets: list[DeepAgentFlowTarget] = []
             next_seen = seen | {key}
             for value in states.assignments:
-                found.extend(
+                name_targets.extend(
                     self._resolve_collection(module, function, value, kind, depth + 1, next_seen)
                 )
             for call in states.appends:
-                if call.func.attr == "append" and len(call.args) == 1:
-                    target = self._resolve_item(
+                if (
+                    isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "append"
+                    and len(call.args) == 1
+                ):
+                    item_targets = self._resolve_item(
                         module, function, call.args[0], kind, depth + 1, next_seen
                     )
-                    if target:
-                        found.extend(target)
-                elif call.func.attr == "extend" and len(call.args) == 1:
-                    found.extend(
+                    if item_targets:
+                        name_targets.extend(item_targets)
+                elif (
+                    isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "extend"
+                    and len(call.args) == 1
+                ):
+                    name_targets.extend(
                         self._resolve_collection(
                             module, function, call.args[0], kind, depth + 1, next_seen
                         )
                     )
-            return _dedup(found)
+            return _dedup(name_targets)
         if isinstance(expr, ast.Call):
             if kind == "tool":
-                target = _structured_tool_target(module, function, expr)
-                if target:
-                    return (target,)
+                tool_target = _structured_tool_target(module, function, expr)
+                if tool_target:
+                    return (tool_target,)
             function_target = self._resolve_function_call(module, expr)
             if function_target is None:
                 return ()
@@ -655,9 +673,9 @@ class _FlowResolver:
             cache = self._tool_cache if kind == "tool" else self._subagent_cache
             if key in cache:
                 return cache[key]
-            found: list[DeepAgentFlowTarget] = []
+            call_targets: list[DeepAgentFlowTarget] = []
             for returned in _function_returns(target_function):
-                found.extend(
+                call_targets.extend(
                     self._resolve_collection(
                         target_module,
                         target_function,
@@ -667,7 +685,7 @@ class _FlowResolver:
                         seen | {key},
                     )
                 )
-            result = _dedup(found)
+            result = _dedup(call_targets)
             cache[key] = result
             return result
         return ()
@@ -842,7 +860,12 @@ def _collection_states(
                 self.visit_block(node.body)
             self.visit_block(node.orelse)
 
-        visit_AsyncFor = visit_For
+        def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+            self.visit(node.iter)
+            if not _statically_empty_iterable(node.iter):
+                self.visit(node.target)
+                self.visit_block(node.body)
+            self.visit_block(node.orelse)
 
         def visit_While(self, node: ast.While) -> None:
             self.visit(node.test)
@@ -859,7 +882,12 @@ def _collection_states(
                     self.visit(item.optional_vars)
             self.visit_block(node.body)
 
-        visit_AsyncWith = visit_With
+        def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+            for item in node.items:
+                self.visit(item.context_expr)
+                if item.optional_vars is not None:
+                    self.visit(item.optional_vars)
+            self.visit_block(node.body)
 
         def visit_Try(self, node: ast.Try) -> None:
             self.visit_block(node.body)
@@ -868,7 +896,12 @@ def _collection_states(
             self.visit_block(node.orelse)
             self.visit_block(node.finalbody)
 
-        visit_TryStar = visit_Try
+        def visit_TryStar(self, node: ast.TryStar) -> None:
+            self.visit_block(node.body)
+            for handler in node.handlers:
+                self.visit(handler)
+            self.visit_block(node.orelse)
+            self.visit_block(node.finalbody)
 
         def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
             nonlocal invalid
@@ -1180,7 +1213,20 @@ def _component_reference_is_stable(
             ):
                 stable = False
 
-        visit_AsyncFunctionDef = visit_FunctionDef
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            nonlocal stable
+            if node is function:
+                for statement in node.body:
+                    self.visit(statement)
+            elif node.name == variable:
+                stable = False
+            elif any(
+                isinstance(child, ast.Name)
+                and child.id in aliases
+                and isinstance(child.ctx, ast.Load)
+                for child in ast.walk(node)
+            ):
+                stable = False
 
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
             nonlocal stable
@@ -1282,7 +1328,11 @@ def _component_reference_is_stable(
                 stable = False
             self.generic_visit(node)
 
-        visit_YieldFrom = visit_Yield
+        def visit_YieldFrom(self, node: ast.YieldFrom) -> None:
+            nonlocal stable
+            if contains_whole_component(node.value):
+                stable = False
+            self.generic_visit(node)
 
         def visit_Import(self, node: ast.Import) -> None:
             nonlocal stable
@@ -1419,7 +1469,10 @@ def _function_returns(
                 self.visit_block(node.body)
             self.visit_block(node.orelse)
 
-        visit_AsyncFor = visit_For
+        def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+            if not _statically_empty_iterable(node.iter):
+                self.visit_block(node.body)
+            self.visit_block(node.orelse)
 
         def visit_While(self, node: ast.While) -> None:
             truth = _static_truthiness(node.test)
@@ -1431,7 +1484,8 @@ def _function_returns(
         def visit_With(self, node: ast.With) -> None:
             self.visit_block(node.body)
 
-        visit_AsyncWith = visit_With
+        def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+            self.visit_block(node.body)
 
         def visit_Try(self, node: ast.Try) -> None:
             self.visit_block(node.body)
@@ -1440,7 +1494,12 @@ def _function_returns(
             self.visit_block(node.orelse)
             self.visit_block(node.finalbody)
 
-        visit_TryStar = visit_Try
+        def visit_TryStar(self, node: ast.TryStar) -> None:
+            self.visit_block(node.body)
+            for handler in node.handlers:
+                self.visit_block(handler.body)
+            self.visit_block(node.orelse)
+            self.visit_block(node.finalbody)
 
         def visit_Match(self, node: ast.Match) -> None:
             for case in node.cases:
@@ -1735,10 +1794,12 @@ def _function_binds_name(function: ast.FunctionDef | ast.AsyncFunctionDef, name:
     return bound
 
 
-def _dedup(targets: object) -> tuple[DeepAgentFlowTarget, ...]:
+def _dedup(
+    targets: Iterable[DeepAgentFlowTarget],
+) -> tuple[DeepAgentFlowTarget, ...]:
     result: list[DeepAgentFlowTarget] = []
     seen: set[tuple[str, str]] = set()
-    for target in targets:  # type: ignore[union-attr]
+    for target in targets:
         key = (target.component_type, target.canonical_name)
         if key not in seen:
             seen.add(key)
