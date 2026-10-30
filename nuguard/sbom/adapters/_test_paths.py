@@ -19,9 +19,13 @@ TEST_PATH_PARTS: frozenset[str] = frozenset(
 
 def looks_like_test_path(file_path: str) -> bool:
     """True when any path component of *file_path* names a test directory,
-    or the filename itself is a ``*.test.ts``/``*.spec.ts``-style test file."""
+    or the filename itself uses a common JavaScript or pytest convention."""
     path = PurePosixPath(file_path.replace("\\", "/"))
     if set(path.parts) & TEST_PATH_PARTS:
         return True
     stem = path.stem
-    return stem.endswith(".test") or stem.endswith(".spec")
+    return (
+        stem.endswith(".test")
+        or stem.endswith(".spec")
+        or (path.suffix == ".py" and (stem.startswith("test_") or stem.endswith("_test")))
+    )

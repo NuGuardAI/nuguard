@@ -21,6 +21,7 @@ from typing import Any
 
 from ...normalization import canonicalize_text, humanize_context_name
 from ...types import ComponentType
+from .._test_paths import looks_like_test_path
 from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
 from ..models_kb import (
     LANGCHAIN_LLM_CLASS_PROVIDERS,
@@ -36,6 +37,8 @@ _LANGGRAPH_IMPORTS = [
     "langgraph.graph",
     "langgraph.prebuilt",
     "langgraph_supervisor",
+    "deepagents",
+    "managed_deepagents",
     "langchain",
     "langchain_core",
     "langchain_openai",
@@ -56,6 +59,9 @@ _AGENT_FACTORY_FUNCTIONS = {
     # Supervisor / orchestration graphs
     "create_supervisor",
     "make_supervisor_graph",
+    # LangChain Deep Agents factories
+    "create_deep_agent",
+    "define_deep_agent",
     # Azure AI Foundry agent factory methods
     "create_prompt_agent_node",
     "create_agent_node",
@@ -142,15 +148,44 @@ class LangGraphAdapter(FrameworkAdapter):
     ) -> list[ComponentDetection]:
         if parse_result is None:
             return []
+        if looks_like_test_path(file_path):
+            return []
 
         # Determine if langgraph is actually imported (vs just langchain)
-        imported_modules = {imp.module or "" for imp in parse_result.imports}
+        imported_modules_in_order = [imp.module or "" for imp in parse_result.imports]
+        imported_modules = set(imported_modules_in_order)
+        deep_agents_import = next(
+            (
+                module
+                for module in imported_modules_in_order
+                if module == "deepagents"
+                or module.startswith("deepagents.")
+                or module == "managed_deepagents"
+                or module.startswith("managed_deepagents.")
+            ),
+            None,
+        )
         has_langgraph = any(
-            m == "langgraph" or m.startswith("langgraph.") for m in imported_modules
+            m == "langgraph"
+            or m.startswith("langgraph.")
+            or m == "deepagents"
+            or m.startswith("deepagents.")
+            or m == "managed_deepagents"
+            or m.startswith("managed_deepagents.")
+            for m in imported_modules
         )
         # Emit the correct framework node
         if has_langgraph:
             framework_det = self._framework_node(file_path)
+            if deep_agents_import and not any(
+                module == "langgraph" or module.startswith("langgraph.")
+                for module in imported_modules
+            ):
+                framework_det.snippet = f"import {deep_agents_import}"
+                framework_det.metadata = {
+                    "framework": "langgraph",
+                    "inferred_from": deep_agents_import,
+                }
         else:
             # Only langchain imported — emit framework:langchain, not framework:langgraph
             from ...types import ComponentType as _CT
@@ -179,6 +214,7 @@ class LangGraphAdapter(FrameworkAdapter):
         # Track node canonical names for relationship building
         agent_canonicals: list[str] = []
         model_canonicals: list[str] = []
+        model_variable_canonicals: dict[str, str] = {}
         tool_canonicals: list[str] = []
         node_name_map: dict[str, str] = {}  # node_name → canonical_name
 
@@ -539,14 +575,62 @@ class LangGraphAdapter(FrameworkAdapter):
             )
             detected.append(det)
             model_canonicals.append(canon)
+            if inst.assigned_to:
+                model_variable_canonicals[inst.assigned_to] = canon
 
         # 6. Agent factory functions (create_react_agent, etc.)
         for call in parse_result.function_calls:
             if call.function_name not in _AGENT_FACTORY_FUNCTIONS:
                 continue
-            agent_name = call.assigned_to or call.function_name
+            is_deep_agent_factory = call.function_name in {
+                "create_deep_agent",
+                "define_deep_agent",
+            }
+            # Deep Agents exposes an explicit ``name=`` identity. Prefer that
+            # literal over the receiving variable so the SBOM matches the
+            # agent's runtime identity.
+            agent_name = (
+                _clean(call.args.get("name")) or call.assigned_to or call.function_name
+            )
             canon = canonicalize_text(f"langgraph:{agent_name}")
             factory_rels: list[RelationshipHint] = []
+
+            # Deep Agents commonly passes its dependencies by keyword. Link
+            # only references whose component was detected in this file so no
+            # dangling SBOM relationships are fabricated.
+            if is_deep_agent_factory:
+                model_arg = call.args.get("model")
+                if isinstance(model_arg, str) and model_arg.startswith("$"):
+                    model_canon = model_variable_canonicals.get(model_arg[1:])
+                    if model_canon:
+                        factory_rels.append(
+                            RelationshipHint(
+                                source_canonical=canon,
+                                source_type=ComponentType.AGENT,
+                                target_canonical=model_canon,
+                                target_type=ComponentType.MODEL,
+                                relationship_type="USES",
+                            )
+                        )
+
+                tools_arg = call.args.get("tools")
+                if isinstance(tools_arg, list):
+                    for tool_ref in tools_arg:
+                        if not isinstance(tool_ref, str):
+                            continue
+                        tool_name = tool_ref.removeprefix("$")
+                        tool_canon = canonicalize_text(f"langchain:tool:{tool_name}")
+                        if tool_canon not in tool_canonicals:
+                            continue
+                        factory_rels.append(
+                            RelationshipHint(
+                                source_canonical=canon,
+                                source_type=ComponentType.AGENT,
+                                target_canonical=tool_canon,
+                                target_type=ComponentType.TOOL,
+                                relationship_type="CALLS",
+                            )
+                        )
 
             # First positional arg → LLM reference
             if call.positional_args:
@@ -591,7 +675,7 @@ class LangGraphAdapter(FrameworkAdapter):
                     metadata={
                         "factory_function": call.function_name,
                         "is_agent_graph": True,
-                        "framework": "langchain",
+                        "framework": "langgraph" if is_deep_agent_factory else "langchain",
                     },
                     file_path=file_path,
                     line=call.line,
