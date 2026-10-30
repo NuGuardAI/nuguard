@@ -1237,7 +1237,9 @@ class AiSbomExtractor:
                                     det.component_type == ComponentType.DATASTORE
                                     and det.metadata.get("source") in ("sql_schema", "python_model")
                                 ):
-                                    _dc_metadata.append(det.metadata)
+                                    _classification_meta = dict(det.metadata)
+                                    _classification_meta["source_path"] = det.file_path
+                                    _dc_metadata.append(_classification_meta)
                                 else:
                                     self._merge_detection(node_map, det)
                                     _ds_symbol = det.metadata.get("module_level_symbol")
@@ -1288,7 +1290,9 @@ class AiSbomExtractor:
                         if det.component_type == ComponentType.DATASTORE and det.metadata.get(
                             "source"
                         ) in ("sql_schema", "python_model"):
-                            _dc_metadata.append(det.metadata)
+                            _classification_meta = dict(det.metadata)
+                            _classification_meta["source_path"] = det.file_path
+                            _dc_metadata.append(_classification_meta)
                         else:
                             self._merge_detection(node_map, det)
 
@@ -2273,6 +2277,27 @@ class AiSbomExtractor:
                 dc_metadata=_dc_metadata,
             )
         )
+        # Node-level classification is intentionally scoped to datastores that
+        # share source evidence, but the application summary remains repo-wide.
+        # Merge raw classification metadata once so unmatched schemas remain
+        # visible without duplicating table names across datastore nodes.
+        _repo_dc_labels = {
+            label
+            for meta in _dc_metadata
+            for label in (meta.get("data_classification") or [])
+        }
+        _repo_dc_tables = {
+            table
+            for meta in _dc_metadata
+            if (table := meta.get("table_name") or meta.get("model_name"))
+        }
+        if doc.summary is not None:
+            doc.summary.data_classification = sorted(
+                set(doc.summary.data_classification) | _repo_dc_labels
+            )
+            doc.summary.classified_tables = sorted(
+                set(doc.summary.classified_tables) | _repo_dc_tables
+            )
 
         # Write total LOC and minified JS list into the summary
         if doc.summary and file_loc:
@@ -2715,8 +2740,9 @@ class AiSbomExtractor:
         """Merge PII/PHI classification data from schema adapters into DATASTORE nodes.
 
         Classification data (from SQL CREATE TABLE and Python model analysis) is
-        attached as metadata on every detected DATASTORE node rather than emitted
-        as separate nodes.
+        attached only when its source path identifies exactly one datastore.
+        Unmatched or ambiguous classification remains available in the repo-wide
+        application summary without being attributed to a specific datastore.
         """
         if not dc_metadata:
             return
@@ -2724,32 +2750,54 @@ class AiSbomExtractor:
         if not datastore_keys:
             return
 
-        # Aggregate labels, table names, and per-table field detail
-        all_labels: set[str] = set()
-        classified_tables: list[str] = []
-        classified_fields: dict[str, list[str]] = {}
-        # field_name -> labels, e.g. {"dob": ["PII"], "address": ["PII","PHI"]} —
-        # kept separate from `classified_fields` above (which is table -> field
-        # names, per NodeMetadata.classified_fields' documented shape) because
-        # pii_fields/phi_fields need per-field labels, not per-table field lists.
-        field_labels: dict[str, set[str]] = {}
+        datastore_paths = {
+            key: {
+                evidence.location.path
+                for evidence in node_map[key].evidence
+                if evidence.location and evidence.location.path
+            }
+            for key in datastore_keys
+        }
+        metadata_by_datastore: dict[tuple[ComponentType, str], list[dict[str, Any]]] = {
+            key: [] for key in datastore_keys
+        }
         for meta in dc_metadata:
-            all_labels.update(meta.get("data_classification") or [])
-            table = meta.get("table_name") or meta.get("model_name")
-            if table:
-                classified_tables.append(table)
-                cf = meta.get("classified_fields")
-                if cf:
-                    classified_fields[table] = sorted(cf.keys())
-                    for field_name, labels in cf.items():
-                        field_labels.setdefault(field_name, set()).update(labels or [])
+            source_path = meta.get("source_path")
+            if not source_path:
+                continue
+            matching_keys = [
+                key
+                for key, evidence_paths in datastore_paths.items()
+                if source_path in evidence_paths
+            ]
+            if len(matching_keys) == 1:
+                metadata_by_datastore[matching_keys[0]].append(meta)
 
-        pii_fields = sorted(f for f, lbls in field_labels.items() if "PII" in lbls)
-        phi_fields = sorted(f for f, lbls in field_labels.items() if "PHI" in lbls)
-
-        # Merge into every DATASTORE accumulator (project-wide enrichment)
         for key in datastore_keys:
             acc = node_map[key]
+            scoped_metadata = metadata_by_datastore[key]
+            if not scoped_metadata:
+                continue
+
+            all_labels: set[str] = set()
+            classified_tables: list[str] = []
+            classified_fields: dict[str, list[str]] = {}
+            # field_name -> labels, kept separately because pii_fields and
+            # phi_fields need labels while classified_fields stores names.
+            field_labels: dict[str, set[str]] = {}
+            for meta in scoped_metadata:
+                all_labels.update(meta.get("data_classification") or [])
+                table = meta.get("table_name") or meta.get("model_name")
+                if table:
+                    classified_tables.append(table)
+                    cf = meta.get("classified_fields")
+                    if cf:
+                        classified_fields[table] = sorted(cf.keys())
+                        for field_name, labels in cf.items():
+                            field_labels.setdefault(field_name, set()).update(labels or [])
+
+            pii_fields = sorted(f for f, labels in field_labels.items() if "PII" in labels)
+            phi_fields = sorted(f for f, labels in field_labels.items() if "PHI" in labels)
             existing_labels = set(acc.metadata.get("data_classification") or [])
             acc.metadata["data_classification"] = sorted(all_labels | existing_labels)
             existing_tables = set(acc.metadata.get("classified_tables") or [])
