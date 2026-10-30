@@ -25,9 +25,9 @@ from nuguard.sbom.types import ComponentType
 _ADAPTER = LangGraphAdapter()
 
 
-def _extract(code: str) -> list[Any]:
+def _extract(code: str, file_path: str = "app.py") -> list[Any]:
     pr = parse(code)
-    return _ADAPTER.extract(code, "app.py", pr)
+    return _ADAPTER.extract(code, file_path, pr)
 
 
 def _by_type(detections: list[Any], ctype: ComponentType) -> list[Any]:
@@ -58,6 +58,8 @@ class TestCanHandle:
             "langgraph",
             "langgraph.graph",
             "langgraph.prebuilt",
+            "deepagents",
+            "managed_deepagents",
         ],
     )
     def test_activates_on_langchain_langgraph_imports(self, module: str) -> None:
@@ -104,6 +106,28 @@ class TestFrameworkNode:
         assert any("langchain" in n for n in names)
         # Should not emit a langgraph node (no patterns found)
         assert not any("langgraph" in n and "langchain" not in n for n in names)
+
+    @pytest.mark.parametrize(
+        ("imports", "expected_provenance"),
+        [
+            (
+                "from managed_deepagents.runtime import Runtime\n"
+                "from deepagents.middleware import Middleware\n",
+                "managed_deepagents.runtime",
+            ),
+            (
+                "from deepagents.middleware import Middleware\n"
+                "from managed_deepagents.runtime import Runtime\n",
+                "deepagents.middleware",
+            ),
+        ],
+    )
+    def test_deep_agent_framework_provenance_preserves_import_order(
+        self, imports: str, expected_provenance: str
+    ) -> None:
+        framework = _by_type(_extract(imports), ComponentType.FRAMEWORK)[0]
+        assert framework.metadata["inferred_from"] == expected_provenance
+        assert framework.snippet == f"import {expected_provenance}"
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +249,401 @@ class TestAgentDetection:
         )
         agents = _by_type(_extract(code), ComponentType.AGENT)
         assert agents, "Expected AGENT from create_react_agent"
+
+    @pytest.mark.parametrize(
+        ("module", "factory"),
+        [
+            ("deepagents", "create_deep_agent"),
+            ("managed_deepagents", "define_deep_agent"),
+        ],
+    )
+    def test_deep_agent_factory_prefers_literal_name(self, module: str, factory: str) -> None:
+        code = (
+            f"from {module} import {factory}\n"
+            f"lead = {factory}(name='Research Lead', tools=[])\n"
+        )
+        detections = _extract(code)
+        agents = _by_type(detections, ComponentType.AGENT)
+        assert any(agent.display_name == "Research Lead" for agent in agents)
+        assert any(
+            "langgraph" in framework.canonical_name
+            for framework in _by_type(detections, ComponentType.FRAMEWORK)
+        )
+        framework = _by_type(detections, ComponentType.FRAMEWORK)[0]
+        assert framework.snippet == f"import {module}"
+        assert framework.metadata["inferred_from"] == module
+        assert all(agent.metadata["framework"] == "langgraph" for agent in agents)
+
+    def test_deep_agent_factory_falls_back_to_assigned_name(self) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            "research_lead = create_deep_agent(tools=[])\n"
+        )
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+        assert any(agent.display_name == "research_lead" for agent in agents)
+
+    @pytest.mark.parametrize(
+        ("module", "factory"),
+        [
+            ("deepagents", "create_deep_agent"),
+            ("managed_deepagents", "define_deep_agent"),
+        ],
+    )
+    def test_deep_agent_factory_resolves_module_name_constant(
+        self, module: str, factory: str
+    ) -> None:
+        code = (
+            f"from {module} import {factory}\n"
+            'GRAPH_NAME = "Design Agent"\n\n'
+            "def compile_graph():\n"
+            f"    return {factory}(name=GRAPH_NAME, tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "Design Agent" for agent in agents)
+        assert not any(agent.display_name == factory for agent in agents)
+
+    def test_deep_agent_factory_literal_name_wins_over_module_constant(self) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n'
+            "lead = create_deep_agent(name='Literal Lead', tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "Literal Lead" for agent in agents)
+        assert not any(agent.display_name == "Design Agent" for agent in agents)
+
+    def test_same_line_factory_calls_correlate_name_expression_to_assignee(self) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n'
+            "qualified = create_deep_agent(name=settings.GRAPH_NAME, tools=[]); "
+            "bare = create_deep_agent(name=GRAPH_NAME, tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+        names = {agent.display_name for agent in agents}
+
+        assert "qualified" in names
+        assert "Design Agent" in names
+        assert "bare" not in names
+
+    @pytest.mark.parametrize(
+        ("opening", "closing"),
+        [("[", "]"), ("(", ")")],
+    )
+    def test_same_line_unassigned_factory_calls_correlate_bare_name_expression(
+        self, opening: str, closing: str
+    ) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n'
+            f"agents = {opening}"
+            "create_deep_agent(name=settings.GRAPH_NAME, tools=[]), "
+            "create_deep_agent(name=GRAPH_NAME, tools=[])"
+            f"{closing}\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+        names = {agent.display_name for agent in agents}
+
+        assert "create_deep_agent" in names
+        assert "Design Agent" in names
+
+    @pytest.mark.parametrize(
+        ("opening", "closing"),
+        [("[", "]"), ("(", ")")],
+    )
+    def test_nested_same_line_factory_calls_preserve_postorder_correlation(
+        self, opening: str, closing: str
+    ) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            "from langchain_core.tools import tool\n"
+            'GRAPH_NAME = "Design Agent"\n'
+            "@tool\n"
+            "def outer_tool(): pass\n"
+            "@tool\n"
+            "def inner_tool(): pass\n"
+            f"agents = {opening}"
+            "create_deep_agent(name=settings.GRAPH_NAME, "
+            "tools=[outer_tool], subagents=[create_deep_agent("
+            "name=GRAPH_NAME, tools=[inner_tool])]),"
+            f"{closing}\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+        by_name = {agent.display_name: agent for agent in agents}
+        relationship_targets = {
+            name: {relationship.target_canonical for relationship in agent.relationships}
+            for name, agent in by_name.items()
+        }
+
+        assert relationship_targets["create_deep_agent"] == {
+            "langchain_tool_outer_tool"
+        }
+        assert relationship_targets["Design Agent"] == {
+            "langchain_tool_inner_tool"
+        }
+
+    def test_deep_agent_factory_unresolved_name_reference_keeps_fallback(self) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            "research_lead = create_deep_agent(name=runtime_name, tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "research_lead" for agent in agents)
+
+    @pytest.mark.parametrize(
+        "shadow",
+        [
+            "def compile_graph(GRAPH_NAME):\n",
+            "def compile_graph():\n    GRAPH_NAME = 'Local Agent'\n",
+        ],
+    )
+    def test_deep_agent_factory_rejects_parameter_or_local_name_shadow(
+        self, shadow: str
+    ) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n\n'
+            f"{shadow}"
+            "    return create_deep_agent(name=GRAPH_NAME, tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "create_deep_agent" for agent in agents)
+        assert not any(agent.display_name == "Design Agent" for agent in agents)
+
+    def test_deep_agent_factory_rejects_qualified_name_attribute(self) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n\n'
+            "def compile_graph(settings):\n"
+            "    return create_deep_agent(name=settings.GRAPH_NAME, tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "create_deep_agent" for agent in agents)
+        assert not any(agent.display_name == "Design Agent" for agent in agents)
+
+    @pytest.mark.parametrize(
+        "later_binding",
+        [
+            "GRAPH_NAME = load_runtime_name()\n",
+            "def GRAPH_NAME(): return 'replacement'\n",
+            "from settings import GRAPH_NAME\n",
+        ],
+    )
+    def test_deep_agent_factory_rejects_later_non_string_assignment(
+        self, later_binding: str
+    ) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n\n'
+            "def compile_graph():\n"
+            "    return create_deep_agent(name=GRAPH_NAME, tools=[])\n\n"
+            f"{later_binding}"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "create_deep_agent" for agent in agents)
+        assert not any(agent.display_name == "Design Agent" for agent in agents)
+
+    @pytest.mark.parametrize(
+        "pattern",
+        ["GRAPH_NAME", "[*GRAPH_NAME]", "{**GRAPH_NAME}"],
+    )
+    def test_deep_agent_factory_rejects_local_match_capture(self, pattern: str) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n\n'
+            "def compile_graph(value):\n"
+            "    match value:\n"
+            f"        case {pattern}:\n"
+            "            return create_deep_agent(name=GRAPH_NAME, tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "create_deep_agent" for agent in agents)
+        assert not any(agent.display_name == "Design Agent" for agent in agents)
+
+    def test_deep_agent_factory_rejects_module_match_capture(self) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n'
+            "match runtime_value:\n"
+            "    case [*GRAPH_NAME]:\n"
+            "        pass\n\n"
+            "def compile_graph():\n"
+            "    return create_deep_agent(name=GRAPH_NAME, tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "create_deep_agent" for agent in agents)
+        assert not any(agent.display_name == "Design Agent" for agent in agents)
+
+    def test_deep_agent_factory_rejects_module_wildcard_import(self) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n'
+            "from settings import *\n\n"
+            "def compile_graph():\n"
+            "    return create_deep_agent(name=GRAPH_NAME, tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "create_deep_agent" for agent in agents)
+        assert not any(agent.display_name == "Design Agent" for agent in agents)
+
+    @pytest.mark.parametrize(
+        "declaration",
+        [
+            "@decorator(GRAPH_NAME := load_runtime_name())\ndef helper(): pass\n",
+            "def helper(value=(GRAPH_NAME := load_runtime_name())): pass\n",
+            "def helper(value: (GRAPH_NAME := load_runtime_name())): pass\n",
+            "class Helper((GRAPH_NAME := load_runtime_name())): pass\n",
+        ],
+    )
+    def test_deep_agent_factory_rejects_module_write_in_declaration_header(
+        self, declaration: str
+    ) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n'
+            f"{declaration}\n"
+            "def compile_graph():\n"
+            "    return create_deep_agent(name=GRAPH_NAME, tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "create_deep_agent" for agent in agents)
+        assert not any(agent.display_name == "Design Agent" for agent in agents)
+
+    def test_unrelated_local_body_write_does_not_invalidate_module_constant(self) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n\n'
+            "def mutate_locally():\n"
+            "    GRAPH_NAME = load_runtime_name()\n"
+            "    return GRAPH_NAME\n\n"
+            "def compile_graph():\n"
+            "    return create_deep_agent(name=GRAPH_NAME, tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "Design Agent" for agent in agents)
+
+    @pytest.mark.parametrize(
+        "writer",
+        [
+            "def mutate():\n"
+            "    global GRAPH_NAME\n"
+            "    GRAPH_NAME = load_runtime_name()\n",
+            "class Mutator:\n"
+            "    global GRAPH_NAME\n"
+            "    GRAPH_NAME = load_runtime_name()\n",
+            "def outer():\n"
+            "    def mutate():\n"
+            "        global GRAPH_NAME\n"
+            "        GRAPH_NAME = load_runtime_name()\n",
+        ],
+    )
+    def test_global_write_in_isolated_scope_invalidates_module_constant(
+        self, writer: str
+    ) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            'GRAPH_NAME = "Design Agent"\n\n'
+            f"{writer}\n"
+            "def compile_graph():\n"
+            "    return create_deep_agent(name=GRAPH_NAME, tools=[])\n"
+        )
+
+        agents = _by_type(_extract(code), ComponentType.AGENT)
+
+        assert any(agent.display_name == "create_deep_agent" for agent in agents)
+        assert not any(agent.display_name == "Design Agent" for agent in agents)
+
+    def test_test_path_suppresses_deep_agent_and_tool_detections(self) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            "from langchain.tools import tool\n\n"
+            "@tool\n"
+            "def search(query: str): return query\n\n"
+            "lead = create_deep_agent(name='Fixture Lead', tools=[search])\n"
+        )
+        assert _extract(code, "tests/test_agents.py") == []
+
+    @pytest.mark.parametrize("file_path", ["test_agents.py", "agents_test.py"])
+    def test_root_pytest_filename_suppresses_detections(self, file_path: str) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            "lead = create_deep_agent(name='Fixture Lead', tools=[])\n"
+        )
+        assert _extract(code, file_path) == []
+
+    def test_deep_agent_keyword_dependencies_link_detected_nodes(self) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            "from langchain_openai import ChatOpenAI\n"
+            "from langchain.tools import tool\n\n"
+            "@tool\n"
+            "def search(query: str): return query\n\n"
+            "model = ChatOpenAI(model='gpt-4o')\n"
+            "lead = create_deep_agent(\n"
+            "    name='Production Lead', model=model, tools=[search]\n"
+            ")\n"
+        )
+        detections = _extract(code, "src/agents.py")
+        agent = next(
+            agent
+            for agent in _by_type(detections, ComponentType.AGENT)
+            if agent.display_name == "Production Lead"
+        )
+        assert any(
+            hint.relationship_type == "USES"
+            and hint.target_canonical == "gpt_4o"
+            and hint.target_type == ComponentType.MODEL
+            for hint in agent.relationships
+        )
+        assert any(
+            hint.relationship_type == "CALLS"
+            and hint.target_canonical == "langchain_tool_search"
+            and hint.target_type == ComponentType.TOOL
+            for hint in agent.relationships
+        )
+
+    def test_normal_source_preserves_deep_agent_and_tool_detections(self) -> None:
+        code = (
+            "from deepagents import create_deep_agent\n"
+            "from langchain.tools import tool\n\n"
+            "@tool\n"
+            "def search(query: str): return query\n\n"
+            "lead = create_deep_agent(name='Production Lead', tools=[search])\n"
+        )
+        detections = _extract(code, "src/agents.py")
+        assert any(
+            agent.display_name == "Production Lead"
+            for agent in _by_type(detections, ComponentType.AGENT)
+        )
+        assert any(
+            tool.display_name == "search"
+            for tool in _by_type(detections, ComponentType.TOOL)
+        )
 
     def test_internal_nodes_not_emitted_as_agents(self) -> None:
         # __start__ and tools are filtered as internal nodes

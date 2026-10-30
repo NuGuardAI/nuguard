@@ -8,20 +8,25 @@ every adapter — regardless of base class — can share one directory-name
 convention instead of re-declaring its own frozenset
 (docs/sbom-accuracy-plan.md #3).
 """
+
 from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-TEST_PATH_PARTS: frozenset[str] = frozenset(
-    {"tests", "test", "__tests__", "spec", "specs", "e2e"}
-)
+TEST_PATH_PARTS: frozenset[str] = frozenset({"tests", "test", "__tests__", "spec", "specs", "e2e"})
 
 
 def looks_like_test_path(file_path: str) -> bool:
     """True when any path component of *file_path* names a test directory,
-    or the filename itself is a ``*.test.ts``/``*.spec.ts``-style test file."""
+    or the filename itself uses a common JavaScript or pytest convention."""
     path = PurePosixPath(file_path.replace("\\", "/"))
     if set(path.parts) & TEST_PATH_PARTS:
         return True
+    if path.name == "conftest.py":
+        return True
     stem = path.stem
-    return stem.endswith(".test") or stem.endswith(".spec")
+    return (
+        stem.endswith(".test")
+        or stem.endswith(".spec")
+        or (path.suffix == ".py" and (stem.startswith("test_") or stem.endswith("_test")))
+    )
