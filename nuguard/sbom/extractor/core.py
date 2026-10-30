@@ -28,6 +28,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from bisect import bisect_right
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -189,6 +190,137 @@ _TIER_IAC = "iac"
 _TIER_DOCS = "docs"
 # Lower rank number = higher precedence during dedup
 _TIER_RANK: dict[str, int] = {_TIER_CODE: 0, _TIER_IAC: 1, _TIER_DOCS: 2}
+
+_JSON_DATASTORE_ANCESTOR_KEYS = frozenset(
+    {
+        "database",
+        "databases",
+        "datastore",
+        "datastores",
+        "db",
+        "storage",
+        "connection",
+        "connections",
+        "dependencies",
+    }
+)
+_JSON_DATASTORE_PAIR_KEYS = frozenset({"driver", "engine", "image", "url"})
+_JSON_TOKEN_RE = re.compile(
+    r'"(?:\\.|[^"\\])*"|[{}\[\]:,]|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null'
+)
+
+
+def _json_key_parts(key: str) -> set[str]:
+    snake = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key)
+    return {part for part in re.split(r"[^a-z0-9]+", snake.lower()) if part}
+
+
+def _json_string_occurrences(content: str) -> list[tuple[str, int, tuple[str, ...], bool]]:
+    """Return decoded JSON strings with line, containing-key path, and key/value role."""
+    try:
+        json.loads(content)
+    except (json.JSONDecodeError, RecursionError, TypeError):
+        return []
+
+    newline_offsets = [match.start() for match in re.finditer(r"\n", content)]
+    tokens = [
+        (match.group(0), bisect_right(newline_offsets, match.start()) + 1)
+        for match in _JSON_TOKEN_RE.finditer(content)
+    ]
+    occurrences: list[tuple[str, int, tuple[str, ...], bool]] = []
+    index = 0
+
+    def _parse_value(path: tuple[str, ...]) -> None:
+        nonlocal index
+        token, line = tokens[index]
+        if token == "{":
+            index += 1
+            while tokens[index][0] != "}":
+                key_token, key_line = tokens[index]
+                key = str(json.loads(key_token))
+                occurrences.append((key, key_line, path, True))
+                index += 2  # key and colon
+                _parse_value((*path, key))
+                if tokens[index][0] == ",":
+                    index += 1
+            index += 1
+        elif token == "[":
+            index += 1
+            while tokens[index][0] != "]":
+                _parse_value(path)
+                if tokens[index][0] == ",":
+                    index += 1
+            index += 1
+        else:
+            if token.startswith('"'):
+                occurrences.append((str(json.loads(token)), line, path, False))
+            index += 1
+
+    if tokens:
+        try:
+            _parse_value(())
+        except (IndexError, RecursionError, ValueError, json.JSONDecodeError):
+            return []
+    return occurrences
+
+
+def _is_specific_json_datastore_pair(key: str, value: str, name: str) -> bool:
+    parts = _json_key_parts(key)
+    if not parts & _JSON_DATASTORE_PAIR_KEYS:
+        return False
+    value_lower = value.strip().lower()
+    name_lower = name.lower()
+    if "url" in parts:
+        return value_lower.startswith(f"{name_lower}://")
+    if "image" in parts:
+        return bool(re.match(rf"^(?:[^/]+/)*{re.escape(name_lower)}(?=[:@/]|$)", value_lower))
+    return value_lower == name_lower
+
+
+def _contextual_json_datastore_matches(
+    content: str, matches: tuple[AdapterMatch, ...]
+) -> tuple[AdapterMatch, ...]:
+    """Return only datastore matches occurring in authoritative JSON positions."""
+    prototypes = {
+        match.snippet.strip().lower(): match
+        for match in matches
+        if match.snippet.strip()
+    }
+    contextual: list[AdapterMatch] = []
+    for value, line, path, is_key in _json_string_occurrences(content):
+        path_has_ancestor = any(
+            _json_key_parts(key) & _JSON_DATASTORE_ANCESTOR_KEYS for key in path
+        )
+        for name, prototype in prototypes.items():
+            token = re.compile(
+                rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", re.IGNORECASE
+            )
+            occurrence_count = sum(1 for _ in token.finditer(value))
+            if occurrence_count == 0:
+                continue
+            is_root_datastore_key = (
+                is_key
+                and not path
+                and re.sub(r"[^a-z0-9]+", "", value.lower())
+                == re.sub(r"[^a-z0-9]+", "", name.lower())
+            )
+            is_specific_pair = (
+                not is_key
+                and bool(path)
+                and _is_specific_json_datastore_pair(path[-1], value, name)
+            )
+            if not (path_has_ancestor or is_root_datastore_key or is_specific_pair):
+                continue
+            contextual.extend(
+                AdapterMatch(
+                    pattern=prototype.pattern,
+                    line=line,
+                    snippet=prototype.snippet,
+                    groups=prototype.groups,
+                )
+                for _ in range(occurrence_count)
+            )
+    return tuple(contextual)
 
 
 def _strip_notebook_outputs(content: str) -> str:
@@ -702,6 +834,67 @@ class _NodeAccumulator:
     # Source-tier tracking (populated by _merge_detection)
     source_tiers: set[str] = field(default_factory=set)
     best_tier_rank: int = 99  # 0=code, 1=iac, 2=docs; 99=uninitialised
+
+
+_DATASTORE_TECH_ALIASES = {
+    "aiosqlite": "sqlite",
+    "sqlite3": "sqlite",
+    "postgres": "postgresql",
+}
+
+
+def _datastore_technology(acc: _NodeAccumulator) -> str:
+    raw = str(acc.metadata.get("provider") or acc.display_name).strip().lower()
+    normalized = re.sub(r"[^a-z0-9]+", "", raw)
+    return _DATASTORE_TECH_ALIASES.get(normalized, normalized)
+
+
+def _dedup_generic_datastores_against_specific(
+    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
+) -> None:
+    """Merge same-location generic datastore evidence into its specific detection."""
+    specific_by_location: dict[
+        tuple[str, int | None], list[tuple[ComponentType, str]]
+    ] = {}
+    generic_keys: list[tuple[ComponentType, str]] = []
+    for key, acc in node_map.items():
+        if key[0] != ComponentType.DATASTORE:
+            continue
+        if acc.adapter_name == "datastore_generic":
+            generic_keys.append(key)
+            continue
+        for evidence in acc.evidence:
+            if evidence.location:
+                location = (evidence.location.path, evidence.location.line)
+                specific_by_location.setdefault(location, []).append(key)
+
+    for generic_key in generic_keys:
+        generic = node_map.get(generic_key)
+        if generic is None:
+            continue
+        generic_tech = _datastore_technology(generic)
+        candidates: set[tuple[ComponentType, str]] = set()
+        for evidence in generic.evidence:
+            if not evidence.location:
+                continue
+            location = (evidence.location.path, evidence.location.line)
+            candidates.update(
+                key
+                for key in specific_by_location.get(location, [])
+                if _datastore_technology(node_map[key]) == generic_tech
+            )
+        if not candidates:
+            continue
+        winner_key = min(
+            candidates,
+            key=lambda key: (node_map[key].priority, -node_map[key].confidence, key[1]),
+        )
+        winner = node_map[winner_key]
+        winner.evidence.extend(generic.evidence)
+        winner.relationships.extend(generic.relationships)
+        winner.source_tiers.update(generic.source_tiers)
+        winner.confidence = max(winner.confidence, generic.confidence)
+        del node_map[generic_key]
 
 
 def _load_gitignore_matcher(root: Path) -> "Callable[[str], bool] | None":
@@ -1585,17 +1778,27 @@ class AiSbomExtractor:
                 # type (e.g. a mock route.ts listing gpt-5, deepseek-v3.2,
                 # gemini-3-pro; or a CI workflow using both docker and vercel)
                 # gets a separate node for each instead of only the first match.
-                # Originally MODEL-only; also applies to DEPLOYMENT so distinct
-                # deployment technologies don't collapse into one "generic" node.
+                # Originally MODEL-only; also applies to DEPLOYMENT and DATASTORE
+                # so distinct technologies don't collapse into one "generic" node.
                 if detection.component_type in (
                     ComponentType.MODEL,
                     ComponentType.DEPLOYMENT,
+                    ComponentType.DATASTORE,
                 ) and not getattr(rx_adapter, "canonical_name", None):
                     # Group matches by their normalised name; keep first
                     # occurrence as the representative match for location/snippet.
                     _match_first: dict[str, AdapterMatch] = {}
                     _match_count: dict[str, int] = {}
-                    for _m in detection.matches:
+                    _candidate_matches = (
+                        _contextual_json_datastore_matches(
+                            _regex_content, detection.matches
+                        )
+                        if suffix == ".json"
+                        and detection.component_type == ComponentType.DATASTORE
+                        and detection.adapter_name == "datastore_generic"
+                        else detection.matches
+                    )
+                    for _m in _candidate_matches:
                         _key = _m.snippet.strip().lower()
                         if _key not in _match_first:
                             _match_first[_key] = _m
@@ -1739,9 +1942,20 @@ class AiSbomExtractor:
                 "cross-file datastore ACCESSES resolution failed (non-fatal): %s", _cross_ds_exc
             )
 
-        # Deduplicate nodes that share (component_type, file, line) — e.g. a
-        # regex adapter and an AST adapter both firing on the same token.
+        # Distinct datastore technologies commonly share one config/import line.
+        # Their canonical names already deduplicate identical detections, and the
+        # datastore-specific suppression pass below handles generic/AST overlap.
+        # Keep them out of location dedup so e.g. Postgres + SQLite remain separate.
+        _datastore_accumulators = {
+            key: node_map.pop(key)
+            for key in list(node_map)
+            if key[0] == ComponentType.DATASTORE
+        }
+        # Deduplicate remaining nodes that share (component_type, file, line) —
+        # e.g. a regex adapter and an AST adapter both firing on the same token.
         _dedup_by_location(node_map)
+        node_map.update(_datastore_accumulators)
+        _dedup_generic_datastores_against_specific(node_map)
         # Deduplicate nodes where one name is a prefix of another from the same
         # file — e.g. regex matches "gemini-2.0" while AST extracts the full
         # "gemini-2.0-flash" from an adjacent line of the same call.
