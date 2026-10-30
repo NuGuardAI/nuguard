@@ -16,6 +16,7 @@ Extracts AI assets from LangGraph-based applications:
 
 from __future__ import annotations
 
+import ast
 import re
 from typing import Any
 
@@ -586,12 +587,20 @@ class LangGraphAdapter(FrameworkAdapter):
                 "create_deep_agent",
                 "define_deep_agent",
             }
-            # Deep Agents exposes an explicit ``name=`` identity. Prefer that
-            # literal over the receiving variable so the SBOM matches the
-            # agent's runtime identity.
-            agent_name = (
-                _clean(call.args.get("name")) or call.assigned_to or call.function_name
-            )
+            # Deep Agents exposes an explicit ``name=`` identity. Prefer a
+            # literal, then a uniquely resolvable module-level string constant,
+            # so the SBOM matches the agent's runtime identity without guessing
+            # at dynamic expressions.
+            raw_agent_name = call.args.get("name")
+            agent_name = _clean(raw_agent_name)
+            if not agent_name and is_deep_agent_factory:
+                agent_name = _resolve_module_string_constant(
+                    raw_agent_name,
+                    content,
+                    call,
+                    parse_result.function_calls,
+                )
+            agent_name = agent_name or call.assigned_to or call.function_name
             canon = canonicalize_text(f"langgraph:{agent_name}")
             factory_rels: list[RelationshipHint] = []
 
@@ -1103,6 +1112,198 @@ def _clean(value: Any) -> str:
     if s.startswith("$") or s in {"<complex>", "<lambda>", "<dict>", "<list>"}:
         return ""
     return s
+
+
+def _resolve_module_string_constant(
+    value: Any,
+    source: str,
+    call: Any,
+    parsed_calls: list[Any],
+) -> str:
+    """Resolve one unshadowed bare name with one literal module binding."""
+    if not isinstance(value, str) or not value.startswith("$"):
+        return ""
+    reference = value[1:]
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return ""
+
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def _assigned_target_name(node: ast.Call) -> str | None:
+        value: ast.AST = node
+        parent = parents.get(value)
+        if isinstance(parent, ast.Await):
+            value = parent
+            parent = parents.get(value)
+        if isinstance(parent, ast.Assign) and parent.value is value and len(parent.targets) == 1:
+            target = parent.targets[0]
+        elif isinstance(parent, ast.AnnAssign) and parent.value is value:
+            target = parent.target
+        else:
+            return None
+        if isinstance(target, ast.Name):
+            return target.id
+        if isinstance(target, ast.Attribute):
+            return target.attr
+        return None
+
+    same_line_calls: list[ast.Call] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or node.lineno != call.line:
+            continue
+        function_name = (
+            node.func.id
+            if isinstance(node.func, ast.Name)
+            else node.func.attr
+            if isinstance(node.func, ast.Attribute)
+            else ""
+        )
+        if function_name != call.function_name:
+            continue
+        same_line_calls.append(node)
+    correlated_calls = sorted(
+        (
+            node
+            for node in same_line_calls
+            if _assigned_target_name(node) == call.assigned_to
+        ),
+        # ``ast_parser._visit_call`` records nested calls while extracting the
+        # outer call's arguments, then records the outer call. Sorting by the
+        # source end position reproduces that postorder while retaining source
+        # order for sibling calls.
+        key=lambda node: (
+            getattr(node, "end_lineno", node.lineno),
+            getattr(node, "end_col_offset", node.col_offset),
+            -node.lineno,
+            -node.col_offset,
+        ),
+    )
+    parsed_peers = [
+        candidate
+        for candidate in parsed_calls
+        if candidate.line == call.line
+        and candidate.function_name == call.function_name
+        and candidate.assigned_to == call.assigned_to
+    ]
+    try:
+        parsed_ordinal = next(
+            index for index, candidate in enumerate(parsed_peers) if candidate is call
+        )
+    except StopIteration:
+        return ""
+    if len(correlated_calls) != len(parsed_peers):
+        return ""
+    matched_call = correlated_calls[parsed_ordinal]
+    name_keywords = [keyword for keyword in matched_call.keywords if keyword.arg == "name"]
+    if not (
+        len(name_keywords) == 1
+        and isinstance(name_keywords[0].value, ast.Name)
+        and name_keywords[0].value.id == reference
+    ):
+        return ""
+
+    def _scope_nodes(scope: ast.AST) -> list[ast.AST]:
+        body = getattr(scope, "body", [])
+        scope_body = body if isinstance(body, list) else [body] if isinstance(body, ast.AST) else []
+        stack = list(reversed(scope_body))
+        nodes: list[ast.AST] = []
+        while stack:
+            node = stack.pop()
+            nodes.append(node)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                header_nodes: list[ast.AST] = [*node.decorator_list, node.args]
+                if node.returns is not None:
+                    header_nodes.append(node.returns)
+                header_nodes.extend(getattr(node, "type_params", []))
+                stack.extend(reversed(header_nodes))
+                continue
+            if isinstance(node, ast.ClassDef):
+                header_nodes = [*node.decorator_list, *node.bases]
+                header_nodes.extend(keyword.value for keyword in node.keywords)
+                header_nodes.extend(getattr(node, "type_params", []))
+                stack.extend(reversed(header_nodes))
+                continue
+            if isinstance(node, ast.Lambda):
+                stack.append(node.args)
+                continue
+            stack.extend(reversed(list(ast.iter_child_nodes(node))))
+        return nodes
+
+    def _binds_reference(node: ast.AST) -> bool:
+        if isinstance(node, ast.Name):
+            return node.id == reference and isinstance(node.ctx, (ast.Store, ast.Del))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return node.name == reference
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            return any(
+                alias.name == "*"
+                or (alias.asname or alias.name.split(".")[0]) == reference
+                for alias in node.names
+            )
+        if isinstance(node, ast.ExceptHandler):
+            return node.name == reference
+        if isinstance(node, (ast.MatchAs, ast.MatchStar)):
+            return node.name == reference
+        if isinstance(node, ast.MatchMapping):
+            return node.rest == reference
+        return False
+
+    def _scope_binds_name(scope: ast.AST) -> bool:
+        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            args = scope.args
+            parameters = [*args.posonlyargs, *args.args, *args.kwonlyargs]
+            if args.vararg:
+                parameters.append(args.vararg)
+            if args.kwarg:
+                parameters.append(args.kwarg)
+            if any(parameter.arg == reference for parameter in parameters):
+                return True
+        for node in _scope_nodes(scope):
+            if _binds_reference(node):
+                return True
+        return False
+
+    for scope in ast.walk(tree):
+        if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        scope_nodes = _scope_nodes(scope)
+        declares_global = any(
+            isinstance(node, ast.Global) and reference in node.names
+            for node in scope_nodes
+        )
+        if declares_global and any(_binds_reference(node) for node in scope_nodes):
+            return ""
+
+    current = parents.get(matched_call)
+    while current is not None and not isinstance(current, ast.Module):
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+            if _scope_binds_name(current):
+                return ""
+        current = parents.get(current)
+
+    module_bindings: list[ast.AST] = []
+    for node in _scope_nodes(tree):
+        if _binds_reference(node):
+            module_bindings.append(node)
+    if len(module_bindings) != 1 or not isinstance(module_bindings[0], ast.Name):
+        return ""
+    write_parent = parents.get(module_bindings[0])
+    if isinstance(write_parent, ast.Assign):
+        binding_value = write_parent.value
+    elif isinstance(write_parent, ast.AnnAssign):
+        binding_value = write_parent.value
+    else:
+        return ""
+    if write_parent not in tree.body:
+        return ""
+    if not isinstance(binding_value, ast.Constant) or not isinstance(binding_value.value, str):
+        return ""
+    return _clean(binding_value.value)
 
 
 def _positional_str(call: Any, idx: int) -> str:
