@@ -101,7 +101,10 @@ from ..adapters.yaml_adapters import (
     PromptFileAdapter,
 )
 from ..config import AiSbomConfig
-from ..core.application_summary import build_scan_summary
+from ..core.application_summary import (
+    _instrumentation_evidence_for_file,
+    build_scan_summary,
+)
 from ..core.ts_parser import TSParseResult
 from ..core.ts_parser import parse_typescript as _parse_ts_impl
 from ..deps import DependencyScanner
@@ -859,6 +862,8 @@ class AiSbomExtractor:
         files_sample_bytes = 0
         full_cache_files = 0
         full_cache_bytes = 0
+        langsmith_active = False
+        active_tracing_tools: set[str] = set()
 
         def _human_bytes(num_bytes: int) -> str:
             if num_bytes < 1024:
@@ -1150,6 +1155,11 @@ class AiSbomExtractor:
 
             files_scanned += 1
             rel_path = str(file_path.relative_to(root))
+            file_langsmith_active, file_tracing_tools = _instrumentation_evidence_for_file(
+                rel_path, content
+            )
+            langsmith_active = langsmith_active or file_langsmith_active
+            active_tracing_tools.update(file_tracing_tools)
             if file_path.suffix.lower() in _JAVA_EXTENSIONS:
                 _java_scanned.add(rel_path)
             content_bytes = file_size
@@ -2271,6 +2281,7 @@ class AiSbomExtractor:
                 source_ref=source_ref,
                 branch=branch,
                 dc_metadata=_dc_metadata,
+                instrumentation_evidence=(langsmith_active, active_tracing_tools),
             )
         )
 

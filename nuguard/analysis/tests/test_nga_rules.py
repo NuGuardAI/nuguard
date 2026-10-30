@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from nuguard.analysis.graph import AnalysisGraph
 from nuguard.analysis.plugins.nga_rules import (
     _RULES,
@@ -47,6 +49,8 @@ from nuguard.analysis.plugins.nga_rules import (
     _rule_nga029_verbose_error_leak,
     _rule_nga030_jwt_no_algorithm_restriction,
 )
+from nuguard.sbom import AiSbomConfig, AiSbomExtractor
+from nuguard.sbom.core.application_summary import _detect_app_instrumentation
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -687,9 +691,11 @@ class TestNga009Instrumentation:
         return _rule_nga009_no_audit_logging(nodes=nodes, summary=summary or {})
 
     def test_passes_with_instrumentation_summary(self) -> None:
-        """Agents present but summary['instrumentation'] is truthy → no finding."""
+        """Explicitly enabled tracing is valid audit evidence."""
         nodes = [_agent_node("orchestrator")]
-        summary: dict[str, Any] = {"instrumentation": {"opentelemetry": True}}
+        summary: dict[str, Any] = {
+            "instrumentation": {"tools": ["opentelemetry"], "tracing_enabled": True}
+        }
         findings = self._run(nodes, summary)
         assert findings == []
 
@@ -702,6 +708,1679 @@ class TestNga009Instrumentation:
         assert findings[0]["rule_id"] == "NGA-009"
         assert findings[0]["severity"] == "HIGH"
         assert "orchestrator" in findings[0]["affected"]
+
+    def test_framework_name_alone_is_not_active_audit_evidence(self) -> None:
+        findings = self._run(
+            [_agent_node("orchestrator")],
+            {"frameworks": ["opentelemetry", "langfuse"]},
+        )
+
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-009"
+
+    def test_middleware_name_in_prose_is_not_active_audit_evidence(self) -> None:
+        findings = self._run(
+            [_agent_node("orchestrator")],
+            {"use_case_summary": "Consider adding RotatingFileHandler in production."},
+        )
+
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-009"
+
+    def test_active_langsmith_tracing_populates_summary_and_passes(self) -> None:
+        active_sources = (
+            (
+                "agent.py",
+                "from langchain_core.tracers import LangChainTracer\n"
+                "tracer = LangChainTracer()\n",
+            ),
+            (
+                "agent.py",
+                "from langchain_core.tracers.langchain import LangChainTracer\n"
+                "tracer = LangChainTracer()\n",
+            ),
+            ("agent.py", "from langsmith.run_trees import RunTree\nrun = RunTree(name='agent')\n"),
+            (
+                "agent.py",
+                "from langsmith import get_current_run_tree\nrun = get_current_run_tree()\n",
+            ),
+            ("agent.py", "from langsmith import traceable\n@traceable\ndef agent():\n    pass\n"),
+            (
+                "agent.py",
+                "from langsmith import traceable as observed\n"
+                "@observed\ndef agent():\n    pass\n",
+            ),
+            (
+                "agent.py",
+                "from langsmith import run_trees as rt\n"
+                "run = rt.RunTree(name='agent')\n",
+            ),
+            (
+                "agent.ts",
+                'import { traceable as observed } from "langsmith/traceable";\n'
+                "const agent = observed(async () => 'ok');\n",
+            ),
+            (".env", 'LANGSMITH_TRACING="true"\n'),
+        )
+
+        for path, source in active_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[(path, source)], dep_names={"langsmith"}
+            )
+            assert instrumentation is not None
+            assert instrumentation.tools == ["langsmith"]
+            assert instrumentation.tracing_enabled is True
+            summary = {"instrumentation": instrumentation.model_dump(mode="json")}
+            assert self._run([_agent_node("orchestrator")], summary) == []
+
+    def test_python_langsmith_binding_must_remain_live_in_its_scope(self) -> None:
+        inactive_sources = (
+            (
+                "from langsmith import traceable\n"
+                "def run(traceable):\n"
+                "    return traceable(lambda: None)\n"
+            ),
+            (
+                "from langsmith import traceable\n"
+                "def run():\n"
+                "    traceable = lambda fn: fn\n"
+                "    return traceable(lambda: None)\n"
+            ),
+            (
+                "from langsmith import traceable\n"
+                "traceable = lambda fn: fn\n"
+                "run = traceable(lambda: None)\n"
+            ),
+            (
+                "import langsmith as ls\n"
+                "def run(ls):\n"
+                "    return ls.traceable(lambda: None)\n"
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.py", source)], dep_names={"langsmith"}
+            )
+            assert instrumentation is None
+
+        active = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.py",
+                    "from langsmith import traceable\n"
+                    "def build():\n"
+                    "    @traceable\n"
+                    "    def run():\n"
+                    "        return 'ok'\n"
+                    "    return run\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        assert active is not None
+        assert active.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            (
+                "from langsmith.wrappers import wrap_openai\n"
+                "client = wrap_openai(OpenAI())\n"
+            ),
+            (
+                "import langsmith.wrappers as wrappers\n"
+                "client = wrappers.wrap_openai(OpenAI())\n"
+            ),
+            (
+                "import langchain_core.tracers as tracers\n"
+                "tracer = tracers.LangChainTracer()\n"
+            ),
+            (
+                "import langchain_core.tracers\n"
+                "tracer = langchain_core.tracers.LangChainTracer()\n"
+            ),
+            (
+                "from langchain_core import tracers\n"
+                "tracer = tracers.LangChainTracer()\n"
+            ),
+        ],
+    )
+    def test_python_official_langsmith_wrappers_and_tracer_namespaces(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == ["langsmith"]
+        assert instrumentation.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "from local.wrappers import wrap_openai\nwrap_openai(OpenAI())\n",
+            (
+                "import langchain_core.tracers.testing as tracers\n"
+                "tracers.LangChainTracer()\n"
+            ),
+        ],
+    )
+    def test_python_langsmith_new_forms_require_exact_provenance(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names=set()
+        )
+
+        assert instrumentation is None
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "from langsmith.testing import traceable\ntraceable(lambda: None)\n",
+            (
+                "from langchain_core.tracers.testing import LangChainTracer\n"
+                "LangChainTracer()\n"
+            ),
+            "from opentelemetry.testing import get_tracer\nget_tracer('agent')\n",
+            "from ddtrace.testing import trace\ntrace('agent')\n",
+            "from jaeger.testing import Config\nConfig({})\n",
+        ],
+    )
+    def test_python_instrumentation_exports_require_canonical_modules(self, source: str) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names=set()
+        )
+
+        assert instrumentation is None or instrumentation.tracing_enabled is not True
+
+    def test_python_global_and_nonlocal_writes_invalidate_langsmith_imports(self) -> None:
+        inactive_sources = (
+            (
+                "from langsmith import traceable\n"
+                "def replace():\n"
+                "    global traceable\n"
+                "    traceable = lambda fn: fn\n"
+                "    return traceable(lambda: None)\n"
+            ),
+            (
+                "def outer():\n"
+                "    from langsmith import traceable\n"
+                "    def replace():\n"
+                "        nonlocal traceable\n"
+                "        traceable = lambda fn: fn\n"
+                "        return traceable(lambda: None)\n"
+                "    return replace\n"
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.py", source)], dep_names={"langsmith"}
+            )
+            assert instrumentation is None
+
+        active = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.py",
+                    "def enable():\n"
+                    "    global observed\n"
+                    "    from langsmith import traceable as observed\n"
+                    "    return observed(lambda: None)\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        assert active is not None
+        assert active.tracing_enabled is True
+
+    def test_python_exception_pattern_and_comprehension_bindings_shadow_imports(
+        self,
+    ) -> None:
+        inactive_sources = (
+            (
+                "from langsmith import traceable\n"
+                "def run():\n"
+                "    try:\n"
+                "        raise RuntimeError\n"
+                "    except RuntimeError as traceable:\n"
+                "        return traceable(lambda: None)\n"
+            ),
+            (
+                "from langsmith import traceable\n"
+                "def run(value):\n"
+                "    match value:\n"
+                "        case {'handler': traceable}:\n"
+                "            return traceable(lambda: None)\n"
+            ),
+            (
+                "from langsmith import traceable\n"
+                "def run(functions):\n"
+                "    return [traceable(lambda: None) for traceable in functions]\n"
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.py", source)], dep_names={"langsmith"}
+            )
+            assert instrumentation is None
+
+        active = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.py",
+                    "from langsmith import traceable\n"
+                    "def run(functions):\n"
+                    "    ignored = [fn for traceable in functions for fn in [traceable]]\n"
+                    "    return traceable(lambda: None)\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        assert active is not None
+        assert active.tracing_enabled is True
+
+    def test_langsmith_dependency_and_import_alone_still_fail(self) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[],
+            files=[("agent.py", "from langsmith import Client\n")],
+            dep_names={"langsmith"},
+        )
+
+        assert instrumentation is None
+        findings = self._run(
+            [_agent_node("orchestrator"), _tool_node("langsmith")],
+            {"instrumentation": instrumentation},
+        )
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-009"
+
+    def test_comments_and_docstrings_do_not_activate_langsmith(self) -> None:
+        source = '''\
+from langsmith import RunTree
+# RunTree(name="commented")
+"""RunTree(name="documented")
+LANGSMITH_TRACING=true
+"""
+'''
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is None
+
+    def test_test_and_example_paths_do_not_activate_langsmith(self) -> None:
+        source = "from langsmith import RunTree\nrun = RunTree(name='fixture')\n"
+        non_runtime_files = (
+            ("tests/test_tracing.py", source),
+            ("test_tracing.py", source),
+            ("examples/tracing.py", source),
+            ("example.py", source),
+            ("trace_example.py", source),
+            ("trace-demo.py", source),
+            ("fixtures/tracing.py", source),
+            ("docs/tracing.py", source),
+            ("conftest.py", source),
+            (".env.example", "LANGSMITH_TRACING=true\n"),
+            (".env.test", "LANGSMITH_TRACING=true\n"),
+            (".env.testing.local", "LANGSMITH_TRACING=true\n"),
+            (".env.e2e.local", "LANGSMITH_TRACING=true\n"),
+            ("test-env.local", "LANGSMITH_TRACING=true\n"),
+            ("test.env.production", "LANGSMITH_TRACING=true\n"),
+            (
+                "Tests/helpers.py",
+                "from langsmith import traceable\n@traceable\ndef agent(): pass\n",
+            ),
+            (
+                "Specs/helpers.ts",
+                'import { traceable } from "langsmith/traceable";\ntraceable(() => 1);\n',
+            ),
+            ("config/tests.yaml", "environment:\n  LANGSMITH_TRACING: true\n"),
+            (
+                ".github/workflows/test.yml",
+                "jobs:\n  test:\n    env:\n      LANGSMITH_TRACING: true\n",
+            ),
+        )
+        for path, content in non_runtime_files:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[(path, content)], dep_names={"langsmith"}
+            )
+            assert instrumentation is None
+
+        runtime = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "config/runtime.yaml",
+                    "environment:\n  LANGSMITH_TRACING: true\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        assert runtime is not None
+        assert runtime.tracing_enabled is True
+
+        runtime_source = _detect_app_instrumentation(
+            nodes=[],
+            files=[("src/docs_runtime.py", source)],
+            dep_names={"langsmith"},
+        )
+        assert runtime_source is not None
+        assert runtime_source.tracing_enabled is True
+
+    def test_local_fake_runtree_does_not_activate_langsmith(self) -> None:
+        source = "class RunTree:\n    pass\n\nrun = RunTree()\n"
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names=set()
+        )
+
+        assert instrumentation is None
+
+    def test_python_tracing_config_requires_real_environment_target(self) -> None:
+        inactive_sources = (
+            "LANGSMITH_TRACING = True\n",
+            "settings.LANGSMITH_TRACING = True\n",
+            'settings = {"LANGSMITH_TRACING": True}\n',
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.py", source)], dep_names={"langsmith"}
+            )
+            assert instrumentation is None
+
+        active = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.py",
+                    'import os\nos.environ["LANGSMITH_TRACING"] = "true"\n',
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        assert active is not None
+        assert active.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            (
+                "from langsmith import tracing_context\n"
+                "with tracing_context(enabled=True):\n"
+                "    run_agent()\n"
+            ),
+            (
+                "from langsmith.run_helpers import tracing_context as observed\n"
+                "with observed(enabled='yes'):\n"
+                "    run_agent()\n"
+            ),
+            (
+                "from langsmith import tracing_context\n"
+                "@tracing_context(enabled=True)\n"
+                "def run_agent():\n"
+                "    pass\n"
+            ),
+            (
+                "from langsmith.run_helpers import ensure_traceable\n"
+                "agent = ensure_traceable(run_agent)\n"
+            ),
+            (
+                "import langsmith.run_helpers as helpers\n"
+                "agent = helpers.ensure_traceable(run_agent)\n"
+            ),
+        ],
+    )
+    def test_python_supported_langsmith_helpers_enable_tracing(self, source: str) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == ["langsmith"]
+        assert instrumentation.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            (
+                "from langsmith import tracing_context\n"
+                "with tracing_context(enabled=False):\n"
+                "    run_agent()\n"
+            ),
+            (
+                "from langsmith import tracing_context\n"
+                "with tracing_context():\n"
+                "    run_agent()\n"
+            ),
+            (
+                "from langsmith import tracing_context\n"
+                "context = tracing_context(enabled=True)\n"
+            ),
+        ],
+    )
+    def test_python_tracing_context_requires_explicit_truthy_enablement(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is None or instrumentation.tracing_enabled is None
+
+    def test_javascript_traceable_requires_import_provenance_and_runtime_use(self) -> None:
+        active_sources = (
+            (
+                'import { traceable as observed } from "langsmith/traceable";\n'
+                "const run = observed(async () => 'ok');\n"
+            ),
+            (
+                'import * as ls from "langsmith";\n'
+                "const run = ls.traceable(async () => 'ok');\n"
+            ),
+            (
+                'const { traceable: observed } = require("langsmith");\n'
+                "const run = observed(async () => 'ok');\n"
+            ),
+            (
+                'const ls = require("langsmith");\n'
+                "const run = ls.traceable(async () => 'ok');\n"
+            ),
+            (
+                'const observed = require("langsmith").traceable;\n'
+                "const run = observed(async () => 'ok');\n"
+            ),
+            ('require("langsmith").traceable(async () => "ok");\n'),
+        )
+        for source in active_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.ts", source)], dep_names={"langsmith"}
+            )
+            assert instrumentation is not None
+            assert instrumentation.tracing_enabled is True
+
+        inactive_sources = (
+            'import { traceable } from "langsmith/traceable";\n',
+            "const traceable = (fn) => fn;\nconst run = traceable(() => 'local');\n",
+            (
+                'import { traceable } from "langsmith/traceable";\n'
+                "// traceable(async () => 'commented');\n"
+                "const docs = `traceable(async () => 'documented')`;\n"
+            ),
+            (
+                "const docs = `\n"
+                'import { traceable } from "langsmith/traceable";\n'
+                "traceable(async () => 'example');\n"
+                "`;\n"
+            ),
+            (
+                "function load(require) {\n"
+                '  const { traceable } = require("langsmith");\n'
+                "  return traceable(async () => 'local');\n"
+                "}\n"
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.ts", source)], dep_names={"langsmith"}
+            )
+            assert instrumentation is None
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            (
+                'import { wrapOpenAI } from "langsmith/wrappers";\n'
+                "const client = wrapOpenAI(new OpenAI());\n"
+            ),
+            (
+                'import * as wrappers from "langsmith/wrappers";\n'
+                "const client = wrappers.wrapOpenAI(new OpenAI());\n"
+            ),
+            (
+                'const { wrapOpenAI: wrap } = require("langsmith/wrappers");\n'
+                "const client = wrap(new OpenAI());\n"
+            ),
+            (
+                'const wrappers = require("langsmith/wrappers");\n'
+                "const client = wrappers.wrapOpenAI(new OpenAI());\n"
+            ),
+        ],
+    )
+    def test_javascript_official_langsmith_openai_wrapper(self, source: str) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.ts", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == ["langsmith"]
+        assert instrumentation.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            'require("langsmith/testing").traceable(() => 1);\n',
+            (
+                "function require() { return { traceable: (fn) => fn }; }\n"
+                'require("langsmith").traceable(() => 1);\n'
+            ),
+            (
+                'import { wrapAnthropic } from "langsmith/wrappers";\n'
+                "wrapAnthropic(new Anthropic());\n"
+            ),
+            (
+                'import { wrapOpenAI } from "local/wrappers";\n'
+                "wrapOpenAI(new OpenAI());\n"
+            ),
+        ],
+    )
+    def test_javascript_langsmith_new_forms_require_exact_provenance(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.ts", source)], dep_names=set()
+        )
+
+        assert instrumentation is None
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            'import { traceable } from "langsmith/testing";\ntraceable(() => 1);\n',
+            'import * as ls from "langsmith/testing";\nls.traceable(() => 1);\n',
+            'const ls = require("langsmith/testing");\nls.traceable(() => 1);\n',
+            (
+                'import { trace } from "@opentelemetry/testing";\n'
+                'trace.getTracer("agent");\n'
+            ),
+            (
+                'import * as otel from "@opentelemetry/testing";\n'
+                'otel.trace.getTracer("agent");\n'
+            ),
+        ],
+    )
+    def test_javascript_instrumentation_exports_require_canonical_packages(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.ts", source)], dep_names=set()
+        )
+
+        assert instrumentation is None
+
+    def test_javascript_langsmith_alias_must_be_unshadowed(self) -> None:
+        inactive_sources = (
+            (
+                'import { traceable } from "langsmith/traceable";\n'
+                "function run(traceable) { return traceable(() => 'local'); }\n"
+            ),
+            (
+                'import * as ls from "langsmith";\n'
+                "function run() {\n"
+                "  const ls = { traceable: (fn) => fn };\n"
+                "  return ls.traceable(() => 'local');\n"
+                "}\n"
+            ),
+            (
+                'import { traceable } from "langsmith/traceable";\n'
+                "traceable = (fn) => fn;\n"
+                "const run = traceable(() => 'local');\n"
+            ),
+            (
+                'import { traceable } from "langsmith/traceable";\n'
+                "class Runner { run(traceable) { return traceable(() => 'local'); } }\n"
+            ),
+            (
+                'import { traceable } from "langsmith/traceable";\n'
+                "const runner = { run(traceable) { return traceable(() => 'local'); } };\n"
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.ts", source)], dep_names={"langsmith"}
+            )
+            assert instrumentation is None
+
+        active = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.ts",
+                    'import { traceable } from "langsmith/traceable";\n'
+                    "const run = traceable(() => 'observed');\n"
+                    "function helper(traceable) { return traceable; }\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        assert active is not None
+        assert active.tracing_enabled is True
+
+    def test_javascript_commonjs_binding_must_be_used_in_declaration_scope(self) -> None:
+        inactive_sources = (
+            (
+                "function setup() {\n"
+                '  const { traceable } = require("langsmith");\n'
+                "}\n"
+                "traceable(() => 'out-of-scope');\n"
+            ),
+            (
+                "function setup() {\n"
+                '  const tracer = require("dd-trace");\n'
+                "}\n"
+                "tracer.init();\n"
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.js", source)], dep_names=set()
+            )
+            assert instrumentation is None
+
+        active = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.js",
+                    "function setup() {\n"
+                    '  const { traceable } = require("langsmith");\n'
+                    "  return traceable(() => 'observed');\n"
+                    "}\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        assert active is not None
+        assert active.tracing_enabled is True
+
+    def test_trusted_python_members_must_remain_live(self) -> None:
+        inactive_sources = (
+            (
+                "import langsmith as ls\n"
+                "ls.traceable = lambda fn: fn\n"
+                "run = ls.traceable(lambda: None)\n"
+            ),
+            (
+                "import langsmith as ls\n"
+                "del ls.traceable\n"
+                "run = ls.traceable(lambda: None)\n"
+            ),
+            (
+                "import langsmith as ls\n"
+                "setattr(ls, 'traceable', lambda fn: fn)\n"
+                "run = ls.traceable(lambda: None)\n"
+            ),
+            (
+                "import langsmith as ls\n"
+                "delattr(ls, 'traceable')\n"
+                "run = ls.traceable(lambda: None)\n"
+            ),
+            (
+                "from opentelemetry import trace\n"
+                "trace.get_tracer = local_get_tracer\n"
+                "trace.get_tracer(__name__)\n"
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.py", source)], dep_names=set()
+            )
+            assert instrumentation is None or instrumentation.tracing_enabled is not True
+
+        active = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.py",
+                    "import langsmith as ls\n"
+                    "ls.Client = local_client\n"
+                    "run = ls.traceable(lambda: None)\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        assert active is not None
+        assert active.tracing_enabled is True
+
+        shadowed_builtin = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.py",
+                    "import langsmith as ls\n"
+                    "def setattr(*args):\n"
+                    "    return None\n"
+                    "setattr(ls, 'traceable', local)\n"
+                    "run = ls.traceable(lambda: None)\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        assert shadowed_builtin is not None
+        assert shadowed_builtin.tracing_enabled is True
+
+    def test_trusted_javascript_members_must_remain_live(self) -> None:
+        inactive_sources = (
+            (
+                'const ls = require("langsmith");\n'
+                "ls.traceable = (fn) => fn;\n"
+                "ls.traceable(() => 'local');\n"
+            ),
+            (
+                'const ls = require("langsmith");\n'
+                "delete ls.traceable;\n"
+                "ls.traceable(() => 'local');\n"
+            ),
+            (
+                'const ls = require("langsmith");\n'
+                'ls["traceable"] = (fn) => fn;\n'
+                "ls.traceable(() => 'local');\n"
+            ),
+            (
+                'const ls = require("langsmith");\n'
+                'delete ls["traceable"];\n'
+                "ls.traceable(() => 'local');\n"
+            ),
+            (
+                'const otel = require("@opentelemetry/api");\n'
+                "otel.trace.getTracer = () => localTracer;\n"
+                'otel.trace.getTracer("agent");\n'
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.js", source)], dep_names=set()
+            )
+            assert instrumentation is None
+
+        active = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.js",
+                    'const ls = require("langsmith");\n'
+                    'ls["Client"] = LocalClient;\n'
+                    "ls[\"traceable\"](() => 'observed');\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        assert active is not None
+        assert active.tracing_enabled is True
+
+    def test_javascript_traceable_method_declarations_are_not_calls(self) -> None:
+        inactive_sources = (
+            (
+                'import { traceable } from "langsmith/traceable";\n'
+                "class Runner { traceable() { return 'local'; } }\n"
+            ),
+            (
+                'import { traceable } from "langsmith/traceable";\n'
+                "const runner = { traceable() { return 'local'; } };\n"
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.ts", source)], dep_names={"langsmith"}
+            )
+            assert instrumentation is None
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            (
+                'import { RunTree as ObservedRun } from "langsmith";\n'
+                "const run = new ObservedRun({ name: 'agent' });\n"
+            ),
+            (
+                'import * as ls from "langsmith";\n'
+                "const run = new ls.RunTree({ name: 'agent' });\n"
+            ),
+        ],
+    )
+    def test_javascript_runtree_construction_requires_import_provenance(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.ts", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == ["langsmith"]
+        assert instrumentation.tracing_enabled is True
+
+    def test_javascript_regex_literals_do_not_supply_runtime_evidence(self) -> None:
+        inactive_sources = (
+            (
+                "const pattern = "
+                r"/import\s*\{\s*traceable\s*\}\s*from\s*['\"]langsmith['\"];\s*traceable\(/;"
+                "\n"
+            ),
+            (
+                "const pattern = "
+                r"/require\(['\"]dd-trace['\"]\)\.init\(\)/;"
+                "\n"
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.js", source)], dep_names=set()
+            )
+            assert instrumentation is None
+
+    def test_javascript_template_expressions_remain_executable(self) -> None:
+        langsmith = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.ts",
+                    'import { traceable } from "langsmith/traceable";\n'
+                    "const label = `run:${traceable(() => 'observed')}`;\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        assert langsmith is not None
+        assert langsmith.tools == ["langsmith"]
+        assert langsmith.tracing_enabled is True
+
+        datadog = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.js",
+                    'const label = `trace:${require("dd-trace").init()}`;\n',
+                )
+            ],
+            dep_names=set(),
+        )
+        assert datadog is not None
+        assert datadog.tools == ["datadog"]
+        assert datadog.tracing_enabled is True
+
+    def test_config_detection_ignores_inert_examples_and_arbitrary_keys(self) -> None:
+        inactive_files = (
+            ("config.yaml", "# environment:\n#   LANGSMITH_TRACING: true\n"),
+            (
+                "config.yaml",
+                "docs: |\n  environment:\n    LANGSMITH_TRACING: true\n",
+            ),
+            (
+                "config.yaml",
+                'docs: "Set this in production:\nenvironment:\n'
+                '  LANGSMITH_TRACING: true\n"\n',
+            ),
+            ("config.yaml", "LANGSMITH_TRACING: true\n"),
+            (
+                "config.yaml",
+                'environment: "{LANGSMITH_TRACING: true}"\n',
+            ),
+            (
+                "config.yaml",
+                "environment: '[LANGSMITH_TRACING=true]'\n",
+            ),
+            ("config.json", '{"LANGSMITH_TRACING": true}\n'),
+            (
+                ".env",
+                'EXAMPLE="Set this in production:\nLANGSMITH_TRACING=true\n"\n',
+            ),
+            (
+                "agent.ts",
+                "const example = `\nprocess.env.LANGSMITH_TRACING = 'true';\n`;\n",
+            ),
+        )
+        for path, source in inactive_files:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[(path, source)], dep_names={"langsmith"}
+            )
+            assert instrumentation is None
+
+        active_files = (
+            ("compose.yaml", 'environment:\n  LANGSMITH_TRACING: "true"\n'),
+            ("compose.yaml", "environment: {LANGSMITH_TRACING: true}\n"),
+            ("compose.yaml", "environment: [LANGSMITH_TRACING=true]\n"),
+            ("config.json", '{"environment": {"LANGSMITH_TRACING": true}}\n'),
+            ("config.json", '{"environment": ["LANGSMITH_TRACING=true"]}\n'),
+            ("agent.ts", "process.env.LANGSMITH_TRACING = 'true';\n"),
+        )
+        for path, source in active_files:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[(path, source)], dep_names={"langsmith"}
+            )
+            assert instrumentation is not None
+            assert instrumentation.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            (
+                "function configure(process) {\n"
+                "  process.env.LANGSMITH_TRACING = 'true';\n"
+                "}\n"
+            ),
+            (
+                "const process = { env: {} };\n"
+                "process.env.LANGSMITH_TRACING = 'true';\n"
+            ),
+            (
+                'import process from "local-process";\n'
+                "process.env.LANGSMITH_TRACING = 'true';\n"
+            ),
+        ],
+    )
+    def test_javascript_langsmith_env_requires_global_process(self, source: str) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.ts", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is None
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            (
+                'import proc from "node:process";\n'
+                'proc.env["LANGSMITH_TRACING"] = "true";\n'
+            ),
+            (
+                'import * as proc from "node:process";\n'
+                'proc["env"].LANGSMITH_TRACING_V2 = "yes";\n'
+            ),
+            (
+                'const proc = require("process");\n'
+                'proc["env"]["LANGCHAIN_TRACING_V2"] = 1;\n'
+            ),
+            (
+                'import { env as runtimeEnv } from "node:process";\n'
+                'runtimeEnv["LANGSMITH_TRACING"] = "true";\n'
+            ),
+            (
+                'const { env: runtimeEnv } = require("node:process");\n'
+                'runtimeEnv.LANGSMITH_TRACING = "on";\n'
+            ),
+        ],
+    )
+    def test_javascript_langsmith_env_accepts_canonical_process_modules(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.ts", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            (
+                'const proc = require("local-process");\n'
+                'proc.env["LANGSMITH_TRACING"] = "true";\n'
+            ),
+            (
+                "function require() { return process; }\n"
+                'const proc = require("node:process");\n'
+                'proc.env["LANGSMITH_TRACING"] = "true";\n'
+            ),
+            (
+                'import proc from "node:process";\n'
+                'proc.env["OTHER_TRACING"] = "true";\n'
+            ),
+        ],
+    )
+    def test_javascript_langsmith_env_rejects_lookalike_process_forms(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.ts", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is None
+
+    @pytest.mark.parametrize(
+        ("dependency", "tool"),
+        [
+            ("opentelemetry", "opentelemetry"),
+            ("ddtrace", "datadog"),
+            ("jaeger", "jaeger"),
+        ],
+    )
+    def test_tracing_dependency_alone_does_not_enable_tracing(
+        self, dependency: str, tool: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[], dep_names={dependency}
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == [tool]
+        assert instrumentation.tracing_enabled is None
+        findings = self._run(
+            [_agent_node("orchestrator")],
+            {"instrumentation": instrumentation.model_dump(mode="json")},
+        )
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-009"
+
+    @pytest.mark.parametrize(
+        ("dependency", "source"),
+        [
+            (
+                "opentelemetry",
+                "from opentelemetry import trace\ntracer = trace.get_tracer(__name__)\n",
+            ),
+            (
+                "ddtrace",
+                "from ddtrace import tracer\ntracer.configure(hostname='collector')\n",
+            ),
+            (
+                "jaeger",
+                "from jaeger_client import Config\n"
+                "tracer = Config({}).initialize_tracer()\n",
+            ),
+        ],
+    )
+    def test_active_tracing_runtime_enables_tracing(
+        self, dependency: str, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names={dependency}
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tracing_enabled is True
+
+    def test_python_tracing_binding_must_remain_live_in_its_scope(self) -> None:
+        inactive_sources = (
+            (
+                "from ddtrace import tracer\n"
+                "def configure(tracer):\n"
+                "    tracer.configure(hostname='local')\n"
+            ),
+            (
+                "from ddtrace import tracer\n"
+                "def configure():\n"
+                "    tracer = local_tracer\n"
+                "    tracer.configure(hostname='local')\n"
+            ),
+            (
+                "from opentelemetry import trace\n"
+                "trace = local_trace\n"
+                "trace.get_tracer(__name__)\n"
+            ),
+            (
+                "from opentelemetry import trace\n"
+                "trace.unrelated.get_tracer(__name__)\n"
+            ),
+            (
+                "from ddtrace import tracer\n"
+                "tracer.unrelated.configure(hostname='local')\n"
+            ),
+            (
+                "from opentelemetry import trace\n"
+                "def replace():\n"
+                "    global trace\n"
+                "    trace = local_trace\n"
+                "    trace.get_tracer(__name__)\n"
+            ),
+            (
+                "def outer():\n"
+                "    from opentelemetry import trace\n"
+                "    def replace():\n"
+                "        nonlocal trace\n"
+                "        trace = local_trace\n"
+                "        trace.get_tracer(__name__)\n"
+                "    return replace\n"
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.py", source)], dep_names=set()
+            )
+            assert instrumentation is not None
+            assert instrumentation.tracing_enabled is None
+
+        unrelated = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.py",
+                    "import datadogger\ndatadogger.tracer.configure(hostname='local')\n",
+                )
+            ],
+            dep_names=set(),
+        )
+        assert unrelated is None
+
+    @pytest.mark.parametrize(
+        ("source", "tool"),
+        [
+            (
+                'import tracer from "dd-trace";\ntracer.init();\n',
+                "datadog",
+            ),
+            (
+                'import { trace as telemetry } from "@opentelemetry/api";\n'
+                'telemetry.getTracer("agent");\n',
+                "opentelemetry",
+            ),
+            (
+                'import * as otel from "@opentelemetry/api";\n'
+                'otel.trace.getTracer("agent");\n',
+                "opentelemetry",
+            ),
+            (
+                'import initTracer from "jaeger-client";\ninitTracer({});\n',
+                "jaeger",
+            ),
+        ],
+    )
+    def test_javascript_tracing_requires_bound_import_and_merges_tool(
+        self, source: str, tool: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.ts", source)], dep_names=set()
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == [tool]
+        assert instrumentation.tracing_enabled is True
+
+    def test_javascript_unrelated_runtime_call_does_not_enable_tracing(self) -> None:
+        inactive_sources = (
+            'import tracer from "dd-trace";\nunrelated.init();\n',
+            (
+                'import { trace as telemetry } from "@opentelemetry/api";\n'
+                'unrelated.getTracer("agent");\n'
+            ),
+            "const tracer = { init() {} };\ntracer.init();\n",
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.ts", source)], dep_names=set()
+            )
+            assert instrumentation is None
+
+    def test_javascript_tracing_aliases_and_member_paths_are_exact(self) -> None:
+        inactive_sources = (
+            (
+                'import tracer from "dd-trace";\n'
+                "function configure(tracer) { tracer.init(); }\n"
+            ),
+            (
+                'import tracer from "dd-trace";\n'
+                "tracer.unrelated.init();\n"
+            ),
+            (
+                'import * as otel from "@opentelemetry/api";\n'
+                "otel.unrelated.getTracer('agent');\n"
+            ),
+            (
+                'import { trace as telemetry } from "@opentelemetry/api";\n'
+                "function configure() {\n"
+                "  const telemetry = { getTracer() {} };\n"
+                "  telemetry.getTracer('agent');\n"
+                "}\n"
+            ),
+            (
+                'import tracer from "dd-trace";\n'
+                "class Runner { configure(tracer) { tracer.init(); } }\n"
+            ),
+            (
+                'import tracer from "dd-trace";\n'
+                "const runner = { configure(tracer) { tracer.init(); } };\n"
+            ),
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.ts", source)], dep_names=set()
+            )
+            assert instrumentation is None
+
+        active = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.ts",
+                    'import tracer from "dd-trace";\n'
+                    "tracer.init();\n"
+                    "function helper(tracer) { return tracer; }\n",
+                )
+            ],
+            dep_names=set(),
+        )
+        assert active is not None
+        assert active.tools == ["datadog"]
+        assert active.tracing_enabled is True
+
+    @pytest.mark.parametrize("module", ["dd-trace/init", "dd-trace/init.js"])
+    def test_esm_ddtrace_side_effect_import_enables_tracing(self, module: str) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[],
+            files=[("agent.mjs", f'import "{module}";\n')],
+            dep_names=set(),
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == ["datadog"]
+        assert instrumentation.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        ("source", "tool"),
+        [
+            ('require("dd-trace").init();\n', "datadog"),
+            ('require("dd-trace/init");\n', "datadog"),
+            ('require("dd-trace/init.js");\n', "datadog"),
+            (
+                'require("@opentelemetry/api").trace.getTracer("agent");\n',
+                "opentelemetry",
+            ),
+            ('require("jaeger-client").initTracer({});\n', "jaeger"),
+        ],
+    )
+    def test_commonjs_active_tracing_requires_canonical_provenance(
+        self, source: str, tool: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.js", source)], dep_names=set()
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == [tool]
+        assert instrumentation.tracing_enabled is True
+
+    def test_commonjs_unrelated_or_inert_require_does_not_enable_tracing(self) -> None:
+        inactive_sources = (
+            'require("dd-trace");\nunrelated.init();\n',
+            'require("unrelated").init();\n',
+            'require("@opentelemetry/api");\nunrelated.getTracer("agent");\n',
+            'require("@opentelemetry/api").unrelated.getTracer("agent");\n',
+            'require("dd-trace").unrelated.init();\n',
+            'require("dd-trace/testing");\n',
+            '// require("dd-trace/init");\n',
+            'const docs = "require(\\"dd-trace\\").init()";\n',
+            'loader.require("dd-trace").init();\n',
+            (
+                "function load(require) {\n"
+                '  return require("dd-trace").init();\n'
+                "}\n"
+            ),
+            '(require) => require("dd-trace").init();\n',
+        )
+        for source in inactive_sources:
+            instrumentation = _detect_app_instrumentation(
+                nodes=[], files=[("agent.js", source)], dep_names=set()
+            )
+            assert instrumentation is None
+
+    def test_python_jaeger_runtime_evidence_merges_tool_without_dependency(self) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.py",
+                    "from jaeger_client import Config\n"
+                    "tracer = Config({}).initialize_tracer()\n",
+                )
+            ],
+            dep_names=set(),
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == ["jaeger"]
+        assert instrumentation.tracing_enabled is True
+
+    def test_metrics_only_instrumentation_still_fails(self) -> None:
+        findings = self._run(
+            [_agent_node("orchestrator")],
+            {
+                "instrumentation": {
+                    "tools": ["prometheus"],
+                    "metrics_enabled": True,
+                    "tracing_enabled": None,
+                }
+            },
+        )
+
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-009"
+
+    def test_explicitly_disabled_tracing_still_fails(self) -> None:
+        findings = self._run(
+            [_agent_node("orchestrator")],
+            {
+                "instrumentation": {
+                    "tools": ["opentelemetry"],
+                    "tracing_enabled": False,
+                }
+            },
+        )
+
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-009"
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "from langsmith import trace\nwith trace('agent'):\n    run_agent()\n",
+            (
+                "from langsmith.run_helpers import trace as observed\n"
+                "with observed('agent'):\n    run_agent()\n"
+            ),
+            (
+                "from langsmith import wrappers\n"
+                "client = wrappers.wrap_anthropic(client)\n"
+            ),
+            (
+                "import langsmith.wrappers as wrappers\n"
+                "client = wrappers.wrap_gemini(client)\n"
+            ),
+            (
+                "from langsmith.wrappers import wrap_anthropic\n"
+                "client = wrap_anthropic(client)\n"
+            ),
+            (
+                "from langsmith.wrappers import wrap_gemini\n"
+                "client = wrap_gemini(client)\n"
+            ),
+        ],
+    )
+    def test_supported_python_langsmith_trace_and_wrappers(self, source: str) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == ["langsmith"]
+        assert instrumentation.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "from langsmith import wrap_anthropic\nwrap_anthropic(client)\n",
+            "from langsmith import wrap_gemini\nwrap_gemini(client)\n",
+        ],
+    )
+    def test_python_langsmith_wrappers_require_the_wrappers_module(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is None
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            (
+                'import { wrapSDK } from "langsmith/wrappers";\n'
+                "const client = wrapSDK(rawClient);\n"
+            ),
+            (
+                'import { wrapAnthropic } from "langsmith/wrappers/anthropic";\n'
+                "const client = wrapAnthropic(rawClient);\n"
+            ),
+            (
+                'import { wrapGemini } from "langsmith/wrappers/gemini";\n'
+                "const client = wrapGemini(rawClient);\n"
+            ),
+            (
+                'const { wrapAnthropic } = require("langsmith/wrappers/anthropic");\n'
+                "const client = wrapAnthropic(rawClient);\n"
+            ),
+            'require("langsmith/wrappers").wrapSDK(rawClient);\n',
+        ],
+    )
+    def test_supported_javascript_langsmith_wrappers(self, source: str) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.ts", source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == ["langsmith"]
+        assert instrumentation.tracing_enabled is True
+
+    def test_nested_function_binding_effects_do_not_escape_before_invocation(self) -> None:
+        active = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.py",
+                    "from langsmith import traceable\n"
+                    "def replace():\n"
+                    "    global traceable\n"
+                    "    traceable = lambda fn: fn\n"
+                    "@traceable\n"
+                    "def run_agent():\n"
+                    "    pass\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+        inactive = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.py",
+                    "def enable():\n"
+                    "    global observed\n"
+                    "    from langsmith import traceable as observed\n"
+                    "observed(lambda: None)\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+
+        assert active is not None
+        assert active.tracing_enabled is True
+        assert inactive is None
+
+    def test_property_require_is_not_treated_as_langsmith_namespace(self) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.js",
+                    'const wrapped = require("langsmith").traceable;\n'
+                    "new wrapped.RunTree();\n",
+                )
+            ],
+            dep_names={"langsmith"},
+        )
+
+        assert instrumentation is None
+
+    @pytest.mark.parametrize(
+        ("path", "source"),
+        [
+            (".env", "langsmith_tracing=true\n"),
+            (
+                "compose.yaml",
+                "services:\n  app:\n    environment:\n      langsmith_tracing: true\n",
+            ),
+            ("agent.js", "process.env.langsmith_tracing = true;\n"),
+            (
+                "runtime.json",
+                '{"environment": ["langsmith_tracing=true"]}',
+            ),
+        ],
+    )
+    def test_langsmith_environment_keys_are_case_sensitive(
+        self, path: str, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[(path, source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is None
+
+    @pytest.mark.parametrize(
+        ("path", "source"),
+        [
+            (".env", "LANGSMITH_TRACING=TRUE\n"),
+            (
+                "compose.yaml",
+                "services:\n  app:\n    environment:\n      LANGSMITH_TRACING: YES\n",
+            ),
+            ("agent.js", 'process.env.LANGSMITH_TRACING = "ON";\n'),
+            (
+                "runtime.json",
+                '{"environment": ["LANGSMITH_TRACING=On"]}',
+            ),
+        ],
+    )
+    def test_langsmith_environment_values_remain_case_insensitive(
+        self, path: str, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[(path, source)], dep_names={"langsmith"}
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            (
+                "from langsmith import traceable\n"
+                "import fake as traceable\n"
+                "traceable(lambda: None)\n"
+            ),
+            (
+                "from langsmith import traceable\n"
+                "from fake import traceable\n"
+                "traceable(lambda: None)\n"
+            ),
+            (
+                "import langsmith as ls\n"
+                "import fake as ls\n"
+                "ls.traceable(lambda: None)\n"
+            ),
+            (
+                "from opentelemetry import trace\n"
+                "from fake import trace\n"
+                "trace.get_tracer(__name__)\n"
+            ),
+        ],
+    )
+    def test_python_instrumentation_import_rebindings_are_respected(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names=set()
+        )
+
+        assert instrumentation is None or instrumentation.tracing_enabled is None
+
+    def test_python_trusted_reimport_resets_member_invalidation(self) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[],
+            files=[
+                (
+                    "agent.py",
+                    "import langsmith as ls\n"
+                    "ls.traceable = local_traceable\n"
+                    "import langsmith as ls\n"
+                    "ls.traceable(lambda: None)\n",
+                )
+            ],
+            dep_names=set(),
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "from langsmith import ensure_traceable\nensure_traceable(fn)\n",
+            "from langsmith import wrap_openai\nwrap_openai(client)\n",
+            "import langsmith as ls\nls.wrappers.wrap_openai(client)\n",
+            "import langchain_core as lc\nlc.tracers.LangChainTracer()\n",
+        ],
+    )
+    def test_python_langsmith_root_requires_real_exports_or_loaded_submodules(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names=set()
+        )
+
+        assert instrumentation is None
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "import langsmith.wrappers\nlangsmith.wrappers.wrap_openai(client)\n",
+            "import langchain_core.tracers\nlangchain_core.tracers.LangChainTracer()\n",
+        ],
+    )
+    def test_python_explicitly_loaded_langsmith_submodules_are_active(
+        self, source: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", source)], dep_names=set()
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tracing_enabled is True
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            ".env.sample",
+            ".env.template",
+            ".env.demo",
+            ".env.production.sample",
+        ],
+    )
+    def test_dotenv_templates_do_not_enable_langsmith(self, path: str) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[],
+            files=[(path, "LANGSMITH_TRACING=true\n")],
+            dep_names={"langsmith"},
+        )
+
+        assert instrumentation is None
+
+    def test_full_extraction_keeps_instrumentation_after_content_sample(
+        self, tmp_path: Any
+    ) -> None:
+        filler = tmp_path / "aaa"
+        filler.mkdir()
+        for index in range(205):
+            (filler / f"module_{index:03}.py").write_text(
+                f"VALUE = {index}\n", encoding="utf-8"
+            )
+        production = tmp_path / "zzz" / "middleware"
+        production.mkdir(parents=True)
+        (production / "tracing.py").write_text(
+            "from deepagents import create_deep_agent\n"
+            "from langsmith.run_helpers import get_current_run_tree\n"
+            "agent = create_deep_agent(name='design-agent', model='openai:gpt-4o', tools=[])\n"
+            "run = get_current_run_tree()\n",
+            encoding="utf-8",
+        )
+
+        document = AiSbomExtractor().extract_from_path(
+            tmp_path,
+            AiSbomConfig(include_extensions={".py"}, enable_llm=False, max_files=300),
+        )
+
+        assert document.summary is not None
+        assert document.summary.instrumentation is not None
+        assert document.summary.instrumentation.tools == ["langsmith"]
+        assert document.summary.instrumentation.tracing_enabled is True
+        findings = self._run(
+            [_agent_node("design-agent")],
+            {"instrumentation": document.summary.instrumentation.model_dump(mode="json")},
+        )
+        assert findings == []
 
 
 # ---------------------------------------------------------------------------

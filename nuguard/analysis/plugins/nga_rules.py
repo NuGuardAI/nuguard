@@ -903,6 +903,8 @@ def _rule_nga008_untrusted_model_registry(
 
 # ── NGA-009 ──────────────────────────────────────────────────────────────────
 
+
+
 _AUDIT_LIBS = {
     "opentelemetry",
     "langfuse",
@@ -911,12 +913,6 @@ _AUDIT_LIBS = {
     "mlflow",
     "wandb",
     "helicone",
-}
-_AUDIT_MIDDLEWARE = {
-    "RequestLoggingMiddleware",
-    "AuditLogHandler",
-    "RotatingFileHandler",
-    "TimedRotatingFileHandler",
 }
 
 
@@ -929,14 +925,19 @@ def _rule_nga009_no_audit_logging(
         return []
 
     log_paths: list[str] = summary.get("log_paths") or []
-    frameworks: list[str] = [f.lower() for f in (summary.get("frameworks") or [])]
-
-    has_audit_lib = any(lib in frameworks for lib in _AUDIT_LIBS)
     has_log_paths = bool(log_paths)
-    has_middleware = any(mw in str(summary) for mw in _AUDIT_MIDDLEWARE)
-    has_instrumentation = bool(summary.get("instrumentation"))
+    instrumentation = summary.get("instrumentation")
+    if hasattr(instrumentation, "model_dump"):
+        instrumentation = instrumentation.model_dump(mode="python")
+    has_instrumentation = bool(
+        isinstance(instrumentation, dict)
+        and (
+            instrumentation.get("tracing_enabled") is True
+            or instrumentation.get("audit_logging_enabled") is True
+        )
+    )
 
-    if has_audit_lib or has_log_paths or has_middleware or has_instrumentation:
+    if has_log_paths or has_instrumentation:
         return []
 
     return [
@@ -945,13 +946,12 @@ def _rule_nga009_no_audit_logging(
             "HIGH",
             "AI application has no audit logging enabled",
             f"{len(agent_nodes)} agent(s) detected but no audit logging evidence found "
-            "(no log paths, no logging middleware, no observability library such as "
-            "OpenTelemetry, Langfuse, Arize, or whylogs). "
+            "(no log paths and no actively enabled tracing or audit logging). "
             "Audit logs are essential for incident response, compliance (HIPAA §164.312(b), "
             "SOC 2 CC7.2), and detecting prompt injection post-hoc.",
             [n.get("name", "") for n in agent_nodes],
-            "Integrate a structured logging or observability library (OpenTelemetry, Langfuse, "
-            "Arize) to capture every prompt, response, tool call, and user session. "
+            "Enable structured logging or active tracing (for example OpenTelemetry, LangSmith, "
+            "Langfuse, or Arize) to capture every prompt, response, tool call, and user session. "
             "Store logs in an append-only store with tamper detection. "
             "Set retention policies aligned with your compliance obligations.",
         )
