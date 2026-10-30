@@ -523,12 +523,13 @@ class LangGraphAdapter(FrameworkAdapter):
                 continue
             provider = LANGCHAIN_LLM_CLASS_PROVIDERS[inst.class_name]
             args = inst.args or {}
-            raw_model = (
-                args.get("model")
-                or args.get("model_name")
-                or args.get("model_id")  # LangChain Bedrock uses model_id=
-                or args.get("deployment_name")
-            )
+            source_model_argument: str | None = None
+            raw_model: Any = None
+            for argument in ("model", "model_name", "model_id", "deployment_name"):
+                if args.get(argument):
+                    source_model_argument = argument
+                    raw_model = args[argument]
+                    break
             # Resolve variable references (e.g. model=$MODEL_ID) via symbol table
             if isinstance(raw_model, str) and raw_model.startswith("$"):
                 ref = raw_model[1:]
@@ -570,6 +571,8 @@ class LangGraphAdapter(FrameworkAdapter):
                 },
                 file_path=file_path,
                 line=inst.line,
+                source_call=inst,
+                source_model_argument=source_model_argument,
                 snippet=f"{inst.class_name}(...)",
                 evidence_kind="ast_instantiation",
                 relationships=rels,
