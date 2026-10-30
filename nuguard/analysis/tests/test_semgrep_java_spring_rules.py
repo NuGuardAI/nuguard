@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 
+from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugins.java_aiservice import (
     augment_java_rules,
     find_ai_service_interfaces,
@@ -144,8 +146,8 @@ def test_augment_adds_typed_sinks_without_mutating_input() -> None:
 
 @pytest.fixture
 def findings(tmp_path: Path) -> dict[str, dict[str, set[int]]]:
-    if shutil.which("semgrep") is None:
-        pytest.skip("semgrep is not installed")
+    if not (shutil.which("opengrep") or shutil.which("semgrep")):
+        pytest.skip("opengrep (or semgrep) is not installed")
     src = tmp_path / "src"
     src.mkdir()
     for name, text in _JAVA_FILES.items():
@@ -191,8 +193,8 @@ def test_sanitized_constant_and_unrelated_flows_are_not_reported(
 
 
 def test_rule_ids_do_not_leak_the_temporary_rules_directory(tmp_path: Path) -> None:
-    if shutil.which("semgrep") is None:
-        pytest.skip("semgrep is not installed")
+    if not (shutil.which("opengrep") or shutil.which("semgrep")):
+        pytest.skip("opengrep (or semgrep) is not installed")
     src = tmp_path / "src"
     src.mkdir()
     for name in ("SupportAgent.java", "ResultController.java"):
@@ -206,3 +208,63 @@ def test_rule_ids_do_not_leak_the_temporary_rules_directory(tmp_path: Path) -> N
 
     assert runs[0] and runs[0] == runs[1]
     assert not any("nuguard-semgrep-" in rule_id for rule_id in runs[0])
+
+
+@pytest.mark.parametrize("with_interface", [True, False])
+def test_scan_command_and_rule_ids_on_the_resolved_engine(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_interface: bool
+) -> None:
+    """Engine selection, source-path collection and the temp ruleset copy work together.
+
+    Needs no scanner binary: the engine lookup and ``run_scanner`` are replaced.
+    """
+    src = tmp_path / "src"
+    src.mkdir()
+    names = (
+        ("SupportAgent.java", "ResultController.java")
+        if with_interface
+        else ("ResultController.java",)
+    )
+    for name in names:
+        (src / name).write_text(_JAVA_FILES[name], encoding="utf-8")
+    seen: dict[str, Any] = {}
+
+    def fake_run_scanner(
+        tool: str, paths: Any, command: Any, parse: Any, **_: Any
+    ) -> AnalysisResult:
+        cmd = command(str(src))
+        configs = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--config"]
+        java_rules = next(c for c in configs if Path(c).name == _RULES.name)
+        seen.update(
+            cmd=cmd, configs=configs, java_rules_text=Path(java_rules).read_text(encoding="utf-8")
+        )
+        # The engine prefixes a rule id with the dotted directory of its rules file.
+        dotted = ".".join(Path(java_rules).parent.parts[1:])
+        return AnalysisResult(
+            status="warning",
+            plugin=tool,
+            message="fake scan",
+            findings=[{"rule_id": f"{dotted}.{_PROMPT}"}],
+            details={},
+        )
+
+    monkeypatch.setattr(
+        "nuguard.analysis.plugins.semgrep_scanner._engine_path",
+        lambda: ("/opt/bin/opengrep", "opengrep"),
+    )
+    monkeypatch.setattr("nuguard.analysis.plugins.semgrep_scanner.run_scanner", fake_run_scanner)
+
+    result = SemgrepScannerPlugin().run(
+        {"nodes": []}, {"source_path": str(src), "semgrep_exclude_tests": False}
+    )
+
+    assert result.details["engine"] == "opengrep"
+    assert "--metrics" not in seen["cmd"]
+    assert str(_RULES) in result.details["rule_files"]
+    bundled_prefix = ".".join(_RULES.parent.parts[1:])
+    assert [f["rule_id"] for f in result.findings] == [f"{bundled_prefix}.{_PROMPT}"]
+    if with_interface:
+        assert str(_RULES) not in seen["configs"]
+        assert "(SupportAgent $SVC).$M(...)" in seen["java_rules_text"]
+    else:
+        assert str(_RULES) in seen["configs"]

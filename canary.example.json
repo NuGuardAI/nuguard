@@ -22,6 +22,8 @@
     "  tenants              One entry per tenant / user identity.",
     "    tenant_id          Identifier used to select this tenant during scenarios.",
     "    session_token      Auth credential (bearer token or API key) for this tenant.",
+    "    web_session        true = acquire an independent cookie/CSRF session at run start (cookie apps).",
+    "    web_session_pages  UI pages to crawl for that session, e.g. [\"/vendor/\"] (default: \"/\").",
     "                       Used as the Authorization header in cross-tenant attack scenarios.",
     "                       Leave empty if this tenant is not used as an attacker identity.",
     "    records            Fake records planted in the app's data store.",
