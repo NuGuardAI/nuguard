@@ -460,27 +460,39 @@ def _maybe_mark_endpoint_not_found(
     return chain_status
 
 
-def _record_is_error_only(record: object) -> bool:
-    """True when a scenario got responses and every one was only an error envelope."""
-    from nuguard.common.transport import error_only_response  # noqa: PLC0415
+def _chat_step_responses(record: object) -> list[str]:
+    """Responses from the scenario's chat-routed steps only.
 
-    responses = [
+    Direct-HTTP steps (``target_path`` set) hit SBOM-derived REST paths, not
+    the main chat endpoint, so their 404/401/403 envelopes say nothing about
+    whether the agent is engaged.
+    """
+    return [
         str(step.get("response") or "")
         for step in getattr(record, "steps", None) or []
-        if isinstance(step, dict) and step.get("response")
+        if isinstance(step, dict) and step.get("response") and not step.get("target_path")
     ]
+
+
+def _record_is_error_only(record: object) -> bool:
+    """True when a scenario's chat responses were all only error envelopes.
+
+    False when the scenario has no chat-routed responses (nothing to judge).
+    """
+    from nuguard.common.transport import error_only_response  # noqa: PLC0415
+
+    responses = _chat_step_responses(record)
     return bool(responses) and all(error_only_response(r) for r in responses)
 
 
 def _first_error_only_response(record: object) -> str:
-    """Return the first error-envelope text from a scenario record's steps."""
+    """Return the first chat error-envelope text from a scenario record's steps."""
     from nuguard.common.transport import error_only_response  # noqa: PLC0415
 
-    for step in getattr(record, "steps", None) or []:
-        if isinstance(step, dict):
-            text = error_only_response(str(step.get("response") or ""))
-            if text:
-                return text
+    for text in _chat_step_responses(record):
+        error = error_only_response(text)
+        if error:
+            return error
     return ""
 
 
@@ -2633,6 +2645,10 @@ class RedteamOrchestrator:
         # endpoint is still bounded: each pass re-probes at most
         # `_ABORT_THRESHOLD` times before skipping the rest of that pass.
         endpoint_abort_event = asyncio.Event()
+        # Set (together with `abort_event`) only when the run-level engagement
+        # guard trips, so skipped scenarios get their own reason instead of
+        # being reported as "circuit breaker open".
+        engagement_abort_event = asyncio.Event()
         # Circuit breaker: trip only after this many consecutive unavailability errors.
         _ABORT_THRESHOLD = 3
         consecutive_unavailable = 0
@@ -2702,9 +2718,12 @@ class RedteamOrchestrator:
                     had_finding=False,
                 )
 
+            def _abort_status() -> str:
+                return "not_engaged" if engagement_abort_event.is_set() else "skipped"
+
             # Skip immediately if the circuit is already open
             if abort_event.is_set():
-                return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
+                return [], (scenario.title, scenario.goal_type.value, False), _skipped_record(_abort_status())
             # Direct-HTTP-only scenarios (all steps have target_path set — no
             # chat-routed step) are skipped independently once the direct-HTTP
             # endpoint-probe breaker trips, WITHOUT touching abort_event —
@@ -2719,7 +2738,7 @@ class RedteamOrchestrator:
                 # Re-check after acquiring the semaphore — another coroutine may
                 # have tripped the circuit while we were waiting.
                 if abort_event.is_set():
-                    return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
+                    return [], (scenario.title, scenario.goal_type.value, False), _skipped_record(_abort_status())
                 if _is_direct_http and endpoint_abort_event.is_set():
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("target_unreachable")
 
@@ -2956,7 +2975,12 @@ class RedteamOrchestrator:
                             )
                     else:
                         consecutive_unavailable = 0
-                    if self._require_engagement and _record_is_error_only(_record):
+                    if not _chat_step_responses(_record):
+                        # REST-only (or response-less) scenario: no evidence
+                        # about main-chat health either way, so leave the
+                        # engagement counter untouched.
+                        pass
+                    elif self._require_engagement and _record_is_error_only(_record):
                         consecutive_error_envelopes += 1
                         if consecutive_error_envelopes >= self._engagement_error_threshold:
                             self._not_engaged_detail = _first_error_only_response(_record)
@@ -2965,6 +2989,7 @@ class RedteamOrchestrator:
                                 "scenarios — aborting remaining scenarios as not engaged: %s",
                                 consecutive_error_envelopes, self._not_engaged_detail,
                             )
+                            engagement_abort_event.set()
                             abort_event.set()
                     else:
                         consecutive_error_envelopes = 0
