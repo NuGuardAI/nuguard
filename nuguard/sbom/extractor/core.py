@@ -213,6 +213,19 @@ def _strip_notebook_outputs(content: str) -> str:
 
 _PYTHON_COMMENT_LINE_RE = re.compile(r"^\s*#.*$", re.MULTILINE)
 
+# Long encoded payloads (images, cached artifacts, etc.) can contain short
+# byte sequences that look like model names, such as ``/O3+``.  Replace each
+# token with equal-width whitespace so regex match offsets retain their line
+# numbers while the payload itself cannot become SBOM evidence.
+_LONG_BASE64_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{64,}={0,2}(?![A-Za-z0-9+/=])"
+)
+
+
+def _strip_long_base64_tokens(content: str) -> str:
+    """Blank long base64-like tokens without changing offsets or newlines."""
+    return _LONG_BASE64_TOKEN_RE.sub(lambda match: " " * len(match.group(0)), content)
+
 
 def _strip_python_comments(content: str) -> str:
     """Remove Python single-line comments before regex scanning.
@@ -605,6 +618,11 @@ _SKIP_FILENAMES = {"Thumbs.db"}
 
 def _should_skip_filename(name: str) -> bool:
     if name in _SKIP_FILENAMES:
+        return True
+    # Generated ecosystem lock files are dependency metadata, not application
+    # configuration.  Cover tool-specific names such as ``skills-lock.json``
+    # while leaving ordinary JSON files eligible for AI component detection.
+    if name.lower().endswith("-lock.json"):
         return True
     return any(name.endswith(suffix) for suffix in _SKIP_FILENAME_SUFFIXES)
 
@@ -1533,6 +1551,7 @@ class AiSbomExtractor:
                 _regex_content = _strip_python_comments(content)
             else:
                 _regex_content = content
+            _regex_content = _strip_long_base64_tokens(_regex_content)
             for rx_adapter in (
                 self.regex_adapters
                 if suffix not in _DOCS_EXTENSIONS and Path(rel_path).stem.lower() not in _DOCS_STEMS
