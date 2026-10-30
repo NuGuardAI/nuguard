@@ -16,6 +16,10 @@ from nuguard.sbom.extractor.core import _strip_non_runtime_toml_model_pricing
 from nuguard.sbom.types import ComponentType
 
 
+_JSON_ONLY = AiSbomConfig(include_extensions={".json"}, enable_llm=False)
+_SH_ONLY = AiSbomConfig(include_extensions={".sh"}, enable_llm=False)
+
+
 def _matches(text: str) -> bool:
     return any(p.search(text) for p in MODEL_NAME_PATTERNS)
 
@@ -188,3 +192,53 @@ def test_model_comment_outside_verified_pricing_file_is_unchanged() -> None:
     content = "# runtime fallback remains gpt-5.4-mini\n"
 
     assert _strip_non_runtime_toml_model_pricing(content, "pricing/runtime.toml") == content
+
+
+def _model_names(doc) -> set[str]:
+    return {node.name.lower() for node in doc.nodes if node.component_type == ComponentType.MODEL}
+
+
+def test_base64_like_blob_containing_o3_does_not_emit_model(tmp_path):
+    encoded = "A" * 80 + "/O3+" + "B" * 80
+    (tmp_path / "artifact.json").write_text(
+        '{"image": "' + encoded + '"}\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _JSON_ONLY)
+
+    assert _model_names(doc) == set()
+
+
+def test_real_o3_outside_base64_like_blob_is_retained(tmp_path):
+    encoded = "A" * 80 + "/O3+" + "B" * 80
+    (tmp_path / "app.json").write_text(
+        '{"image": "' + encoded + '", "model": "o3"}\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _JSON_ONLY)
+
+    assert _model_names(doc) == {"o3"}
+
+
+def test_generated_skills_lock_json_does_not_emit_model(tmp_path):
+    (tmp_path / "skills-lock.json").write_text(
+        '{"skill": "dolly-zoom"}\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _JSON_ONLY)
+
+    assert _model_names(doc) == set()
+
+
+def test_shell_deployment_detection_is_preserved(tmp_path):
+    (tmp_path / "deploy.sh").write_text(
+        "#!/bin/sh\nkubectl apply -f deployment.yaml\n",
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _SH_ONLY)
+
+    assert any(node.component_type == ComponentType.DEPLOYMENT for node in doc.nodes)
