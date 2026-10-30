@@ -1548,6 +1548,9 @@ class _PythonInstrumentationVisitor(ast.NodeVisitor):
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
+            audit_tool = _audit_tool_for_module(alias.name)
+            if audit_tool:
+                self.active_tracing_tools.add(audit_tool)
             local_name = alias.asname or alias.name.split(".")[0]
             if alias.name in _PYTHON_LANGSMITH_MODULES:
                 if alias.asname:
@@ -1581,6 +1584,9 @@ class _PythonInstrumentationVisitor(ast.NodeVisitor):
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         module = node.module or ""
+        audit_tool = _audit_tool_for_module(module)
+        if audit_tool:
+            self.active_tracing_tools.add(audit_tool)
         langsmith_exports = _PYTHON_LANGSMITH_EXPORTS.get(module, set())
         tracing_tool = _trace_tool_for_module(module)
         for alias in node.names:
@@ -2574,6 +2580,15 @@ _ACTIVE_TRACE_MARKERS: dict[str, set[str]] = {
     "jaeger": {"Config", "JaegerExporter", "initialize_tracer"},
 }
 
+_ACTIVE_AUDIT_TOOLS = frozenset(
+    {"arize", "helicone", "langfuse", "mlflow", "wandb", "whylogs"}
+)
+
+
+def _audit_tool_for_module(module: str) -> str | None:
+    root = module.lower().replace("-", "_").split(".", 1)[0]
+    return root if root in _ACTIVE_AUDIT_TOOLS else None
+
 
 def _trace_tool_for_module(module: str) -> str | None:
     normalized = module.lower().replace("-", "_")
@@ -2864,11 +2879,17 @@ def _instrumentation_evidence_for_file(path: str, content: str) -> tuple[bool, s
             "datadog",
             "dd-trace",
             "ddtrace",
+            "helicone",
             "jaeger",
+            "langfuse",
             "langchain_core",
             "langchain_tracing",
             "langsmith",
+            "mlflow",
             "opentelemetry",
+            "arize",
+            "wandb",
+            "whylogs",
         )
     ):
         return False, set()

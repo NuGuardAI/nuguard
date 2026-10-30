@@ -1766,6 +1766,25 @@ LANGSMITH_TRACING=true
         assert findings[0]["rule_id"] == "NGA-009"
 
     @pytest.mark.parametrize(
+        "audit_tool",
+        ["langfuse", "arize", "whylogs", "mlflow", "wandb", "helicone"],
+    )
+    def test_runtime_audit_library_import_enables_audit_evidence(
+        self, audit_tool: str
+    ) -> None:
+        instrumentation = _detect_app_instrumentation(
+            nodes=[], files=[("agent.py", f"import {audit_tool}\n")], dep_names=set()
+        )
+
+        assert instrumentation is not None
+        assert instrumentation.tools == [audit_tool]
+        assert instrumentation.tracing_enabled is True
+        assert self._run(
+            [_agent_node("orchestrator")],
+            {"instrumentation": instrumentation.model_dump(mode="json")},
+        ) == []
+
+    @pytest.mark.parametrize(
         ("dependency", "source"),
         [
             (
