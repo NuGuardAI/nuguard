@@ -1293,6 +1293,7 @@ def _resolve_module_string_constant(
     if len(module_bindings) != 1 or not isinstance(module_bindings[0], ast.Name):
         return ""
     write_parent = parents.get(module_bindings[0])
+    binding_value: ast.expr | None
     if isinstance(write_parent, ast.Assign):
         binding_value = write_parent.value
     elif isinstance(write_parent, ast.AnnAssign):
