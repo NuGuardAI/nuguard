@@ -321,8 +321,8 @@ class _AstExtractor(ast.NodeVisitor):
         elif isinstance(node.value, ast.Await) and isinstance(node.value.value, ast.Call):
             # Handle `result = await Runner.run(...)` patterns
             self._visit_call(node.value.value, assigned_to=assigned_to)
-        elif isinstance(node.value, ast.List):
-            # List assignment: visit each element to capture class instantiations.
+        elif isinstance(node.value, (ast.List, ast.Tuple)):
+            # Collection assignment: visit each element to capture class instantiations.
             # e.g. `tools = [ToolA(), ToolB()]` → ToolA and ToolB register as instantiations
             # so framework adapters can detect them without needing an explicit assigned_to.
             for elt in node.value.elts:
