@@ -43,6 +43,7 @@ from nuguard.common.url_sanitization import (
     sanitize_repository_url,
 )
 
+from ..adapters._test_paths import looks_like_test_path
 from ..adapters.azure_yaml import AzureYamlAdapter, is_azure_yaml
 from ..adapters.base import (
     AdapterMatch,
@@ -2890,6 +2891,25 @@ class AiSbomExtractor:
         its adapter attribution and metadata take precedence.  Evidence from all
         tiers is always appended so the final node reflects every source.
         """
+        # Runtime declarations in test files describe fixtures and mocks, not
+        # production assets.  Apply this once at the merge boundary so every
+        # adapter gets the same behaviour and test evidence cannot leak into a
+        # production node with the same canonical name.  Paths are relative to
+        # the scan root, so scanning a fixture directory directly still works:
+        # ``tests/fixtures/app.py`` becomes ``app.py`` for that focused scan.
+        # Keep infrastructure/configuration detections (for example DEPLOYMENT)
+        # because test and E2E directories can contain real environment facts.
+        if det.component_type in {
+            ComponentType.AGENT,
+            ComponentType.GUARDRAIL,
+            ComponentType.MCP_SERVER,
+            ComponentType.MODEL,
+            ComponentType.TOOL,
+            ComponentType.PROMPT,
+            ComponentType.FRAMEWORK,
+        } and looks_like_test_path(det.file_path):
+            return
+
         # Always canonicalize to ensure regex-adapter and AST-adapter nodes
         # for the same component deduplicate correctly.
         canon = canonicalize_text(det.canonical_name)
