@@ -123,6 +123,14 @@ class LLMClientsAdapter(FrameworkAdapter):
                 raw = const_map.get(raw[1:], "")
             return self._clean_str(raw)
 
+        def _first_model_arg(
+            args: dict[str, Any], names: tuple[str, ...]
+        ) -> tuple[Any, str | None]:
+            for name in names:
+                if args.get(name):
+                    return args[name], name
+            return None, None
+
         # Determine which providers are imported
         for imp in parse_result.imports:
             module = imp.module or ""
@@ -154,18 +162,17 @@ class LLMClientsAdapter(FrameworkAdapter):
                                 raw_url,
                             )
 
-                model_name = _resolve_model_val(
-                    args.get("model")
-                    or args.get("model_name")
-                    or args.get("model_id")  # LangChain Bedrock uses model_id=
-                    or args.get("embedding_model")
+                raw_model, source_model_argument = _first_model_arg(
+                    args, ("model", "model_name", "model_id", "embedding_model")
                 )
+                model_name = _resolve_model_val(raw_model)
                 # For model-specifying classes (e.g. GenerativeModel), fall back to first
                 # positional arg (e.g. GenerativeModel("gemini-2.0-flash"))
                 if not model_name and inst.class_name in _MODEL_SPECIFYING_CLASSES:
-                    for pa in inst.positional_args:
+                    for index, pa in enumerate(inst.positional_args):
                         model_name = _resolve_model_val(pa)
                         if model_name:
+                            source_model_argument = index
                             break
 
                 # Skip bare client objects without an explicit model,
@@ -223,6 +230,8 @@ class LLMClientsAdapter(FrameworkAdapter):
                         metadata=meta,
                         file_path=file_path,
                         line=inst.line,
+                        source_call=inst,
+                        source_model_argument=source_model_argument,
                         snippet=f"{inst.class_name}(...)",
                         evidence_kind="ast_instantiation",
                     )
@@ -232,15 +241,11 @@ class LLMClientsAdapter(FrameworkAdapter):
             elif inst.class_name in LANGCHAIN_LLM_CLASS_PROVIDERS:
                 provider = LANGCHAIN_LLM_CLASS_PROVIDERS[inst.class_name]
                 args = inst.args or {}
-                model_name = (
-                    self._clean_str(
-                        args.get("model")
-                        or args.get("model_name")
-                        or args.get("embedding_model")
-                        or args.get("deployment_name")
-                    )
-                    or inst.class_name
+                raw_model, source_model_argument = _first_model_arg(
+                    args,
+                    ("model", "model_name", "embedding_model", "deployment_name"),
                 )
+                model_name = self._clean_str(raw_model) or inst.class_name
                 details = get_model_details(model_name, provider, args)
 
                 detected.append(
@@ -259,6 +264,8 @@ class LLMClientsAdapter(FrameworkAdapter):
                         },
                         file_path=file_path,
                         line=inst.line,
+                        source_call=inst,
+                        source_model_argument=source_model_argument,
                         snippet=f"{inst.class_name}(...)",
                         evidence_kind="ast_instantiation",
                     )
@@ -278,18 +285,17 @@ class LLMClientsAdapter(FrameworkAdapter):
             if not is_strong_call and not is_weak_call:
                 continue
 
-            model_name = _resolve_model_val(
-                args.get("model")
-                or args.get("model_name")
-                or args.get("modelId")  # boto3 Bedrock invoke_model uses modelId=
-                or args.get("model_id")  # some SDKs use model_id=
+            raw_model, source_model_argument = _first_model_arg(
+                args, ("model", "model_name", "modelId", "model_id")
             )
+            model_name = _resolve_model_val(raw_model)
             if not model_name and is_strong_call:
                 # Only fall back to positional args for well-known LLM API calls
                 # to avoid false positives from unrelated generate_*/create_* functions
-                for pa in call.positional_args:
+                for index, pa in enumerate(call.positional_args):
                     model_name = _resolve_model_val(pa)
                     if model_name:
+                        source_model_argument = index
                         break
             if not model_name:
                 continue
@@ -321,6 +327,8 @@ class LLMClientsAdapter(FrameworkAdapter):
                     },
                     file_path=file_path,
                     line=call.line,
+                    source_call=call,
+                    source_model_argument=source_model_argument,
                     snippet=f"{func}(model={model_name!r})",
                     evidence_kind="ast_call",
                 )
