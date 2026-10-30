@@ -219,6 +219,47 @@ class UserRecord:
         user = next(d for d in dets if d.display_name == "UserRecord")
         assert "PII" in user.metadata["data_classification"]
 
+    def test_dataclass_with_only_generic_name_ignored(
+        self, adapter: DataClassificationPythonAdapter
+    ) -> None:
+        source = """
+from dataclasses import dataclass
+
+@dataclass
+class ToolDefinition:
+    name: str
+    description: str
+"""
+        assert adapter.extract(source, "tools.py", None) == []
+
+    def test_dataclass_name_with_corroborating_pii_detected(
+        self, adapter: DataClassificationPythonAdapter
+    ) -> None:
+        source = """
+from dataclasses import dataclass
+
+@dataclass
+class Contact:
+    name: str
+    email: str
+"""
+        dets = adapter.extract(source, "contact.py", None)
+        contact = next(d for d in dets if d.display_name == "Contact")
+        assert set(contact.metadata["classified_fields"]) == {"name", "email"}
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "from pydantic import BaseModel\nclass NamedModel(BaseModel):\n    name: str\n",
+            "from sqlalchemy.orm import DeclarativeBase\nclass NamedModel(DeclarativeBase):\n    name: str\n",
+        ],
+    )
+    def test_framework_model_with_only_name_preserved(
+        self, adapter: DataClassificationPythonAdapter, source: str
+    ) -> None:
+        dets = adapter.extract(source, "models.py", None)
+        assert dets[0].metadata["classified_fields"] == {"name": ["PII"]}
+
     def test_canonical_name_format(self, adapter: DataClassificationPythonAdapter) -> None:
         source = "from pydantic import BaseModel\nclass Patient(BaseModel):\n    name: str\n"
         dets = adapter.extract(source, "m.py", None)
