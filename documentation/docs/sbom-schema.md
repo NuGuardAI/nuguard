@@ -23,6 +23,31 @@ Application source and manifests
 
 ---
 
+## JVM source-file selection
+
+`AiSbomConfig.include_test_sources` defaults to `false`. For files otherwise
+admitted by discovery, Java source and `application*.properties`,
+`application*.yml`, and `application*.yaml` under `src/test`, `src/testFixtures`,
+or `src/integrationTest` are excluded. This filter does not itself add file
+extensions to discovery and does not change other languages' test-file handling.
+
+The first conventional source set establishes the file's context. For example,
+`src/main/java/com/acme/src/test/Assistant.java` is production source, not a test.
+Module prefixes before a source set remain supported. When scanning `src`, a
+source-set directory, or a descendant of its `java`, `resources`, `kotlin`,
+`scala`, or `groovy` directory, classification retains the source-set context.
+Ancestor lookup stops at a Git or Maven/Gradle project boundary; unrelated parent
+directory names are not treated as source roots.
+
+Set `include_test_sources=True` in the Python configuration or public SBOM request
+to include those test sources, including when explicitly scanning a test subtree.
+Evidence paths, `.gitignore`, explicit exclusions, and file limits remain relative
+to the selected scan root; opting in does not override these filters. Nonstandard
+source layouts are not inferred from arbitrary ancestors and can be controlled
+with `exclude_patterns`.
+
+---
+
 ## Top-Level Object
 
 | Field | Type | Required | Description |
