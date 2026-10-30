@@ -10,7 +10,9 @@
 ## Running it
 
 - Needs Java 17+ and Maven.
-- Needs an LLM key in the environment: OPENAI_API_KEY (the app uses the LangChain4j OpenAI starter).
+- Uses `OPENAI_API_KEY`, or the Azure variables documented in `scripts/serve.sh`, for live-model
+  runs. When neither is available, `serve.sh` starts a deterministic loopback OpenAI-compatible
+  stub so fork CI still exercises the complete HTTP and NuGuard pipeline without credentials.
 - Bind it to loopback only: SERVER_ADDRESS=127.0.0.1
 - cancelBooking deletes the only seeded booking, held in memory. Restart the app before every run to reseed it.
 - Never expose this app publicly. Local and CI use only.
