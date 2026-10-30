@@ -79,7 +79,7 @@ from ..adapters.json_adapters import (
 )
 from ..adapters.nginx import NginxAdapter, is_nginx_file
 from ..adapters.prompt_sql import PromptSQLAdapter
-from ..adapters.registry import default_framework_adapters, default_registry
+from ..adapters.registry import MODEL_NAME_PATTERNS, default_framework_adapters, default_registry
 from ..adapters.sparkflows import (
     SparkflowsAgentAdapter,
     SparkflowsAnalyticsAppAdapter,
@@ -225,6 +225,128 @@ def _strip_python_comments(content: str) -> str:
     the line for other pattern matching.
     """
     return _PYTHON_COMMENT_LINE_RE.sub("", content)
+
+
+_MODEL_PRICING_FILENAMES = frozenset(
+    {
+        "cost.toml",
+        "costs.toml",
+        "model_costs.toml",
+        "model_prices.toml",
+        "price.toml",
+        "prices.toml",
+        "pricing.toml",
+        "ratecard.toml",
+        "ratecards.toml",
+    }
+)
+_TOML_TABLE_HEADER_RE = re.compile(r"^\s*\[\[?([^\]]+)\]\]?\s*(?:#.*)?$")
+_TOML_RUNTIME_REGISTRY_ROOTS = frozenset(
+    {"agents", "defaults", "llms", "model", "models", "providers", "registry", "runtime"}
+)
+_TOML_PRICING_TABLE_ROOTS = frozenset(
+    {"cost", "costing", "costs", "price", "prices", "pricing", "ratecard", "ratecards"}
+)
+_TOML_STRONG_PRICE_FIELD_RE = re.compile(
+    r"\b(?:cost|price|pricing|rate|usd_per_million_tokens|"
+    r"(?:batch_input|batch_output|cache_read|cache_write|input|output)_"
+    r"(?:cost|mtok|per_million_tokens|per_token|price|rate))\b\s*=",
+    re.IGNORECASE,
+)
+_TOML_INPUT_FIELD_RE = re.compile(r"\binput\b\s*=", re.IGNORECASE)
+_TOML_OUTPUT_FIELD_RE = re.compile(r"\boutput\b\s*=", re.IGNORECASE)
+_TOML_MODEL_BINDING_FIELD_RE = re.compile(r"\bmodel\b\s*=", re.IGNORECASE)
+
+
+def _strip_non_runtime_toml_model_pricing(content: str, rel_path: str) -> str:
+    """Blank non-runtime model pricing rows while preserving line numbers.
+
+    A pricing TOML can contain both a real runtime binding and model-shaped
+    table keys, for example ``default_model = "claude-haiku-5-5"`` followed by
+    ``[claude-haiku-5-5.long_context]``.  The latter is a price tier, not a
+    selectable model, and must not absorb the base model during prefix dedup.
+    This scrub is deliberately limited to clearly named pricing/cost TOML files
+    and generic regex scanning; AST and structured adapter evidence is untouched.
+    """
+    path = PurePosixPath(rel_path.replace("\\", "/"))
+    if path.suffix.lower() != ".toml":
+        return content
+    pricing_filename = path.name.lower() in _MODEL_PRICING_FILENAMES
+
+    def _blank(line: str) -> str:
+        return re.sub(r"[^\r\n]", " ", line)
+
+    def _contains_model_name(value: str) -> bool:
+        return any(pattern.search(value) for pattern in MODEL_NAME_PATTERNS)
+
+    def _proves_price_metadata(
+        value: str,
+        *,
+        pricing_filename_context: bool,
+        pricing_table_context: bool = False,
+    ) -> bool:
+        if _TOML_STRONG_PRICE_FIELD_RE.search(value):
+            return pricing_table_context or pricing_filename_context
+        return bool(
+            (pricing_table_context or pricing_filename_context)
+            and _TOML_INPUT_FIELD_RE.search(value)
+            and _TOML_OUTPUT_FIELD_RE.search(value)
+            and (
+                pricing_table_context
+                or not _TOML_MODEL_BINDING_FIELD_RE.search(value)
+            )
+        )
+
+    lines = content.splitlines(keepends=True)
+    table_starts = [
+        index for index, line in enumerate(lines) if _TOML_TABLE_HEADER_RE.match(line)
+    ]
+    scrub_indexes: set[int] = set()
+    runtime_indexes: set[int] = set()
+    for position, start in enumerate(table_starts):
+        end = table_starts[position + 1] if position + 1 < len(table_starts) else len(lines)
+        table_match = _TOML_TABLE_HEADER_RE.match(lines[start])
+        if table_match is None:
+            continue
+        table_name = table_match.group(1).strip().strip("\"'")
+        root_name = re.split(r"[.\s]", table_name, maxsplit=1)[0].strip("\"'").lower()
+        if root_name in _TOML_RUNTIME_REGISTRY_ROOTS:
+            runtime_indexes.update(range(start, end))
+            continue
+        block = "".join(lines[start:end])
+        if _contains_model_name(block) and _proves_price_metadata(
+            block,
+            pricing_filename_context=pricing_filename,
+            pricing_table_context=root_name in _TOML_PRICING_TABLE_ROOTS,
+        ):
+            scrub_indexes.update(range(start, end))
+
+    inline_price_indexes = {
+        index
+        for index, line in enumerate(lines)
+        if index not in runtime_indexes
+        and _contains_model_name(line)
+        and _proves_price_metadata(
+            line, pricing_filename_context=pricing_filename
+        )
+    }
+    verified_pricing_file = pricing_filename and bool(
+        scrub_indexes or inline_price_indexes
+    )
+    scrubbed: list[str] = []
+    for index, line in enumerate(lines):
+        pricing_model_comment = (
+            verified_pricing_file
+            and line.lstrip().startswith("#")
+            and _contains_model_name(line)
+        )
+        should_blank = (
+            index in scrub_indexes
+            or index in inline_price_indexes
+            or pricing_model_comment
+        )
+        scrubbed.append(_blank(line) if should_blank else line)
+    return "".join(scrubbed)
 
 
 # Pattern for variable names that explicitly indicate prompt content.
@@ -1553,7 +1675,12 @@ class AiSbomExtractor:
                     _skip_exts = getattr(rx_adapter, "skip_extensions", None)
                     if _skip_exts and suffix in _skip_exts:
                         continue
-                detection = rx_adapter.detect(_regex_content)
+                _adapter_content = _regex_content
+                if rx_adapter.name == "model_generic":
+                    _adapter_content = _strip_non_runtime_toml_model_pricing(
+                        _regex_content, rel_path
+                    )
+                detection = rx_adapter.detect(_adapter_content)
                 if detection is None:
                     continue
                 # For adapters with per-match naming (canonical_name=None on the
