@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from nuguard.common.http import resolve_chat_request
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
@@ -67,6 +68,9 @@ class TargetSessionConfig:
     # Re-acquires an auto-bootstrapped cookie/CSRF session when it expires mid-run.
     # None unless discovery had to acquire a web session itself.
     session_refresher: "SessionRefresher | None" = field(default=None, repr=False)
+    # HTTP method for chat turns and where the payload goes ("body" or "query").
+    chat_method: str = "POST"
+    chat_payload_in: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +290,8 @@ async def resolve_target_session(
     config_path: "Path | None" = None,
     request_timeout: float | None = None,
     payload_format: str = "json",
+    chat_method: str = "POST",
+    chat_payload_in: str | None = None,
     endpoint_explicit: bool | None = None,
     payload_key_explicit: bool = False,
     response_key_explicit: bool = False,
@@ -377,6 +383,13 @@ async def resolve_target_session(
     is_endpoint_explicit = (
         endpoint_explicit if endpoint_explicit is not None else bool(configured_chat_path)
     )
+    # A GET / query-string (non-POST) chat request cannot be discovered by the POST-based
+    # payload probes, so for an explicitly configured endpoint the configured request
+    # shape is authoritative: no POST probing and no failure on an unconfirmed field.
+    _method, _payload_in = resolve_chat_request(chat_method, chat_payload_in)
+    _pinned_request = is_endpoint_explicit and (_method != "POST" or _payload_in == "query")
+    if _pinned_request:
+        payload_key_explicit = True
 
     # ── 1. URL resolution ────────────────────────────────────────────────────
     # Static-hosting fallback + SPA bundle API-origin scan (memoised — the
@@ -447,6 +460,7 @@ async def resolve_target_session(
             auth_headers={**extra_headers, **(auth_headers or {})},
             timeout=request_timeout or 15.0,
             probe_payload_extras=_probe_extras or None,
+            allow_live_probe=not _pinned_request,
             enable_browser_fallback=not is_endpoint_explicit,
             browser_auth_config=effective_auth,
             browser_discovery=browser_discovery,
@@ -550,6 +564,8 @@ async def resolve_target_session(
         payload_list=chat_payload_list,
         endpoint_resolver=endpoint_resolver,
         extra_headers=extra_headers,
+        chat_method=chat_method,
+        chat_payload_in=chat_payload_in,
     )
     if _configured_field_unresolved and health_report.all_ok:
         raise TargetEndpointNotFoundError(
@@ -670,6 +686,8 @@ async def resolve_target_session(
             timeout=request_timeout,
             payload_key=chat_payload_key,
             payload_list=chat_payload_list,
+            chat_method=chat_method,
+            chat_payload_in=chat_payload_in,
         )
         _revalidated_headers = bootstrapper.session.headers()
         if _revalidated_headers:
@@ -702,6 +720,8 @@ async def resolve_target_session(
             payload_extras=merged_extras or None,
             chat_payload_value_template=chat_payload_value_template,
             payload_format=payload_format,
+            chat_method=chat_method,
+            chat_payload_in=chat_payload_in,
             ws_auth_message=ws_auth_message,
         )
         async with _wu_client:
@@ -766,6 +786,8 @@ async def resolve_target_session(
                 if web_session_acquired
                 else None
             ),
+            chat_method=chat_method,
+            chat_payload_in=chat_payload_in,
         ),
         health_report,
     )

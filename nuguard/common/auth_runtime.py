@@ -91,6 +91,8 @@ async def bootstrap_auth_runtime(
     sbom: "AiSbomDocument | None" = None,
     endpoint_resolver: "Callable[[dict[str, str]], Awaitable[ResolvedEndpoint]] | None" = None,
     extra_headers: dict[str, str] | None = None,
+    chat_method: str = "POST",
+    chat_payload_in: str | None = None,
 ) -> tuple[AuthBootstrapper, TargetHealthReport]:
     """Run shared auth bootstrap and return both bootstrapper and report.
 
@@ -121,6 +123,8 @@ async def bootstrap_auth_runtime(
         sbom=sbom,
         endpoint_resolver=endpoint_resolver,
         extra_headers=extra_headers,
+        chat_method=chat_method,
+        chat_payload_in=chat_payload_in,
     )
     report = await bootstrapper.run()
     return bootstrapper, report

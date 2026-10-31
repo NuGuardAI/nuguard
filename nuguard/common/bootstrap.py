@@ -7,6 +7,7 @@ decide whether to abort.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -20,7 +21,12 @@ from nuguard.common.errors import (
     TargetQuotaExhaustedError,
     TargetUnavailableError,
 )
-from nuguard.common.http import QUOTA_EXHAUSTED_PREFIX, quota_exhausted_detail
+from nuguard.common.http import (
+    QUOTA_EXHAUSTED_PREFIX,
+    quota_exhausted_detail,
+    resolve_chat_request,
+    to_query_params,
+)
 from nuguard.common.logging import get_logger
 from nuguard.common.transport import error_envelope_message, error_only_response
 from nuguard.models.health_report import CredentialCheckResult, TargetHealthReport
@@ -60,6 +66,31 @@ _BACKOFF_BASE = 2.0
 _MESSAGE_HISTORY_KEYS = frozenset({"messages", "history", "conversation", "chat_history"})
 
 
+_PROBE_TOKEN_RE = re.compile(r"\{\{\s*(message|history|session_id|conversation_id)\s*\}\}")
+
+
+def _has_message_token(obj: object) -> bool:
+    """True when a ``{{message}}`` token appears in any string of *obj*."""
+    if isinstance(obj, str):
+        return "{{message}}" in obj.replace(" ", "")
+    if isinstance(obj, dict):
+        return any(_has_message_token(v) for v in obj.values())
+    if isinstance(obj, list):
+        return any(_has_message_token(v) for v in obj)
+    return False
+
+
+def _render_probe_template(obj: object, values: dict[str, str]) -> object:
+    """Substitute ``{{message}}``-style tokens, as TargetAppClient does for a chat turn."""
+    if isinstance(obj, str):
+        return _PROBE_TOKEN_RE.sub(lambda m: values[m.group(1)], obj)
+    if isinstance(obj, dict):
+        return {k: _render_probe_template(v, values) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_render_probe_template(v, values) for v in obj]
+    return obj
+
+
 def _probe_payload_value(key: str, is_list: bool, text: str) -> object:
     """Shape the probe text the way the scenario client would for *key*."""
     if not is_list:
@@ -78,6 +109,10 @@ def _is_quota_result(result: CredentialCheckResult) -> bool:
 
 def _is_event_stream(resp: httpx.Response) -> bool:
     return "text/event-stream" in resp.headers.get("content-type", "").lower()
+
+
+def _is_plain_text(resp: httpx.Response) -> bool:
+    return "text/plain" in resp.headers.get("content-type", "").lower()
 
 
 class AuthBootstrapper:
@@ -114,8 +149,15 @@ class AuthBootstrapper:
         sbom: "AiSbomDocument | None" = None,
         endpoint_resolver: "Callable[[dict[str, str]], Awaitable[ResolvedEndpoint]] | None" = None,
         extra_headers: dict[str, str] | None = None,
+        chat_method: str = "POST",
+        chat_payload_in: str | None = None,
     ) -> None:
         self._target_url = target_url.rstrip("/")
+        # HTTP method and payload location of the real chat turns — the health-check
+        # probe uses the same, so a GET-only chat endpoint is not probed with POST.
+        self._chat_method, self._chat_payload_in = resolve_chat_request(
+            chat_method, chat_payload_in
+        )
         # Used to resolve a templated chat endpoint (".../:id/messages") into a
         # concrete URL before the health-check POST — see _probe_url().
         self._sbom = sbom
@@ -538,12 +580,27 @@ class AuthBootstrapper:
         # can sanity-check below.
         # Extra static fields (chat_payload_extras) are merged in so apps that crash on
         # missing required fields (e.g. vehicleState) don't trip the target_unavailable check.
-        probe_body = {
-            **self._probe_payload_extras,
-            self._payload_key: _probe_payload_value(
-                self._payload_key, self._payload_list, "Hello, how can you help me?"
-            ),
-        }
+        probe_text = "Hello, how can you help me?"
+        probe_body: dict[str, object]
+        if self._chat_payload_in == "query" and _has_message_token(self._probe_payload_extras):
+            # Templated query payload: the extras ARE the query parameters.
+            rendered = _render_probe_template(
+                self._probe_payload_extras,
+                {
+                    "message": probe_text,
+                    "history": "[]",
+                    "session_id": "nuguard-bootstrap",
+                    "conversation_id": "nuguard-bootstrap",
+                },
+            )
+            probe_body = rendered if isinstance(rendered, dict) else {}
+        else:
+            probe_body = {
+                **self._probe_payload_extras,
+                self._payload_key: _probe_payload_value(
+                    self._payload_key, self._payload_list, probe_text
+                ),
+            }
         try:
             probe_url = await self._probe_url(identity, request_headers)
         except TargetQuotaExhaustedError as exc:
@@ -558,11 +615,26 @@ class AuthBootstrapper:
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(
-                    probe_url,
-                    json=probe_body,
-                    headers=request_headers,
-                )
+                if self._chat_method == "POST" and self._chat_payload_in == "body":
+                    resp = await client.post(
+                        probe_url,
+                        json=probe_body,
+                        headers=request_headers,
+                    )
+                elif self._chat_payload_in == "query":
+                    resp = await client.request(
+                        self._chat_method,
+                        probe_url,
+                        params=to_query_params(probe_body),
+                        headers=request_headers,
+                    )
+                else:
+                    resp = await client.request(
+                        self._chat_method,
+                        probe_url,
+                        json=probe_body,
+                        headers=request_headers,
+                    )
             elapsed_ms = (time.monotonic() - start) * 1000
 
             if 200 <= resp.status_code < 300:
@@ -591,6 +663,10 @@ class AuthBootstrapper:
                 elif _is_event_stream(resp):
                     # SSE is not JSON by design — judge its events instead.
                     engagement_error = error_only_response(resp.text)
+                elif _is_plain_text(resp):
+                    # A plain-text reply (e.g. a controller returning a String) is a
+                    # valid chat reply, not a malformed JSON body.
+                    pass
                 else:
                     try:
                         parsed = resp.json()
