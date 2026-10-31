@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: pr-tests-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   release-contract:
     name: Release metadata contract
@@ -28,6 +32,9 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Verify release metadata
         run: |
@@ -52,7 +59,10 @@ jobs:
           python-version: "3.12"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@8d55fbecc275b1c35dbe060458839f8d30439ccf # v3
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install dependencies
         run: uv sync --dev
@@ -80,7 +90,10 @@ jobs:
           python-version: "3.12"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@8d55fbecc275b1c35dbe060458839f8d30439ccf # v3
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Build wheel
         run: uv build --wheel --out-dir "$RUNNER_TEMP/dist"
@@ -119,7 +132,10 @@ jobs:
           python-version: "3.12"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@8d55fbecc275b1c35dbe060458839f8d30439ccf # v3
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install dependencies
         run: uv sync --dev
@@ -144,7 +160,10 @@ jobs:
           python-version: "3.12"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@8d55fbecc275b1c35dbe060458839f8d30439ccf # v3
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install browser test dependencies
         run: uv sync --dev --extra mcp --extra browser
@@ -168,16 +187,10 @@ jobs:
             -q \
             -ra
 
-  test:
-    name: Run full pytest suite
+  package-tests:
+    name: Package tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs:
-      - lint
-      - public-api-contract
-      - browser_login
-      - release-contract
-      - clean-install
 
     steps:
       - name: Checkout
@@ -191,7 +204,10 @@ jobs:
           python-version: "3.12"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@8d55fbecc275b1c35dbe060458839f8d30439ccf # v3
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install dependencies
         run: uv sync --dev --extra mcp
@@ -205,5 +221,73 @@ jobs:
       - name: Run package unit tests
         run: uv run pytest nuguard/ -q
 
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --dev --extra mcp
+
+      # Preserve the environment used by the former serial full-suite job.
+      - name: Install Semgrep for rule-behaviour tests
+        run: uv pip install "semgrep==1.172.0"
+
       - name: Run integration tests
         run: uv run pytest tests/ --ignore=tests/apps/contact-center-ai-samples -v
+
+  test:
+    name: Run full pytest suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ always() }}
+    needs:
+      - lint
+      - public-api-contract
+      - browser_login
+      - release-contract
+      - clean-install
+      - package-tests
+      - integration-tests
+
+    steps:
+      - name: Verify every required gate passed
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          PUBLIC_API_RESULT: ${{ needs['public-api-contract'].result }}
+          BROWSER_RESULT: ${{ needs.browser_login.result }}
+          RELEASE_RESULT: ${{ needs.release-contract.result }}
+          CLEAN_INSTALL_RESULT: ${{ needs['clean-install'].result }}
+          PACKAGE_RESULT: ${{ needs['package-tests'].result }}
+          INTEGRATION_RESULT: ${{ needs['integration-tests'].result }}
+        run: |
+          for result in \
+            "$LINT_RESULT" \
+            "$PUBLIC_API_RESULT" \
+            "$BROWSER_RESULT" \
+            "$RELEASE_RESULT" \
+            "$CLEAN_INSTALL_RESULT" \
+            "$PACKAGE_RESULT" \
+            "$INTEGRATION_RESULT"; do
+            if [ "$result" != "success" ]; then
+              echo "Required CI gate did not pass: $result"
+              exit 1
+            fi
+          done
