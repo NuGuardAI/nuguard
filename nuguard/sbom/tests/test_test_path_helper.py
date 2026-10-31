@@ -1,5 +1,6 @@
 """Tests for the shared looks_like_test_path() helper
 (docs/sbom-accuracy-plan.md #3)."""
+
 from __future__ import annotations
 
 from nuguard.sbom.adapters._test_paths import looks_like_test_path
@@ -20,6 +21,7 @@ def test_test_suffix_filename_detected():
 def test_pytest_filename_detected_at_repository_root():
     assert looks_like_test_path("test_agents.py")
     assert looks_like_test_path("agents_test.py")
+    assert looks_like_test_path("conftest.py")
 
 
 def test_normal_source_path_not_flagged():
