@@ -10,7 +10,9 @@ Standalone module: no dependency on backend services.
 
 from __future__ import annotations
 
+import ast
 import asyncio
+import json
 import os
 import re
 from collections.abc import Iterable, Sequence
@@ -23,6 +25,7 @@ from nuguard.common.soft_reject import (
     partition_node_counts,
 )
 
+from ..adapters._test_paths import looks_like_test_path
 from ..models import InstrumentationDetail, Node, TestingDetail
 from .route_patterns import ROUTE_PATTERNS
 
@@ -629,6 +632,7 @@ def build_scan_summary(
     source_ref: str | None = None,
     branch: str | None = None,
     dc_metadata: list[dict[str, Any]] | None = None,
+    instrumentation_evidence: tuple[bool, set[str]] | None = None,
 ) -> dict[str, Any]:
     """Build scan-level summary for reporting."""
     from .app_env_detector import detect_app_env
@@ -703,7 +707,12 @@ def build_scan_summary(
     for node in nodes:
         for dep in node.metadata.dependency_names or []:
             dep_names_all.add(dep.lower().replace("-", "_"))
-    app_instrumentation = _detect_app_instrumentation(nodes, files, dep_names_all)
+    app_instrumentation = _detect_app_instrumentation(
+        nodes,
+        files,
+        dep_names_all,
+        instrumentation_evidence=instrumentation_evidence,
+    )
     app_testing = _detect_app_testing(nodes, files, dep_names_all)
 
     return {
@@ -963,22 +972,1987 @@ _APP_INSTRUMENTATION_IMPORTS: dict[str, str] = {
 }
 
 _LOG_LEVEL_RE = re.compile(r"logging\.basicConfig\s*\(.*?level\s*=\s*logging\.(\w+)", re.DOTALL)
+_LANGSMITH_RUNTIME_SYMBOLS = {
+    "ensure_traceable",
+    "LangChainTracer",
+    "RunTree",
+    "get_current_run_tree",
+    "trace",
+    "traceable",
+    "tracing_context",
+    "wrap_anthropic",
+    "wrap_gemini",
+    "wrap_openai",
+}
+_LANGSMITH_EXAMPLE_PARTS = {"example", "examples", "demo", "demos", "sample", "samples"}
+_LANGSMITH_NON_RUNTIME_PARTS = _LANGSMITH_EXAMPLE_PARTS | {
+    "doc",
+    "docs",
+    "fixture",
+    "fixtures",
+}
+_LANGSMITH_TEST_CONFIG_NAMES = {
+    ".env.e2e",
+    ".env.spec",
+    ".env.test",
+    ".env.testing",
+    "conftest.py",
+    "pytest.ini",
+    "tox.ini",
+}
+_LANGSMITH_TEST_CONFIG_PREFIXES = (
+    ".env.e2e.",
+    ".env.spec.",
+    ".env.test.",
+    ".env.testing.",
+    "cypress.config.",
+    "jest.config.",
+    "playwright.config.",
+    "test-env",
+    "test.env",
+    "vitest.config.",
+)
+_LANGSMITH_RUNTIME_MODULES = {"run_helpers", "run_trees", "wrappers"}
+_PYTHON_LANGSMITH_EXPORTS: dict[str, set[str]] = {
+    "langsmith": {
+        "RunTree",
+        "get_current_run_tree",
+        "trace",
+        "traceable",
+        "tracing_context",
+    }
+    | _LANGSMITH_RUNTIME_MODULES,
+    "langsmith.run_helpers": {
+        "ensure_traceable",
+        "get_current_run_tree",
+        "trace",
+        "traceable",
+        "tracing_context",
+    },
+    "langsmith.run_trees": {"RunTree"},
+    "langsmith.wrappers": {"wrap_anthropic", "wrap_gemini", "wrap_openai"},
+    "langchain_core": {"tracers"},
+    "langchain_core.tracers": {"LangChainTracer"},
+    "langchain_core.tracers.langchain": {"LangChainTracer"},
+}
+_PYTHON_LANGSMITH_MODULES = {
+    "langsmith",
+    "langsmith.run_helpers",
+    "langsmith.run_trees",
+    "langsmith.wrappers",
+    "langchain_core",
+    "langchain_core.tracers",
+    "langchain_core.tracers.langchain",
+}
+_JAVASCRIPT_LANGSMITH_EXPORTS: dict[str, set[str]] = {
+    "langsmith": {"RunTree", "traceable"},
+    "langsmith/run_trees": {"RunTree"},
+    "langsmith/traceable": {"traceable"},
+    "langsmith/wrappers": {"wrapOpenAI", "wrapSDK"},
+    "langsmith/wrappers/anthropic": {"wrapAnthropic"},
+    "langsmith/wrappers/gemini": {"wrapGemini"},
+}
+_JAVASCRIPT_LANGSMITH_CALLABLES = {
+    "traceable",
+    "wrapAnthropic",
+    "wrapGemini",
+    "wrapOpenAI",
+    "wrapSDK",
+}
+_LANGSMITH_TRACING_KEYS = {
+    "LANGSMITH_TRACING",
+    "LANGSMITH_TRACING_V2",
+    "LANGCHAIN_TRACING_V2",
+}
+
+
+def _langsmith_path_is_non_runtime(path: str) -> bool:
+    normalized = path.replace("\\", "/")
+    parts = [part.lower() for part in normalized.split("/") if part]
+    filename = parts[-1] if parts else ""
+    stem, _, suffix = filename.rpartition(".")
+    dotenv_template = filename.startswith(".env.") and bool(
+        set(filename.split(".")[2:])
+        & (_LANGSMITH_EXAMPLE_PARTS | {"dist", "template", "templates"})
+    )
+    pytest_filename = suffix in {"py", "pyw"} and (
+        filename.startswith("test_") or stem.endswith("_test")
+    )
+    test_config_filename = suffix in {"json", "toml", "yaml", "yml"} and (
+        stem in {"e2e", "spec", "specs", "test", "tests"}
+        or stem.startswith(
+            (
+                "e2e-",
+                "e2e_",
+                "integration-test",
+                "integration_test",
+                "test-",
+                "test_",
+                "tests-",
+                "tests_",
+                "unit-test",
+                "unit_test",
+            )
+        )
+    )
+    return (
+        looks_like_test_path(normalized.lower())
+        or bool(set(parts) & _LANGSMITH_NON_RUNTIME_PARTS)
+        or stem in _LANGSMITH_EXAMPLE_PARTS
+        or re.search(
+            r"(?:^|[._-])(?:example|demo|sample)s?(?:[._-]|$)", stem
+        )
+        is not None
+        or pytest_filename
+        or test_config_filename
+        or filename in _LANGSMITH_TEST_CONFIG_NAMES
+        or filename.startswith(_LANGSMITH_TEST_CONFIG_PREFIXES)
+        or filename.endswith(".example")
+        or ".example." in filename
+        or dotenv_template
+    )
+
+
+def _truthy_tracing_value(expr: ast.expr) -> bool:
+    if not isinstance(expr, ast.Constant):
+        return False
+    value = expr.value
+    if value is True or value == 1:
+        return True
+    return isinstance(value, str) and value.strip().lower() in {"true", "1", "yes", "on"}
+
+
+def _subscript_string_key(target: ast.expr) -> str | None:
+    if isinstance(target, ast.Subscript):
+        slice_value = target.slice
+        if isinstance(slice_value, ast.Constant) and isinstance(slice_value.value, str):
+            return slice_value.value
+    return None
+
+
+class _PythonBoundNameCollector(ast.NodeVisitor):
+    """Collect names local to one Python scope without entering child scopes."""
+
+    def __init__(self) -> None:
+        self.names: set[str] = set()
+        self.global_names: set[str] = set()
+        self.nonlocal_names: set[str] = set()
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
+            self.names.add(node.id)
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            self.names.add(alias.asname or alias.name.split(".")[0])
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        for alias in node.names:
+            if alias.name != "*":
+                self.names.add(alias.asname or alias.name)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.names.add(node.name)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.names.add(node.name)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.names.add(node.name)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        return
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.name:
+            self.names.add(node.name)
+        self.generic_visit(node)
+
+    def visit_MatchAs(self, node: ast.MatchAs) -> None:
+        if node.name:
+            self.names.add(node.name)
+        self.generic_visit(node)
+
+    def visit_MatchStar(self, node: ast.MatchStar) -> None:
+        if node.name:
+            self.names.add(node.name)
+
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+        if node.rest:
+            self.names.add(node.rest)
+        self.generic_visit(node)
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        return
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        return
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        return
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        return
+
+    def visit_Global(self, node: ast.Global) -> None:
+        self.global_names.update(node.names)
+
+    def visit_Nonlocal(self, node: ast.Nonlocal) -> None:
+        self.nonlocal_names.update(node.names)
+
+
+def _python_scope_bindings(
+    body: Sequence[ast.stmt], arguments: ast.arguments | None = None
+) -> tuple[set[str], set[str], set[str]]:
+    collector = _PythonBoundNameCollector()
+    for statement in body:
+        collector.visit(statement)
+    if arguments is not None:
+        collector.names.update(
+            argument.arg
+            for argument in (
+                *arguments.posonlyargs,
+                *arguments.args,
+                *arguments.kwonlyargs,
+            )
+        )
+        if arguments.vararg:
+            collector.names.add(arguments.vararg.arg)
+        if arguments.kwarg:
+            collector.names.add(arguments.kwarg.arg)
+    return (
+        collector.names - collector.global_names - collector.nonlocal_names,
+        collector.global_names,
+        collector.nonlocal_names,
+    )
+
+
+class _PythonInstrumentationVisitor(ast.NodeVisitor):
+    """Resolve instrumentation calls against live bindings in lexical scopes."""
+
+    def __init__(self) -> None:
+        self.scopes: list[tuple[dict[str, tuple[str, ...]], set[str]]] = [({}, set())]
+        self.member_invalidations: list[set[tuple[str, tuple[str, ...]]]] = [set()]
+        self.scope_kinds: list[str] = ["module"]
+        self.scope_globals: list[set[str]] = [set()]
+        self.scope_nonlocals: list[set[str]] = [set()]
+        self.langsmith_active = False
+        self.active_tracing_tools: set[str] = set()
+
+    @property
+    def bindings(self) -> dict[str, tuple[str, ...]]:
+        return self.scopes[-1][0]
+
+    def _resolve_with_scope(self, name: str) -> tuple[tuple[str, ...], int] | None:
+        if name in self.scope_globals[-1]:
+            binding = self.scopes[0][0].get(name)
+            return (binding, 0) if binding is not None else None
+        if name in self.scope_nonlocals[-1]:
+            index = self._nonlocal_scope_index(name)
+            if index is None:
+                return None
+            binding = self.scopes[index][0].get(name)
+            return (binding, index) if binding is not None else None
+        skip_class_scopes = self.scope_kinds[-1] in {"function", "lambda", "comprehension"}
+        for index in range(len(self.scopes) - 1, -1, -1):
+            if skip_class_scopes and self.scope_kinds[index] == "class":
+                continue
+            bindings, local_names = self.scopes[index]
+            if name in bindings:
+                return bindings[name], index
+            if name in local_names:
+                return None
+        return None
+
+    def _resolve(self, name: str) -> tuple[str, ...] | None:
+        resolved = self._resolve_with_scope(name)
+        return resolved[0] if resolved is not None else None
+
+    def _nonlocal_scope_index(self, name: str) -> int | None:
+        for index in range(len(self.scopes) - 2, 0, -1):
+            if self.scope_kinds[index] not in {"function", "lambda"}:
+                continue
+            bindings, local_names = self.scopes[index]
+            if name in bindings or name in local_names:
+                return index
+        return None
+
+    def _binding_scope_index(self, name: str) -> int:
+        if name in self.scope_globals[-1]:
+            return 0
+        if name in self.scope_nonlocals[-1]:
+            index = self._nonlocal_scope_index(name)
+            if index is not None:
+                return index
+        return len(self.scopes) - 1
+
+    def _bind(self, name: str, binding: tuple[str, ...]) -> None:
+        scope_index = self._binding_scope_index(name)
+        self.scopes[scope_index][0][name] = binding
+        for invalidation_index in {scope_index, len(self.scopes) - 1}:
+            self.member_invalidations[invalidation_index] = {
+                item
+                for item in self.member_invalidations[invalidation_index]
+                if item[0] != name
+            }
+
+    def _unbind_name(self, name: str) -> None:
+        scope_index = self._binding_scope_index(name)
+        self.scopes[scope_index][0].pop(name, None)
+        self.scopes[scope_index][1].add(name)
+
+    def _builtin_is_live(self, name: str) -> bool:
+        if name in self.scope_globals[-1]:
+            bindings, local_names = self.scopes[0]
+            return name not in bindings and name not in local_names
+        if name in self.scope_nonlocals[-1]:
+            index = self._nonlocal_scope_index(name)
+            return index is None
+        skip_class_scopes = self.scope_kinds[-1] in {"function", "lambda", "comprehension"}
+        for index in range(len(self.scopes) - 1, -1, -1):
+            if skip_class_scopes and self.scope_kinds[index] == "class":
+                continue
+            bindings, local_names = self.scopes[index]
+            if name in bindings or name in local_names:
+                return False
+        return True
+
+    def _invalidate_member(self, target: ast.expr, members: tuple[str, ...]) -> None:
+        attributes: list[str] = []
+        root: ast.expr = target
+        while isinstance(root, ast.Attribute):
+            attributes.append(root.attr)
+            root = root.value
+        if not isinstance(root, ast.Name):
+            return
+        binding = self._resolve(root.id)
+        if binding and binding[0] in {
+            "langsmith_module",
+            "langsmith_symbol",
+            "trace_module",
+            "trace_symbol",
+        }:
+            self.member_invalidations[-1].add(
+                (root.id, (*tuple(reversed(attributes)), *members))
+            )
+
+    def _unbind_target(self, target: ast.expr) -> None:
+        if isinstance(target, ast.Name):
+            self._unbind_name(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                self._unbind_target(item)
+        elif isinstance(target, ast.Starred):
+            self._unbind_target(target.value)
+        elif isinstance(target, ast.Attribute):
+            self._invalidate_member(target, ())
+
+    def _member_is_invalidated(
+        self,
+        name: str,
+        attributes: tuple[str, ...],
+        binding_scope: int,
+    ) -> bool:
+        skip_class_scopes = self.scope_kinds[-1] in {"function", "lambda", "comprehension"}
+        for index in range(len(self.member_invalidations) - 1, binding_scope - 1, -1):
+            if skip_class_scopes and self.scope_kinds[index] == "class":
+                continue
+            for invalid_name, invalid_path in self.member_invalidations[index]:
+                if invalid_name == name and attributes[: len(invalid_path)] == invalid_path:
+                    return True
+        return False
+
+    def _resolved_path(self, expr: ast.expr) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+        attributes: list[str] = []
+        while isinstance(expr, ast.Attribute):
+            attributes.append(expr.attr)
+            expr = expr.value
+        if not isinstance(expr, ast.Name):
+            return None
+        resolved_attributes = tuple(reversed(attributes))
+        resolved = self._resolve_with_scope(expr.id)
+        if resolved is None:
+            return None
+        binding, binding_scope = resolved
+        if self._member_is_invalidated(expr.id, resolved_attributes, binding_scope):
+            return None
+        return binding, resolved_attributes
+
+    @staticmethod
+    def _langsmith_module_path(
+        binding: tuple[str, ...], attributes: tuple[str, ...]
+    ) -> tuple[str, ...] | None:
+        module = binding[1]
+        module_parts = tuple(module.split("."))[1:]
+        if module in {"langsmith", "langchain_core"} and attributes:
+            submodule = f"{module}.{attributes[0]}"
+            if attributes[0] in {"run_helpers", "run_trees", "tracers", "wrappers"} and not any(
+                loaded == submodule or loaded.startswith(f"{submodule}.")
+                for loaded in binding[2:]
+            ):
+                return None
+        return (*module_parts, *attributes)
+
+    def _check_langsmith_expr(self, expr: ast.expr, *, decorator: bool = False) -> None:
+        resolved = self._resolved_path(expr)
+        if resolved is None:
+            return
+        binding, attributes = resolved
+        if binding[0] == "langsmith_symbol":
+            role = binding[1]
+            if not attributes and role in _LANGSMITH_RUNTIME_SYMBOLS - {"tracing_context"}:
+                if not decorator or role in {"ensure_traceable", "traceable"}:
+                    self.langsmith_active = True
+            return
+        if binding[0] != "langsmith_module":
+            return
+        path = self._langsmith_module_path(binding, attributes)
+        if path is None:
+            return
+        runtime_paths = {
+            ("LangChainTracer",),
+            ("RunTree",),
+            ("get_current_run_tree",),
+            ("trace",),
+            ("traceable",),
+            ("run_helpers", "ensure_traceable"),
+            ("run_helpers", "get_current_run_tree"),
+            ("run_helpers", "trace"),
+            ("run_helpers", "traceable"),
+            ("run_trees", "RunTree"),
+            ("wrappers", "wrap_anthropic"),
+            ("wrappers", "wrap_gemini"),
+            ("wrappers", "wrap_openai"),
+            ("tracers", "LangChainTracer"),
+            ("tracers", "langchain", "LangChainTracer"),
+        }
+        if path in runtime_paths and (
+            not decorator or path[-1] in {"ensure_traceable", "traceable"}
+        ):
+            self.langsmith_active = True
+
+    def _check_langsmith_call(self, node: ast.Call) -> None:
+        """Recognize LangSmith calls whose arguments determine activation."""
+        resolved = self._resolved_path(node.func)
+        if resolved is None:
+            return
+        binding, attributes = resolved
+        path: tuple[str, ...] | None
+        if binding[0] == "langsmith_symbol":
+            path = (binding[1], *attributes)
+        elif binding[0] == "langsmith_module":
+            path = self._langsmith_module_path(binding, attributes)
+            if path is None:
+                return
+        else:
+            return
+        if path not in {
+            ("tracing_context",),
+            ("run_helpers", "tracing_context"),
+        }:
+            return
+        enabled = next(
+            (keyword.value for keyword in node.keywords if keyword.arg == "enabled"),
+            None,
+        )
+        if enabled is not None and _truthy_tracing_value(enabled):
+            self.langsmith_active = True
+
+    def _check_tracing_expr(self, expr: ast.expr) -> None:
+        resolved = self._resolved_path(expr)
+        if resolved is None:
+            return
+        binding, attributes = resolved
+        if binding[0] == "trace_symbol":
+            tool, role = binding[1], binding[2]
+            direct_roles = _ACTIVE_TRACE_MARKERS
+            member_paths: dict[str, dict[str, set[tuple[str, ...]]]] = {
+                "opentelemetry": {
+                    "trace": {
+                        ("get_tracer",),
+                        ("set_tracer_provider",),
+                        ("start_as_current_span",),
+                        ("start_span",),
+                    }
+                },
+                "datadog": {
+                    "tracer": {
+                        ("configure",),
+                        ("start_span",),
+                        ("trace",),
+                        ("wrap",),
+                    }
+                },
+                "jaeger": {},
+            }
+            active = not attributes and (
+                role in direct_roles[tool]
+                or (tool == "opentelemetry" and role.endswith("Instrumentor"))
+            )
+            active = active or attributes in member_paths[tool].get(role, set())
+            if (
+                tool == "opentelemetry"
+                and role.endswith("Instrumentor")
+                and attributes in {("instrument",), ("instrument_app",)}
+            ):
+                active = True
+            if active:
+                self.active_tracing_tools.add(tool)
+            return
+        if binding[0] == "trace_module" and attributes:
+            tool, module = binding[1], binding[2]
+            root, *suffix = module.lower().replace("-", "_").split(".")
+            path = (*suffix, *attributes)
+            canonical_paths = {
+                "opentelemetry": {
+                    ("trace", "get_tracer"),
+                    ("trace", "set_tracer_provider"),
+                    ("trace", "start_as_current_span"),
+                    ("trace", "start_span"),
+                    ("sdk", "trace", "TracerProvider"),
+                },
+                "datadog": {
+                    ("patch",),
+                    ("patch_all",),
+                    ("tracer", "configure"),
+                    ("tracer", "start_span"),
+                    ("tracer", "trace"),
+                    ("tracer", "wrap"),
+                },
+                "jaeger": {
+                    ("Config",),
+                    ("JaegerExporter",),
+                    ("exporter", "jaeger", "JaegerExporter"),
+                },
+            }
+            if (
+                root in {"opentelemetry", "ddtrace", "datadog", "jaeger", "jaeger_client"}
+                and path in canonical_paths[tool]
+            ):
+                self.active_tracing_tools.add(tool)
+
+    def _check_environment_assignment(self, target: ast.expr, value: ast.expr) -> None:
+        if not _truthy_tracing_value(value):
+            return
+        key = _subscript_string_key(target)
+        if key not in _LANGSMITH_TRACING_KEYS or not isinstance(target, ast.Subscript):
+            return
+        resolved = self._resolved_path(target.value)
+        if resolved is None:
+            return
+        binding, attributes = resolved
+        if (binding[0] == "os_module" and attributes == ("environ",)) or (
+            binding[0] == "os_environ" and not attributes
+        ):
+            self.langsmith_active = True
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            audit_tool = _audit_tool_for_module(alias.name)
+            if audit_tool:
+                self.active_tracing_tools.add(audit_tool)
+            local_name = alias.asname or alias.name.split(".")[0]
+            if alias.name in _PYTHON_LANGSMITH_MODULES:
+                if alias.asname:
+                    self._bind(local_name, ("langsmith_module", alias.name))
+                else:
+                    root_module = alias.name.split(".")[0]
+                    existing = self._resolve(local_name)
+                    loaded = {
+                        *(
+                            existing[2:]
+                            if existing
+                            and existing[0] == "langsmith_module"
+                            and existing[1] == root_module
+                            else ()
+                        ),
+                        *(() if alias.name == root_module else (alias.name,)),
+                    }
+                    self._bind(
+                        local_name,
+                        ("langsmith_module", root_module, *sorted(loaded)),
+                    )
+            elif alias.name == "os":
+                self._bind(local_name, ("os_module", "os"))
+            else:
+                tool = _trace_tool_for_module(alias.name)
+                if tool:
+                    module = alias.name if alias.asname else alias.name.split(".")[0]
+                    self._bind(local_name, ("trace_module", tool, module))
+                else:
+                    self._unbind_name(local_name)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        module = node.module or ""
+        audit_tool = _audit_tool_for_module(module)
+        if audit_tool:
+            self.active_tracing_tools.add(audit_tool)
+        langsmith_exports = _PYTHON_LANGSMITH_EXPORTS.get(module, set())
+        tracing_tool = _trace_tool_for_module(module)
+        for alias in node.names:
+            if alias.name == "*":
+                for bound_name in tuple(self.bindings):
+                    self._unbind_name(bound_name)
+                continue
+            local_name = alias.asname or alias.name
+            if alias.name in langsmith_exports and alias.name in _LANGSMITH_RUNTIME_SYMBOLS:
+                self._bind(local_name, ("langsmith_symbol", alias.name))
+            elif module == "langsmith" and alias.name in _LANGSMITH_RUNTIME_MODULES:
+                self._bind(local_name, ("langsmith_module", f"langsmith.{alias.name}"))
+            elif module == "langchain_core" and alias.name == "tracers":
+                self._bind(local_name, ("langsmith_module", "langchain_core.tracers"))
+            elif module == "os" and alias.name == "environ":
+                self._bind(local_name, ("os_environ", "environ"))
+            elif tracing_tool and _python_trace_export_is_supported(module, alias.name):
+                self._bind(local_name, ("trace_symbol", tracing_tool, alias.name))
+            else:
+                self._unbind_name(local_name)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        self._check_langsmith_expr(node.func)
+        self._check_tracing_expr(node.func)
+        self.generic_visit(node)
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id in {"setattr", "delattr"}
+            and self._builtin_is_live(node.func.id)
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and isinstance(node.args[1].value, str)
+        ):
+            self._invalidate_member(node.args[0], (node.args[1].value,))
+
+    def _visit_with(self, node: ast.With | ast.AsyncWith) -> None:
+        for item in node.items:
+            if isinstance(item.context_expr, ast.Call):
+                self._check_langsmith_call(item.context_expr)
+            self.visit(item.context_expr)
+            if item.optional_vars is not None:
+                self.visit(item.optional_vars)
+        for statement in node.body:
+            self.visit(statement)
+
+    def visit_With(self, node: ast.With) -> None:
+        self._visit_with(node)
+
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+        self._visit_with(node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self.visit(node.value)
+        for target in node.targets:
+            self._check_environment_assignment(target, node.value)
+            self._unbind_target(target)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None:
+            self.visit(node.value)
+            self._check_environment_assignment(node.target, node.value)
+        self._unbind_target(node.target)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        self.visit(node.value)
+        self._unbind_target(node.target)
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        self.visit(node.value)
+        self._unbind_target(node.target)
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
+            self._unbind_target(node)
+
+    def visit_Delete(self, node: ast.Delete) -> None:
+        for target in node.targets:
+            self._unbind_target(target)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        if node.type is not None:
+            self.visit(node.type)
+        if node.name:
+            self._unbind_name(node.name)
+        for statement in node.body:
+            self.visit(statement)
+
+    def visit_MatchAs(self, node: ast.MatchAs) -> None:
+        if node.pattern is not None:
+            self.visit(node.pattern)
+        if node.name:
+            self._unbind_name(node.name)
+
+    def visit_MatchStar(self, node: ast.MatchStar) -> None:
+        if node.name:
+            self._unbind_name(node.name)
+
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+        for key in node.keys:
+            self.visit(key)
+        for pattern in node.patterns:
+            self.visit(pattern)
+        if node.rest:
+            self._unbind_name(node.rest)
+
+    def _visit_comprehension_scope(
+        self,
+        generators: list[ast.comprehension],
+        result_nodes: tuple[ast.expr, ...],
+    ) -> None:
+        if not generators:
+            return
+        self.visit(generators[0].iter)
+        collector = _PythonBoundNameCollector()
+        for generator in generators:
+            collector.visit(generator.target)
+        self.scopes.append(({}, set(collector.names)))
+        self.member_invalidations.append(set())
+        self.scope_kinds.append("comprehension")
+        self.scope_globals.append(set())
+        self.scope_nonlocals.append(set())
+        for index, generator in enumerate(generators):
+            if index:
+                self.visit(generator.iter)
+            for condition in generator.ifs:
+                self.visit(condition)
+        for result in result_nodes:
+            self.visit(result)
+        self.scopes.pop()
+        self.member_invalidations.pop()
+        self.scope_kinds.pop()
+        self.scope_globals.pop()
+        self.scope_nonlocals.pop()
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self._visit_comprehension_scope(node.generators, (node.elt,))
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        self._visit_comprehension_scope(node.generators, (node.elt,))
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        self._visit_comprehension_scope(node.generators, (node.key, node.value))
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        self._visit_comprehension_scope(node.generators, (node.elt,))
+
+    def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        for decorator in node.decorator_list:
+            target = decorator.func if isinstance(decorator, ast.Call) else decorator
+            self._check_langsmith_expr(target, decorator=True)
+            if isinstance(decorator, ast.Call):
+                self._check_langsmith_call(decorator)
+            self.visit(decorator)
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                self.visit(default)
+        self._unbind_name(node.name)
+        # A function body is deferred.  Global/nonlocal writes must affect name
+        # resolution while that body is inspected, but must not escape into the
+        # enclosing traversal as though the function had already run.
+        enclosing_scopes = [
+            (dict(bindings), set(local_names)) for bindings, local_names in self.scopes
+        ]
+        enclosing_member_invalidations = [set(items) for items in self.member_invalidations]
+        local_names, global_names, nonlocal_names = _python_scope_bindings(
+            node.body, node.args
+        )
+        self.scopes.append(({}, local_names))
+        self.member_invalidations.append(set())
+        self.scope_kinds.append("function")
+        self.scope_globals.append(global_names)
+        self.scope_nonlocals.append(nonlocal_names)
+        for statement in node.body:
+            self.visit(statement)
+        self.scopes.pop()
+        self.member_invalidations.pop()
+        self.scope_kinds.pop()
+        self.scope_globals.pop()
+        self.scope_nonlocals.pop()
+        self.scopes[:] = enclosing_scopes
+        self.member_invalidations[:] = enclosing_member_invalidations
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_function(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        for decorator in node.decorator_list:
+            target = decorator.func if isinstance(decorator, ast.Call) else decorator
+            self._check_langsmith_expr(target, decorator=True)
+            if isinstance(decorator, ast.Call):
+                self._check_langsmith_call(decorator)
+            self.visit(decorator)
+        self._unbind_name(node.name)
+        local_names, global_names, nonlocal_names = _python_scope_bindings(node.body)
+        self.scopes.append(({}, local_names))
+        self.member_invalidations.append(set())
+        self.scope_kinds.append("class")
+        self.scope_globals.append(global_names)
+        self.scope_nonlocals.append(nonlocal_names)
+        for statement in node.body:
+            self.visit(statement)
+        self.scopes.pop()
+        self.member_invalidations.pop()
+        self.scope_kinds.pop()
+        self.scope_globals.pop()
+        self.scope_nonlocals.pop()
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        local_names = {
+            argument.arg
+            for argument in (
+                *node.args.posonlyargs,
+                *node.args.args,
+                *node.args.kwonlyargs,
+            )
+        }
+        if node.args.vararg:
+            local_names.add(node.args.vararg.arg)
+        if node.args.kwarg:
+            local_names.add(node.args.kwarg.arg)
+        collector = _PythonBoundNameCollector()
+        collector.visit(node.body)
+        local_names.update(collector.names)
+        self.scopes.append(({}, local_names))
+        self.member_invalidations.append(set())
+        self.scope_kinds.append("lambda")
+        self.scope_globals.append(set())
+        self.scope_nonlocals.append(set())
+        self.visit(node.body)
+        self.scopes.pop()
+        self.member_invalidations.pop()
+        self.scope_kinds.pop()
+        self.scope_globals.pop()
+        self.scope_nonlocals.pop()
+
+
+def _python_instrumentation_visitor(content: str) -> _PythonInstrumentationVisitor | None:
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return None
+    visitor = _PythonInstrumentationVisitor()
+    visitor.visit(tree)
+    return visitor
+
+
+def _python_has_active_langsmith(content: str) -> bool:
+    """Detect executable LangSmith use with import provenance in Python AST."""
+    visitor = _python_instrumentation_visitor(content)
+    return bool(visitor and visitor.langsmith_active)
+
+
+def _javascript_slash_starts_regex(masked: list[str], index: int) -> bool:
+    """Use JavaScript lexical context to distinguish regex literals from division."""
+    line_start = index
+    while line_start > 0 and masked[line_start - 1] != "\n":
+        line_start -= 1
+    prefix = "".join(masked[line_start:index]).rstrip()
+    if not prefix:
+        return True
+    if prefix[-1] in "([{=,:;!?&|+-*%^~<>\n":
+        return True
+    word_match = re.search(r"([A-Za-z_$][\w$]*)$", prefix)
+    return bool(
+        word_match
+        and word_match.group(1)
+        in {
+            "await",
+            "case",
+            "delete",
+            "do",
+            "else",
+            "in",
+            "instanceof",
+            "new",
+            "return",
+            "throw",
+            "typeof",
+            "void",
+            "yield",
+        }
+    )
+
+
+def _mask_javascript(content: str) -> tuple[str, str]:
+    """Return comment-free and executable-only JavaScript lexical views."""
+    comments = list(content)
+    executable = list(content)
+    state = "code"
+    resume_state = "code"
+    template_return_states: list[str] = []
+    template_expression_depths: list[int] = []
+    escaped = False
+    regex_character_class = False
+    index = 0
+    while index < len(content):
+        char = content[index]
+        nxt = content[index + 1] if index + 1 < len(content) else ""
+        if state in {"code", "template_expression"}:
+            if (
+                state == "template_expression"
+                and char == "}"
+                and template_expression_depths[-1] == 0
+            ):
+                comments[index] = executable[index] = " "
+                template_expression_depths.pop()
+                state = "template"
+                index += 1
+                continue
+            if state == "template_expression" and char == "{":
+                template_expression_depths[-1] += 1
+            elif state == "template_expression" and char == "}":
+                template_expression_depths[-1] -= 1
+            if char == "/" and nxt == "/":
+                comments[index] = comments[index + 1] = " "
+                executable[index] = executable[index + 1] = " "
+                resume_state = state
+                state = "line_comment"
+                index += 2
+                continue
+            if char == "/" and nxt == "*":
+                comments[index] = comments[index + 1] = " "
+                executable[index] = executable[index + 1] = " "
+                resume_state = state
+                state = "block_comment"
+                index += 2
+                continue
+            if char == "/" and _javascript_slash_starts_regex(executable, index):
+                comments[index] = executable[index] = " "
+                resume_state = state
+                state = "regex"
+                escaped = False
+                regex_character_class = False
+                index += 1
+                continue
+            if char in {"'", '"'}:
+                executable[index] = " "
+                resume_state = state
+                state = {"'": "single", '"': "double"}[char]
+            elif char == "`":
+                comments[index] = executable[index] = " "
+                template_return_states.append(state)
+                state = "template"
+                escaped = False
+        elif state == "line_comment":
+            if char == "\n":
+                state = resume_state
+            else:
+                comments[index] = executable[index] = " "
+        elif state == "block_comment":
+            if char == "*" and nxt == "/":
+                comments[index] = comments[index + 1] = " "
+                executable[index] = executable[index + 1] = " "
+                state = resume_state
+                index += 2
+                continue
+            if char != "\n":
+                comments[index] = executable[index] = " "
+        elif state in {"single", "double"}:
+            if char != "\n":
+                executable[index] = " "
+            quote = {"single": "'", "double": '"'}[state]
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                state = resume_state
+        elif state == "template":
+            if char != "\n":
+                comments[index] = executable[index] = " "
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == "`":
+                state = template_return_states.pop()
+            elif char == "$" and nxt == "{":
+                comments[index] = comments[index + 1] = " "
+                executable[index] = executable[index + 1] = " "
+                template_expression_depths.append(0)
+                state = "template_expression"
+                index += 2
+                continue
+        elif state == "regex":
+            if char != "\n":
+                comments[index] = executable[index] = " "
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == "[":
+                regex_character_class = True
+            elif char == "]":
+                regex_character_class = False
+            elif char == "/" and not regex_character_class:
+                state = "regex_flags"
+        elif state == "regex_flags":
+            if char.isalpha():
+                comments[index] = executable[index] = " "
+            else:
+                state = resume_state
+                continue
+        index += 1
+    return "".join(comments), "".join(executable)
+
+
+def _javascript_restore_member_keys(comments_free: str, executable: str) -> str:
+    """Restore quoted identifier keys only when they are executable member syntax."""
+    restored = list(executable)
+    member_key = re.compile(r"\[\s*([\"'])(?P<key>[A-Za-z_$][\w$]*)\1\s*\]")
+    for match in member_key.finditer(comments_free):
+        if not executable[match.start() : match.end()].strip():
+            continue
+        restored[match.start() : match.end()] = comments_free[match.start() : match.end()]
+    return "".join(restored)
+
+
+def _javascript_member_access(member: str) -> str:
+    escaped = re.escape(member)
+    return rf"(?:\s*\.\s*{escaped}|\s*\[\s*[\"']{escaped}[\"']\s*\])"
+
+
+def _match_is_executable(match: re.Match[str], executable: str) -> bool:
+    return bool(executable[match.start() : match.start() + len(match.group(0))].strip())
+
+
+def _javascript_brace_pairs(executable: str) -> dict[int, int]:
+    stack: list[int] = []
+    pairs: dict[int, int] = {}
+    for index, char in enumerate(executable):
+        if char == "{":
+            stack.append(index)
+        elif char == "}" and stack:
+            pairs[stack.pop()] = index
+    return pairs
+
+
+def _javascript_direct_scope_view(source: str, start: int, end: int) -> str:
+    """Preserve only text directly owned by one brace scope."""
+    visible = list(" " * len(source))
+    depth = 0
+    body_start = start + 1 if start >= 0 else 0
+    for index in range(body_start, end):
+        char = source[index]
+        if char == "{":
+            depth += 1
+            continue
+        if char == "}":
+            depth = max(0, depth - 1)
+            continue
+        if depth == 0:
+            visible[index] = char
+    return "".join(visible)
+
+
+def _javascript_alias_is_live_at(
+    executable: str,
+    alias: str,
+    declaration_span: tuple[int, int],
+    use_position: int,
+    members: tuple[str, ...] = (),
+) -> bool:
+    """Resolve an imported alias at one call site against enclosing JS scopes."""
+    source = list(executable)
+    source[declaration_span[0] : declaration_span[1]] = " " * (
+        declaration_span[1] - declaration_span[0]
+    )
+    text = "".join(source)
+    escaped = re.escape(alias)
+    pairs = _javascript_brace_pairs(text)
+    declaration_position = declaration_span[0]
+    declaration_scopes = [(-1, len(text))]
+    declaration_scopes.extend(
+        (start, end)
+        for start, end in pairs.items()
+        if start < declaration_position < end
+    )
+    declaration_scope = max(declaration_scopes, key=lambda scope: scope[0])
+    if not declaration_scope[0] < use_position < declaration_scope[1]:
+        return False
+    scopes = [(-1, len(text))]
+    scopes.extend((start, end) for start, end in pairs.items() if start < use_position < end)
+    declaration_patterns = (
+        rf"\b(?:const|let|var|function|class)\s+{escaped}\b",
+        rf"\b(?:const|let|var)\s*\{{[^}}]*\b(?:[A-Za-z_$][\w$]*\s*:\s*)?{escaped}\b",
+        rf"\bimport\s+(?:\*\s+as\s+)?{escaped}\s+from\b",
+        rf"\bimport\s*\{{[^}}]*\b(?:[A-Za-z_$][\w$]*\s+as\s+)?{escaped}\b[^}}]*\}}\s+from\b",
+    )
+    assignment_pattern = rf"\b{escaped}\s*(?:=(?!=)|\+=|-=|\*=|/=|%=|&&=|\|\|=|\?\?=)"
+    parameter_patterns = (
+        rf"\bfunction(?:\s+[A-Za-z_$][\w$]*)?\s*\([^)]*\b{escaped}\b[^)]*\)\s*$",
+        rf"\([^)]*\b{escaped}\b[^)]*\)\s*(?::\s*[^=]+)?=>\s*$",
+        rf"\b{escaped}\s*(?::\s*[^=]+)?=>\s*$",
+        rf"\bcatch\s*\([^)]*\b{escaped}\b[^)]*\)\s*$",
+        rf"(?:(?:public|private|protected|static|async|get|set)\s+)*"
+        rf"(?:constructor|[A-Za-z_$][\w$]*)\s*\([^)]*\b{escaped}\b[^)]*\)"
+        rf"\s*(?::\s*[^=]+)?$",
+    )
+    for start, end in scopes:
+        direct = _javascript_direct_scope_view(text, start, end)
+        if any(re.search(pattern, direct) for pattern in declaration_patterns):
+            return False
+        if re.search(assignment_pattern, direct[:use_position]):
+            return False
+        member_path = rf"\b{escaped}"
+        for member in members:
+            member_path += _javascript_member_access(member)
+            member_write = (
+                rf"(?:\bdelete\s+{member_path}(?![\w$])|"
+                rf"{member_path}\s*(?:=(?!=)|\+=|-=|\*=|/=|%=|&&=|\|\|=|\?\?=))"
+            )
+            if re.search(member_write, direct[:use_position]):
+                return False
+        if start >= 0:
+            header_start = max(
+                0,
+                text.rfind(";", 0, start) + 1,
+                text.rfind("}", 0, start) + 1,
+                text.rfind("{", 0, start) + 1,
+            )
+            header = text[header_start:start].strip()
+            if any(re.search(pattern, header, re.DOTALL) for pattern in parameter_patterns):
+                return False
+    return True
+
+
+def _javascript_bare_require_is_live_at(executable: str, position: int) -> bool:
+    """True for an unshadowed CommonJS global ``require`` call only."""
+    previous = position - 1
+    while previous >= 0 and executable[previous].isspace():
+        previous -= 1
+    if previous >= 0 and (executable[previous] in ".$" or executable[previous].isalnum()):
+        return False
+    statement_start = max(
+        executable.rfind(";", 0, position),
+        executable.rfind("{", 0, position),
+        executable.rfind("}", 0, position),
+    )
+    prefix = executable[statement_start + 1 : position]
+    if re.search(
+        r"(?:\([^)]*\brequire\b[^)]*\)|\brequire\b)\s*"
+        r"(?::\s*[^=]+)?=>[^;{}]*$",
+        prefix,
+        re.DOTALL,
+    ):
+        return False
+    return _javascript_alias_is_live_at(executable, "require", (0, 0), position)
+
+
+def _javascript_named_call_is_declaration(executable: str, open_paren: int) -> bool:
+    """Reject function/class/object method headers that resemble bare calls."""
+    depth = 0
+    close_paren: int | None = None
+    for index in range(open_paren, len(executable)):
+        char = executable[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                close_paren = index
+                break
+    if close_paren is None:
+        return False
+    tail = executable[close_paren + 1 :]
+    if re.match(r"\s*(?::\s*[^\n{;=]+)?\s*\{", tail):
+        return True
+    return re.match(r"\s*:\s*[^\n{;=]+\s*;", tail) is not None
+
+
+def _javascript_has_bound_call(
+    executable: str,
+    alias: str,
+    members: tuple[str, ...] = (),
+    declaration_span: tuple[int, int] | None = None,
+) -> bool:
+    path = rf"\b{re.escape(alias)}"
+    for member in members:
+        path += _javascript_member_access(member)
+    for match in re.finditer(path + r"\s*\(", executable):
+        if not members and _javascript_named_call_is_declaration(executable, match.end() - 1):
+            continue
+        if declaration_span is None or _javascript_alias_is_live_at(
+            executable, alias, declaration_span, match.start(), members
+        ):
+            return True
+    return False
+
+
+def _javascript_has_bound_construction(
+    executable: str,
+    alias: str,
+    members: tuple[str, ...] = (),
+    declaration_span: tuple[int, int] | None = None,
+) -> bool:
+    path = rf"\bnew\s+{re.escape(alias)}"
+    for member in members:
+        path += _javascript_member_access(member)
+    return any(
+        declaration_span is None
+        or _javascript_alias_is_live_at(
+            executable, alias, declaration_span, match.start(), members
+        )
+        for match in re.finditer(path + r"\s*\(", executable)
+    )
+
+
+def _javascript_has_active_langsmith(content: str) -> bool:
+    comments_free, executable = _mask_javascript(content)
+    scope_view = _javascript_restore_member_keys(comments_free, executable)
+    local_callables: dict[str, tuple[int, int]] = {}
+    local_run_tree: dict[str, tuple[int, int]] = {}
+    module_aliases: dict[str, tuple[str, tuple[int, int]]] = {}
+
+    named_import_re = re.compile(
+        r"\bimport\s*\{(?P<names>[^}]*)\}\s*from\s*"
+        r"[\"'](?P<module>langsmith(?:/[^\"']*)?)[\"']"
+    )
+    for match in named_import_re.finditer(comments_free):
+        if not _match_is_executable(match, executable):
+            continue
+        supported_exports = _JAVASCRIPT_LANGSMITH_EXPORTS.get(match.group("module"), set())
+        for item in match.group("names").split(","):
+            parts = re.split(r"\s+as\s+", item.strip())
+            if (
+                parts
+                and parts[0].strip() in _JAVASCRIPT_LANGSMITH_CALLABLES
+                and parts[0].strip() in supported_exports
+            ):
+                local_callables[parts[-1].strip()] = match.span()
+            elif (
+                parts
+                and parts[0].strip() == "RunTree"
+                and "RunTree" in supported_exports
+            ):
+                local_run_tree[parts[-1].strip()] = match.span()
+
+    namespace_import_re = re.compile(
+        r"\bimport\s*\*\s*as\s*(?P<alias>[A-Za-z_$][\w$]*)\s*from\s*"
+        r"[\"'](?P<module>langsmith(?:/[^\"']*)?)[\"']"
+    )
+    for match in namespace_import_re.finditer(comments_free):
+        if _match_is_executable(match, executable) and match.group(
+            "module"
+        ) in _JAVASCRIPT_LANGSMITH_EXPORTS:
+            module_aliases[match.group("alias")] = (match.group("module"), match.span())
+
+    destructured_require_re = re.compile(
+        r"\b(?:const|let|var)\s*\{(?P<names>[^}]*)\}\s*=\s*require\(\s*"
+        r"[\"'](?P<module>langsmith(?:/[^\"']*)?)[\"']\s*\)"
+    )
+    for match in destructured_require_re.finditer(comments_free):
+        if not _match_is_executable(match, executable):
+            continue
+        require_position = comments_free.find("require", match.start(), match.end())
+        if not _javascript_bare_require_is_live_at(scope_view, require_position):
+            continue
+        supported_exports = _JAVASCRIPT_LANGSMITH_EXPORTS.get(match.group("module"), set())
+        for item in match.group("names").split(","):
+            parts = item.strip().split(":", 1)
+            if (
+                parts
+                and parts[0].strip() in _JAVASCRIPT_LANGSMITH_CALLABLES
+                and parts[0].strip() in supported_exports
+            ):
+                local_callables[parts[-1].strip()] = match.span()
+            elif (
+                parts
+                and parts[0].strip() == "RunTree"
+                and "RunTree" in supported_exports
+            ):
+                local_run_tree[parts[-1].strip()] = match.span()
+
+    module_require_re = re.compile(
+        r"\b(?:const|let|var)\s+(?P<alias>[A-Za-z_$][\w$]*)\s*=\s*require\(\s*"
+        r"[\"'](?P<module>langsmith(?:/[^\"']*)?)[\"']\s*\)(?!\s*[.\[])"
+    )
+    for match in module_require_re.finditer(comments_free):
+        if not _match_is_executable(match, executable):
+            continue
+        require_position = comments_free.find("require", match.start(), match.end())
+        if (
+            _javascript_bare_require_is_live_at(scope_view, require_position)
+            and match.group("module") in _JAVASCRIPT_LANGSMITH_EXPORTS
+        ):
+            module_aliases[match.group("alias")] = (match.group("module"), match.span())
+
+    property_require_re = re.compile(
+        r"\b(?:const|let|var)\s+(?P<alias>[A-Za-z_$][\w$]*)\s*=\s*(?P<require>require)\(\s*"
+        r"[\"'](?P<module>langsmith(?:/[^\"']*)?)[\"']\s*\)"
+        rf"\s*\.\s*(?P<member>{'|'.join(sorted(_JAVASCRIPT_LANGSMITH_CALLABLES))})\b"
+    )
+    for match in property_require_re.finditer(comments_free):
+        if not _match_is_executable(match, executable):
+            continue
+        if not _javascript_bare_require_is_live_at(scope_view, match.start("require")):
+            continue
+        if match.group("member") in _JAVASCRIPT_LANGSMITH_EXPORTS.get(
+            match.group("module"), set()
+        ):
+            local_callables[match.group("alias")] = match.span()
+
+    direct_require_call_re = re.compile(
+        r"\b(?P<require>require)\(\s*[\"'](?P<module>langsmith(?:/[^\"']*)?)[\"']\s*\)"
+        rf"\s*\.\s*(?P<member>{'|'.join(sorted(_JAVASCRIPT_LANGSMITH_CALLABLES))})\s*\("
+    )
+    for match in direct_require_call_re.finditer(comments_free):
+        if (
+            _match_is_executable(match, executable)
+            and _javascript_bare_require_is_live_at(scope_view, match.start("require"))
+            and match.group("member")
+            in _JAVASCRIPT_LANGSMITH_EXPORTS.get(match.group("module"), set())
+        ):
+            return True
+
+    for alias, span in local_callables.items():
+        decorator_active = any(
+            _javascript_alias_is_live_at(scope_view, alias, span, match.start())
+            for match in re.finditer(rf"@{re.escape(alias)}\b", scope_view)
+        )
+        if _javascript_has_bound_call(
+            scope_view, alias, declaration_span=span
+        ) or decorator_active:
+            return True
+    if any(
+        _javascript_has_bound_construction(scope_view, alias, declaration_span=span)
+        for alias, span in local_run_tree.items()
+    ):
+        return True
+    for alias, (module, span) in module_aliases.items():
+        supported_exports = _JAVASCRIPT_LANGSMITH_EXPORTS[module]
+        for member in _JAVASCRIPT_LANGSMITH_CALLABLES:
+            if member in supported_exports and _javascript_has_bound_call(
+                scope_view, alias, (member,), declaration_span=span
+            ):
+                return True
+        if "RunTree" in supported_exports and _javascript_has_bound_construction(
+            scope_view, alias, ("RunTree",), declaration_span=span
+        ):
+            return True
+    return False
+
+
+def _javascript_has_truthy_langsmith_env(content: str) -> bool:
+    comments_free, executable = _mask_javascript(content)
+    scope_view = _javascript_restore_member_keys(comments_free, executable)
+    process_aliases: dict[str, tuple[int, int]] = {"process": (0, 0)}
+    env_aliases: dict[str, tuple[int, int]] = {}
+    process_modules = {"node:process", "process"}
+
+    import_re = re.compile(
+        r"\bimport\s+(?:(?:\*\s+as\s+)?(?P<alias>[A-Za-z_$][\w$]*))\s+from\s*"
+        r"[\"'](?P<module>node:process|process)[\"']"
+    )
+    for match in import_re.finditer(comments_free):
+        if _match_is_executable(match, executable):
+            process_aliases[match.group("alias")] = match.span()
+
+    named_env_import_re = re.compile(
+        r"\bimport\s*\{(?P<names>[^}]*)\}\s*from\s*"
+        r"[\"'](?P<module>node:process|process)[\"']"
+    )
+    for match in named_env_import_re.finditer(comments_free):
+        if not _match_is_executable(match, executable):
+            continue
+        for item in match.group("names").split(","):
+            parts = re.split(r"\s+as\s+", item.strip())
+            if parts and parts[0].strip() == "env":
+                env_aliases[parts[-1].strip()] = match.span()
+
+    require_re = re.compile(
+        r"\b(?:const|let|var)\s+(?P<alias>[A-Za-z_$][\w$]*)\s*=\s*(?P<require>require)\(\s*"
+        r"[\"'](?P<module>node:process|process)[\"']\s*\)"
+    )
+    for match in require_re.finditer(comments_free):
+        if (
+            match.group("module") in process_modules
+            and _match_is_executable(match, executable)
+            and _javascript_bare_require_is_live_at(scope_view, match.start("require"))
+        ):
+            process_aliases[match.group("alias")] = match.span()
+
+    destructured_env_require_re = re.compile(
+        r"\b(?:const|let|var)\s*\{(?P<names>[^}]*)\}\s*=\s*(?P<require>require)\(\s*"
+        r"[\"'](?P<module>node:process|process)[\"']\s*\)"
+    )
+    for match in destructured_env_require_re.finditer(comments_free):
+        if not _match_is_executable(match, executable) or not (
+            _javascript_bare_require_is_live_at(scope_view, match.start("require"))
+        ):
+            continue
+        for item in match.group("names").split(","):
+            parts = item.strip().split(":", 1)
+            if parts and parts[0].strip() == "env":
+                env_aliases[parts[-1].strip()] = match.span()
+
+    keys = "|".join(sorted(_LANGSMITH_TRACING_KEYS))
+    for alias, span in process_aliases.items():
+        assignment_re = re.compile(
+            rf"\b{re.escape(alias)}{_javascript_member_access('env')}"
+            rf"(?P<key_access>\.\s*(?P<dot_key>{keys})|"
+            rf"\s*\[\s*[\"'](?P<bracket_key>{keys})[\"']\s*\])"
+            r"\s*=\s*(?:[\"'](?i:true|1|yes|on)[\"']|(?i:true)|1)(?=\s|;|$)",
+        )
+        for match in assignment_re.finditer(comments_free):
+            if (
+                _match_is_executable(match, executable)
+                and _javascript_alias_is_live_at(
+                    scope_view, alias, span, match.start(), ("env",)
+                )
+            ):
+                return True
+    for alias, span in env_aliases.items():
+        assignment_re = re.compile(
+            rf"\b{re.escape(alias)}"
+            rf"(?P<key_access>\.\s*(?P<dot_key>{keys})|"
+            rf"\s*\[\s*[\"'](?P<bracket_key>{keys})[\"']\s*\])"
+            r"\s*=\s*(?:[\"'](?i:true|1|yes|on)[\"']|(?i:true)|1)(?=\s|;|$)",
+        )
+        for match in assignment_re.finditer(comments_free):
+            if (
+                _match_is_executable(match, executable)
+                and _javascript_alias_is_live_at(scope_view, alias, span, match.start())
+            ):
+                return True
+    return False
+
+
+def _dotenv_has_truthy_langsmith(content: str) -> bool:
+    quote: str | None = None
+    for raw_line in content.splitlines():
+        if quote is not None:
+            escaped = False
+            for char in raw_line:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+                    break
+            continue
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = re.fullmatch(
+            r"(?:export\s+)?(?P<key>LANGSMITH_TRACING(?:_V2)?|LANGCHAIN_TRACING_V2)\s*=\s*"
+            r"(?P<value>[\"']?(?i:true|1|yes|on)[\"']?)\s*(?:#.*)?",
+            line,
+        )
+        if match:
+            return True
+        assignment = line.split("=", 1)
+        if len(assignment) == 2:
+            value = assignment[1].lstrip()
+            if value.startswith(("'", '"')) and value.count(value[0]) == 1:
+                quote = value[0]
+    return False
+
+
+def _yaml_inline_env_is_truthy(value: str) -> bool:
+    value = value.strip()
+    if len(value) >= 2 and value[0] in {"'", '"'} and value[-1] == value[0]:
+        return False
+    key = r"(?:LANGSMITH_TRACING(?:_V2)?|LANGCHAIN_TRACING_V2)"
+    truthy = r"(?:true|1|yes|on)"
+    map_entry = re.compile(
+        rf"(?:^|\{{|,)\s*[\"']?{key}[\"']?\s*:\s*[\"']?(?i:{truthy})[\"']?\s*(?=,|\}})",
+    )
+    list_entry = re.compile(
+        rf"(?:^|\[|,)\s*[\"']?{key}\s*=\s*(?i:{truthy})[\"']?\s*(?=,|\])",
+    )
+    return map_entry.search(value) is not None or list_entry.search(value) is not None
+
+
+def _yaml_has_truthy_langsmith_env(content: str) -> bool:
+    env_indent: int | None = None
+    block_indent: int | None = None
+    multiline_quote: str | None = None
+    for raw_line in content.splitlines():
+        visible: list[str] = []
+        quote = multiline_quote
+        escaped = False
+        for char in raw_line:
+            if quote is not None:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+                    if multiline_quote is None:
+                        visible.append(char)
+                elif multiline_quote is None:
+                    visible.append(char)
+                continue
+            if char == "#":
+                break
+            visible.append(char)
+            if char in {"'", '"'}:
+                quote = char
+        multiline_quote = quote
+        raw_line = "".join(visible)
+        stripped = raw_line.lstrip()
+        indent = len(raw_line) - len(stripped)
+        if block_indent is not None:
+            if not stripped or indent > block_indent:
+                continue
+            block_indent = None
+        line = stripped.rstrip()
+        if not line:
+            continue
+        if re.search(r":\s*[>|][-+]?\s*$", line):
+            block_indent = indent
+            continue
+        if env_indent is not None and indent <= env_indent:
+            env_indent = None
+        inline_env = re.fullmatch(r"(?:environment|env)\s*:\s*(?P<value>.+)", line, re.IGNORECASE)
+        if inline_env and _yaml_inline_env_is_truthy(inline_env.group("value")):
+            return True
+        if re.fullmatch(r"(?:environment|env)\s*:\s*", line, re.IGNORECASE):
+            env_indent = indent
+            continue
+        if env_indent is None:
+            continue
+        match = re.fullmatch(
+            r"(?:-\s*)?(?:[\"']?)(?P<key>LANGSMITH_TRACING(?:_V2)?|LANGCHAIN_TRACING_V2)(?:[\"']?)"
+            r"\s*(?:=|:)\s*[\"']?(?i:true|1|yes|on)[\"']?\s*",
+            line,
+        )
+        if match:
+            return True
+    return False
+
+
+def _json_has_truthy_langsmith_env(content: str) -> bool:
+    try:
+        value = json.loads(content)
+    except (TypeError, ValueError):
+        return False
+
+    def visit(item: Any, in_env: bool = False) -> bool:
+        if isinstance(item, dict):
+            for key, child in item.items():
+                key_text = str(key)
+                child_env = in_env or key_text.lower() in {
+                    "env",
+                    "environment",
+                    "environmentvariables",
+                }
+                if in_env and key_text in _LANGSMITH_TRACING_KEYS:
+                    if child is True or child == 1:
+                        return True
+                    if isinstance(child, str) and child.strip().lower() in {
+                        "true",
+                        "1",
+                        "yes",
+                        "on",
+                    }:
+                        return True
+                if visit(child, child_env):
+                    return True
+        elif isinstance(item, list):
+            return any(visit(child, in_env) for child in item)
+        elif in_env and isinstance(item, str):
+            match = re.fullmatch(
+                r"(LANGSMITH_TRACING(?:_V2)?|LANGCHAIN_TRACING_V2)="
+                r"(?i:true|1|yes|on)",
+                item.strip(),
+            )
+            return match is not None
+        return False
+
+    return visit(value)
+
+
+_ACTIVE_TRACE_MARKERS: dict[str, set[str]] = {
+    "opentelemetry": {
+        "TracerProvider",
+        "get_tracer",
+        "instrument",
+        "set_tracer_provider",
+        "start_as_current_span",
+        "start_span",
+    },
+    "datadog": {"configure", "patch", "patch_all", "start_span", "trace", "wrap"},
+    "jaeger": {"Config", "JaegerExporter", "initialize_tracer"},
+}
+
+_ACTIVE_AUDIT_TOOLS = frozenset(
+    {"arize", "helicone", "langfuse", "mlflow", "wandb", "whylogs"}
+)
+
+
+def _audit_tool_for_module(module: str) -> str | None:
+    root = module.lower().replace("-", "_").split(".", 1)[0]
+    return root if root in _ACTIVE_AUDIT_TOOLS else None
+
+
+def _trace_tool_for_module(module: str) -> str | None:
+    normalized = module.lower().replace("-", "_")
+    if normalized in {
+        "opentelemetry.exporter.jaeger",
+        "opentelemetry.exporter.jaeger.proto.grpc",
+        "opentelemetry.exporter.jaeger.thrift",
+    }:
+        return "jaeger"
+    if normalized in {"jaeger", "jaeger_client"}:
+        return "jaeger"
+    if normalized in {"ddtrace", "datadog"}:
+        return "datadog"
+    if normalized in {"opentelemetry", "opentelemetry.trace", "opentelemetry.sdk.trace"}:
+        return "opentelemetry"
+    if normalized.startswith("opentelemetry.instrumentation."):
+        return "opentelemetry"
+    return None
+
+
+def _python_trace_export_is_supported(module: str, symbol: str) -> bool:
+    """Require a role to come from the provider module that actually exports it."""
+    normalized = module.lower().replace("-", "_")
+    exports: dict[str, set[str]] = {
+        "opentelemetry": {"trace"},
+        "opentelemetry.trace": {
+            "get_tracer",
+            "set_tracer_provider",
+            "start_as_current_span",
+            "start_span",
+        },
+        "opentelemetry.sdk.trace": {"TracerProvider"},
+        "ddtrace": {"patch", "patch_all", "tracer"},
+        "datadog": {"configure", "tracer"},
+        "jaeger": {"Config", "JaegerExporter"},
+        "jaeger_client": {"Config"},
+        "opentelemetry.exporter.jaeger": {"JaegerExporter"},
+        "opentelemetry.exporter.jaeger.proto.grpc": {"JaegerExporter"},
+        "opentelemetry.exporter.jaeger.thrift": {"JaegerExporter"},
+    }
+    if normalized.startswith("opentelemetry.instrumentation."):
+        return symbol.endswith("Instrumentor")
+    return symbol in exports.get(normalized, set())
+
+
+def _python_active_tracing_tools(content: str) -> set[str]:
+    visitor = _python_instrumentation_visitor(content)
+    return visitor.active_tracing_tools if visitor else set()
+
+
+def _javascript_active_tracing_tools(content: str) -> set[str]:
+    comments_free, executable = _mask_javascript(content)
+    scope_view = _javascript_restore_member_keys(comments_free, executable)
+    local_roles: dict[str, tuple[str, str, str, tuple[int, int]]] = {}
+    namespaces: dict[str, tuple[str, str, tuple[int, int]]] = {}
+
+    def tool_for_module(module: str) -> str | None:
+        if module == "@opentelemetry/exporter-jaeger":
+            return "jaeger"
+        if module in {
+            "@opentelemetry/api",
+            "@opentelemetry/sdk-node",
+            "@opentelemetry/sdk-trace-base",
+            "@opentelemetry/sdk-trace-node",
+            "@opentelemetry/sdk-trace-web",
+        }:
+            return "opentelemetry"
+        if module in {"dd-trace", "datadog"}:
+            return "datadog"
+        if module == "jaeger-client":
+            return "jaeger"
+        return None
+
+    module_exports: dict[str, set[str]] = {
+        "@opentelemetry/api": {"trace"},
+        "@opentelemetry/exporter-jaeger": {"JaegerExporter"},
+        "@opentelemetry/sdk-node": {"NodeSDK"},
+        "@opentelemetry/sdk-trace-base": {"BasicTracerProvider"},
+        "@opentelemetry/sdk-trace-node": {"NodeTracerProvider"},
+        "@opentelemetry/sdk-trace-web": {"WebTracerProvider"},
+        "dd-trace": {"default", "tracer"},
+        "datadog": {"default", "tracer"},
+        "jaeger-client": {"default", "initTracer"},
+    }
+
+    namespace_module_paths: dict[str, set[tuple[str, ...]]] = {
+        "@opentelemetry/api": {
+            ("trace", "getTracer"),
+            ("trace", "setGlobalTracerProvider"),
+        },
+        "@opentelemetry/exporter-jaeger": {("JaegerExporter",)},
+        "@opentelemetry/sdk-node": {("NodeSDK",)},
+        "@opentelemetry/sdk-trace-base": {("BasicTracerProvider",)},
+        "@opentelemetry/sdk-trace-node": {("NodeTracerProvider",)},
+        "@opentelemetry/sdk-trace-web": {("WebTracerProvider",)},
+        "dd-trace": {("init",), ("startSpan",), ("trace",), ("wrap",)},
+        "datadog": {("init",), ("startSpan",), ("trace",), ("wrap",)},
+        "jaeger-client": {("initTracer",)},
+    }
+
+    named_import_re = re.compile(
+        r"\bimport\s*\{(?P<names>[^}]*)\}\s*from\s*[\"'](?P<module>[^\"']+)[\"']"
+    )
+    for match in named_import_re.finditer(comments_free):
+        if not _match_is_executable(match, executable):
+            continue
+        tool = tool_for_module(match.group("module"))
+        if not tool:
+            continue
+        for item in match.group("names").split(","):
+            parts = re.split(r"\s+as\s+", item.strip())
+            if parts and parts[0] and parts[0].strip() in module_exports[match.group("module")]:
+                local_roles[parts[-1].strip()] = (
+                    tool,
+                    parts[0].strip(),
+                    match.group("module"),
+                    match.span(),
+                )
+
+    namespace_import_re = re.compile(
+        r"\bimport\s*\*\s*as\s*(?P<alias>[A-Za-z_$][\w$]*)\s*from\s*"
+        r"[\"'](?P<module>[^\"']+)[\"']"
+    )
+    for match in namespace_import_re.finditer(comments_free):
+        if not _match_is_executable(match, executable):
+            continue
+        tool = tool_for_module(match.group("module"))
+        if tool:
+            namespaces[match.group("alias")] = (
+                tool,
+                match.group("module"),
+                match.span(),
+            )
+
+    default_import_re = re.compile(
+        r"\bimport\s+(?P<alias>[A-Za-z_$][\w$]*)\s+from\s*"
+        r"[\"'](?P<module>[^\"']+)[\"']"
+    )
+    for match in default_import_re.finditer(comments_free):
+        if not _match_is_executable(match, executable):
+            continue
+        tool = tool_for_module(match.group("module"))
+        if tool:
+            local_roles[match.group("alias")] = (
+                tool,
+                "default",
+                match.group("module"),
+                match.span(),
+            )
+
+    destructured_require_re = re.compile(
+        r"\b(?:const|let|var)\s*\{(?P<names>[^}]*)\}\s*=\s*(?P<require>require)\(\s*"
+        r"[\"'](?P<module>[^\"']+)[\"']\s*\)"
+    )
+    for match in destructured_require_re.finditer(comments_free):
+        if not _match_is_executable(match, executable):
+            continue
+        if not _javascript_bare_require_is_live_at(scope_view, match.start("require")):
+            continue
+        tool = tool_for_module(match.group("module"))
+        if not tool:
+            continue
+        for item in match.group("names").split(","):
+            parts = item.strip().split(":", 1)
+            if parts and parts[0] and parts[0].strip() in module_exports[match.group("module")]:
+                local_roles[parts[-1].strip()] = (
+                    tool,
+                    parts[0].strip(),
+                    match.group("module"),
+                    match.span(),
+                )
+
+    module_require_re = re.compile(
+        r"\b(?:const|let|var)\s+(?P<alias>[A-Za-z_$][\w$]*)\s*=\s*(?P<require>require)\(\s*"
+        r"[\"'](?P<module>[^\"']+)[\"']\s*\)"
+    )
+    for match in module_require_re.finditer(comments_free):
+        if not _match_is_executable(match, executable):
+            continue
+        if not _javascript_bare_require_is_live_at(scope_view, match.start("require")):
+            continue
+        tool = tool_for_module(match.group("module"))
+        if tool:
+            namespaces[match.group("alias")] = (
+                tool,
+                match.group("module"),
+                match.span(),
+            )
+
+    direct_roles = {
+        "opentelemetry": {
+            "BasicTracerProvider",
+            "NodeSDK",
+            "NodeTracerProvider",
+            "WebTracerProvider",
+        },
+        "datadog": set(),
+        "jaeger": {"JaegerExporter", "default", "initTracer"},
+    }
+    member_markers = {
+        "opentelemetry": {"getTracer", "register", "setGlobalTracerProvider", "startActiveSpan"},
+        "datadog": {"init", "startSpan", "trace", "wrap"},
+        "jaeger": {"init", "initTracer"},
+    }
+    active: set[str] = set()
+
+    side_effect_esm_ddtrace_re = re.compile(r"\bimport\s*[\"']dd-trace/init(?:\.js)?[\"']\s*;?")
+    if any(
+        _match_is_executable(match, executable)
+        for match in side_effect_esm_ddtrace_re.finditer(comments_free)
+    ):
+        active.add("datadog")
+
+    side_effect_ddtrace_re = re.compile(
+        r"\b(?P<require>require)\(\s*[\"']dd-trace/init(?:\.js)?[\"']\s*\)"
+    )
+    if any(
+        _match_is_executable(match, executable)
+        and _javascript_bare_require_is_live_at(scope_view, match.start("require"))
+        for match in side_effect_ddtrace_re.finditer(comments_free)
+    ):
+        active.add("datadog")
+
+    direct_require_re = re.compile(
+        r"\b(?P<require>require)\(\s*[\"'](?P<module>[^\"']+)[\"']\s*\)"
+        r"(?P<chain>(?:\s*\.\s*[A-Za-z_$][\w$]*)+)\s*\("
+    )
+    canonical_commonjs_chains: dict[str, set[tuple[str, ...]]] = {
+        "opentelemetry": {("trace", "getTracer")},
+        "datadog": {("init",), ("startSpan",), ("trace",), ("wrap",)},
+        "jaeger": {("initTracer",)},
+    }
+    for match in direct_require_re.finditer(comments_free):
+        if not _match_is_executable(match, executable):
+            continue
+        if not _javascript_bare_require_is_live_at(scope_view, match.start("require")):
+            continue
+        tool = tool_for_module(match.group("module"))
+        if not tool:
+            continue
+        chain = tuple(re.findall(r"[A-Za-z_$][\w$]*", match.group("chain")))
+        module = match.group("module")
+        if chain in canonical_commonjs_chains[tool] and chain in namespace_module_paths[module]:
+            active.add(tool)
+
+    local_member_paths: dict[str, dict[str, set[tuple[str, ...]]]] = {
+        "opentelemetry": {
+            "trace": {("getTracer",), ("setGlobalTracerProvider",)},
+        },
+        "datadog": {
+            "default": {(marker,) for marker in member_markers["datadog"]},
+            "tracer": {(marker,) for marker in member_markers["datadog"]},
+        },
+        "jaeger": {},
+    }
+    for alias, (tool, role, module, span) in local_roles.items():
+        if role not in module_exports[module]:
+            continue
+        if role in direct_roles[tool] and _javascript_has_bound_call(
+            scope_view, alias, declaration_span=span
+        ):
+            active.add(tool)
+        if any(
+            _javascript_has_bound_call(scope_view, alias, members, declaration_span=span)
+            for members in local_member_paths[tool].get(role, set())
+        ):
+            active.add(tool)
+    for alias, (tool, module, span) in namespaces.items():
+        if any(
+            _javascript_has_bound_call(scope_view, alias, members, declaration_span=span)
+            for members in namespace_module_paths[module]
+        ):
+            active.add(tool)
+    return active
+
+
+def _instrumentation_evidence_for_file(path: str, content: str) -> tuple[bool, set[str]]:
+    """Extract bounded instrumentation facts from one file without retaining it."""
+    if _langsmith_path_is_non_runtime(path):
+        return False, set()
+    lower_path = path.lower()
+    text = content or ""
+    lower_text = text.lower()
+    if not any(
+        marker in lower_text
+        for marker in (
+            "@opentelemetry",
+            "datadog",
+            "dd-trace",
+            "ddtrace",
+            "helicone",
+            "jaeger",
+            "langfuse",
+            "langchain_core",
+            "langchain_tracing",
+            "langsmith",
+            "mlflow",
+            "opentelemetry",
+            "arize",
+            "wandb",
+            "whylogs",
+        )
+    ):
+        return False, set()
+    if lower_path.endswith((".py", ".pyw")):
+        visitor = _python_instrumentation_visitor(text)
+        return (
+            bool(visitor and visitor.langsmith_active),
+            set(visitor.active_tracing_tools) if visitor else set(),
+        )
+    if lower_path.endswith((".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts")):
+        return (
+            _javascript_has_active_langsmith(text)
+            or _javascript_has_truthy_langsmith_env(text),
+            _javascript_active_tracing_tools(text),
+        )
+    filename = lower_path.replace("\\", "/").rsplit("/", 1)[-1]
+    if filename == ".env" or filename.startswith(".env."):
+        return _dotenv_has_truthy_langsmith(text), set()
+    if lower_path.endswith((".yaml", ".yml")):
+        return _yaml_has_truthy_langsmith_env(text), set()
+    if lower_path.endswith(".json"):
+        return _json_has_truthy_langsmith_env(text), set()
+    return False, set()
+
+
+def _active_tracing_tools(files: Sequence[tuple[str, str]]) -> set[str]:
+    active: set[str] = set()
+    for path, content in files:
+        active.update(_instrumentation_evidence_for_file(path, content)[1])
+    return active
+
+
+def _has_active_langsmith(files: Sequence[tuple[str, str]]) -> bool:
+    """Return True only when source/config actively enables LangSmith tracing."""
+    for path, content in files:
+        if _instrumentation_evidence_for_file(path, content)[0]:
+            return True
+    return False
 
 
 def _detect_app_instrumentation(
     nodes: Sequence[Node],
     files: Sequence[tuple[str, str]],
     dep_names: set[str],
+    *,
+    instrumentation_evidence: tuple[bool, set[str]] | None = None,
 ) -> InstrumentationDetail | None:
     """Build an app-wide InstrumentationDetail from node data and file contents."""
     tools: list[str] = []
     seen: set[str] = set()
+    if instrumentation_evidence is None:
+        langsmith_active = _has_active_langsmith(files)
+        active_tracing_tools = _active_tracing_tools(files)
+    else:
+        langsmith_active, active_tracing_tools = instrumentation_evidence
 
     # Collect from per-node instrumentation already derived by the enricher
     for node in nodes:
         inst = node.metadata.instrumentation
         if inst:
             for t in inst.tools:
+                if t == "langsmith" and not langsmith_active:
+                    continue
                 if t not in seen:
                     tools.append(t)
                     seen.add(t)
@@ -986,6 +2960,15 @@ def _detect_app_instrumentation(
     # Scan dep names for additional tools not already covered
     for dep, tool in _APP_INSTRUMENTATION_IMPORTS.items():
         if dep in dep_names and tool not in seen:
+            tools.append(tool)
+            seen.add(tool)
+
+    if langsmith_active and "langsmith" not in seen:
+        tools.append("langsmith")
+        seen.add("langsmith")
+
+    for tool in sorted(active_tracing_tools):
+        if tool not in seen:
             tools.append(tool)
             seen.add(tool)
 
@@ -1013,7 +2996,7 @@ def _detect_app_instrumentation(
     return InstrumentationDetail(
         tools=tools,
         log_level=log_level,
-        tracing_enabled=any(t in seen for t in ("opentelemetry", "datadog", "jaeger")) or None,
+        tracing_enabled=(bool(active_tracing_tools) or langsmith_active or None),
         metrics_enabled=any(t in seen for t in ("prometheus", "datadog", "elastic_apm")) or None,
     )
 
