@@ -45,6 +45,8 @@ _LANGGRAPH_IMPORTS = [
     "langchain_openai",
     "langchain_anthropic",
     "langchain_community",
+    "deepagents",
+    "managed_deepagents",
 ]
 
 _STATEGRAPH_CLASSES = {"StateGraph", "MessageGraph", "Graph"}
@@ -133,6 +135,28 @@ _LANGGRAPH_INTERNAL_NODES = {"__start__", "__end__", "tools", "END", "START"}
 # canonical name in this adapter's model, so no explicit hint is resolvable).
 _INTERRUPT_FUNC_NAME = "interrupt"
 
+_SUBAGENT_MAPPING_TYPES = {"SubAgent", "CompiledSubAgent", "AsyncSubAgent"}
+_SUBAGENT_MODULES = {"deepagents", "managed_deepagents"}
+_GENERIC_CONTAINER_KINDS = {
+    "list": "sequence",
+    "List": "sequence",
+    "Sequence": "sequence",
+    "tuple": "tuple",
+    "Tuple": "tuple",
+    "dict": "mapping",
+    "Dict": "mapping",
+    "Mapping": "mapping",
+}
+_GENERIC_MODULE_MEMBERS = {
+    "typing": {
+        name: _GENERIC_CONTAINER_KINDS[name]
+        for name in ("List", "Sequence", "Tuple", "Dict", "Mapping")
+    },
+    "collections.abc": {
+        name: _GENERIC_CONTAINER_KINDS[name] for name in ("Sequence", "Mapping")
+    },
+}
+
 
 class LangGraphAdapter(FrameworkAdapter):
     """Adapter for LangGraph / LangChain framework detection."""
@@ -153,8 +177,12 @@ class LangGraphAdapter(FrameworkAdapter):
             return []
 
         # Determine if langgraph is actually imported (vs just langchain)
-        imported_modules_in_order = [imp.module or "" for imp in parse_result.imports]
-        imported_modules = set(imported_modules_in_order)
+        imported_modules = _absolute_imported_modules(content)
+        imported_modules_in_order = [
+            imp.module or ""
+            for imp in parse_result.imports
+            if (imp.module or "") in imported_modules
+        ]
         deep_agents_import = next(
             (
                 module
@@ -166,16 +194,45 @@ class LangGraphAdapter(FrameworkAdapter):
             ),
             None,
         )
-        has_langgraph = any(
-            m == "langgraph"
-            or m.startswith("langgraph.")
-            or m == "deepagents"
+        has_direct_langgraph = any(
+            m == "langgraph" or m.startswith("langgraph.") for m in imported_modules
+        )
+        has_deep_agents = any(
+            m == "deepagents"
             or m.startswith("deepagents.")
             or m == "managed_deepagents"
             or m.startswith("managed_deepagents.")
             for m in imported_modules
         )
+        has_langgraph = has_direct_langgraph or has_deep_agents
+        has_langchain = any(
+            m == "langchain"
+            or m.startswith("langchain.")
+            or m.startswith("langchain_")
+            for m in imported_modules
+        )
+        has_legacy_framework = has_direct_langgraph or has_langchain
+        legacy_function_calls = (
+            parse_result.function_calls if has_legacy_framework else ()
+        )
+        legacy_instantiations = (
+            parse_result.instantiations if has_legacy_framework else ()
+        )
+        legacy_string_literals = (
+            parse_result.string_literals if has_legacy_framework else ()
+        )
+        agent_factory_calls = (
+            legacy_function_calls
+            if has_legacy_framework
+            else tuple(
+                call
+                for call in parse_result.function_calls
+                if has_deep_agents
+                and call.function_name in {"create_deep_agent", "define_deep_agent"}
+            )
+        )
         # Emit the correct framework node
+        detected: list[ComponentDetection] = []
         if has_langgraph:
             framework_det = self._framework_node(file_path)
             if deep_agents_import and not any(
@@ -187,30 +244,33 @@ class LangGraphAdapter(FrameworkAdapter):
                     "framework": "langgraph",
                     "inferred_from": deep_agents_import,
                 }
-        else:
+            detected.append(framework_det)
+        elif has_langchain:
             # Only langchain imported — emit framework:langchain, not framework:langgraph
             from ...types import ComponentType as _CT
 
-            framework_det = ComponentDetection(
-                component_type=_CT.FRAMEWORK,
-                canonical_name="framework:langchain",
-                display_name="framework:langchain",
-                adapter_name=self.name,
-                priority=self.priority,
-                confidence=0.95,
-                metadata={"framework": "langchain"},
-                file_path=file_path,
-                line=0,
-                snippet="import langchain",
-                evidence_kind="ast_import",
+            detected.append(
+                ComponentDetection(
+                    component_type=_CT.FRAMEWORK,
+                    canonical_name="framework:langchain",
+                    display_name="framework:langchain",
+                    adapter_name=self.name,
+                    priority=self.priority,
+                    confidence=0.95,
+                    metadata={"framework": "langchain"},
+                    file_path=file_path,
+                    line=0,
+                    snippet="import langchain",
+                    evidence_kind="ast_import",
+                )
             )
-        detected: list[ComponentDetection] = [framework_det]
 
         # Track whether langgraph-specific patterns are found during scanning.
         # Used at the end to emit framework:langgraph even when no direct
         # `import langgraph` is present (e.g. code uses add_node / StateGraph
         # but the orchestrator only imports langchain_* packages).
         _langgraph_pattern_count = 0
+        _typed_subagent_count = 0
 
         # Track node canonical names for relationship building
         agent_canonicals: list[str] = []
@@ -234,12 +294,12 @@ class LangGraphAdapter(FrameworkAdapter):
         # Pre-compute variables assigned from agent factory functions (used in section 1).
         # e.g. `parser_node = service.create_prompt_agent_node(...)` → "parser_node"
         agent_factory_vars: set[str] = set()
-        for call in parse_result.function_calls:
+        for call in agent_factory_calls:
             if call.function_name in _AGENT_FACTORY_FUNCTIONS and call.assigned_to:
                 agent_factory_vars.add(call.assigned_to)
 
         # 0. @tool-decorated functions → TOOL nodes
-        for call in parse_result.function_calls:
+        for call in legacy_function_calls:
             if call.function_name != "tool":
                 continue
             # Must be a bare decorator (@tool) — assigned_to is the function name
@@ -264,7 +324,7 @@ class LangGraphAdapter(FrameworkAdapter):
             tool_canonicals.append(canon)
 
         # 1. .add_node() calls → AGENT (graph nodes)
-        for call in parse_result.function_calls:
+        for call in legacy_function_calls:
             if call.function_name != "add_node":
                 continue
             node_name = None
@@ -319,12 +379,12 @@ class LangGraphAdapter(FrameworkAdapter):
             _langgraph_pattern_count += 1
 
         # 2b. StateGraph / MessageGraph instantiation → confirms langgraph usage
-        for inst in parse_result.instantiations:
+        for inst in legacy_instantiations:
             if inst.class_name in _STATEGRAPH_CLASSES:
                 _langgraph_pattern_count += 1
 
         # 3. .add_edge() / .add_conditional_edges() → RelationshipHints
-        for call in parse_result.function_calls:
+        for call in legacy_function_calls:
             if call.function_name == "add_edge":
                 src = _positional_str(call, 0) or _clean(call.args.get("source"))
                 tgt = _positional_str(call, 1) or _clean(call.args.get("target"))
@@ -348,7 +408,7 @@ class LangGraphAdapter(FrameworkAdapter):
 
         # 4. ToolNode instantiations → TOOL
         # Prefer emitting the concrete tools passed into ToolNode over a generic wrapper.
-        for inst in parse_result.instantiations:
+        for inst in legacy_instantiations:
             if inst.class_name not in _TOOLNODE_CLASSES:
                 continue
             # Try to resolve the tools list passed as the first positional arg
@@ -389,7 +449,7 @@ class LangGraphAdapter(FrameworkAdapter):
                 # will be detected by section 4b (prefer concrete class names).
                 has_tool_class_insts = any(
                     i.class_name in tool_classes_from_imports
-                    for i in parse_result.instantiations
+                    for i in legacy_instantiations
                     if i.class_name not in _TOOLNODE_CLASSES
                 )
                 if has_tool_class_insts:
@@ -417,7 +477,7 @@ class LangGraphAdapter(FrameworkAdapter):
         # e.g. `from langchain_community.tools import TavilySearchResults`
         # then  `tavily_tool = TavilySearchResults(max_results=5)` → TOOL tavily_tool
         # (tool_classes_from_imports was pre-computed above; reuse here)
-        for inst in parse_result.instantiations:
+        for inst in legacy_instantiations:
             if inst.class_name not in tool_classes_from_imports:
                 continue
             if inst.class_name == "StructuredTool":
@@ -458,7 +518,7 @@ class LangGraphAdapter(FrameworkAdapter):
         # `.from_function(...)` factory method were previously matched by any
         # tool-detection heuristic — only `@tool`-decorated functions and
         # static tool-class instantiations (section 4b) were.
-        for inst in parse_result.instantiations:
+        for inst in legacy_instantiations:
             if inst.class_name != "StructuredTool":
                 continue
             tool_name, is_dynamic = _resolve_dynamic_tool_name(
@@ -484,7 +544,7 @@ class LangGraphAdapter(FrameworkAdapter):
             detected.append(det)
             tool_canonicals.append(canon)
 
-        for call in parse_result.function_calls:
+        for call in legacy_function_calls:
             if call.function_name != "from_function" or call.receiver not in (
                 "StructuredTool",
                 "Tool",
@@ -518,7 +578,7 @@ class LangGraphAdapter(FrameworkAdapter):
             tool_canonicals.append(canon)
 
         # 5. LangChain LLM wrapper instantiations → MODEL
-        for inst in parse_result.instantiations:
+        for inst in legacy_instantiations:
             if inst.class_name not in LANGCHAIN_LLM_CLASS_PROVIDERS:
                 continue
             provider = LANGCHAIN_LLM_CLASS_PROVIDERS[inst.class_name]
@@ -582,8 +642,66 @@ class LangGraphAdapter(FrameworkAdapter):
             if inst.assigned_to:
                 model_variable_canonicals[inst.assigned_to] = canon
 
+        # 5b. Deep Agents typed literal mappings → AGENT
+        # Keep this AST path local to explicit SubAgent-family annotations. The
+        # generic parser deliberately continues treating arbitrary dicts as
+        # opaque, and dynamic builders/loops are not inferred here.
+        if not looks_like_test_path(file_path):
+            known_models = set(model_canonicals)
+            known_tools = set(tool_canonicals)
+            for subagent in _extract_typed_subagent_mappings(content):
+                name, annotation, line, model_name, tool_names = subagent
+                canon = canonicalize_text(f"langgraph:{name}")
+                relationships: list[RelationshipHint] = []
+                if model_name:
+                    model_canon = canonicalize_text(model_name.lower())
+                    if model_canon in known_models:
+                        relationships.append(
+                            RelationshipHint(
+                                source_canonical=canon,
+                                source_type=ComponentType.AGENT,
+                                target_canonical=model_canon,
+                                target_type=ComponentType.MODEL,
+                                relationship_type="USES",
+                            )
+                        )
+                for tool_name in tool_names:
+                    tool_canon = canonicalize_text(f"langchain:tool:{tool_name}")
+                    if tool_canon not in known_tools:
+                        continue
+                    relationships.append(
+                        RelationshipHint(
+                            source_canonical=canon,
+                            source_type=ComponentType.AGENT,
+                            target_canonical=tool_canon,
+                            target_type=ComponentType.TOOL,
+                            relationship_type="CALLS",
+                        )
+                    )
+                detected.append(
+                    ComponentDetection(
+                        component_type=ComponentType.AGENT,
+                        canonical_name=canon,
+                        display_name=name,
+                        adapter_name=self.name,
+                        priority=self.priority,
+                        confidence=0.95,
+                        metadata={
+                            "framework": "deepagents",
+                            "subagent_type": annotation,
+                            "is_agent_graph": True,
+                        },
+                        file_path=file_path,
+                        line=line,
+                        snippet=f'{annotation} mapping name="{name}"',
+                        evidence_kind="ast_literal_mapping",
+                        relationships=relationships,
+                    )
+                )
+                _typed_subagent_count += 1
+
         # 6. Agent factory functions (create_react_agent, etc.)
-        for call in parse_result.function_calls:
+        for call in agent_factory_calls:
             if call.function_name not in _AGENT_FACTORY_FUNCTIONS:
                 continue
             is_deep_agent_factory = call.function_name in {
@@ -613,13 +731,13 @@ class LangGraphAdapter(FrameworkAdapter):
             if is_deep_agent_factory:
                 model_arg = call.args.get("model")
                 if isinstance(model_arg, str) and model_arg.startswith("$"):
-                    model_canon = model_variable_canonicals.get(model_arg[1:])
-                    if model_canon:
+                    resolved_model_canon = model_variable_canonicals.get(model_arg[1:])
+                    if resolved_model_canon:
                         factory_rels.append(
                             RelationshipHint(
                                 source_canonical=canon,
                                 source_type=ComponentType.AGENT,
-                                target_canonical=model_canon,
+                                target_canonical=resolved_model_canon,
                                 target_type=ComponentType.MODEL,
                                 relationship_type="USES",
                             )
@@ -719,7 +837,7 @@ class LangGraphAdapter(FrameworkAdapter):
                 "compiled",
             }
         )
-        for call in parse_result.function_calls:
+        for call in legacy_function_calls:
             if call.function_name != "compile":
                 continue
             # Skip non-graph .compile() calls (e.g. re.compile(r"..."))
@@ -754,7 +872,7 @@ class LangGraphAdapter(FrameworkAdapter):
             agent_canonicals.append(canon)
 
         # 7. Prompt detection (SystemMessage, ChatPromptTemplate, large string literals)
-        for inst in parse_result.instantiations:
+        for inst in legacy_instantiations:
             if inst.class_name not in _PROMPT_CLASSES:
                 continue
             content_val = _clean(
@@ -813,7 +931,7 @@ class LangGraphAdapter(FrameworkAdapter):
             )
 
         # 7b. ChatPromptTemplate.from_messages() / from_template() calls → PROMPT (assignment-aware)
-        for call in parse_result.function_calls:
+        for call in legacy_function_calls:
             if call.function_name not in {"from_messages", "from_template"}:
                 continue
             # Only care about prompt-class methods
@@ -870,7 +988,7 @@ class LangGraphAdapter(FrameworkAdapter):
             ("faiss" in imp.module.lower() or imp.module == "langchain_community.vectorstores")
             for imp in parse_result.imports
         ) or any("faiss" in name.lower() for imp in parse_result.imports for name in imp.names)
-        for call in parse_result.function_calls:
+        for call in legacy_function_calls:
             if call.function_name not in (_FAISS_CONSTRUCTOR_METHODS | {_FAISS_SAVE_METHOD}):
                 continue
             # Only emit for FAISS.* calls (receiver should be "FAISS" or similar)
@@ -913,7 +1031,7 @@ class LangGraphAdapter(FrameworkAdapter):
         # When a file imports path constants like DOCS_INDEX_PATH, TICKETS_INDEX_PATH, etc.
         # AND also imports FAISS, emit DATASTORE nodes for each constant even if the
         # call itself uses a loop variable (masking the direct constant reference).
-        if faiss_imported:
+        if faiss_imported and has_legacy_framework:
             for imp in parse_result.imports:
                 for imported_name in imp.names:
                     m = _INDEX_PATH_CONST_RE.search(imported_name)
@@ -957,8 +1075,8 @@ class LangGraphAdapter(FrameworkAdapter):
             "interrupt" in (imp.names or []) and (imp.module or "").startswith("langgraph")
             for imp in parse_result.imports
         )
-        if interrupt_imported or has_langgraph:
-            for call in parse_result.function_calls:
+        if has_legacy_framework and (interrupt_imported or has_langgraph):
+            for call in legacy_function_calls:
                 if call.function_name != _INTERRUPT_FUNC_NAME or call.receiver is not None:
                     continue
                 detected.append(
@@ -982,7 +1100,7 @@ class LangGraphAdapter(FrameworkAdapter):
                 )
 
         # Large string literals that look like prompts
-        for lit in parse_result.string_literals:
+        for lit in legacy_string_literals:
             if lit.is_docstring or len(lit.value) < 200:
                 continue
             if not _is_prompt_literal(lit.value, lit.context or ""):
@@ -1029,7 +1147,9 @@ class LangGraphAdapter(FrameworkAdapter):
         # was seen, also emit a framework:langgraph node at AST-backed confidence.
         # This handles orchestrators that import only from langchain_* packages
         # but rely on langgraph for graph wiring.
-        if _langgraph_pattern_count > 0 and not has_langgraph:
+        if (
+            _langgraph_pattern_count > 0 or _typed_subagent_count > 0
+        ) and not has_langgraph:
             from ...types import ComponentType as _CT2
 
             detected.append(
@@ -1043,7 +1163,10 @@ class LangGraphAdapter(FrameworkAdapter):
                     metadata={"framework": "langgraph"},
                     file_path=file_path,
                     line=0,
-                    snippet=f"langgraph patterns detected ({_langgraph_pattern_count})",
+                    snippet=(
+                        "langgraph patterns detected "
+                        f"({_langgraph_pattern_count + _typed_subagent_count})"
+                    ),
                     evidence_kind="ast_call",
                 )
             )
@@ -1310,13 +1433,1499 @@ def _resolve_module_string_constant(
     return _clean(binding_value.value)
 
 
+def _trusted_runtime_condition(
+    node: ast.AST,
+    type_checking_symbols: set[str],
+    typing_modules: set[str],
+) -> bool | None:
+    """Evaluate only boolean conditions whose runtime value is proven."""
+    if isinstance(node, ast.Constant):
+        # Literal constants have a stable truth value.  Restrict this to AST
+        # constants rather than calling ``bool`` on arbitrary expressions.
+        return bool(node.value)
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set, ast.Dict)):
+        # Empty displays are always false.  A display with an explicit item is
+        # non-empty if evaluation finishes; unpack-only displays may still be
+        # empty and therefore remain unknown.
+        if isinstance(node, ast.Dict):
+            if not node.keys:
+                return False
+            return True if any(key is not None for key in node.keys) else None
+        if not node.elts:
+            return False
+        return True if any(not isinstance(item, ast.Starred) for item in node.elts) else None
+    if isinstance(node, ast.Name) and node.id in type_checking_symbols:
+        return False
+    if (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in typing_modules
+        and node.attr == "TYPE_CHECKING"
+    ):
+        return False
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        value = _trusted_runtime_condition(
+            node.operand, type_checking_symbols, typing_modules
+        )
+        return None if value is None else not value
+    if isinstance(node, ast.BoolOp):
+        values = [
+            _trusted_runtime_condition(value, type_checking_symbols, typing_modules)
+            for value in node.values
+        ]
+        if isinstance(node.op, ast.And):
+            if False in values:
+                return False
+            return True if all(value is True for value in values) else None
+        if isinstance(node.op, ast.Or):
+            if True in values:
+                return True
+            return False if all(value is False for value in values) else None
+    if (
+        isinstance(node, ast.Compare)
+        and len(node.ops) == 1
+        and len(node.comparators) == 1
+        and isinstance(node.ops[0], (ast.Is, ast.IsNot, ast.Eq, ast.NotEq))
+    ):
+        def comparison_value(part: ast.AST) -> tuple[bool, Any]:
+            try:
+                return True, ast.literal_eval(part)
+            except (ValueError, TypeError, SyntaxError):
+                pass
+            if isinstance(part, ast.Name) and part.id in type_checking_symbols:
+                return True, False
+            if (
+                isinstance(part, ast.Attribute)
+                and isinstance(part.value, ast.Name)
+                and part.value.id in typing_modules
+                and part.attr == "TYPE_CHECKING"
+            ):
+                return True, False
+            if isinstance(part, (ast.UnaryOp, ast.Compare)):
+                value = _trusted_runtime_condition(
+                    part, type_checking_symbols, typing_modules
+                )
+                return value is not None, value
+            return False, None
+
+        left_known, left = comparison_value(node.left)
+        right_known, right = comparison_value(node.comparators[0])
+        if not left_known or not right_known:
+            return None
+        equal = (
+            left is right
+            if isinstance(node.ops[0], (ast.Is, ast.IsNot))
+            else left == right
+        )
+        return not equal if isinstance(node.ops[0], (ast.IsNot, ast.NotEq)) else equal
+    return None
+
+
+def _proven_empty_iterable(node: ast.AST) -> bool:
+    """True only for literal iterable displays proven to contain no items."""
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return not node.elts
+    if isinstance(node, ast.Dict):
+        return not node.keys
+    return (
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, (str, bytes))
+        and not node.value
+    )
+
+
+def _absolute_imported_modules(source: str) -> set[str]:
+    """Return modules from absolute imports on potentially live paths."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    modules: set[str] = set()
+
+    State = tuple[set[str], set[str], set[str]]
+
+    def copied(state: State) -> State:
+        return set(state[0]), set(state[1]), set(state[2])
+
+    def merged(states: list[State]) -> State:
+        if not states:
+            return set(), set(), set()
+        type_symbols = set.intersection(*(state[0] for state in states))
+        typing_names = set.intersection(*(state[1] for state in states))
+        builtin_names = set.intersection(*(state[2] for state in states))
+        return type_symbols, typing_names, builtin_names
+
+    def bound_names(nodes: list[ast.AST]) -> set[str]:
+        names: set[str] = set()
+        stack = list(reversed(nodes))
+        while stack:
+            node = stack.pop()
+            if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                names.add(node.id)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                names.add(node.name)
+                continue
+            if isinstance(node, ast.Lambda):
+                continue
+            if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+                # Comprehension targets are local to the comprehension.  A
+                # walrus target is represented outside that target scope and
+                # is found by walking the value/filters below.
+                parts: list[ast.AST] = []
+                if isinstance(node, ast.DictComp):
+                    parts.extend((node.key, node.value))
+                else:
+                    parts.append(node.elt)
+                for generator in node.generators:
+                    parts.append(generator.iter)
+                    parts.extend(generator.ifs)
+                stack.extend(reversed(parts))
+                continue
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                names.update(
+                    alias.asname or alias.name.split(".", 1)[0]
+                    for alias in node.names
+                    if alias.name != "*"
+                )
+                continue
+            if isinstance(node, ast.ExceptHandler) and node.name:
+                names.add(node.name)
+            if isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
+                names.add(node.name)
+            if isinstance(node, ast.MatchMapping) and node.rest:
+                names.add(node.rest)
+            stack.extend(reversed(list(ast.iter_child_nodes(node))))
+        return names
+
+    def clear_effects(nodes: list[ast.AST], state: State) -> None:
+        for name in bound_names(nodes):
+            state[0].discard(name)
+            state[1].discard(name)
+            state[2].discard(name)
+        mutated_namespaces: set[str] = set()
+        for root in nodes:
+            for node in ast.walk(root):
+                if (
+                    isinstance(node, ast.Attribute)
+                    and isinstance(node.ctx, (ast.Store, ast.Del))
+                    and node.attr == "TYPE_CHECKING"
+                    and isinstance(node.value, ast.Name)
+                ):
+                    mutated_namespaces.add(node.value.id)
+                elif (
+                    isinstance(node, ast.Subscript)
+                    and isinstance(node.ctx, (ast.Store, ast.Del))
+                    and isinstance(node.value, ast.Attribute)
+                    and node.value.attr == "__dict__"
+                    and isinstance(node.value.value, ast.Name)
+                    and isinstance(node.slice, ast.Constant)
+                    and node.slice.value == "TYPE_CHECKING"
+                ):
+                    mutated_namespaces.add(node.value.value.id)
+                elif (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id in state[2]
+                    and len(node.args) >= 2
+                    and isinstance(node.args[0], ast.Name)
+                    and isinstance(node.args[1], ast.Constant)
+                    and node.args[1].value == "TYPE_CHECKING"
+                ):
+                    mutated_namespaces.add(node.args[0].id)
+        for name in mutated_namespaces:
+            state[1].discard(name)
+
+    def definition_headers(
+        statement: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
+    ) -> list[ast.AST]:
+        headers: list[ast.AST] = list(statement.decorator_list)
+        headers.extend(getattr(statement, "type_params", ()))
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            headers.extend(statement.args.defaults)
+            headers.extend(value for value in statement.args.kw_defaults if value is not None)
+            headers.extend(
+                arg.annotation
+                for arg in (
+                    *statement.args.posonlyargs,
+                    *statement.args.args,
+                    *statement.args.kwonlyargs,
+                )
+                if arg.annotation is not None
+            )
+            if statement.args.vararg and statement.args.vararg.annotation is not None:
+                headers.append(statement.args.vararg.annotation)
+            if statement.args.kwarg and statement.args.kwarg.annotation is not None:
+                headers.append(statement.args.kwarg.annotation)
+            if statement.returns is not None:
+                headers.append(statement.returns)
+        else:
+            headers.extend(statement.bases)
+            headers.extend(keyword.value for keyword in statement.keywords)
+        return headers
+
+    def function_locals(statement: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+        args = statement.args
+        names = {
+            arg.arg
+            for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs)
+        }
+        if args.vararg:
+            names.add(args.vararg.arg)
+        if args.kwarg:
+            names.add(args.kwarg.arg)
+        names.update(bound_names(list(statement.body)))
+        globals_: set[str] = set()
+        nonlocals: set[str] = set()
+        stack: list[ast.AST] = list(reversed(statement.body))
+        while stack:
+            node = stack.pop()
+            if isinstance(node, ast.Global):
+                globals_.update(node.names)
+            elif isinstance(node, ast.Nonlocal):
+                nonlocals.update(node.names)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                continue
+            stack.extend(reversed(list(ast.iter_child_nodes(node))))
+        return names - globals_ - nonlocals
+
+    def apply_import(statement: ast.Import | ast.ImportFrom, state: State) -> None:
+        if isinstance(statement, ast.Import):
+            modules.update(alias.name for alias in statement.names)
+            for alias in statement.names:
+                local = alias.asname or alias.name.split(".", 1)[0]
+                state[0].discard(local)
+                state[1].discard(local)
+                state[2].discard(local)
+                if alias.name == "typing":
+                    state[1].add(local)
+            return
+        if statement.level == 0 and statement.module:
+            modules.add(statement.module)
+        for alias in statement.names:
+            local = alias.asname or alias.name
+            state[0].discard(local)
+            state[1].discard(local)
+            state[2].discard(local)
+            if (
+                statement.level == 0
+                and statement.module == "typing"
+                and alias.name == "TYPE_CHECKING"
+            ):
+                state[0].add(local)
+
+    def scan(statements: list[ast.stmt], state: State) -> State:
+        for statement in statements:
+            if isinstance(statement, (ast.Import, ast.ImportFrom)):
+                apply_import(statement, state)
+                continue
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                clear_effects(definition_headers(statement), state)
+                function_state = copied(state)
+                for name in function_locals(statement):
+                    function_state[0].discard(name)
+                    function_state[1].discard(name)
+                    function_state[2].discard(name)
+                scan(statement.body, function_state)
+                state[0].discard(statement.name)
+                state[1].discard(statement.name)
+                state[2].discard(statement.name)
+                continue
+            if isinstance(statement, ast.ClassDef):
+                clear_effects(definition_headers(statement), state)
+                scan(statement.body, copied(state))
+                state[0].discard(statement.name)
+                state[1].discard(statement.name)
+                state[2].discard(statement.name)
+                continue
+            if isinstance(statement, ast.If):
+                runtime_value = _trusted_runtime_condition(
+                    statement.test, state[0], state[1]
+                )
+                branch_state = copied(state)
+                clear_effects([statement.test], branch_state)
+                if runtime_value is True:
+                    state = scan(statement.body, branch_state)
+                elif runtime_value is False:
+                    state = scan(statement.orelse, branch_state)
+                else:
+                    state = merged(
+                        [
+                            scan(statement.body, copied(branch_state)),
+                            scan(statement.orelse, copied(branch_state)),
+                        ]
+                    )
+                continue
+            if isinstance(statement, ast.While):
+                runtime_value = _trusted_runtime_condition(
+                    statement.test, state[0], state[1]
+                )
+                loop_state = copied(state)
+                clear_effects([statement.test], loop_state)
+                if runtime_value is False:
+                    state = scan(statement.orelse, loop_state)
+                elif runtime_value is True:
+                    state = merged([loop_state, scan(statement.body, copied(loop_state))])
+                else:
+                    body_state = scan(statement.body, copied(loop_state))
+                    else_state = scan(statement.orelse, copied(loop_state))
+                    state = merged([loop_state, body_state, else_state])
+                continue
+            if isinstance(statement, (ast.For, ast.AsyncFor)):
+                loop_state = copied(state)
+                clear_effects([statement.iter, statement.target], loop_state)
+                body_state = scan(statement.body, copied(loop_state))
+                # The loop may execute zero times.  Its else suite follows any
+                # normal completion, with or without an iteration.
+                normal_state = merged([loop_state, body_state])
+                else_state = scan(statement.orelse, copied(normal_state))
+                state = merged([normal_state, else_state])
+                continue
+            if isinstance(statement, (ast.With, ast.AsyncWith)):
+                with_state = copied(state)
+                header_nodes: list[ast.AST] = []
+                for item in statement.items:
+                    header_nodes.append(item.context_expr)
+                    if item.optional_vars is not None:
+                        header_nodes.append(item.optional_vars)
+                clear_effects(header_nodes, with_state)
+                state = scan(statement.body, with_state)
+                continue
+            if isinstance(statement, ast.Match):
+                match_state = copied(state)
+                clear_effects([statement.subject], match_state)
+                case_states: list[State] = [copied(match_state)]
+                for case in statement.cases:
+                    case_state = copied(match_state)
+                    header_nodes = [case.pattern]
+                    if case.guard is not None:
+                        header_nodes.append(case.guard)
+                    clear_effects(header_nodes, case_state)
+                    case_states.append(scan(case.body, case_state))
+                state = merged(case_states)
+                continue
+            if isinstance(statement, (ast.Try, ast.TryStar)):
+                entry = copied(state)
+                body_state = scan(statement.body, copied(entry))
+                normal_state = scan(statement.orelse, copied(body_state))
+                handler_states: list[State] = []
+                for handler in statement.handlers:
+                    handler_state = copied(entry)
+                    if handler.type is not None:
+                        clear_effects([handler.type], handler_state)
+                    if handler.name:
+                        handler_state[0].discard(handler.name)
+                        handler_state[1].discard(handler.name)
+                    handler_states.append(scan(handler.body, handler_state))
+                paths = [normal_state, *handler_states] if handler_states else [normal_state]
+                before_finally = merged(paths)
+                state = scan(statement.finalbody, before_finally)
+                continue
+            clear_effects([statement], state)
+        return state
+
+    scan(tree.body, (set(), set(), {"setattr", "delattr"}))
+    return modules
+
+
+def _annotation_provenance(
+    tree: ast.Module, site: ast.AST, parents: dict[ast.AST, ast.AST]
+) -> tuple[dict[str, str], set[str], dict[str, str], dict[str, str]]:
+    """Replay trusted type/container bindings visible at one annotation site."""
+    symbols: dict[str, str] = {}
+    modules: set[str] = set()
+    containers = {name: kind for name, kind in _GENERIC_CONTAINER_KINDS.items() if name.islower()}
+    generic_modules: dict[str, str] = {}
+    type_checking_symbols: set[str] = set()
+    typing_modules: set[str] = set()
+    builtin_mutators: set[str] = {"setattr", "delattr", "vars"}
+
+    def definition_header_nodes(
+        node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
+    ) -> list[ast.AST]:
+        """Expressions executed in the enclosing scope when a definition is made."""
+        headers: list[ast.AST] = list(node.decorator_list)
+        headers.extend(getattr(node, "type_params", ()))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            headers.extend(node.args.defaults)
+            headers.extend(value for value in node.args.kw_defaults if value is not None)
+            headers.extend(
+                arg.annotation
+                for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+                if arg.annotation is not None
+            )
+            if node.args.vararg and node.args.vararg.annotation is not None:
+                headers.append(node.args.vararg.annotation)
+            if node.args.kwarg and node.args.kwarg.annotation is not None:
+                headers.append(node.args.kwarg.annotation)
+            if node.returns is not None:
+                headers.append(node.returns)
+        else:
+            headers.extend(node.bases)
+            headers.extend(keyword.value for keyword in node.keywords)
+        return headers
+
+    def binding_effects(nodes: list[ast.AST]) -> tuple[set[str], set[str]]:
+        names: set[str] = set()
+        mutated_namespaces: set[str] = set()
+        stack = list(reversed(nodes))
+        while stack:
+            node = stack.pop()
+            if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                names.add(node.id)
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and (
+                    node.attr in _SUBAGENT_MAPPING_TYPES
+                    or node.attr in _GENERIC_CONTAINER_KINDS
+                    or node.attr == "TYPE_CHECKING"
+                )
+            ):
+                base = node.value
+                while isinstance(base, ast.Attribute):
+                    base = base.value
+                if isinstance(base, ast.Name):
+                    mutated_namespaces.add(base.id)
+            if (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "__dict__"
+                and isinstance(node.value.value, ast.Name)
+                and isinstance(node.slice, ast.Constant)
+                and node.slice.value
+                in {*_SUBAGENT_MAPPING_TYPES, *_GENERIC_CONTAINER_KINDS, "TYPE_CHECKING"}
+            ):
+                mutated_namespaces.add(node.value.value.id)
+            if (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "vars"
+                and node.value.func.id in builtin_mutators
+                and len(node.value.args) == 1
+                and isinstance(node.value.args[0], ast.Name)
+                and isinstance(node.slice, ast.Constant)
+                and node.slice.value
+                in {*_SUBAGENT_MAPPING_TYPES, *_GENERIC_CONTAINER_KINDS, "TYPE_CHECKING"}
+            ):
+                mutated_namespaces.add(node.value.args[0].id)
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr
+                in {"update", "setdefault", "pop", "popitem", "clear", "__setitem__", "__delitem__"}
+            ):
+                namespace_name: str | None = None
+                receiver = node.func.value
+                if (
+                    isinstance(receiver, ast.Attribute)
+                    and receiver.attr == "__dict__"
+                    and isinstance(receiver.value, ast.Name)
+                ):
+                    namespace_name = receiver.value.id
+                elif (
+                    isinstance(receiver, ast.Call)
+                    and isinstance(receiver.func, ast.Name)
+                    and receiver.func.id == "vars"
+                    and receiver.func.id in builtin_mutators
+                    and len(receiver.args) == 1
+                    and isinstance(receiver.args[0], ast.Name)
+                ):
+                    namespace_name = receiver.args[0].id
+                if namespace_name is not None:
+                    mutated_namespaces.add(namespace_name)
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id in builtin_mutators
+                and len(node.args) >= 2
+                and isinstance(node.args[0], ast.Name)
+                and isinstance(node.args[1], ast.Constant)
+                and node.args[1].value
+                in {*_SUBAGENT_MAPPING_TYPES, *_GENERIC_CONTAINER_KINDS, "TYPE_CHECKING"}
+            ):
+                mutated_namespaces.add(node.args[0].id)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                names.add(node.name)
+                stack.extend(reversed(definition_header_nodes(node)))
+                continue
+            if isinstance(
+                node,
+                (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp),
+            ):
+                # Generator targets are local to the comprehension. Expressions,
+                # filters, and iterables still execute in the enclosing scope and
+                # can contain walrus bindings or namespace mutation calls.
+                parts: list[ast.AST] = []
+                if isinstance(node, ast.DictComp):
+                    parts.extend((node.key, node.value))
+                else:
+                    parts.append(node.elt)
+                for generator in node.generators:
+                    parts.append(generator.iter)
+                    parts.extend(generator.ifs)
+                stack.extend(reversed(parts))
+                continue
+            if isinstance(node, ast.Lambda):
+                continue
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                names.update(
+                    alias.asname or alias.name.split(".", 1)[0]
+                    for alias in node.names
+                    if alias.name != "*"
+                )
+                continue
+            if isinstance(node, ast.ExceptHandler) and node.name:
+                names.add(node.name)
+            if isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
+                names.add(node.name)
+            if isinstance(node, ast.MatchMapping) and node.rest:
+                names.add(node.rest)
+            stack.extend(reversed(list(ast.iter_child_nodes(node))))
+        return names, mutated_namespaces
+
+    def clear_binding(name: str) -> None:
+        symbols.pop(name, None)
+        modules.discard(name)
+        containers.pop(name, None)
+        generic_modules.pop(name, None)
+        type_checking_symbols.discard(name)
+        typing_modules.discard(name)
+        builtin_mutators.discard(name)
+
+    ProvenanceState = tuple[
+        dict[str, str],
+        set[str],
+        dict[str, str],
+        dict[str, str],
+        set[str],
+        set[str],
+        set[str],
+    ]
+
+    def capture_state() -> ProvenanceState:
+        return (
+            dict(symbols),
+            set(modules),
+            dict(containers),
+            dict(generic_modules),
+            set(type_checking_symbols),
+            set(typing_modules),
+            set(builtin_mutators),
+        )
+
+    def restore_state(state: ProvenanceState) -> None:
+        symbols.clear()
+        symbols.update(state[0])
+        modules.clear()
+        modules.update(state[1])
+        containers.clear()
+        containers.update(state[2])
+        generic_modules.clear()
+        generic_modules.update(state[3])
+        type_checking_symbols.clear()
+        type_checking_symbols.update(state[4])
+        typing_modules.clear()
+        typing_modules.update(state[5])
+        builtin_mutators.clear()
+        builtin_mutators.update(state[6])
+
+    def join_states(states: list[ProvenanceState]) -> ProvenanceState:
+        """Keep only provenance that is identical on every reachable path."""
+        if not states:
+            return {}, set(), {}, {}, set(), set(), set()
+
+        def joined_mapping(values: list[dict[str, str]]) -> dict[str, str]:
+            first = values[0]
+            return {
+                key: value
+                for key, value in first.items()
+                if all(mapping.get(key) == value for mapping in values[1:])
+            }
+
+        def joined_set(values: list[set[str]]) -> set[str]:
+            return set.intersection(*values)
+
+        return (
+            joined_mapping([state[0] for state in states]),
+            joined_set([state[1] for state in states]),
+            joined_mapping([state[2] for state in states]),
+            joined_mapping([state[3] for state in states]),
+            joined_set([state[4] for state in states]),
+            joined_set([state[5] for state in states]),
+            joined_set([state[6] for state in states]),
+        )
+
+    def apply_import(statement: ast.Import | ast.ImportFrom) -> None:
+        if isinstance(statement, ast.ImportFrom):
+            module = statement.module or ""
+            root = module.split(".", 1)[0]
+            for alias in statement.names:
+                local_name = alias.asname or alias.name
+                clear_binding(local_name)
+                if statement.level != 0:
+                    continue
+                if root in _SUBAGENT_MODULES and alias.name in _SUBAGENT_MAPPING_TYPES:
+                    symbols[local_name] = alias.name
+                elif module == "typing" and alias.name == "TYPE_CHECKING":
+                    type_checking_symbols.add(local_name)
+                elif module in {"typing", "collections.abc"}:
+                    kind = _GENERIC_MODULE_MEMBERS[module].get(alias.name)
+                    if kind is not None:
+                        containers[local_name] = kind
+                elif module == "collections" and alias.name == "abc":
+                    generic_modules[local_name] = "collections.abc"
+            return
+        for alias in statement.names:
+            local_name = alias.asname or alias.name.split(".", 1)[0]
+            clear_binding(local_name)
+            root = alias.name.split(".", 1)[0]
+            if root in _SUBAGENT_MODULES:
+                modules.add(local_name)
+            elif alias.name in {"typing", "collections", "collections.abc"}:
+                module_name = alias.name
+                if alias.name == "collections.abc" and not alias.asname:
+                    module_name = "collections"
+                generic_modules[local_name] = module_name
+                if alias.name == "typing":
+                    typing_modules.add(local_name)
+
+    site_ancestors: set[ast.AST] = set()
+    current = parents.get(site)
+    while current is not None:
+        site_ancestors.add(current)
+        current = parents.get(current)
+
+    def apply_effects(nodes: list[ast.AST]) -> None:
+        names, mutated_namespaces = binding_effects(nodes)
+        for name in names | mutated_namespaces:
+            clear_binding(name)
+
+    def run_block(
+        statements: list[ast.stmt], initial: ProvenanceState
+    ) -> tuple[ProvenanceState, bool]:
+        restore_state(initial)
+        falls_through = True
+        for statement in statements:
+            falls_through = apply_statement(statement)
+            if not falls_through:
+                break
+        return capture_state(), falls_through
+
+    def possible_prefix_state(
+        statements: list[ast.stmt], initial: ProvenanceState
+    ) -> ProvenanceState:
+        """Join states after every prefix that could transfer to a handler."""
+        states = [initial]
+        restore_state(initial)
+        for statement in statements:
+            before = capture_state()
+            falls_through = apply_statement(statement)
+            after = capture_state()
+            # A handler can be entered after expression effects have run but
+            # before a statement completes.  Include both the normal result
+            # and a conservative exceptional result carrying every write in
+            # the statement (notably NamedExpr targets in ``raise``/branches).
+            states.append(after)
+            restore_state(before)
+            # A failed import does not replace an existing local binding;
+            # assignment occurs only after import resolution succeeds.
+            if not isinstance(statement, (ast.Import, ast.ImportFrom)):
+                apply_effects([statement])
+            states.append(capture_state())
+            restore_state(after)
+            if not falls_through:
+                break
+        return join_states(states)
+
+    def loop_body_paths(
+        statements: list[ast.stmt], initial: ProvenanceState
+    ) -> tuple[
+        list[ProvenanceState],
+        list[ProvenanceState],
+        list[ProvenanceState],
+        list[ProvenanceState],
+        list[ProvenanceState],
+    ]:
+        """Return normal, break, continue, return, and raise exit states."""
+        normal = [initial]
+        breaks: list[ProvenanceState] = []
+        continues: list[ProvenanceState] = []
+        returns: list[ProvenanceState] = []
+        raises: list[ProvenanceState] = []
+        for statement in statements:
+            next_normal: list[ProvenanceState] = []
+            for state in normal:
+                restore_state(state)
+                if isinstance(statement, ast.Break):
+                    breaks.append(capture_state())
+                    continue
+                if isinstance(statement, ast.Continue):
+                    continues.append(capture_state())
+                    continue
+                if isinstance(statement, ast.Return):
+                    apply_effects([statement])
+                    returns.append(capture_state())
+                    continue
+                if isinstance(statement, ast.Raise):
+                    apply_effects([statement])
+                    raises.append(capture_state())
+                    continue
+                if isinstance(statement, ast.If):
+                    runtime_value = _trusted_runtime_condition(
+                        statement.test, type_checking_symbols, typing_modules
+                    )
+                    apply_effects([statement.test])
+                    branch_entry = capture_state()
+                    branches = (
+                        [statement.body]
+                        if runtime_value is True
+                        else [statement.orelse]
+                        if runtime_value is False
+                        else [statement.body, statement.orelse]
+                    )
+                    for branch in branches:
+                        (
+                            branch_normal,
+                            branch_breaks,
+                            branch_continues,
+                            branch_returns,
+                            branch_raises,
+                        ) = loop_body_paths(branch, branch_entry)
+                        next_normal.extend(branch_normal)
+                        breaks.extend(branch_breaks)
+                        continues.extend(branch_continues)
+                        returns.extend(branch_returns)
+                        raises.extend(branch_raises)
+                    continue
+                if isinstance(statement, (ast.With, ast.AsyncWith)):
+                    headers: list[ast.AST] = []
+                    for item in statement.items:
+                        headers.append(item.context_expr)
+                        if item.optional_vars is not None:
+                            headers.append(item.optional_vars)
+                    apply_effects(headers)
+                    body_flow = loop_body_paths(statement.body, capture_state())
+                    next_normal.extend(body_flow[0])
+                    breaks.extend(body_flow[1])
+                    continues.extend(body_flow[2])
+                    returns.extend(body_flow[3])
+                    raises.extend(body_flow[4])
+                    continue
+                if isinstance(statement, ast.Match):
+                    apply_effects([statement.subject])
+                    match_entry = capture_state()
+                    exhaustive = False
+                    for case in statement.cases:
+                        restore_state(match_entry)
+                        guard_value = case_guard_value(case)
+                        apply_effects(
+                            [case.pattern, *([case.guard] if case.guard is not None else [])]
+                        )
+                        if guard_value is not False:
+                            case_flow = loop_body_paths(case.body, capture_state())
+                            next_normal.extend(case_flow[0])
+                            breaks.extend(case_flow[1])
+                            continues.extend(case_flow[2])
+                            returns.extend(case_flow[3])
+                            raises.extend(case_flow[4])
+                        if irrefutable_pattern(case.pattern) and guard_value is True:
+                            exhaustive = True
+                            break
+                    if not exhaustive:
+                        next_normal.append(match_entry)
+                    continue
+                if isinstance(statement, (ast.Try, ast.TryStar)):
+                    try_entry = capture_state()
+                    body_flow = loop_body_paths(statement.body, try_entry)
+                    pre_final: list[tuple[str, ProvenanceState]] = []
+                    for body_normal in body_flow[0]:
+                        else_flow = loop_body_paths(statement.orelse, body_normal)
+                        pre_final.extend(("normal", item) for item in else_flow[0])
+                        pre_final.extend(("break", item) for item in else_flow[1])
+                        pre_final.extend(("continue", item) for item in else_flow[2])
+                        pre_final.extend(("return", item) for item in else_flow[3])
+                        pre_final.extend(("raise", item) for item in else_flow[4])
+                    pre_final.extend(("break", item) for item in body_flow[1])
+                    pre_final.extend(("continue", item) for item in body_flow[2])
+                    pre_final.extend(("return", item) for item in body_flow[3])
+                    pre_final.extend(("raise", item) for item in body_flow[4])
+
+                    handler_entry = possible_prefix_state(statement.body, try_entry)
+                    # Any statement may raise before completing; an unmatched
+                    # exception still runs ``finally`` with this joined prefix.
+                    pre_final.append(("raise", handler_entry))
+                    for handler in statement.handlers:
+                        restore_state(handler_entry)
+                        if handler.type is not None:
+                            apply_effects([handler.type])
+                        if handler.name:
+                            clear_binding(handler.name)
+                        handler_flow = loop_body_paths(handler.body, capture_state())
+                        pre_final.extend(("normal", item) for item in handler_flow[0])
+                        pre_final.extend(("break", item) for item in handler_flow[1])
+                        pre_final.extend(("continue", item) for item in handler_flow[2])
+                        pre_final.extend(("return", item) for item in handler_flow[3])
+                        pre_final.extend(("raise", item) for item in handler_flow[4])
+
+                    for kind, predecessor in pre_final:
+                        final_flow = loop_body_paths(statement.finalbody, predecessor)
+                        for final_normal in final_flow[0]:
+                            if kind == "normal":
+                                next_normal.append(final_normal)
+                            elif kind == "break":
+                                breaks.append(final_normal)
+                            elif kind == "continue":
+                                continues.append(final_normal)
+                            elif kind == "return":
+                                returns.append(final_normal)
+                            else:
+                                raises.append(final_normal)
+                        breaks.extend(final_flow[1])
+                        continues.extend(final_flow[2])
+                        returns.extend(final_flow[3])
+                        raises.extend(final_flow[4])
+                    continue
+                if apply_statement(statement):
+                    next_normal.append(capture_state())
+            normal = next_normal
+            if not normal:
+                break
+        return normal, breaks, continues, returns, raises
+
+    def irrefutable_pattern(pattern: ast.pattern) -> bool:
+        if isinstance(pattern, ast.MatchAs):
+            return pattern.pattern is None or irrefutable_pattern(pattern.pattern)
+        if isinstance(pattern, ast.MatchOr):
+            return any(irrefutable_pattern(item) for item in pattern.patterns)
+        return False
+
+    def case_guard_value(case: ast.match_case) -> bool | None:
+        if case.guard is None:
+            return True
+        return _trusted_runtime_condition(
+            case.guard, type_checking_symbols, typing_modules
+        )
+
+    def apply_statement(statement: ast.stmt) -> bool:
+        """Apply one statement and report whether its suite can fall through."""
+        if isinstance(statement, (ast.Import, ast.ImportFrom)):
+            apply_import(statement)
+            return True
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            apply_effects(definition_header_nodes(statement))
+            clear_binding(statement.name)
+            return True
+        if isinstance(statement, ast.If):
+            runtime_value = _trusted_runtime_condition(
+                statement.test, type_checking_symbols, typing_modules
+            )
+            apply_effects([statement.test])
+            entry = capture_state()
+            if runtime_value is True:
+                state, falls_through = run_block(statement.body, entry)
+                restore_state(state)
+                return falls_through
+            if runtime_value is False:
+                state, falls_through = run_block(statement.orelse, entry)
+                restore_state(state)
+                return falls_through
+            branch_exits: list[ProvenanceState] = []
+            body_state, body_falls = run_block(statement.body, entry)
+            if body_falls:
+                branch_exits.append(body_state)
+            else_state, else_falls = run_block(statement.orelse, entry)
+            if else_falls:
+                branch_exits.append(else_state)
+            restore_state(join_states(branch_exits))
+            return bool(branch_exits)
+        if isinstance(statement, ast.While):
+            runtime_value = _trusted_runtime_condition(
+                statement.test, type_checking_symbols, typing_modules
+            )
+            apply_effects([statement.test])
+            entry = capture_state()
+            if runtime_value is False:
+                state, falls_through = run_block(statement.orelse, entry)
+                restore_state(state)
+                return falls_through
+            (
+                body_normal,
+                body_breaks,
+                body_continues,
+                _body_returns,
+                _body_raises,
+            ) = loop_body_paths(statement.body, entry)
+            normal_inputs = [entry]
+            normal_inputs.extend(body_normal)
+            normal_inputs.extend(body_continues)
+            normal_input = join_states(normal_inputs)
+            else_state, else_falls = run_block(statement.orelse, normal_input)
+            loop_exits: list[ProvenanceState] = []
+            if runtime_value is not True and else_falls:
+                loop_exits.append(else_state)
+            loop_exits.extend(body_breaks)
+            restore_state(join_states(loop_exits))
+            return bool(loop_exits)
+        if isinstance(statement, (ast.For, ast.AsyncFor)):
+            if _proven_empty_iterable(statement.iter):
+                apply_effects([statement.iter])
+                state, falls_through = run_block(
+                    statement.orelse, capture_state()
+                )
+                restore_state(state)
+                return falls_through
+            apply_effects([statement.iter, statement.target])
+            entry = capture_state()
+            (
+                body_normal,
+                body_breaks,
+                body_continues,
+                _body_returns,
+                _body_raises,
+            ) = loop_body_paths(statement.body, entry)
+            normal_inputs = [entry]
+            normal_inputs.extend(body_normal)
+            normal_inputs.extend(body_continues)
+            normal_input = join_states(normal_inputs)
+            else_state, else_falls = run_block(statement.orelse, normal_input)
+            for_exits = [else_state] if else_falls else []
+            for_exits.extend(body_breaks)
+            restore_state(join_states(for_exits))
+            return bool(for_exits)
+        if isinstance(statement, (ast.With, ast.AsyncWith)):
+            with_headers: list[ast.AST] = []
+            for item in statement.items:
+                with_headers.append(item.context_expr)
+                if item.optional_vars is not None:
+                    with_headers.append(item.optional_vars)
+            apply_effects(with_headers)
+            state, falls_through = run_block(statement.body, capture_state())
+            restore_state(state)
+            return falls_through
+        if isinstance(statement, ast.Match):
+            apply_effects([statement.subject])
+            entry = capture_state()
+            match_exits: list[ProvenanceState] = []
+            exhaustive = False
+            for case in statement.cases:
+                restore_state(entry)
+                guard_value = case_guard_value(case)
+                apply_effects(
+                    [case.pattern, *([case.guard] if case.guard is not None else [])]
+                )
+                if guard_value is not False:
+                    case_state, case_falls = run_block(case.body, capture_state())
+                    if case_falls:
+                        match_exits.append(case_state)
+                if irrefutable_pattern(case.pattern) and guard_value is True:
+                    exhaustive = True
+                    break
+            if not exhaustive:
+                match_exits.append(entry)
+            restore_state(join_states(match_exits))
+            return bool(match_exits)
+        if isinstance(statement, (ast.Try, ast.TryStar)):
+            entry = capture_state()
+            body_state, body_falls = run_block(statement.body, entry)
+            try_exits: list[ProvenanceState] = []
+            if body_falls:
+                normal_state, normal_falls = run_block(statement.orelse, body_state)
+                if normal_falls:
+                    try_exits.append(normal_state)
+            handler_entry = possible_prefix_state(statement.body, entry)
+            for handler in statement.handlers:
+                restore_state(handler_entry)
+                handler_headers: list[ast.AST] = []
+                if handler.type is not None:
+                    handler_headers.append(handler.type)
+                apply_effects(handler_headers)
+                if handler.name:
+                    clear_binding(handler.name)
+                handler_state, handler_falls = run_block(
+                    handler.body, capture_state()
+                )
+                if handler_falls:
+                    try_exits.append(handler_state)
+            if not try_exits:
+                restore_state(join_states([]))
+                return False
+            joined = join_states(try_exits)
+            final_state, final_falls = run_block(statement.finalbody, joined)
+            restore_state(final_state)
+            return final_falls
+        apply_effects([statement])
+        return not isinstance(
+            statement, (ast.Return, ast.Raise, ast.Break, ast.Continue)
+        )
+
+    def apply_path_header(node: ast.AST) -> None:
+        """Apply bindings evaluated before a nested statement body."""
+        header_nodes: list[ast.AST] = []
+        if isinstance(node, (ast.If, ast.While)):
+            header_nodes.append(node.test)
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            header_nodes.extend((node.iter, node.target))
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                header_nodes.append(item.context_expr)
+                if item.optional_vars is not None:
+                    header_nodes.append(item.optional_vars)
+        elif isinstance(node, ast.Match):
+            header_nodes.append(node.subject)
+        elif isinstance(node, ast.ExceptHandler):
+            if node.type is not None:
+                header_nodes.append(node.type)
+            if node.name:
+                clear_binding(node.name)
+        elif isinstance(node, ast.match_case):
+            header_nodes.append(node.pattern)
+            if node.guard is not None:
+                header_nodes.append(node.guard)
+        if header_nodes:
+            apply_effects(header_nodes)
+
+    site_is_nonruntime = False
+
+    def mark_nonruntime_branch(node: ast.If | ast.While) -> None:
+        nonlocal site_is_nonruntime
+        runtime_value = _trusted_runtime_condition(
+            node.test, type_checking_symbols, typing_modules
+        )
+        if runtime_value is None:
+            return
+        in_body = any(item is site or item in site_ancestors for item in node.body)
+        in_orelse = any(item is site or item in site_ancestors for item in node.orelse)
+        if (in_body and not runtime_value) or (in_orelse and runtime_value):
+            site_is_nonruntime = True
+
+    def replay_path(node: ast.AST) -> None:
+        """Replay only the statement path leading to the annotation site."""
+        nonlocal site_is_nonruntime
+        if isinstance(node, (ast.If, ast.While)):
+            mark_nonruntime_branch(node)
+            if site_is_nonruntime:
+                return
+        if (
+            isinstance(node, (ast.For, ast.AsyncFor))
+            and _proven_empty_iterable(node.iter)
+            and any(item is site or item in site_ancestors for item in node.body)
+        ):
+            site_is_nonruntime = True
+            return
+        if isinstance(node, ast.Match):
+            apply_effects([node.subject])
+            target_index = next(
+                (
+                    index
+                    for index, case in enumerate(node.cases)
+                    if case is site or case in site_ancestors
+                ),
+                None,
+            )
+            if target_index is None:
+                return
+            for case in node.cases[:target_index]:
+                guard_value = case_guard_value(case)
+                apply_effects(
+                    [case.pattern, *([case.guard] if case.guard is not None else [])]
+                )
+                if irrefutable_pattern(case.pattern) and guard_value is True:
+                    site_is_nonruntime = True
+                    return
+            target = node.cases[target_index]
+            if case_guard_value(target) is False:
+                site_is_nonruntime = True
+                return
+            replay_path(target)
+            return
+        if isinstance(node, (ast.Try, ast.TryStar)):
+            target_handler = next(
+                (
+                    handler
+                    for handler in node.handlers
+                    if handler is site or handler in site_ancestors
+                ),
+                None,
+            )
+            if target_handler is not None:
+                handler_entry = possible_prefix_state(node.body, capture_state())
+                restore_state(handler_entry)
+                replay_path(target_handler)
+                return
+        if isinstance(node, (ast.While, ast.For, ast.AsyncFor)) and any(
+            item is site or item in site_ancestors for item in node.orelse
+        ):
+            runtime_value = (
+                _trusted_runtime_condition(
+                    node.test, type_checking_symbols, typing_modules
+                )
+                if isinstance(node, ast.While)
+                else None
+            )
+            if isinstance(node, (ast.For, ast.AsyncFor)) and _proven_empty_iterable(
+                node.iter
+            ):
+                apply_effects([node.iter])
+            else:
+                apply_path_header(node)
+            entry = capture_state()
+            if runtime_value is False:
+                normal_input = entry
+            else:
+                (
+                    body_normal,
+                    _body_breaks,
+                    body_continues,
+                    _body_returns,
+                    _body_raises,
+                ) = loop_body_paths(node.body, entry)
+                normal_inputs = [entry]
+                normal_inputs.extend(body_normal)
+                normal_inputs.extend(body_continues)
+                normal_input = join_states(normal_inputs)
+            restore_state(normal_input)
+            replay(node.orelse)
+            return
+        if isinstance(node, (ast.Try, ast.TryStar)) and any(
+            item is site or item in site_ancestors for item in node.orelse
+        ):
+            # Entering ``else`` proves every statement in the try body
+            # completed without raising, so its bindings are visible here.
+            replay(node.body)
+            replay(node.orelse)
+            return
+        if isinstance(node, (ast.Try, ast.TryStar)) and any(
+            item is site or item in site_ancestors for item in node.finalbody
+        ):
+            # Join the actual predecessor states of ``finally``.  This keeps
+            # identical trusted imports made on every path while invalidating
+            # writes, deletes, and namespace mutations that differ by path.
+            entry = capture_state()
+            body_flow = loop_body_paths(node.body, entry)
+            predecessors: list[ProvenanceState] = []
+            for normal_predecessor in body_flow[0]:
+                else_flow = loop_body_paths(node.orelse, normal_predecessor)
+                for states in else_flow:
+                    predecessors.extend(states)
+            for states in body_flow[1:]:
+                predecessors.extend(states)
+            handler_entry = possible_prefix_state(node.body, entry)
+            # ``finally`` also runs for an exception not matched by any
+            # handler, including one raised before a binding completes.
+            predecessors.append(handler_entry)
+            for handler in node.handlers:
+                restore_state(handler_entry)
+                if handler.type is not None:
+                    apply_effects([handler.type])
+                if handler.name:
+                    clear_binding(handler.name)
+                handler_flow = loop_body_paths(handler.body, capture_state())
+                for states in handler_flow:
+                    predecessors.extend(states)
+            restore_state(join_states(predecessors))
+            replay(node.finalbody)
+            return
+        apply_path_header(node)
+        for _field, value in ast.iter_fields(node):
+            if isinstance(value, list):
+                path_items = [
+                    item
+                    for item in value
+                    if isinstance(item, ast.AST)
+                    and (item is site or item in site_ancestors)
+                ]
+                if not path_items:
+                    continue
+                statements = [item for item in value if isinstance(item, ast.stmt)]
+                if statements and len(statements) == len(value):
+                    replay(statements)
+                else:
+                    replay_path(path_items[0])
+                return
+            if isinstance(value, ast.AST) and (
+                value is site or value in site_ancestors
+            ):
+                if value is not site:
+                    replay_path(value)
+                return
+
+    def replay(statements: list[ast.stmt]) -> None:
+        nonlocal site_is_nonruntime
+        for statement in statements:
+            if statement is site:
+                return
+            if statement in site_ancestors:
+                if isinstance(
+                    statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                ):
+                    apply_effects(definition_header_nodes(statement))
+                    clear_binding(statement.name)
+                    return
+                replay_path(statement)
+                return
+            if not apply_statement(statement):
+                site_is_nonruntime = True
+                return
+
+    replay(tree.body)
+
+    scopes: list[ast.AST] = []
+    current = parents.get(site)
+    while current is not None and not isinstance(current, ast.Module):
+        if isinstance(
+            current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+        ):
+            scopes.append(current)
+        current = parents.get(current)
+
+    def declared_outer_names(
+        scope: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+    ) -> set[str]:
+        """Return ``global``/``nonlocal`` names declared by this function."""
+        body = scope.body
+        stack: list[ast.AST] = (
+            list(reversed(body)) if isinstance(body, list) else [body]
+        )
+        declared: set[str] = set()
+        while stack:
+            node = stack.pop()
+            if isinstance(node, (ast.Global, ast.Nonlocal)):
+                declared.update(node.names)
+                continue
+            if isinstance(
+                node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+            ):
+                continue
+            stack.extend(reversed(list(ast.iter_child_nodes(node))))
+        return declared
+
+    for scope in reversed(scopes):
+        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            args = scope.args
+            parameters = [*args.posonlyargs, *args.args, *args.kwonlyargs]
+            if args.vararg:
+                parameters.append(args.vararg)
+            if args.kwarg:
+                parameters.append(args.kwarg)
+            body = scope.body
+            body_nodes: list[ast.AST] = list(body) if isinstance(body, list) else [body]
+            local_names = {parameter.arg for parameter in parameters}
+            bound_names, _ = binding_effects(body_nodes)
+            local_names.update(bound_names)
+            # A Store/Del for a declared global/nonlocal updates an outer
+            # binding; it does not shadow that binding from function entry.
+            # Replay below still invalidates it when the write precedes the
+            # annotation site.
+            local_names.difference_update(declared_outer_names(scope))
+            for name in local_names:
+                clear_binding(name)
+            if isinstance(body, list):
+                replay(body)
+        elif isinstance(scope, ast.ClassDef):
+            replay(scope.body)
+
+    if site_is_nonruntime:
+        return {}, set(), {}, {}
+    return symbols, modules, containers, generic_modules
+
+
+def _trusted_subagent_type(
+    node: ast.AST, symbols: dict[str, str], modules: set[str]
+) -> str | None:
+    if isinstance(node, ast.Name):
+        return symbols.get(node.id)
+    if (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in modules
+        and node.attr in _SUBAGENT_MAPPING_TYPES
+    ):
+        return node.attr
+    return None
+
+
+def _mentions_trusted_subagent(
+    node: ast.AST, symbols: dict[str, str], modules: set[str]
+) -> bool:
+    return any(
+        _trusted_subagent_type(part, symbols, modules) is not None
+        for part in ast.walk(node)
+    )
+
+
+def _generic_container_kind(
+    node: ast.AST, containers: dict[str, str], generic_modules: dict[str, str]
+) -> str | None:
+    if isinstance(node, ast.Name):
+        return containers.get(node.id)
+    if not isinstance(node, ast.Attribute):
+        return None
+    module = ""
+    if isinstance(node.value, ast.Name):
+        module = generic_modules.get(node.value.id, "")
+    elif (
+        isinstance(node.value, ast.Attribute)
+        and isinstance(node.value.value, ast.Name)
+        and node.value.attr == "abc"
+        and generic_modules.get(node.value.value.id) == "collections"
+    ):
+        module = "collections.abc"
+    if module not in {"typing", "collections.abc"}:
+        return None
+    return _GENERIC_MODULE_MEMBERS[module].get(node.attr)
+
+
+def _typed_subagent_annotation(
+    annotation: ast.AST,
+    symbols: dict[str, str],
+    modules: set[str],
+    containers: dict[str, str],
+    generic_modules: dict[str, str],
+) -> tuple[str, str] | None:
+    """Return ``(SubAgent type, shape)`` for one exact supported annotation."""
+    direct = _trusted_subagent_type(annotation, symbols, modules)
+    if direct is not None:
+        return direct, "direct"
+    if not isinstance(annotation, ast.Subscript):
+        return None
+    if any(
+        isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr)
+        for node in ast.walk(annotation)
+    ):
+        return None
+    shape = _generic_container_kind(annotation.value, containers, generic_modules)
+    if shape is None:
+        return None
+
+    if shape == "sequence":
+        item_type = _trusted_subagent_type(annotation.slice, symbols, modules)
+        return (item_type, "sequence") if item_type is not None else None
+
+    if shape == "tuple":
+        if isinstance(annotation.slice, ast.Tuple):
+            items = annotation.slice.elts
+            if not (
+                len(items) == 2
+                and isinstance(items[1], ast.Constant)
+                and items[1].value is Ellipsis
+            ):
+                return None
+            item_node = items[0]
+        else:
+            item_node = annotation.slice
+        item_type = _trusted_subagent_type(item_node, symbols, modules)
+        return (item_type, "sequence") if item_type is not None else None
+
+    if shape == "mapping":
+        items = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else []
+        if len(items) != 2 or _mentions_trusted_subagent(items[0], symbols, modules):
+            return None
+        value_type = _trusted_subagent_type(items[1], symbols, modules)
+        return (value_type, "mapping") if value_type is not None else None
+
+    return None
+
+
+def _literal_subagent_mapping(
+    node: ast.Dict, annotation: str
+) -> tuple[str, str, int, str | None, tuple[str, ...]] | None:
+    fields: dict[str, ast.AST] = {}
+    for key, value in zip(node.keys, node.values, strict=True):
+        if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
+            return None
+        if key.value in fields:
+            return None
+        fields[key.value] = value
+    raw_name = fields.get("name")
+    if not isinstance(raw_name, ast.Constant) or not isinstance(raw_name.value, str):
+        return None
+    if not raw_name.value.strip():
+        return None
+    raw_model = fields.get("model")
+    model_name = (
+        raw_model.value
+        if isinstance(raw_model, ast.Constant)
+        and isinstance(raw_model.value, str)
+        and raw_model.value.strip()
+        else None
+    )
+    tool_names: list[str] = []
+    raw_tools = fields.get("tools")
+    if isinstance(raw_tools, (ast.List, ast.Tuple, ast.Set)):
+        for item in raw_tools.elts:
+            if (
+                isinstance(item, ast.Constant)
+                and isinstance(item.value, str)
+                and item.value.strip()
+            ):
+                tool_names.append(item.value)
+            elif isinstance(item, ast.Name):
+                tool_names.append(item.id)
+    return raw_name.value, annotation, node.lineno, model_name, tuple(tool_names)
+
+
+def _extract_typed_subagent_mappings(
+    source: str,
+) -> list[tuple[str, str, int, str | None, tuple[str, ...]]]:
+    """Extract only direct literal mappings with explicit SubAgent-family types."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+    found: list[tuple[str, str, int, str | None, tuple[str, ...]]] = []
+    for assignment in (node for node in ast.walk(tree) if isinstance(node, ast.AnnAssign)):
+        symbols, modules, containers, generic_modules = _annotation_provenance(
+            tree, assignment, parents
+        )
+        if not symbols and not modules:
+            continue
+        annotation = _typed_subagent_annotation(
+            assignment.annotation,
+            symbols,
+            modules,
+            containers,
+            generic_modules,
+        )
+        if annotation is None or assignment.value is None:
+            continue
+        annotation_name, shape = annotation
+        candidates: list[ast.Dict] = []
+        if shape == "direct" and isinstance(assignment.value, ast.Dict):
+            candidates.append(assignment.value)
+        elif shape == "sequence" and isinstance(assignment.value, (ast.List, ast.Tuple)):
+            candidates.extend(
+                item for item in assignment.value.elts if isinstance(item, ast.Dict)
+            )
+        elif shape == "mapping" and isinstance(assignment.value, ast.Dict):
+            candidates.extend(
+                value
+                for key, value in zip(
+                    assignment.value.keys, assignment.value.values, strict=True
+                )
+                if isinstance(key, ast.Constant)
+                and isinstance(key.value, str)
+                and isinstance(value, ast.Dict)
+            )
+        for candidate in candidates:
+            item = _literal_subagent_mapping(candidate, annotation_name)
+            if item is not None:
+                found.append(item)
+    return found
+
+
 def _positional_str(call: Any, idx: int) -> str:
     if call.positional_args and len(call.positional_args) > idx:
         v = call.positional_args[idx]
         if isinstance(v, str) and not v.startswith("$"):
             return v.strip("'\"")
     return ""
-
 
 def _infer_var_from_source(source: str, line: int) -> str | None:
     lines = source.splitlines()
