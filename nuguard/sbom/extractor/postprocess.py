@@ -12,11 +12,13 @@ the after-the-fact cleanup passes independently readable.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from nuguard.common.logging import get_logger
 
 from ..models import ScanSummary
+from ..normalization import canonicalize_text
 from ..types import ComponentType
 
 if TYPE_CHECKING:
@@ -125,6 +127,85 @@ def _make_scan_summary(d: dict) -> ScanSummary:
     )
 
 
+def _is_exact_config_model(
+    key: tuple[ComponentType, str],
+    acc: "_NodeAccumulator",
+) -> bool:
+    """Return whether a MODEL name came from a complete config scalar."""
+    return key[0] == ComponentType.MODEL and bool(acc.metadata.get("config_key"))
+
+
+def _has_only_regex_evidence(acc: "_NodeAccumulator") -> bool:
+    """Only regex-only detections are eligible as config-model truncations."""
+    return bool(acc.evidence) and all(ev.kind == "regex" for ev in acc.evidence)
+
+
+def _dedup_exact_config_models(
+    node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
+) -> None:
+    """Merge only equal model values into exact declarations and retarget hints.
+
+    A lossless config key must not create duplicate nodes for the same model
+    already detected in code. Match full, case-sensitive values, never slugs.
+    """
+    exact = {
+        acc.display_name: key
+        for key, acc in node_map.items()
+        if _is_exact_config_model(key, acc)
+    }
+    aliases: dict[str, str] = {}
+    for key, acc in list(node_map.items()):
+        if key[0] != ComponentType.MODEL or _is_exact_config_model(key, acc):
+            continue
+        winner_key = exact.get(acc.display_name)
+        if winner_key is None:
+            continue
+        winner = node_map[winner_key]
+        winner.evidence.extend(acc.evidence)
+        winner.relationships.extend(acc.relationships)
+        winner.source_tiers.update(acc.source_tiers)
+        if acc.best_tier_rank < winner.best_tier_rank or (
+            acc.best_tier_rank == winner.best_tier_rank and acc.priority < winner.priority
+        ):
+            winner.adapter_name = acc.adapter_name
+            winner.priority = acc.priority
+        if acc.best_tier_rank < winner.best_tier_rank:
+            winner.metadata = {
+                **winner.metadata,
+                **{name: value for name, value in acc.metadata.items() if value is not None},
+            }
+        else:
+            for name, value in acc.metadata.items():
+                if value is not None:
+                    winner.metadata.setdefault(name, value)
+        winner.best_tier_rank = min(winner.best_tier_rank, acc.best_tier_rank)
+        winner.confidence = max(winner.confidence, acc.confidence)
+        aliases[key[1]] = winner.canonical_name
+        del node_map[key]
+    if not aliases:
+        return
+
+    live_model_keys = {key[1] for key in node_map if key[0] == ComponentType.MODEL}
+
+    def remap(name: str, kind: ComponentType) -> str:
+        if kind != ComponentType.MODEL or name in live_model_keys:
+            return name
+        return aliases.get(name, aliases.get(canonicalize_text(name), name))
+
+    for acc in node_map.values():
+        acc.relationships = [
+            replace(
+                hint,
+                source_canonical=remap(hint.source_canonical, hint.source_type),
+                target_canonical=remap(hint.target_canonical, hint.target_type),
+                target_files=tuple(
+                    (path, remap(name, hint.target_type)) for path, name in hint.target_files
+                ),
+            )
+            for hint in acc.relationships
+        ]
+
+
 def _dedup_by_name_prefix(
     node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
 ) -> None:
@@ -181,6 +262,9 @@ def _dedup_by_name_prefix(
         for index, key_a in enumerate(sorted_keys[:-1]):
             if key_a in keys_to_remove:
                 continue
+            # Complete config values are declarations, not truncated prefixes.
+            if _is_exact_config_model(key_a, node_map[key_a]):
+                continue
             name_a = node_map[key_a].display_name.lower()
             if not name_a:
                 continue
@@ -200,7 +284,13 @@ def _dedup_by_name_prefix(
                 # prompt_4078) as a truncated/full name pair.
                 if name_b[len(name_a)].isalnum():
                     continue
-                if key_a[0] == ComponentType.MODEL:
+                if _is_exact_config_model(key_b, node_map[key_b]):
+                    if not _has_only_regex_evidence(node_map[key_a]):
+                        continue
+                    # Regex-only truncation of an exact config-declared model:
+                    # safe to let it fall through to the ordinary winner pick
+                    # below, same as before the AST/regex correlation path.
+                elif key_a[0] == ComponentType.MODEL:
                     moved, emptied = _transfer_correlated_model_regex_evidence(
                         node_map, key_a, key_b
                     )
@@ -266,7 +356,8 @@ def _dedup_model_variants(
     """
     groups: dict[tuple[str, str, str], set[tuple[ComponentType, str]]] = {}
     for key, acc in node_map.items():
-        if key[0] != ComponentType.MODEL:
+        # Exact declarations must not lose their namespace or format identity.
+        if key[0] != ComponentType.MODEL or _is_exact_config_model(key, acc):
             continue
         if not _is_model_format_variant(acc.display_name):
             continue
@@ -299,6 +390,31 @@ def _dedup_model_variants(
         del node_map[k]
 
 
+def _location_winner(
+    first: tuple[ComponentType, str],
+    loser: tuple[ComponentType, str],
+    ranked: list[tuple[ComponentType, str]],
+    node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
+) -> tuple[ComponentType, str]:
+    """Pick the same-location node allowed to absorb ``loser``.
+
+    Several exact config declarations can share one line (a YAML flow mapping). A
+    regex truncation belongs to the declaration whose value contains it, not to
+    whichever exact declaration happens to rank first.
+    """
+    if loser[0] != ComponentType.MODEL or _is_exact_config_model(loser, node_map[loser]):
+        return first
+    name = node_map[loser].display_name.lower()
+    for key in ranked:
+        if (
+            key != loser
+            and _is_exact_config_model(key, node_map[key])
+            and name in node_map[key].display_name.lower()
+        ):
+            return key
+    return first
+
+
 def _dedup_by_location(
     node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
 ) -> None:
@@ -325,15 +441,24 @@ def _dedup_by_location(
         keys = list(key_set)
         if len(keys) <= 1:
             continue
-        # Sort: lower priority number = higher precedence; break ties by confidence desc
+        # Exact config declarations win over heuristic detections at the same location.
         keys_sorted = sorted(
             keys,
-            key=lambda k: (node_map[k].priority, -node_map[k].confidence),
+            key=lambda k: (
+                not _is_exact_config_model(k, node_map[k]),
+                node_map[k].priority,
+                -node_map[k].confidence,
+                # Same token read twice: the full model identifier beats its truncation.
+                -len(node_map[k].display_name) if k[0] == ComponentType.MODEL else 0,
+                node_map[k].display_name,
+                k[1],
+            ),
         )
-        winner = keys_sorted[0]
+        first = keys_sorted[0]
         for loser in keys_sorted[1:]:
             if loser in keys_to_remove:
                 continue
+            winner = _location_winner(first, loser, keys_sorted, node_map)
             # Only deduplicate when at least one node has regex evidence.
             # Two AST-only nodes at the same line are distinct components (e.g.
             # multiple imports on one line → multiple FAISS stores) and must
@@ -366,6 +491,29 @@ def _dedup_by_location(
             # those separate instead of one silently absorbing the other's
             # evidence.
             if winner[0] == ComponentType.MODEL and winner[1] != loser[1]:
+                winner_is_exact = _is_exact_config_model(winner, node_map[winner])
+                loser_is_exact = _is_exact_config_model(loser, node_map[loser])
+                if winner_is_exact and loser_is_exact:
+                    continue
+                if winner_is_exact:
+                    # Config regex evidence can coexist with a Java AST location
+                    # after exact-value merging. It must not demote a different
+                    # AST-backed model on that same line into a regex truncation.
+                    if not _has_only_regex_evidence(node_map[loser]):
+                        continue
+                    # Exact identities are lossless encodings, not display-name
+                    # slugs. Compare values when absorbing a heuristic truncation.
+                    if (
+                        node_map[loser].display_name.lower()
+                        not in node_map[winner].display_name.lower()
+                    ):
+                        continue
+                    # Verified exact-config absorption of a regex truncation:
+                    # a direct merge, not the AST/regex evidence-transfer case
+                    # below (there is no correlated AST evidence to transfer).
+                    node_map[winner].evidence.extend(node_map[loser].evidence)
+                    keys_to_remove.add(loser)
+                    continue
                 if winner[1] not in loser[1] and loser[1] not in winner[1]:
                     continue
                 moved, emptied = _transfer_correlated_model_regex_evidence(
@@ -379,13 +527,16 @@ def _dedup_by_location(
                     )
                     regex_key = loser
                     ast_key = winner
-                if not moved:
+                if moved:
+                    if emptied:
+                        keys_to_remove.add(regex_key)
+                        if regex_key == winner:
+                            winner = ast_key
                     continue
-                if emptied:
-                    keys_to_remove.add(regex_key)
-                    if regex_key == winner:
-                        winner = ast_key
-                continue
+                # No AST/regex correlation found (e.g. two plain-regex hits on
+                # one token, as in the comment above). Fall back to absorbing
+                # the shorter name's evidence into the longer, full name —
+                # `winner` is already the longer one via the sort tie-break.
             # Absorb evidence so the winner node reflects all source locations
             node_map[winner].evidence.extend(node_map[loser].evidence)
             keys_to_remove.add(loser)
@@ -432,8 +583,12 @@ def _collapse_bulk_catalog_files(
     for key, acc in node_map.items():
         # A compose file / Bicep module legitimately declares dozens of services; each
         # workload (and its image) is a real deployed component, not catalog noise.
-        if acc.metadata.get("workload") or acc.metadata.get("fact_marker") or acc.metadata.get(
-            "image_role"
+        # Exact config values are declarations, not catalog noise.
+        if (
+            _is_exact_config_model(key, acc)
+            or acc.metadata.get("workload")
+            or acc.metadata.get("fact_marker")
+            or acc.metadata.get("image_role")
         ):
             continue
         paths = {ev.location.path for ev in acc.evidence if ev.location}

@@ -71,6 +71,12 @@ from ..adapters.iac import (
     TerraformAdapter,
 )
 from ..adapters.java._java_base import JavaFrameworkAdapter
+from ..adapters.java.java_config import (
+    application_yaml_allows_scan,
+    extract_java_config_models,
+    is_java_app_config_name,
+    link_config_models,
+)
 from ..adapters.json_adapters import (
     AgentJSONConfigAdapter,
     GoogleADKJSONAdapter,
@@ -135,6 +141,7 @@ from .postprocess import (
     _dedup_by_location,
     _dedup_by_name_prefix,
     _dedup_deployment_nodes,
+    _dedup_exact_config_models,
     _dedup_generic_endpoints,
     _dedup_model_variants,
     _improve_generic_node_names,
@@ -1327,6 +1334,8 @@ class AiSbomExtractor:
         _file_imports: dict[str, set[str]] = {}
         # Minified JS files detected during the scan (for SC-019)
         _minified_js_files: list[str] = []
+        # MODEL detections read from application.properties/yml (linked to agents later)
+        _java_config_models: list[ComponentDetection] = []
         # Summary builder only needs a bounded content sample.
         files_sample: list[tuple[str, str]] = []
         files_scanned = 0
@@ -1646,11 +1655,21 @@ class AiSbomExtractor:
             content_bytes = file_size
             # Track LOC for every scanned file
             file_loc[rel_path] = content.count("\n") + 1
-            if keep_full_contents:
+            is_app_config = is_java_app_config_name(file_path.name)
+            if (
+                is_app_config
+                and file_path.suffix.lower() in {".yml", ".yaml"}
+                and not application_yaml_allows_scan(content, rel_path)
+            ):
+                continue  # Never reparse rejected YAML in another adapter.
+            # Raw application configuration is deterministic-only input. Exclude
+            # both the full LLM cache and the scan-summary source sample.
+            source_context_allowed = not is_app_config and file_path.suffix.lower() != ".properties"
+            if keep_full_contents and source_context_allowed:
                 file_contents[rel_path] = content
                 full_cache_files += 1
                 full_cache_bytes += content_bytes
-            if len(files_sample) < 200:
+            if source_context_allowed and len(files_sample) < 200:
                 files_sample.append((rel_path, content))
                 files_sample_bytes += content_bytes
             suffix = file_path.suffix.lower()
@@ -1914,6 +1933,15 @@ class AiSbomExtractor:
                 _js_lines = content.splitlines()
                 if _js_lines and max(len(ln) for ln in _js_lines) > 5000:
                     _minified_js_files.append(rel_path)
+
+            # Phase 1c-java-config: chat models named in Spring/Quarkus application config.
+            # The Java AST adapter cannot see these, the starters build the model from them.
+            if is_java_app_config_name(file_path.name):
+                for det in extract_java_config_models(content, rel_path):
+                    self._merge_detection(node_map, det)
+                    _java_config_models.append(det)
+                if suffix == ".properties":
+                    continue  # no other adapter reads .properties files
 
             # Phase 1d: Dockerfile — container image extraction
             if is_dockerfile:
@@ -2233,6 +2261,10 @@ class AiSbomExtractor:
                 "cross-file datastore ACCESSES resolution failed (non-fatal): %s", _cross_ds_exc
             )
 
+        # Preserve exact identities while still merging identical code/config
+        # values and redirecting their existing adapter hints.
+        _dedup_exact_config_models(node_map)
+
         # Distinct datastore technologies commonly share one config/import line.
         # Their canonical names already deduplicate identical detections, and the
         # datastore-specific suppression pass below handles generic/AST overlap.
@@ -2259,6 +2291,8 @@ class AiSbomExtractor:
         # technology (e.g. "faiss" regex when "docs_index" / "tickets_index" AST
         # nodes already exist in that file with provider="faiss").
         _suppress_generic_tech_regex_datastore(node_map)
+        # Tie config-derived MODEL nodes to the agents of the same source root.
+        link_config_models(node_map, _java_config_models)
 
         # Record Python assets imported and actually referenced by a file with
         # an agent. The regular hint resolver has only canonical names, so this
@@ -3199,16 +3233,23 @@ class AiSbomExtractor:
         } and looks_like_test_path(det.file_path):
             return
 
-        # Always canonicalize to ensure regex-adapter and AST-adapter nodes
-        # for the same component deduplicate correctly.
-        canon = canonicalize_text(det.canonical_name)
+        # Exact config identifiers preserve punctuation and case. Ordinary
+        # detections retain their existing normalization and hint contracts.
+        if det.component_type == ComponentType.MODEL and det.metadata.get("config_key"):
+            canon = det.canonical_name
+        else:
+            canon = canonicalize_text(det.canonical_name)
         key = (det.component_type, canon)
         acc = node_map.get(key)
 
         tier = _classify_source_tier(det.file_path, det.adapter_name, det.evidence_kind)
         tier_rank = _TIER_RANK.get(tier, 2)
 
-        if det.component_type == ComponentType.PROMPT:
+        if is_java_app_config_name(Path(det.file_path.replace("\\", "/")).name):
+            # Verification can use evidence.detail when a source is not cached.
+            # Keep the location/provenance, never a raw config-line excerpt.
+            _detail = f"{det.adapter_name}: {det.evidence_kind} (application config)"
+        elif det.component_type == ComponentType.PROMPT:
             # Content is already stored in metadata.extras["content"]; keep
             # the evidence detail as a compact location label only.
             _detail = f"{det.adapter_name}: {det.evidence_kind}"
@@ -4267,7 +4308,10 @@ class AiSbomExtractor:
                 # nginx configs (nginx.conf, default.conf, *.nginx) carry the gateway
                 # ingress facts the pentest needs; ".conf" is not a source extension.
                 is_nginx = is_nginx_file(path.relative_to(root).as_posix())
-                if suffix not in config.include_extensions and not (is_dockerfile or is_nginx):
+                is_java_config = suffix == ".properties" and is_java_app_config_name(path.name)
+                if suffix not in config.include_extensions and not (
+                    is_dockerfile or is_nginx or is_java_config
+                ):
                     continue
                 # Skip common irrelevant directories
                 parts = path.parts
