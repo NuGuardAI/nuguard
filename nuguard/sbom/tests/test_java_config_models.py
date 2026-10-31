@@ -494,7 +494,10 @@ def test_extractor_preserves_exact_model_variants_and_links(
     assert {models[first].id, models[second].id} <= hinted
 
 
-def test_variant_dedup_still_merges_non_config_models() -> None:
+def test_variant_dedup_no_longer_merges_unproven_non_config_models() -> None:
+    """``_dedup_model_variants`` now requires a shared ``model_config_group``
+    provenance tag (#701) — a shared normalized name alone, with no such
+    proof, must leave both regex-only variants distinct."""
     from nuguard.sbom.extractor.core import _NodeAccumulator
     from nuguard.sbom.extractor.postprocess import _dedup_model_variants
     from nuguard.sbom.models import Evidence, SourceLocation
@@ -520,8 +523,7 @@ def test_variant_dedup_still_merges_non_config_models() -> None:
         for index, name in enumerate(names, start=1)
     }
     _dedup_model_variants(node_map)
-    assert len(node_map) == 1
-    assert len(next(iter(node_map.values())).evidence) == 2
+    assert len(node_map) == 2
 
 
 @pytest.mark.parametrize("parent_propagates", [False, True])
