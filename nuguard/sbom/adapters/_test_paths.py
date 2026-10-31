@@ -20,16 +20,11 @@ def looks_like_test_path(file_path: str) -> bool:
     """True when any path component of *file_path* names a test directory,
     or the filename follows a common pytest/JS test naming convention."""
     path = PurePosixPath(file_path.replace("\\", "/"))
-    if set(path.parts) & TEST_PATH_PARTS:
+    if {part.lower() for part in path.parts} & TEST_PATH_PARTS:
         return True
-    if path.name == "conftest.py":
+    stem = path.stem.lower()
+    if stem.endswith(".test") or stem.endswith(".spec"):
         return True
-    stem = path.stem
-    return (
-        stem.endswith(".test")
-        or stem.endswith(".spec")
-        or (
-            path.suffix.lower() in {".py", ".pyw"}
-            and (stem.startswith("test_") or stem.endswith("_test"))
-        )
+    return path.suffix.lower() in {".py", ".pyw"} and (
+        stem == "conftest" or stem.startswith("test_") or stem.endswith("_test")
     )
