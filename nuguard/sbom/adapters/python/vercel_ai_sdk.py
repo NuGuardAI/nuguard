@@ -73,6 +73,16 @@ class VercelAISDKPythonAdapter(FrameworkAdapter):
             return []
 
         detected: list[ComponentDetection] = []
+        constant_models = {
+            literal.context: literal.value
+            for literal in parse_result.string_literals
+            if literal.is_module_assignment and literal.context
+        }
+
+        def _resolve_model(value: Any) -> str:
+            if isinstance(value, str) and value.startswith("$"):
+                value = constant_models.get(value[1:], "")
+            return _clean(value)
 
         # Agent variable name -> its already-created ComponentDetection, so
         # tool decorators discovered later can append CALLS relationships
@@ -93,9 +103,15 @@ class VercelAISDKPythonAdapter(FrameworkAdapter):
             var_name = inst.assigned_to or f"agent_{inst.line}"
             canon = canonicalize_text(f"vercel_ai_sdk:agent:{file_path}:{inst.line}")
 
-            model_raw = _clean(inst.args.get("model")) or (
-                _clean(inst.positional_args[0]) if inst.positional_args else ""
-            )
+            if inst.args.get("model"):
+                source_model_argument: str | int | None = "model"
+                model_raw = _resolve_model(inst.args["model"])
+            elif inst.positional_args:
+                source_model_argument = 0
+                model_raw = _resolve_model(inst.positional_args[0])
+            else:
+                source_model_argument = None
+                model_raw = ""
             rels: list[RelationshipHint] = []
             if model_raw:
                 provider, sep, model_name = model_raw.partition(":")
@@ -117,6 +133,8 @@ class VercelAISDKPythonAdapter(FrameworkAdapter):
                         },
                         file_path=file_path,
                         line=inst.line,
+                        source_call=inst,
+                        source_model_argument=source_model_argument,
                         snippet=f"Agent({model_raw!r})",
                         evidence_kind="ast_instantiation",
                     )

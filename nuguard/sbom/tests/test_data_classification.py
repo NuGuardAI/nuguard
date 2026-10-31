@@ -11,7 +11,7 @@ from nuguard.sbom.adapters.data_classification import (
 from nuguard.sbom.config import AiSbomConfig
 from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.extractor.core import _NodeAccumulator
-from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.models import AiSbomDocument, Evidence, SourceLocation
 from nuguard.sbom.tests.conftest import APPS
 from nuguard.sbom.types import ComponentType
 
@@ -219,6 +219,47 @@ class UserRecord:
         user = next(d for d in dets if d.display_name == "UserRecord")
         assert "PII" in user.metadata["data_classification"]
 
+    def test_dataclass_with_only_generic_name_ignored(
+        self, adapter: DataClassificationPythonAdapter
+    ) -> None:
+        source = """
+from dataclasses import dataclass
+
+@dataclass
+class ToolDefinition:
+    name: str
+    description: str
+"""
+        assert adapter.extract(source, "tools.py", None) == []
+
+    def test_dataclass_name_with_corroborating_pii_detected(
+        self, adapter: DataClassificationPythonAdapter
+    ) -> None:
+        source = """
+from dataclasses import dataclass
+
+@dataclass
+class Contact:
+    name: str
+    email: str
+"""
+        dets = adapter.extract(source, "contact.py", None)
+        contact = next(d for d in dets if d.display_name == "Contact")
+        assert set(contact.metadata["classified_fields"]) == {"name", "email"}
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "from pydantic import BaseModel\nclass NamedModel(BaseModel):\n    name: str\n",
+            "from sqlalchemy.orm import DeclarativeBase\nclass NamedModel(DeclarativeBase):\n    name: str\n",
+        ],
+    )
+    def test_framework_model_with_only_name_preserved(
+        self, adapter: DataClassificationPythonAdapter, source: str
+    ) -> None:
+        dets = adapter.extract(source, "models.py", None)
+        assert dets[0].metadata["classified_fields"] == {"name": ["PII"]}
+
     def test_canonical_name_format(self, adapter: DataClassificationPythonAdapter) -> None:
         source = "from pydantic import BaseModel\nclass Patient(BaseModel):\n    name: str\n"
         dets = adapter.extract(source, "m.py", None)
@@ -289,8 +330,8 @@ class TestPatientPortalExtraction:
 # ---------------------------------------------------------------------------
 
 
-def _datastore_acc(name: str) -> _NodeAccumulator:
-    return _NodeAccumulator(
+def _datastore_acc(name: str, evidence_path: str | None = None) -> _NodeAccumulator:
+    acc = _NodeAccumulator(
         component_type=ComponentType.DATASTORE,
         canonical_name=f"datastore:{name}",
         display_name=name,
@@ -298,6 +339,16 @@ def _datastore_acc(name: str) -> _NodeAccumulator:
         priority=40,
         confidence=0.9,
     )
+    if evidence_path:
+        acc.evidence.append(
+            Evidence(
+                kind="ast",
+                confidence=0.9,
+                detail="datastore evidence",
+                location=SourceLocation(path=evidence_path, line=1),
+            )
+        )
+    return acc
 
 
 class TestEnrichDatastoresPiiPhiFields:
@@ -306,9 +357,12 @@ class TestEnrichDatastoresPiiPhiFields:
     mismatch with classified_fields (table -> field names, not field -> labels)."""
 
     def test_pii_and_phi_fields_populated(self) -> None:
-        node_map = {(ComponentType.DATASTORE, "sqlite"): _datastore_acc("Sqlite")}
+        node_map = {
+            (ComponentType.DATASTORE, "sqlite"): _datastore_acc("Sqlite", "schema.sql")
+        }
         dc_metadata = [
             {
+                "source_path": "schema.sql",
                 "table_name": "patients",
                 "data_classification": ["PII", "PHI"],
                 "classified_fields": {
@@ -327,6 +381,110 @@ class TestEnrichDatastoresPiiPhiFields:
         assert acc.metadata["classified_fields"]["patients"] == [
             "diagnosis", "dob", "medical_record_number", "name",
         ]
+
+    def test_classification_matches_datastore_evidence_path(self) -> None:
+        node_map = {
+            (ComponentType.DATASTORE, "sqlite"): _datastore_acc("Sqlite", "models.py"),
+            (ComponentType.DATASTORE, "redis"): _datastore_acc("Redis", "cache.py"),
+        }
+        dc_metadata = [
+            {
+                "source_path": "models.py",
+                "model_name": "Customer",
+                "data_classification": ["PII"],
+                "classified_fields": {"email": ["PII"]},
+            }
+        ]
+
+        AiSbomExtractor()._enrich_datastores(node_map, dc_metadata)
+
+        assert node_map[(ComponentType.DATASTORE, "sqlite")].metadata[
+            "data_classification"
+        ] == ["PII"]
+        assert node_map[(ComponentType.DATASTORE, "redis")].metadata == {}
+
+    def test_multiple_unmatched_datastores_are_not_enriched(self) -> None:
+        node_map = {
+            (ComponentType.DATASTORE, "sqlite"): _datastore_acc("Sqlite", "db.py"),
+            (ComponentType.DATASTORE, "redis"): _datastore_acc("Redis", "cache.py"),
+        }
+        dc_metadata = [
+            {
+                "source_path": "models.py",
+                "model_name": "Customer",
+                "data_classification": ["PII"],
+                "classified_fields": {"email": ["PII"]},
+            }
+        ]
+
+        AiSbomExtractor()._enrich_datastores(node_map, dc_metadata)
+
+        assert all(not acc.metadata for acc in node_map.values())
+
+    def test_unrelated_singleton_datastore_is_not_enriched(self) -> None:
+        node_map = {
+            (ComponentType.DATASTORE, "sqlite"): _datastore_acc("Sqlite", "db.py"),
+        }
+        dc_metadata = [
+            {
+                "source_path": "models.py",
+                "model_name": "Customer",
+                "data_classification": ["PII"],
+                "classified_fields": {"email": ["PII"]},
+            }
+        ]
+
+        AiSbomExtractor()._enrich_datastores(node_map, dc_metadata)
+
+        assert node_map[(ComponentType.DATASTORE, "sqlite")].metadata == {}
+
+    def test_two_same_path_datastores_are_ambiguous(self) -> None:
+        node_map = {
+            (ComponentType.DATASTORE, "sqlite"): _datastore_acc("Sqlite", "models.py"),
+            (ComponentType.DATASTORE, "redis"): _datastore_acc("Redis", "models.py"),
+        }
+        dc_metadata = [
+            {
+                "source_path": "models.py",
+                "model_name": "Customer",
+                "data_classification": ["PII"],
+                "classified_fields": {"email": ["PII"]},
+            }
+        ]
+
+        AiSbomExtractor()._enrich_datastores(node_map, dc_metadata)
+
+        assert all(not acc.metadata for acc in node_map.values())
+
+    def test_summary_keeps_repo_classification_once(self, tmp_path) -> None:
+        (tmp_path / "models.py").write_text(
+            "from pydantic import BaseModel\n"
+            "class Customer(BaseModel):\n"
+            "    email: str\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "db.py").write_text(
+            "import sqlite3\ndb = sqlite3.connect('app.db')\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "cache.py").write_text(
+            "import redis\ncache = redis.Redis()\n",
+            encoding="utf-8",
+        )
+
+        doc = AiSbomExtractor().extract_from_path(
+            tmp_path,
+            AiSbomConfig(include_extensions={".py"}, enable_llm=False),
+        )
+
+        assert doc.summary is not None
+        assert all(
+            not node.metadata.data_classification
+            for node in doc.nodes
+            if node.component_type == ComponentType.DATASTORE
+        )
+        assert doc.summary.data_classification.count("PII") == 1
+        assert doc.summary.classified_tables.count("Customer") == 1
 
     def test_no_pii_phi_when_no_matching_labels(self) -> None:
         node_map = {(ComponentType.DATASTORE, "sqlite"): _datastore_acc("Sqlite")}
