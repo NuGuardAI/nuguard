@@ -20,10 +20,68 @@ from ..models import ScanSummary
 from ..types import ComponentType
 
 if TYPE_CHECKING:
-    from ..models import AiSbomDocument
+    from ..models import AiSbomDocument, Evidence, SourceLocation
     from .core import _NodeAccumulator
 
 _log = get_logger(__name__)
+
+
+def _location_contains(outer: "SourceLocation", inner: "SourceLocation") -> bool:
+    if (
+        outer.path != inner.path
+        or outer.line is None
+        or outer.column is None
+        or outer.end_line is None
+        or outer.end_column is None
+        or inner.line is None
+        or inner.column is None
+        or inner.end_line is None
+        or inner.end_column is None
+    ):
+        return False
+    return (outer.line, outer.column) <= (inner.line, inner.column) and (
+        inner.end_line,
+        inner.end_column,
+    ) <= (outer.end_line, outer.end_column)
+
+
+def _model_regex_ast_correlations(
+    node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
+    regex_key: tuple[ComponentType, str],
+    ast_key: tuple[ComponentType, str],
+) -> list["Evidence"]:
+    """Return regex occurrences contained by an exact AST literal span."""
+    regex_evidence = node_map[regex_key].evidence
+    ast_evidence = node_map[ast_key].evidence
+    return [
+        regex
+        for regex in regex_evidence
+        if regex.kind == "regex"
+        and any(
+            (specific.kind == "ast" or specific.kind.startswith("ast_"))
+            and _location_contains(specific.location, regex.location)
+            for specific in ast_evidence
+        )
+    ]
+
+
+def _transfer_correlated_model_regex_evidence(
+    node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
+    regex_key: tuple[ComponentType, str],
+    ast_key: tuple[ComponentType, str],
+) -> tuple[bool, bool]:
+    """Move only proven regex occurrences; report ``(moved, emptied)``."""
+    correlated = _model_regex_ast_correlations(node_map, regex_key, ast_key)
+    if not correlated:
+        return False, False
+    correlated_ids = {id(evidence) for evidence in correlated}
+    regex_acc = node_map[regex_key]
+    ast_acc = node_map[ast_key]
+    ast_acc.evidence.extend(correlated)
+    regex_acc.evidence = [
+        evidence for evidence in regex_acc.evidence if id(evidence) not in correlated_ids
+    ]
+    return True, not regex_acc.evidence
 
 
 def _make_scan_summary(d: dict) -> ScanSummary:
@@ -74,8 +132,8 @@ def _dedup_by_name_prefix(
     entry of the same component type that shares at least one source file.
 
     Handles cases where a regex adapter extracts a truncated model name
-    (e.g. ``gemini-2.0``) while an AST adapter extracts the full string
-    (``gemini-2.0-flash``) from an adjacent line of the same call.
+    (e.g. ``gemini-2.0``) while an AST adapter extracts the full literal
+    (``gemini-2.0-flash``) from the exact same source token.
     The shorter entry is dropped and its evidence absorbed by the longer one.
 
     A prefix match only counts as a truncation if it ends on a delimiter
@@ -142,6 +200,14 @@ def _dedup_by_name_prefix(
                 # prompt_4078) as a truncated/full name pair.
                 if name_b[len(name_a)].isalnum():
                     continue
+                if key_a[0] == ComponentType.MODEL:
+                    moved, emptied = _transfer_correlated_model_regex_evidence(
+                        node_map, key_a, key_b
+                    )
+                    if moved and emptied:
+                        keys_to_remove.add(key_a)
+                        break
+                    continue
                 if len(name_b) > len(winner_name):
                     winner_key = key_b
                     winner_name = name_b
@@ -180,27 +246,41 @@ def _normalize_model_variant_name(name: str) -> str:
     return normalized
 
 
+def _is_model_format_variant(name: str) -> bool:
+    """True only for explicit local-weight format/quantization spellings."""
+    leaf = name.strip().lower().rsplit("/", 1)[-1]
+    without_extension = leaf[: -len(".gguf")] if leaf.endswith(".gguf") else leaf
+    return leaf.endswith(".gguf") or _MODEL_FORMAT_SUFFIX_RE.search(without_extension) is not None
+
+
 def _dedup_model_variants(
     node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
 ) -> None:
-    """Merge MODEL nodes that are different repo-id/filename spellings of the
-    same preconfigured model config entry — e.g. a Python dict with separate
-    ``repo_id`` (``unsloth/Qwen3.5-9B-GGUF``) and ``filename``
-    (``Qwen3.5-9B-Q4_K_M.gguf``) fields on adjacent lines of the same file.
-    ``_dedup_by_location`` only catches same-line duplicates, so this pass
-    groups MODEL nodes by (source file, normalized base name) instead. The
-    longest original name wins and absorbs the others' evidence.
+    """Merge format spellings only when an adapter proves one config identity.
+
+    A shared file and normalized base name are insufficient: one deployment
+    can intentionally configure Q4 and Q8 variants of the same base model.
+    AST/config adapters may opt in by attaching the same non-empty
+    ``model_config_group`` value to detections from one structural config
+    entry. Regex-only detections have no such provenance and remain distinct.
     """
-    groups: dict[tuple[str, str], set[tuple[ComponentType, str]]] = {}
+    groups: dict[tuple[str, str, str], set[tuple[ComponentType, str]]] = {}
     for key, acc in node_map.items():
         if key[0] != ComponentType.MODEL:
+            continue
+        if not _is_model_format_variant(acc.display_name):
+            continue
+        config_group = acc.metadata.get("model_config_group")
+        if not isinstance(config_group, str) or not config_group.strip():
             continue
         normalized = _normalize_model_variant_name(acc.display_name)
         if not normalized:
             continue
         for ev in acc.evidence:
             if ev.location:
-                groups.setdefault((ev.location.path, normalized), set()).add(key)
+                groups.setdefault(
+                    (ev.location.path, config_group, normalized), set()
+                ).add(key)
 
     keys_to_remove: set[tuple[ComponentType, str]] = set()
     for keys in groups.values():
@@ -288,6 +368,24 @@ def _dedup_by_location(
             if winner[0] == ComponentType.MODEL and winner[1] != loser[1]:
                 if winner[1] not in loser[1] and loser[1] not in winner[1]:
                     continue
+                moved, emptied = _transfer_correlated_model_regex_evidence(
+                    node_map, winner, loser
+                )
+                regex_key = winner
+                ast_key = loser
+                if not moved:
+                    moved, emptied = _transfer_correlated_model_regex_evidence(
+                        node_map, loser, winner
+                    )
+                    regex_key = loser
+                    ast_key = winner
+                if not moved:
+                    continue
+                if emptied:
+                    keys_to_remove.add(regex_key)
+                    if regex_key == winner:
+                        winner = ast_key
+                continue
             # Absorb evidence so the winner node reflects all source locations
             node_map[winner].evidence.extend(node_map[loser].evidence)
             keys_to_remove.add(loser)
