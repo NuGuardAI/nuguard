@@ -29,7 +29,7 @@ import shutil
 import subprocess
 import tempfile
 from bisect import bisect_right
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
@@ -959,6 +959,146 @@ class _NodeAccumulator:
     best_tier_rank: int = 99  # 0=code, 1=iac, 2=docs; 99=uninitialised
 
 
+def _attach_python_model_literal_location(
+    det: ComponentDetection,
+    parse_result: Any,
+    claimed_calls: set[int],
+) -> None:
+    """Attach the literal span from the parsed call that produced one MODEL detection."""
+    if det.component_type != ComponentType.MODEL or det.column is not None:
+        return
+
+    # Exact adapter provenance is authoritative.  A call with no model
+    # argument means the adapter deliberately fell back to a class/default
+    # identity; never recover a nearby unrelated string from that call.
+    if det.source_call is not None and det.source_model_argument is None:
+        claimed_calls.add(id(det.source_call))
+        return
+
+    expected_name: str | None = None
+    if det.source_call is not None and det.source_model_argument is not None:
+        parsed_calls: Iterable[Any] = ()
+        name_attribute = ""
+    elif det.evidence_kind == "ast_instantiation":
+        parsed_calls = parse_result.instantiations
+        class_name = det.metadata.get("class_name")
+        if isinstance(class_name, str) and class_name:
+            expected_name = class_name
+        else:
+            match = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(", det.snippet)
+            expected_name = match.group(1) if match else None
+        name_attribute = "class_name"
+    elif det.evidence_kind == "ast_call":
+        parsed_calls = parse_result.function_calls
+        api_method = det.metadata.get("api_method")
+        if isinstance(api_method, str) and api_method:
+            expected_name = api_method.rsplit(".", 1)[-1]
+        else:
+            match = re.match(r"\s*(?:[A-Za-z_][A-Za-z0-9_]*\.)*([A-Za-z_][A-Za-z0-9_]*)\s*\(", det.snippet)
+            expected_name = match.group(1) if match else None
+        name_attribute = "function_name"
+    else:
+        return
+    if expected_name is None and det.source_call is None:
+        return
+
+    def _resolved_location(
+        value: Any, *, require_display_match: bool = True
+    ) -> tuple[int, int, int, int] | None:
+        if not isinstance(value, str) or not value.startswith("$"):
+            return None
+        symbol = value[1:]
+        bindings = [
+            literal
+            for literal in parse_result.string_literals
+            if literal.is_module_assignment
+            and literal.context == symbol
+            and (not require_display_match or literal.value == det.display_name)
+            and literal.column is not None
+            and literal.end_line is not None
+            and literal.end_column is not None
+        ]
+        if len(bindings) != 1:
+            return None
+        binding = bindings[0]
+        return binding.line, binding.column, binding.end_line, binding.end_column
+
+    def _literal_locations(parsed: Any) -> set[tuple[int, int, int, int]]:
+        locations: set[tuple[int, int, int, int]] = set()
+        for argument, value in parsed.args.items():
+            if value == det.display_name and argument in parsed.arg_locations:
+                locations.add(parsed.arg_locations[argument])
+            else:
+                resolved = _resolved_location(value)
+                if resolved is not None:
+                    locations.add(resolved)
+        for index, value in enumerate(parsed.positional_args):
+            if value == det.display_name and index in parsed.positional_arg_locations:
+                locations.add(parsed.positional_arg_locations[index])
+            else:
+                resolved = _resolved_location(value)
+                if resolved is not None:
+                    locations.add(resolved)
+        return locations
+
+    originating_call = det.source_call
+    if originating_call is not None and det.source_model_argument is not None:
+        argument = det.source_model_argument
+        if isinstance(argument, tuple):
+            value: Any = None
+            if argument:
+                head, *tail = argument
+                if isinstance(head, str):
+                    value = originating_call.args.get(head)
+                elif head < len(originating_call.positional_args):
+                    value = originating_call.positional_args[head]
+                for part in tail:
+                    if isinstance(value, dict):
+                        value = value.get(part)
+                    elif isinstance(value, list) and isinstance(part, int) and part < len(value):
+                        value = value[part]
+                    else:
+                        value = None
+                        break
+            location = originating_call.nested_arg_locations.get(argument)
+        elif isinstance(argument, str):
+            value = originating_call.args.get(argument)
+            location = originating_call.arg_locations.get(argument)
+        else:
+            value = (
+                originating_call.positional_args[argument]
+                if argument < len(originating_call.positional_args)
+                else None
+            )
+            location = originating_call.positional_arg_locations.get(argument)
+        location = location or _resolved_location(
+            value, require_display_match=False
+        )
+        if location is not None:
+            det.line, det.column, det.end_line, det.end_column = location
+        claimed_calls.add(id(originating_call))
+        return
+
+    candidates = [
+        parsed
+        for parsed in parsed_calls
+        if parsed.line == det.line
+        and getattr(parsed, name_attribute, None) == expected_name
+        and id(parsed) not in claimed_calls
+        and _literal_locations(parsed)
+    ]
+    # Legacy adapters that have not yet supplied exact occurrence provenance
+    # may use recovery only when the source call is unambiguous.  Never guess
+    # among repeated or receiver-distinct calls on the same line.
+    if len(candidates) != 1:
+        return
+    originating_call = candidates[0]
+    claimed_calls.add(id(originating_call))
+    locations = _literal_locations(originating_call)
+    if len(locations) == 1:
+        det.line, det.column, det.end_line, det.end_column = locations.pop()
+
+
 _DATASTORE_TECH_ALIASES = {
     "aiosqlite": "sqlite",
     "sqlite3": "sqlite",
@@ -1566,6 +1706,7 @@ class AiSbomExtractor:
                                     exc,
                                 )
                                 continue
+                            _claimed_model_calls: set[int] = set()
                             for det in detections:
                                 if (
                                     det.component_type == ComponentType.DATASTORE
@@ -1575,6 +1716,11 @@ class AiSbomExtractor:
                                     _classification_meta["source_path"] = det.file_path
                                     _dc_metadata.append(_classification_meta)
                                 else:
+                                    _attach_python_model_literal_location(
+                                        det,
+                                        parse_result,
+                                        _claimed_model_calls,
+                                    )
                                     self._merge_detection(node_map, det)
                                     _ds_symbol = det.metadata.get("module_level_symbol")
                                     if det.component_type == ComponentType.DATASTORE and _ds_symbol:
@@ -1913,10 +2059,10 @@ class AiSbomExtractor:
                     ComponentType.DEPLOYMENT,
                     ComponentType.DATASTORE,
                 ) and not getattr(rx_adapter, "canonical_name", None):
-                    # Group matches by their normalised name; keep first
-                    # occurrence as the representative match for location/snippet.
-                    _match_first: dict[str, AdapterMatch] = {}
-                    _match_count: dict[str, int] = {}
+                    # Group matches by normalised name, retaining every
+                    # occurrence so identity dedup can correlate exact source
+                    # spans without reattributing unrelated evidence.
+                    _matches_by_name: dict[str, list[AdapterMatch]] = {}
                     _candidate_matches = (
                         _contextual_json_datastore_matches(
                             _regex_content, detection.matches
@@ -1928,29 +2074,29 @@ class AiSbomExtractor:
                     )
                     for _m in _candidate_matches:
                         _key = _m.snippet.strip().lower()
-                        if _key not in _match_first:
-                            _match_first[_key] = _m
-                            _match_count[_key] = 1
-                        else:
-                            _match_count[_key] += 1
-                    for _raw_lower, _first_match in _match_first.items():
-                        _raw_name = _first_match.snippet.strip()
-                        _cnt = _match_count[_raw_lower]
+                        _matches_by_name.setdefault(_key, []).append(_m)
+                    for _matches in _matches_by_name.values():
+                        _raw_name = _matches[0].snippet.strip()
+                        _cnt = len(_matches)
                         _conf = min(0.95, 0.50 + 0.05 * _cnt)
-                        _comp_det = ComponentDetection(
-                            component_type=detection.component_type,
-                            canonical_name=canonicalize_text(_raw_name),
-                            display_name=_raw_name,
-                            adapter_name=detection.adapter_name,
-                            priority=detection.priority,
-                            confidence=_conf,
-                            metadata=dict(detection.metadata),
-                            file_path=rel_path,
-                            line=_first_match.line,
-                            snippet=_first_match.snippet,
-                            evidence_kind="regex",
-                        )
-                        self._merge_detection(node_map, _comp_det)
+                        for _match in _matches:
+                            _comp_det = ComponentDetection(
+                                component_type=detection.component_type,
+                                canonical_name=canonicalize_text(_raw_name),
+                                display_name=_raw_name,
+                                adapter_name=detection.adapter_name,
+                                priority=detection.priority,
+                                confidence=_conf,
+                                metadata=dict(detection.metadata),
+                                file_path=rel_path,
+                                line=_match.line,
+                                column=_match.column,
+                                end_line=_match.end_line,
+                                end_column=_match.end_column,
+                                snippet=_match.snippet,
+                                evidence_kind="regex",
+                            )
+                            self._merge_detection(node_map, _comp_det)
                     continue
                 # API_ENDPOINT: group per-match by the parsed (method, path) —
                 # not raw snippet text, since different route-declaration styles
@@ -2085,12 +2231,11 @@ class AiSbomExtractor:
         node_map.update(_datastore_accumulators)
         _dedup_generic_datastores_against_specific(node_map)
         # Deduplicate nodes where one name is a prefix of another from the same
-        # file — e.g. regex matches "gemini-2.0" while AST extracts the full
-        # "gemini-2.0-flash" from an adjacent line of the same call.
+        # source token — e.g. regex matches "gemini-2.0" inside the full AST
+        # literal "gemini-2.0-flash".
         _dedup_by_name_prefix(node_map)
-        # Merge MODEL nodes that are repo-id/filename spellings of the same
-        # underlying preconfigured model entry (e.g. ``unsloth/Qwen3.5-9B-GGUF``
-        # + ``Qwen3.5-9B-Q4_K_M.gguf`` from the same config dict).
+        # Merge model format spellings only when an AST/config adapter supplied
+        # the same structural ``model_config_group`` provenance for both.
         _dedup_model_variants(node_map)
         # Suppress generic tech-name DATASTORE nodes emitted by regex adapters
         # when the same file already has specific AST-detected ones for the same
@@ -3056,7 +3201,13 @@ class AiSbomExtractor:
             kind=det.evidence_kind,
             confidence=det.confidence,
             detail=_detail,
-            location=SourceLocation(path=det.file_path, line=det.line or None),
+            location=SourceLocation(
+                path=det.file_path,
+                line=det.line or None,
+                column=det.column,
+                end_line=det.end_line,
+                end_column=det.end_column,
+            ),
         )
 
         if acc is None:

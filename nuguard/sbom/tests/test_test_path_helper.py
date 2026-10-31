@@ -17,6 +17,11 @@ def test_test_suffix_filename_detected():
     assert looks_like_test_path("src/foo.spec.ts")
 
 
+def test_pytest_filename_detected_at_repository_root():
+    assert looks_like_test_path("test_agents.py")
+    assert looks_like_test_path("agents_test.py")
+
+
 def test_normal_source_path_not_flagged():
     assert not looks_like_test_path("src/routes/chat.ts")
     assert not looks_like_test_path("packages/app/lib/testimonials.ts")

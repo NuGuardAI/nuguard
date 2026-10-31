@@ -38,6 +38,8 @@ _LANGGRAPH_IMPORTS = [
     "langgraph.graph",
     "langgraph.prebuilt",
     "langgraph_supervisor",
+    "deepagents",
+    "managed_deepagents",
     "langchain",
     "langchain_core",
     "langchain_openai",
@@ -60,6 +62,9 @@ _AGENT_FACTORY_FUNCTIONS = {
     # Supervisor / orchestration graphs
     "create_supervisor",
     "make_supervisor_graph",
+    # LangChain Deep Agents factories
+    "create_deep_agent",
+    "define_deep_agent",
     # Azure AI Foundry agent factory methods
     "create_prompt_agent_node",
     "create_agent_node",
@@ -168,19 +173,45 @@ class LangGraphAdapter(FrameworkAdapter):
     ) -> list[ComponentDetection]:
         if parse_result is None:
             return []
+        if looks_like_test_path(file_path):
+            return []
 
         # Determine if langgraph is actually imported (vs just langchain)
         imported_modules = _absolute_imported_modules(content)
-        has_langgraph = any(
+        imported_modules_in_order = [
+            imp.module or ""
+            for imp in parse_result.imports
+            if (imp.module or "") in imported_modules
+        ]
+        deep_agents_import = next(
+            (
+                module
+                for module in imported_modules_in_order
+                if module == "deepagents"
+                or module.startswith("deepagents.")
+                or module == "managed_deepagents"
+                or module.startswith("managed_deepagents.")
+            ),
+            None,
+        )
+        has_direct_langgraph = any(
             m == "langgraph" or m.startswith("langgraph.") for m in imported_modules
         )
+        has_deep_agents = any(
+            m == "deepagents"
+            or m.startswith("deepagents.")
+            or m == "managed_deepagents"
+            or m.startswith("managed_deepagents.")
+            for m in imported_modules
+        )
+        has_langgraph = has_direct_langgraph or has_deep_agents
         has_langchain = any(
             m == "langchain"
             or m.startswith("langchain.")
             or m.startswith("langchain_")
             for m in imported_modules
         )
-        has_legacy_framework = has_langgraph or has_langchain
+        has_legacy_framework = has_direct_langgraph or has_langchain
         legacy_function_calls = (
             parse_result.function_calls if has_legacy_framework else ()
         )
@@ -190,10 +221,30 @@ class LangGraphAdapter(FrameworkAdapter):
         legacy_string_literals = (
             parse_result.string_literals if has_legacy_framework else ()
         )
+        agent_factory_calls = (
+            legacy_function_calls
+            if has_legacy_framework
+            else tuple(
+                call
+                for call in parse_result.function_calls
+                if has_deep_agents
+                and call.function_name in {"create_deep_agent", "define_deep_agent"}
+            )
+        )
         # Emit the correct framework node
         detected: list[ComponentDetection] = []
         if has_langgraph:
-            detected.append(self._framework_node(file_path))
+            framework_det = self._framework_node(file_path)
+            if deep_agents_import and not any(
+                module == "langgraph" or module.startswith("langgraph.")
+                for module in imported_modules
+            ):
+                framework_det.snippet = f"import {deep_agents_import}"
+                framework_det.metadata = {
+                    "framework": "langgraph",
+                    "inferred_from": deep_agents_import,
+                }
+            detected.append(framework_det)
         elif has_langchain:
             # Only langchain imported — emit framework:langchain, not framework:langgraph
             from ...types import ComponentType as _CT
@@ -224,6 +275,7 @@ class LangGraphAdapter(FrameworkAdapter):
         # Track node canonical names for relationship building
         agent_canonicals: list[str] = []
         model_canonicals: list[str] = []
+        model_variable_canonicals: dict[str, str] = {}
         tool_canonicals: list[str] = []
         node_name_map: dict[str, str] = {}  # node_name → canonical_name
 
@@ -242,7 +294,7 @@ class LangGraphAdapter(FrameworkAdapter):
         # Pre-compute variables assigned from agent factory functions (used in section 1).
         # e.g. `parser_node = service.create_prompt_agent_node(...)` → "parser_node"
         agent_factory_vars: set[str] = set()
-        for call in legacy_function_calls:
+        for call in agent_factory_calls:
             if call.function_name in _AGENT_FACTORY_FUNCTIONS and call.assigned_to:
                 agent_factory_vars.add(call.assigned_to)
 
@@ -531,12 +583,13 @@ class LangGraphAdapter(FrameworkAdapter):
                 continue
             provider = LANGCHAIN_LLM_CLASS_PROVIDERS[inst.class_name]
             args = inst.args or {}
-            raw_model = (
-                args.get("model")
-                or args.get("model_name")
-                or args.get("model_id")  # LangChain Bedrock uses model_id=
-                or args.get("deployment_name")
-            )
+            source_model_argument: str | None = None
+            raw_model: Any = None
+            for argument in ("model", "model_name", "model_id", "deployment_name"):
+                if args.get(argument):
+                    source_model_argument = argument
+                    raw_model = args[argument]
+                    break
             # Resolve variable references (e.g. model=$MODEL_ID) via symbol table
             if isinstance(raw_model, str) and raw_model.startswith("$"):
                 ref = raw_model[1:]
@@ -578,12 +631,16 @@ class LangGraphAdapter(FrameworkAdapter):
                 },
                 file_path=file_path,
                 line=inst.line,
+                source_call=inst,
+                source_model_argument=source_model_argument,
                 snippet=f"{inst.class_name}(...)",
                 evidence_kind="ast_instantiation",
                 relationships=rels,
             )
             detected.append(det)
             model_canonicals.append(canon)
+            if inst.assigned_to:
+                model_variable_canonicals[inst.assigned_to] = canon
 
         # 5b. Deep Agents typed literal mappings → AGENT
         # Keep this AST path local to explicit SubAgent-family annotations. The
@@ -644,12 +701,66 @@ class LangGraphAdapter(FrameworkAdapter):
                 _typed_subagent_count += 1
 
         # 6. Agent factory functions (create_react_agent, etc.)
-        for call in legacy_function_calls:
+        for call in agent_factory_calls:
             if call.function_name not in _AGENT_FACTORY_FUNCTIONS:
                 continue
-            agent_name = call.assigned_to or call.function_name
+            is_deep_agent_factory = call.function_name in {
+                "create_deep_agent",
+                "define_deep_agent",
+            }
+            # Deep Agents exposes an explicit ``name=`` identity. Prefer a
+            # literal, then a uniquely resolvable module-level string constant,
+            # so the SBOM matches the agent's runtime identity without guessing
+            # at dynamic expressions.
+            raw_agent_name = call.args.get("name")
+            agent_name = _clean(raw_agent_name)
+            if not agent_name and is_deep_agent_factory:
+                agent_name = _resolve_module_string_constant(
+                    raw_agent_name,
+                    content,
+                    call,
+                    parse_result.function_calls,
+                )
+            agent_name = agent_name or call.assigned_to or call.function_name
             canon = canonicalize_text(f"langgraph:{agent_name}")
             factory_rels: list[RelationshipHint] = []
+
+            # Deep Agents commonly passes its dependencies by keyword. Link
+            # only references whose component was detected in this file so no
+            # dangling SBOM relationships are fabricated.
+            if is_deep_agent_factory:
+                model_arg = call.args.get("model")
+                if isinstance(model_arg, str) and model_arg.startswith("$"):
+                    model_canon = model_variable_canonicals.get(model_arg[1:])
+                    if model_canon:
+                        factory_rels.append(
+                            RelationshipHint(
+                                source_canonical=canon,
+                                source_type=ComponentType.AGENT,
+                                target_canonical=model_canon,
+                                target_type=ComponentType.MODEL,
+                                relationship_type="USES",
+                            )
+                        )
+
+                tools_arg = call.args.get("tools")
+                if isinstance(tools_arg, list):
+                    for tool_ref in tools_arg:
+                        if not isinstance(tool_ref, str):
+                            continue
+                        tool_name = tool_ref.removeprefix("$")
+                        tool_canon = canonicalize_text(f"langchain:tool:{tool_name}")
+                        if tool_canon not in tool_canonicals:
+                            continue
+                        factory_rels.append(
+                            RelationshipHint(
+                                source_canonical=canon,
+                                source_type=ComponentType.AGENT,
+                                target_canonical=tool_canon,
+                                target_type=ComponentType.TOOL,
+                                relationship_type="CALLS",
+                            )
+                        )
 
             # First positional arg → LLM reference
             if call.positional_args:
@@ -694,7 +805,7 @@ class LangGraphAdapter(FrameworkAdapter):
                     metadata={
                         "factory_function": call.function_name,
                         "is_agent_graph": True,
-                        "framework": "langchain",
+                        "framework": "langgraph" if is_deep_agent_factory else "langchain",
                     },
                     file_path=file_path,
                     line=call.line,
@@ -1127,6 +1238,199 @@ def _clean(value: Any) -> str:
     if s.startswith("$") or s in {"<complex>", "<lambda>", "<dict>", "<list>"}:
         return ""
     return s
+
+
+def _resolve_module_string_constant(
+    value: Any,
+    source: str,
+    call: Any,
+    parsed_calls: list[Any],
+) -> str:
+    """Resolve one unshadowed bare name with one literal module binding."""
+    if not isinstance(value, str) or not value.startswith("$"):
+        return ""
+    reference = value[1:]
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return ""
+
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def _assigned_target_name(node: ast.Call) -> str | None:
+        value: ast.AST = node
+        parent = parents.get(value)
+        if isinstance(parent, ast.Await):
+            value = parent
+            parent = parents.get(value)
+        if isinstance(parent, ast.Assign) and parent.value is value and len(parent.targets) == 1:
+            target = parent.targets[0]
+        elif isinstance(parent, ast.AnnAssign) and parent.value is value:
+            target = parent.target
+        else:
+            return None
+        if isinstance(target, ast.Name):
+            return target.id
+        if isinstance(target, ast.Attribute):
+            return target.attr
+        return None
+
+    same_line_calls: list[ast.Call] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or node.lineno != call.line:
+            continue
+        function_name = (
+            node.func.id
+            if isinstance(node.func, ast.Name)
+            else node.func.attr
+            if isinstance(node.func, ast.Attribute)
+            else ""
+        )
+        if function_name != call.function_name:
+            continue
+        same_line_calls.append(node)
+    correlated_calls = sorted(
+        (
+            node
+            for node in same_line_calls
+            if _assigned_target_name(node) == call.assigned_to
+        ),
+        # ``ast_parser._visit_call`` records nested calls while extracting the
+        # outer call's arguments, then records the outer call. Sorting by the
+        # source end position reproduces that postorder while retaining source
+        # order for sibling calls.
+        key=lambda node: (
+            getattr(node, "end_lineno", node.lineno),
+            getattr(node, "end_col_offset", node.col_offset),
+            -node.lineno,
+            -node.col_offset,
+        ),
+    )
+    parsed_peers = [
+        candidate
+        for candidate in parsed_calls
+        if candidate.line == call.line
+        and candidate.function_name == call.function_name
+        and candidate.assigned_to == call.assigned_to
+    ]
+    try:
+        parsed_ordinal = next(
+            index for index, candidate in enumerate(parsed_peers) if candidate is call
+        )
+    except StopIteration:
+        return ""
+    if len(correlated_calls) != len(parsed_peers):
+        return ""
+    matched_call = correlated_calls[parsed_ordinal]
+    name_keywords = [keyword for keyword in matched_call.keywords if keyword.arg == "name"]
+    if not (
+        len(name_keywords) == 1
+        and isinstance(name_keywords[0].value, ast.Name)
+        and name_keywords[0].value.id == reference
+    ):
+        return ""
+
+    def _scope_nodes(scope: ast.AST) -> list[ast.AST]:
+        body = getattr(scope, "body", [])
+        scope_body = body if isinstance(body, list) else [body] if isinstance(body, ast.AST) else []
+        stack = list(reversed(scope_body))
+        nodes: list[ast.AST] = []
+        while stack:
+            node = stack.pop()
+            nodes.append(node)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                header_nodes: list[ast.AST] = [*node.decorator_list, node.args]
+                if node.returns is not None:
+                    header_nodes.append(node.returns)
+                header_nodes.extend(getattr(node, "type_params", []))
+                stack.extend(reversed(header_nodes))
+                continue
+            if isinstance(node, ast.ClassDef):
+                header_nodes = [*node.decorator_list, *node.bases]
+                header_nodes.extend(keyword.value for keyword in node.keywords)
+                header_nodes.extend(getattr(node, "type_params", []))
+                stack.extend(reversed(header_nodes))
+                continue
+            if isinstance(node, ast.Lambda):
+                stack.append(node.args)
+                continue
+            stack.extend(reversed(list(ast.iter_child_nodes(node))))
+        return nodes
+
+    def _binds_reference(node: ast.AST) -> bool:
+        if isinstance(node, ast.Name):
+            return node.id == reference and isinstance(node.ctx, (ast.Store, ast.Del))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return node.name == reference
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            return any(
+                alias.name == "*"
+                or (alias.asname or alias.name.split(".")[0]) == reference
+                for alias in node.names
+            )
+        if isinstance(node, ast.ExceptHandler):
+            return node.name == reference
+        if isinstance(node, (ast.MatchAs, ast.MatchStar)):
+            return node.name == reference
+        if isinstance(node, ast.MatchMapping):
+            return node.rest == reference
+        return False
+
+    def _scope_binds_name(scope: ast.AST) -> bool:
+        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            args = scope.args
+            parameters = [*args.posonlyargs, *args.args, *args.kwonlyargs]
+            if args.vararg:
+                parameters.append(args.vararg)
+            if args.kwarg:
+                parameters.append(args.kwarg)
+            if any(parameter.arg == reference for parameter in parameters):
+                return True
+        for node in _scope_nodes(scope):
+            if _binds_reference(node):
+                return True
+        return False
+
+    for scope in ast.walk(tree):
+        if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        scope_nodes = _scope_nodes(scope)
+        declares_global = any(
+            isinstance(node, ast.Global) and reference in node.names
+            for node in scope_nodes
+        )
+        if declares_global and any(_binds_reference(node) for node in scope_nodes):
+            return ""
+
+    current = parents.get(matched_call)
+    while current is not None and not isinstance(current, ast.Module):
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+            if _scope_binds_name(current):
+                return ""
+        current = parents.get(current)
+
+    module_bindings: list[ast.AST] = []
+    for node in _scope_nodes(tree):
+        if _binds_reference(node):
+            module_bindings.append(node)
+    if len(module_bindings) != 1 or not isinstance(module_bindings[0], ast.Name):
+        return ""
+    write_parent = parents.get(module_bindings[0])
+    binding_value: ast.expr | None
+    if isinstance(write_parent, ast.Assign):
+        binding_value = write_parent.value
+    elif isinstance(write_parent, ast.AnnAssign):
+        binding_value = write_parent.value
+    else:
+        return ""
+    if write_parent not in tree.body:
+        return ""
+    if not isinstance(binding_value, ast.Constant) or not isinstance(binding_value.value, str):
+        return ""
+    return _clean(binding_value.value)
 
 
 def _trusted_runtime_condition(
@@ -2622,7 +2926,6 @@ def _positional_str(call: Any, idx: int) -> str:
         if isinstance(v, str) and not v.startswith("$"):
             return v.strip("'\"")
     return ""
-
 
 def _infer_var_from_source(source: str, line: int) -> str | None:
     lines = source.splitlines()
