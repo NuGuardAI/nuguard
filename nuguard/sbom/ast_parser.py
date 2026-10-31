@@ -34,6 +34,11 @@ class ParsedInstantiation:
     # name the produced node after the factory when no other identity is
     # available (e.g. the class is built and returned, not assigned to a var).
     context: str | None = None
+    arg_locations: dict[str, tuple[int, int, int, int]] = field(default_factory=dict)
+    positional_arg_locations: dict[int, tuple[int, int, int, int]] = field(default_factory=dict)
+    nested_arg_locations: dict[tuple[str | int, ...], tuple[int, int, int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -47,6 +52,11 @@ class ParsedCall:
     line_end: int
     # Enclosing function/class name — see ParsedInstantiation.context above.
     context: str | None = None
+    arg_locations: dict[str, tuple[int, int, int, int]] = field(default_factory=dict)
+    positional_arg_locations: dict[int, tuple[int, int, int, int]] = field(default_factory=dict)
+    nested_arg_locations: dict[tuple[str | int, ...], tuple[int, int, int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -59,6 +69,9 @@ class ParsedStringLiteral:
     # (visit_Assign with empty scope_stack), False for function-body literals
     # whose context is the enclosing func/class name, not the variable name.
     is_module_assignment: bool = False
+    column: int | None = None
+    end_line: int | None = None
+    end_column: int | None = None
 
 
 @dataclass
@@ -78,6 +91,7 @@ class _AstExtractor(ast.NodeVisitor):
 
     def __init__(self, source: str) -> None:
         self.source = source
+        self._source_lines = source.splitlines(keepends=True)
         self.imports: list[ParsedImport] = []
         self.instantiations: list[ParsedInstantiation] = []
         self.function_calls: list[ParsedCall] = []
@@ -85,6 +99,50 @@ class _AstExtractor(ast.NodeVisitor):
         self._scope_stack: list[str] = []
         self._in_input_guardrail: bool = False
         self.guardrail_agent_vars: set[str] = set()
+
+    def _codepoint_column(self, line: int, byte_column: int) -> int:
+        """Convert Python AST's UTF-8 byte offset to a 1-based character column."""
+        if not (1 <= line <= len(self._source_lines)):
+            return byte_column + 1
+        encoded = self._source_lines[line - 1].encode("utf-8")
+        try:
+            return len(encoded[:byte_column].decode("utf-8")) + 1
+        except UnicodeDecodeError:
+            return byte_column + 1
+
+    def _string_location(self, node: ast.Constant) -> tuple[int, int, int, int]:
+        end_line = getattr(node, "end_lineno", node.lineno)
+        end_byte_column = getattr(node, "end_col_offset", node.col_offset + 1)
+        return (
+            node.lineno,
+            self._codepoint_column(node.lineno, node.col_offset),
+            end_line,
+            self._codepoint_column(end_line, end_byte_column),
+        )
+
+    def _collect_string_locations(
+        self,
+        node: ast.expr,
+        path: tuple[str | int, ...],
+        locations: dict[tuple[str | int, ...], tuple[int, int, int, int]],
+    ) -> None:
+        """Record exact paths for string literals nested in call arguments."""
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            locations[path] = self._string_location(node)
+        elif isinstance(node, (ast.List, ast.Tuple)):
+            extracted_index = 0
+            for item in node.elts:
+                # ``_extract_value`` omits unsupported elements.  Mirror that
+                # indexing here so a later literal keeps the same path in the
+                # extracted list and in ``nested_arg_locations``.
+                if not self._has_extractable_value(item):
+                    continue
+                self._collect_string_locations(item, (*path, extracted_index), locations)
+                extracted_index += 1
+        elif isinstance(node, ast.Dict):
+            for key, value in zip(node.keys, node.values, strict=True):
+                if isinstance(key, ast.Constant) and isinstance(key.value, (str, int)):
+                    self._collect_string_locations(value, (*path, key.value), locations)
 
     # ------------------------------------------------------------------
     # Import handling
@@ -263,8 +321,8 @@ class _AstExtractor(ast.NodeVisitor):
         elif isinstance(node.value, ast.Await) and isinstance(node.value.value, ast.Call):
             # Handle `result = await Runner.run(...)` patterns
             self._visit_call(node.value.value, assigned_to=assigned_to)
-        elif isinstance(node.value, ast.List):
-            # List assignment: visit each element to capture class instantiations.
+        elif isinstance(node.value, (ast.List, ast.Tuple)):
+            # Collection assignment: visit each element to capture class instantiations.
             # e.g. `tools = [ToolA(), ToolB()]` → ToolA and ToolB register as instantiations
             # so framework adapters can detect them without needing an explicit assigned_to.
             for elt in node.value.elts:
@@ -290,6 +348,9 @@ class _AstExtractor(ast.NodeVisitor):
                         context=assigned_to,
                         is_docstring=False,
                         is_module_assignment=True,
+                        column=self._string_location(node.value)[1],
+                        end_line=self._string_location(node.value)[2],
+                        end_column=self._string_location(node.value)[3],
                     )
                 )
         self.generic_visit(node)
@@ -331,6 +392,9 @@ class _AstExtractor(ast.NodeVisitor):
                     line=node.lineno,
                     context=self._scope_stack[-1] if self._scope_stack else None,
                     is_docstring=False,
+                    column=self._string_location(node)[1],
+                    end_line=self._string_location(node)[2],
+                    end_column=self._string_location(node)[3],
                 )
             )
 
@@ -369,13 +433,28 @@ class _AstExtractor(ast.NodeVisitor):
             self._visit_call(node.func.value, assigned_to=assigned_to)
 
         receiver = self._get_receiver(node)
-        positional = [v for v in (self._extract_value(a) for a in node.args) if v is not None]
+        positional: list[Any] = []
+        positional_arg_locations: dict[int, tuple[int, int, int, int]] = {}
+        nested_arg_locations: dict[tuple[str | int, ...], tuple[int, int, int, int]] = {}
+        for arg in node.args:
+            value = self._extract_value(arg)
+            if value is None:
+                continue
+            index = len(positional)
+            positional.append(value)
+            self._collect_string_locations(arg, (index,), nested_arg_locations)
+            if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                positional_arg_locations[index] = self._string_location(arg)
         kwargs: dict[str, Any] = {}
+        arg_locations: dict[str, tuple[int, int, int, int]] = {}
         for kw in node.keywords:
             if kw.arg:
                 v = self._extract_value(kw.value)
                 if v is not None:
                     kwargs[kw.arg] = v
+                    self._collect_string_locations(kw.value, (kw.arg,), nested_arg_locations)
+                    if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                        arg_locations[kw.arg] = self._string_location(kw.value)
 
         line = node.lineno
         line_end: int = getattr(node, "end_lineno", line)
@@ -399,6 +478,9 @@ class _AstExtractor(ast.NodeVisitor):
                     assigned_to=assigned_to,
                     line=line,
                     line_end=line_end,
+                    arg_locations=arg_locations,
+                    positional_arg_locations=positional_arg_locations,
+                    nested_arg_locations=nested_arg_locations,
                     context=context,
                 )
             )
@@ -412,6 +494,9 @@ class _AstExtractor(ast.NodeVisitor):
                     assigned_to=assigned_to,
                     line=line,
                     line_end=line_end,
+                    arg_locations=arg_locations,
+                    positional_arg_locations=positional_arg_locations,
+                    nested_arg_locations=nested_arg_locations,
                     context=context,
                 )
             )
@@ -465,6 +550,14 @@ class _AstExtractor(ast.NodeVisitor):
         if isinstance(node, (ast.List, ast.Tuple)):
             items = [self._extract_value(e) for e in node.elts]
             return [v for v in items if v is not None]
+        if isinstance(node, ast.Dict):
+            result: dict[Any, Any] = {}
+            for key, value in zip(node.keys, node.values, strict=True):
+                extracted_key = self._extract_dict_key(key) if key is not None else None
+                extracted_value = self._extract_value(value)
+                if extracted_key is not None and extracted_value is not None:
+                    result[extracted_key] = extracted_value
+            return result
         if isinstance(node, ast.Name):
             return f"${node.id}"  # Variable reference marker
         if isinstance(node, ast.Attribute):
@@ -485,6 +578,50 @@ class _AstExtractor(ast.NodeVisitor):
             text = "".join(parts)
             return text if text.strip() else None
         return None
+
+    def _extract_dict_key(self, node: ast.expr) -> Any:
+        """Extract a hashable dict key, preserving literal tuple semantics."""
+        if isinstance(node, ast.Tuple):
+            items: list[Any] = []
+            for item in node.elts:
+                value = (
+                    self._extract_dict_key(item)
+                    if isinstance(item, ast.Tuple)
+                    else self._extract_value(item)
+                )
+                if value is None and not (
+                    isinstance(item, ast.Constant) and item.value is None
+                ):
+                    return None
+                items.append(value)
+            extracted: Any = tuple(items)
+        else:
+            extracted = self._extract_value(node)
+        if extracted is None:
+            return None
+        try:
+            hash(extracted)
+        except TypeError:
+            return None
+        return extracted
+
+    def _has_extractable_value(self, node: ast.expr) -> bool:
+        """Pure counterpart to ``_extract_value`` for collection indexing."""
+        if isinstance(node, ast.Constant):
+            return node.value is not None
+        if isinstance(node, (ast.List, ast.Tuple, ast.Dict, ast.Name, ast.Attribute)):
+            return True
+        if isinstance(node, ast.Call):
+            return self._get_call_name(node) is not None
+        if isinstance(node, ast.JoinedStr):
+            text = "".join(
+                part.value
+                if isinstance(part, ast.Constant) and isinstance(part.value, str)
+                else "{…}"
+                for part in node.values
+            )
+            return bool(text.strip())
+        return False
 
 
 def parse(source: str) -> ParseResult:
@@ -509,9 +646,18 @@ def parse(source: str) -> ParseResult:
 
     # De-duplicate string literals (visit_Constant fires for every node,
     # including those already captured by visit_Expr for docstrings).
-    seen: set[tuple[int, str]] = set()
+    seen: set[tuple[Any, ...]] = set()
     for lit in extractor.string_literals:
-        key = (lit.line, lit.value[:80])
+        # Exact spans distinguish repeated same-line bindings.  Context is a
+        # fallback only for legacy/synthetic literals that lack column data.
+        key = (
+            lit.line,
+            lit.column,
+            lit.end_line,
+            lit.end_column,
+            lit.value,
+            lit.context if lit.column is None else None,
+        )
         if key not in seen:
             seen.add(key)
             result.string_literals.append(lit)

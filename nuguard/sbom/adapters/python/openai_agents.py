@@ -124,6 +124,8 @@ class OpenAIAgentsAdapter(FrameworkAdapter):
                         line=inst.line,
                         snippet=f"Agent(model={model_name!r})",
                         evidence_kind="ast_instantiation",
+                        source_call=inst,
+                        source_model_argument="model",
                     )
                 )
                 rels.append(

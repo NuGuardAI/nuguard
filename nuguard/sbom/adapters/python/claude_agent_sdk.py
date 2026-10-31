@@ -102,6 +102,8 @@ class ClaudeAgentSDKAdapter(FrameworkAdapter):
                         line=inst.line,
                         snippet=f"ClaudeAgentOptions(model={model_name!r})",
                         evidence_kind="ast_instantiation",
+                        source_call=inst,
+                        source_model_argument="model",
                     )
                 )
 
