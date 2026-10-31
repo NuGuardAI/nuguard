@@ -86,6 +86,40 @@ def _transfer_correlated_model_regex_evidence(
     return True, not regex_acc.evidence
 
 
+def _provider_qualified_regex_fallback(
+    node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
+    first: tuple[ComponentType, str],
+    second: tuple[ComponentType, str],
+) -> tuple[tuple[ComponentType, str], tuple[ComponentType, str]] | None:
+    """Return the full and short keys only for one provider-qualified token.
+
+    Older regex evidence may lack columns, so two hits on one line cannot
+    always be correlated by span. Keep that compatibility fallback narrowly
+    scoped to two regex-only spellings where the longer value adds a provider
+    namespace. Unqualified prefixes remain distinct because they can be
+    separate model declarations on the same line.
+    """
+    if not (
+        _has_only_regex_evidence(node_map[first])
+        and _has_only_regex_evidence(node_map[second])
+    ):
+        return None
+    short, full = sorted(
+        (first, second),
+        key=lambda key: len(node_map[key].display_name),
+    )
+    short_name = node_map[short].display_name.lower()
+    full_name = node_map[full].display_name.lower()
+    if "/" in short_name or "/" not in full_name:
+        return None
+    full_leaf = full_name.rsplit("/", 1)[-1]
+    if not full_leaf.startswith(short_name):
+        return None
+    if len(full_leaf) > len(short_name) and full_leaf[len(short_name)].isalnum():
+        return None
+    return full, short
+
+
 def _make_scan_summary(d: dict) -> ScanSummary:
     """Convert the dict from ``build_scan_summary`` into a typed ``ScanSummary``."""
     return ScanSummary(
@@ -533,10 +567,12 @@ def _dedup_by_location(
                         if regex_key == winner:
                             winner = ast_key
                     continue
-                # No AST/regex correlation found (e.g. two plain-regex hits on
-                # one token, as in the comment above). Fall back to absorbing
-                # the shorter name's evidence into the longer, full name —
-                # `winner` is already the longer one via the sort tie-break.
+                fallback = _provider_qualified_regex_fallback(
+                    node_map, winner, loser
+                )
+                if fallback is None:
+                    continue
+                winner, loser = fallback
             # Absorb evidence so the winner node reflects all source locations
             node_map[winner].evidence.extend(node_map[loser].evidence)
             keys_to_remove.add(loser)
