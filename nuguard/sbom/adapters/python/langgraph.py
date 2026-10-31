@@ -731,13 +731,13 @@ class LangGraphAdapter(FrameworkAdapter):
             if is_deep_agent_factory:
                 model_arg = call.args.get("model")
                 if isinstance(model_arg, str) and model_arg.startswith("$"):
-                    model_canon = model_variable_canonicals.get(model_arg[1:])
-                    if model_canon:
+                    resolved_model_canon = model_variable_canonicals.get(model_arg[1:])
+                    if resolved_model_canon:
                         factory_rels.append(
                             RelationshipHint(
                                 source_canonical=canon,
                                 source_type=ComponentType.AGENT,
-                                target_canonical=model_canon,
+                                target_canonical=resolved_model_canon,
                                 target_type=ComponentType.MODEL,
                                 relationship_type="USES",
                             )
