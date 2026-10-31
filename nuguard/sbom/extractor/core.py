@@ -1367,6 +1367,7 @@ class AiSbomExtractor:
         # inside the Python-file adapter loop.
         _ds_symbol_index: dict[tuple[str, str], str] = {}
         _py_used_names: dict[str, set[str]] = {}
+        _python_sources: dict[str, str] = {}
         try:
             import ast as _ast  # noqa: PLC0415  # isort:skip
             from nuguard.sbom.adapters.python.datastores import (  # noqa: PLC0415, I001
@@ -1397,6 +1398,7 @@ class AiSbomExtractor:
                     _py_tree = _ast.parse(_py_src)
                 except Exception:
                     continue
+                _python_sources[_router_rel] = _py_src
                 _global_model_schemas.update(_collect_py_models(_py_tree))
                 _router_decls[_router_rel] = _collect_py_router_decls(_py_tree)
                 _router_includes[_router_rel] = _collect_py_includes(_py_tree)
@@ -1583,6 +1585,20 @@ class AiSbomExtractor:
         except Exception as _hier_exc:
             _log.debug("TS class-hierarchy pre-pass failed (non-fatal): %s", _hier_exc)
 
+        try:
+            from nuguard.sbom.adapters.python._deepagents_flow import (  # noqa: PLC0415
+                build_deep_agent_component_flow_index,
+            )
+
+            _deep_agent_component_flow = build_deep_agent_component_flow_index(
+                _python_sources
+            )
+        except Exception as _deep_agent_exc:
+            _log.debug("Deep Agent component-flow pre-pass failed (non-fatal): %s", _deep_agent_exc)
+            _deep_agent_component_flow = None
+        finally:
+            _python_sources.clear()
+
         # Inject the global indices into adapters that support them.
         _global_index_setters = {
             "set_global_model_schemas": (_global_model_schemas,),
@@ -1595,6 +1611,7 @@ class AiSbomExtractor:
                 _global_ts_class_bases,
                 _global_ts_class_locations,
             ),
+            "set_deep_agent_component_flow": (_deep_agent_component_flow,),
         }
         for _adapter in self.framework_adapters:
             for _setter_name, _args in _global_index_setters.items():
