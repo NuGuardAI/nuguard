@@ -28,6 +28,11 @@ from ..models_kb import (
     LANGCHAIN_LLM_CLASS_PROVIDERS,
     get_model_details,
 )
+from ._deepagents_flow import (
+    EMPTY_DEEP_AGENT_COMPONENT_FLOW,
+    DeepAgentComponentFlowIndex,
+    DeepAgentFlowTarget,
+)
 
 # ---------------------------------------------------------------------------
 # LangGraph-specific constants
@@ -164,6 +169,12 @@ class LangGraphAdapter(FrameworkAdapter):
     name = "langgraph"
     priority = 10
     handles_imports = _LANGGRAPH_IMPORTS
+    _deep_agent_component_flow = EMPTY_DEEP_AGENT_COMPONENT_FLOW
+
+    def set_deep_agent_component_flow(
+        self, index: DeepAgentComponentFlowIndex | None
+    ) -> None:
+        self._deep_agent_component_flow = index or EMPTY_DEEP_AGENT_COMPONENT_FLOW
 
     def extract(
         self,
@@ -762,6 +773,23 @@ class LangGraphAdapter(FrameworkAdapter):
                             )
                         )
 
+                component_flow = self._deep_agent_component_flow.resolve(
+                    file_path, call.line, call.function_name
+                )
+                if component_flow is not None:
+                    for target in component_flow.models:
+                        _append_component_flow_target(
+                            detected, factory_rels, canon, target, "USES"
+                        )
+                    for target in component_flow.tools:
+                        _append_component_flow_target(
+                            detected, factory_rels, canon, target, "CALLS"
+                        )
+                    for target in component_flow.subagents:
+                        _append_component_flow_target(
+                            detected, factory_rels, canon, target, "CALLS"
+                        )
+
             # First positional arg → LLM reference
             if call.positional_args:
                 llm_ref = call.positional_args[0]
@@ -1177,6 +1205,53 @@ class LangGraphAdapter(FrameworkAdapter):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _append_component_flow_target(
+    detected: list[ComponentDetection],
+    relationships: list[RelationshipHint],
+    agent_canonical: str,
+    target: DeepAgentFlowTarget,
+    relationship_type: str,
+) -> None:
+    component_type = ComponentType(target.component_type)
+    hint = RelationshipHint(
+        source_canonical=agent_canonical,
+        source_type=ComponentType.AGENT,
+        target_canonical=target.canonical_name,
+        target_type=component_type,
+        relationship_type=relationship_type,
+    )
+    if hint not in relationships:
+        relationships.append(hint)
+    if any(
+        item.component_type == component_type
+        and item.canonical_name == target.canonical_name
+        for item in detected
+    ):
+        return
+    metadata: dict[str, Any] = {
+        "framework": "langgraph" if component_type == ComponentType.AGENT else "langchain",
+        "detection_kind": "typed_component_flow",
+        **dict(target.metadata),
+    }
+    if component_type == ComponentType.AGENT:
+        metadata["is_subagent"] = True
+    detected.append(
+        ComponentDetection(
+            component_type=component_type,
+            canonical_name=target.canonical_name,
+            display_name=target.display_name,
+            adapter_name="langgraph",
+            priority=10,
+            confidence=0.90,
+            metadata=metadata,
+            file_path=target.file_path,
+            line=target.line,
+            snippet=f"typed component target: {target.display_name}",
+            evidence_kind="ast_call",
+        )
+    )
 
 
 def _extract_messages_content(call: Any) -> tuple[str, str, list[str]]:

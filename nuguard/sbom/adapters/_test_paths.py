@@ -8,13 +8,12 @@ every adapter — regardless of base class — can share one directory-name
 convention instead of re-declaring its own frozenset
 (docs/sbom-accuracy-plan.md #3).
 """
+
 from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-TEST_PATH_PARTS: frozenset[str] = frozenset(
-    {"tests", "test", "__tests__", "spec", "specs", "e2e"}
-)
+TEST_PATH_PARTS: frozenset[str] = frozenset({"tests", "test", "__tests__", "spec", "specs", "e2e"})
 
 
 def looks_like_test_path(file_path: str) -> bool:
