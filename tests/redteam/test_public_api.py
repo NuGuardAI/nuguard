@@ -668,3 +668,40 @@ async def test_run_redteam_remediation_synthesis_failure_propagates():
             await run_redteam(request, sbom=SimpleNamespace(nodes=[], edges=[]))
         assert isinstance(exc_info.value.cause, RuntimeError)
         mock_instance.build_partial_run_error.assert_called_once()
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.asyncio
+async def test_cli_adapter_preserves_explicit_default_payload_fields(explicit: bool) -> None:
+    from nuguard.cli.commands.redteam import _run_orchestrator
+
+    result = RedteamRunResult(
+        findings=[], scenario_records=[], scan_outcome="no_findings",
+        token_usage=TokenUsage(), resolved_chat_path="/chat", resolved_chat_path_source="config",
+    )
+    with patch("nuguard.redteam.public_api.run_redteam", new=AsyncMock(return_value=result)) as run_mock:
+        await _run_orchestrator(
+            sbom_doc=object(), target_url="http://target", cognitive_policy=None,
+            canary_config=None, profile="ci", min_impact_score=0.0,
+            scenario_filter=None,
+            chat_payload_key="message", chat_payload_list=False,
+            chat_payload_key_explicit=explicit,
+        )
+    request = run_mock.await_args.args[0]
+    assert ("chat_payload_key" in request.model_fields_set) is explicit
+    assert ("chat_payload_list" in request.model_fields_set) is explicit
+    round_trip = RedteamRunRequest.model_validate_json(request.model_dump_json(exclude_unset=True))
+    assert ("chat_payload_key" in round_trip.model_fields_set) is explicit
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.asyncio
+async def test_public_request_preserves_payload_presence_at_runtime_boundary(explicit: bool) -> None:
+    values = {"chat_payload_key": "message", "chat_payload_list": False} if explicit else {}
+    request = RedteamRunRequest(target_url="http://target", **values)
+    with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
+        mock_cls.return_value = _make_mock_orchestrator([])
+        await run_redteam(request, sbom=MagicMock())
+    assert mock_cls.call_args.kwargs["chat_payload_key_explicit"] is explicit
+    assert mock_cls.call_args.kwargs["chat_payload_key"] == "message"
+    assert mock_cls.call_args.kwargs["chat_payload_list"] is False

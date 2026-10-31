@@ -19,6 +19,14 @@ including variant generation) and `redteam.defence_regression_probe_timeout`
 inconclusive; they cannot produce bypass findings. Incomplete regression coverage
 prevents an otherwise clean scan from reporting `no_findings`.
 
+Each regression has an `expect` mode. `expect: refused` (the default) requires a
+refusal. `expect: no_action` only requires that the app does not perform the action:
+a refusal, or a request for confirmation or missing details, passes, provided no
+state-changing tool call (cancel, delete, update, transfer, and similar) is reported.
+Use it for actions that are safe once the app asks for confirmation first. When the
+target does not expose a tool trace, `no_action` judges the response text alone. An
+entry with an unknown `expect` value is skipped with a warning.
+
 In concurrent and progressive mode, ambiguous app fallback text receives one
 short retry; HTTP 502/503/504 failures
 receive two. Retry backoff releases the request slot. Explicit structured provider
@@ -48,6 +56,8 @@ nuguard redteam --config nuguard.yaml --sbom app.sbom.json \
 
 - Target URL and endpoint — `target.url`, `target.endpoint` (omit the endpoint for authenticated live discovery)
 - Request/response payload shape — `redteam.chat_payload_key` / `chat_response_key` / `chat_payload_extras` if your app doesn't use `{"message": "..."}` / `{"response": "..."}`
+
+Explicit payload settings take precedence over SBOM metadata and cached discovery, including `chat_payload_key: message` and `chat_payload_list: false`. Omit these fields to let NuGuard discover the payload shape. The same rule applies to shared `target:` settings and explicitly supplied `RedteamRunRequest` fields.
 - Auth — `target.auth`: `bearer`, `api_key`, `basic`, `login_flow`, or `cookie_file` (a captured session cookie — see below)
 
 > 🔐 **App behind an interactive login (Auth0, SSO, OAuth redirect)?** `bearer`/`basic`/`login_flow` can't drive a browser-based sign-in flow. Run [`nuguard target discover-browser`](cli-reference.md#nuguard-target) once to log in with a real (headless) browser, capture the session as `target.auth.type: cookie_file`, and auto-detect any extra chat payload fields the app requires (e.g. an opaque consumer/account ID) — then re-run `redteam` as usual.

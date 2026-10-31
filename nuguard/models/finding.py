@@ -98,6 +98,9 @@ class Finding(BaseModel):
     # (e.g. "roleplay", "audit_evidence", "encoded") — set only for
     # category="REGRESSION" findings produced by the paraphrase evaluator.
     regression_paraphrase_kind: str | None = None
+    # The ``expect`` mode of the defence-regression spec behind this finding
+    # ("refused" | "no_action"); None for every other finding.
+    regression_expect: str | None = None
     # W10 dual-path tool exposure verdict ("gate_bypass") — set only on
     # findings produced by nuguard.redteam.scenarios.dual_path's comparison
     # of a chat-mediated call against the same capability's direct-HTTP

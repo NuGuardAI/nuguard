@@ -23,9 +23,9 @@ def test_java_rules_are_bundled_and_well_formed() -> None:
 
 
 def test_java_rules_detect_representative_unsafe_flows(tmp_path: Path) -> None:
-    semgrep = shutil.which("semgrep")
+    semgrep = shutil.which("opengrep") or shutil.which("semgrep")
     if semgrep is None:
-        pytest.skip("semgrep executable is not installed")
+        pytest.skip("opengrep (or semgrep) executable is not installed")
 
     source = tmp_path / "UnsafeController.java"
     source.write_text(

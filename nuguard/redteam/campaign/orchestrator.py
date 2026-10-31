@@ -136,7 +136,7 @@ class CampaignOrchestrator(RedteamOrchestrator):
     def _fixtures(self, executor: "AttackExecutor") -> AvailableFixtures:
         tenants = getattr(self._canary_config, "tenants", None) or []
         return AvailableFixtures(
-            second_principal=any(getattr(t, "session_token", "") for t in tenants),
+            second_principal=any(t.has_credentials for t in tenants),
             callback_server=getattr(executor, "_callback_canary", None) is not None,
             declared_fixture=self._campaign_cfg.declared_fixtures,
         )

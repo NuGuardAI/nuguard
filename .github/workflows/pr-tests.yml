@@ -61,6 +61,43 @@ jobs:
         run: |
           uv run ruff check nuguard/
           uv run mypy nuguard/
+          uv run deptry nuguard/
+
+  clean-install:
+    name: Clean-install smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@8d55fbecc275b1c35dbe060458839f8d30439ccf # v3
+
+      - name: Build wheel
+        run: uv build --wheel --out-dir "$RUNNER_TEMP/dist"
+
+      # Install only the wheel's core dependencies, with no extras, to catch
+      # runtime imports that are missing from the declared dependencies.
+      - name: Install wheel into a clean environment
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/clean-venv"
+          uv pip install --python "$RUNNER_TEMP/clean-venv/bin/python" "$RUNNER_TEMP"/dist/*.whl
+
+      # Run from outside the checkout so the source tree cannot shadow the installed package.
+      - name: Check CLI and module imports
+        working-directory: ${{ runner.temp }}
+        run: |
+          "$RUNNER_TEMP/clean-venv/bin/nuguard" --help
+          "$RUNNER_TEMP/clean-venv/bin/python" "$GITHUB_WORKSPACE/scripts/check_clean_install.py"
 
   public-api-contract:
     name: Public API contract
@@ -140,6 +177,7 @@ jobs:
       - public-api-contract
       - browser_login
       - release-contract
+      - clean-install
 
     steps:
       - name: Checkout

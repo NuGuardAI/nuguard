@@ -6,7 +6,9 @@ Use this as a reference when writing code that reads or generates AI-SBOMs direc
 
 Current schema version: **1.7.0**
 
-Schema URI: `https://nuguard.ai/schemas/aibom/1.7.0/aibom.schema.json`
+Schema source: [NuGuardAI/nuguard — aibom.schema.json](https://github.com/NuGuardAI/nuguard/blob/develop/nuguard/sbom/schemas/aibom.schema.json)
+
+Schema identifier (`$id`): `https://nuguard.ai/schemas/aibom/1.7.0/aibom.schema.json`
 
 The schema is language-neutral. Current extractors normalize Python, TypeScript/JavaScript, Go, C#, and Java application evidence into the same nodes, edges, dependencies, and summary fields.
 
@@ -83,6 +85,15 @@ with `exclude_patterns`.
 A Node represents a detected AI component, service boundary, infrastructure resource, policy surface, or artifact used by the application.
 
 Java source scanning uses the same component types as every other language. Current Java adapters recognize Spring AI, LangChain4j, Quarkus LangChain4j, OpenAI Java, Azure OpenAI Java, AWS Bedrock, Google Gen AI, and Vertex AI, plus Spring MVC/WebFlux and JAX-RS/Quarkus endpoints. Consumers do not need a Java-specific schema branch.
+
+Application YAML preflight accepts the same inert CloudFormation intrinsic tags as
+its IaC adapter; cycle, depth and work limits still apply to tagged subtrees before
+construction. Tags are not evaluated or treated as resolved Java model values.
+Nested Quarkus client names containing dots (such as `"tenant.one"`) retain their
+segment boundary, while dotted property keys remain supported. When equal Java
+and config model values are merged, the added config evidence cannot turn a
+different AST-backed model into a truncation candidate. Only regex-only candidates
+can be absorbed into exact config models by location or prefix truncation rules.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -668,6 +679,19 @@ A directed relationship between two nodes.
 
 `AGENT --ACCESSES--> DATASTORE` is inferred when an agent calls a tool that accesses the datastore, when a single agent and datastore are detected in the same source file, or when a single agent's Python file imports and uses a detected datastore client. These inferred edges carry `derivation: "fallback_heuristic"` and a confidence score.
 
+### Agent tool and model relationships
+
+The shared resolver does not fill missing `AGENT --CALLS--> TOOL` or
+`AGENT --USES--> MODEL` relationships by selecting tools or models from the scan.
+Coexistence, a shared source file or framework, name order, and model detection
+confidence do not establish these dependencies. Adapter-emitted relationship hints
+are preserved, including cross-file hints and direct calls from web controllers.
+A controller-to-agent edge does not copy the callee's tool/model edges onto the
+controller. Nodes remain in the SBOM even when their relationships are unresolved;
+a missing edge is not proof that a dependency does not exist.
+
+Other scoped structural and transitive inference rules remain unchanged.
+
 ### AccessType values
 
 | Value | Meaning |
@@ -699,6 +723,74 @@ A single declared package dependency from a manifest file. The scanner reads dec
 | C#/.NET | `*.csproj`, `packages.config`, `Directory.Packages.props` | Emits NuGet PURLs and honors centrally managed package versions |
 | Java | `pom.xml`, `build.gradle`, `build.gradle.kts`, `gradle/libs.versions.toml` | Resolves common Maven properties, dependency management, Gradle variables, and version-catalog references without invoking Maven or Gradle |
 | Go | `go.mod`, `go.sum` | Emits Go PURLs; indirect modules use the `optional:indirect` group |
+
+Maven profile activation is not evaluated. Competing declarations in the same POM
+are checked using both explicit versions and supported implicit management/parent
+versions. Conflicting or partly unresolved declarations produce one unversioned
+record rather than selecting a version by XML order; matching concrete versions
+are retained when no other profile uncertainty applies. Unversioned dependencies
+remain in the SBOM but are skipped by OSV. This is a limited offline lookup, not
+Maven's effective POM resolution.
+
+Maven management and profile matching use `groupId`, `artifactId`, `type`
+(default `jar`), and `classifier` (default empty). Distinct variants retain
+case-sensitive identity throughout consolidation and dependency scanning; their
+PURLs include `type`/`classifier` qualifiers where needed. Conflicting versions of
+one variant remain unresolved without suppressing other variants. This preserves
+declared Maven types rather than guessing custom artifact-handler mappings. The
+Spring Boot shortcut applies only to ordinary unclassified JAR dependencies;
+other variants require an explicit or matching local managed version.
+
+A concrete version inherited from a recognized Spring Boot parent is not made
+uncertain merely by a profile BOM import: imported defaults cannot replace that
+inherited management. Direct profile declarations, non-import management, and
+profile-controlled parent properties still receive uncertainty checks. An
+import-only fallback is not treated as a known inherited version.
+
+Root management and each declared/profile dependency are resolved once per POM.
+Concrete profile identities are indexed with their supported versions, including
+implicit local/Boot versions. Repeated declarations of one identity use a version
+summary rather than pairwise comparisons. Symbolic identities and possible BOM
+imports remain separate conservative checks over cached facts. Matching does not
+spend interpolation budget, and records reuse the same resolved facts. Self-only
+and agreeing declarations retain their pins; conflicting versions, variants, and
+management precedence follow the rules above. The interpolation limits below are
+unchanged; this avoids exhausting them by repeatedly resolving unrelated profiles.
+
+Property interpolation is lazy and bounded: at most 16,384 characters per value,
+64 reference levels, and per-manifest budgets of 1,000,000 characters of expansion
+work and 50,000 references. Cyclic or over-budget expressions remain unresolved
+rather than falling through to a different version. Literal dependencies and
+other manifests can still be scanned. These limits bound interpolation, not the
+size of the original manifest or unrelated parsing work.
+
+Maven `LATEST`/`RELEASE` and Gradle dynamic selectors (including `1.+` and every
+`latest.<status>` selector, such as `latest.milestone` or a custom status) remain raw
+version specifications without an exact PURL version.
+No repository metadata is fetched to resolve them, and OSV skips these unversioned
+records. Ordinary literal releases and build metadata remain queryable.
+
+Known limitations of Java dependency resolution. The scanner reads declarations
+statically and never runs Maven or Gradle. When a version depends on something it
+cannot read, the record stays unversioned (and OSV skips it) instead of being guessed:
+
+- Only the manifest itself is read. Parent POMs, parent chains, `relativePath`
+  modules, and properties or dependency management defined in a parent are not
+  loaded. Only a `spring-boot-starter-parent` or `spring-boot-dependencies` parent
+  contributes a version, and only its own `<version>`. Any other parent disables the
+  imported-BOM fallback, because its management could take precedence over the import.
+- Only an imported `spring-boot-dependencies` BOM is consulted; other imported BOMs
+  are not read.
+- Profile activation is not evaluated. Competing or uncertain profile declarations,
+  imports, management entries and properties leave the version unresolved.
+- `LATEST`, `RELEASE`, version ranges and Gradle dynamic selectors stay unresolved.
+- Gradle files are read declaratively. Platforms and BOMs, dependency-management
+  plugins, constraints and resolution strategies are not applied.
+- Across manifests one record per coordinate is kept (the first found), so modules
+  that pin different versions of one coordinate are reported once.
+
+Fully accurate resolution would require running Maven itself (for example
+`mvn help:effective-pom`), which is outside the scope of this scanner.
 
 For Java dependencies, a resolved declaration such as `org.springframework.ai:spring-ai-openai-spring-boot-starter:1.0.1` is represented as:
 
@@ -861,3 +953,21 @@ The `test_committed_schema_matches_models` test enforces that the committed `aib
 ## Example
 
 Generated SBOM examples are available under `tests/apps/*/*.sbom.json`. The committed `docs/sample-sbom.json` may lag behind the current schema until regenerated, so prefer `nuguard sbom schema` or `nuguard/sbom/schemas/aibom.schema.json` as the source of truth for validation.
+
+## SPDX dependency identifiers
+
+SPDX dependency package IDs retain a readable name segment and include a SHA-256
+suffix derived from the complete PURL, including its version, qualifiers (such as
+Maven type/classifier), and subpath. Distinct variants or releases with the same
+display name therefore remain separate package elements and SBOM membership
+references. Dependency ordering, source-file location, scope, and export time do
+not affect the ID for an otherwise identical record. The PURL is hashed as
+supplied; this does not introduce another package-URL normalization policy.
+
+For a caller-supplied dependency with an empty PURL, the name and version specifier
+provide a deterministic fallback. Package names, version fields, and external
+PURL identifiers are otherwise unchanged. Node and relationship IDs are unchanged.
+
+Dependency IDs now differ from earlier name-only exports. Consumers should use
+the exported `spdxId` values and references rather than constructing dependency
+IDs from package names. No Pydantic fields or committed JSON schemas change.

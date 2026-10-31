@@ -7,11 +7,12 @@
 #   else AZURE_OPENAI_KEY + AZURE_OPENAI_ENDPOINT -> Azure OpenAI v1 endpoint through the OpenAI starter
 #       APP_MODEL_NAME   deployment name (default gpt-5.4-mini)
 #       APP_TEMPERATURE  default 1.0 (newer GPT-5 models reject temperature 0)
+#   else -> deterministic loopback OpenAI-compatible stub (fork-safe E2E)
 # Usage: scripts/serve.sh      Stop: scripts/stop.sh      Logs: reports/logs/
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_DIR="$APP_DIR/.run"; LOG_DIR="$APP_DIR/reports/logs"
-APP_PORT=8087; SHIM_PORT=8088
+APP_PORT=8087; SHIM_PORT=8088; STUB_PORT=8089
 mkdir -p "$RUN_DIR" "$LOG_DIR"
 cd "$APP_DIR"
 "$APP_DIR/scripts/stop.sh" >/dev/null 2>&1 || true
@@ -36,9 +37,28 @@ elif [[ -n "${AZURE_OPENAI_KEY:-}" && -n "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
     "--langchain4j.open-ai.chat-model.temperature=${APP_TEMPERATURE:-1.0}"
   )
 else
-  echo "[serve] no LLM key in the environment (OPENAI_API_KEY, or AZURE_OPENAI_KEY + AZURE_OPENAI_ENDPOINT)" >&2
-  echo "[serve] starting anyway with a placeholder key; model calls will fail" >&2
-  export OPENAI_API_KEY="not-a-real-key"
+  echo "[serve] LLM: deterministic local OpenAI-compatible stub"
+  python3 scripts/openai_chat_stub.py --port "$STUB_PORT" >"$LOG_DIR/openai-stub.log" 2>&1 &
+  echo $! >"$RUN_DIR/openai-stub.pid"
+  for _ in $(seq 1 20); do
+    curl -fsS "http://127.0.0.1:$STUB_PORT/health" >/dev/null 2>&1 && break
+    if ! kill -0 "$(cat "$RUN_DIR/openai-stub.pid")" 2>/dev/null; then
+      echo "[serve] local OpenAI stub exited early" >&2
+      tail -n 20 "$LOG_DIR/openai-stub.log" >&2
+      exit 1
+    fi
+    sleep 0.25
+  done
+  curl -fsS "http://127.0.0.1:$STUB_PORT/health" >/dev/null || {
+    echo "[serve] local OpenAI stub did not become ready" >&2
+    exit 1
+  }
+  export OPENAI_API_KEY="nuguard-e2e-local"
+  LLM_ARGS=(
+    "--langchain4j.open-ai.chat-model.base-url=http://127.0.0.1:$STUB_PORT/v1"
+    "--langchain4j.open-ai.chat-model.model-name=nuguard-e2e-stub"
+    "--langchain4j.open-ai.chat-model.temperature=0.0"
+  )
 fi
 
 echo "[serve] model overrides passed to the app: ${LLM_ARGS[*]:-none}"

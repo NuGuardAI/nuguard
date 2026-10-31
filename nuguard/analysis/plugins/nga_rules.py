@@ -2582,7 +2582,8 @@ def _build_pass_evidence(
 
 # ── OSV / Grype finding converters ───────────────────────────────────────────
 
-_RE_FIXED_VERSION = re.compile(r"<([^\s,;]+)")
+_RE_FIXED_VERSION = re.compile(r"<(?!=)([^\s,;]+)")
+_RE_LAST_AFFECTED = re.compile(r"<=(\d+(?:\.\d+)*)")
 _WS_RE = re.compile(r"\s+")
 _ADVISORY_HEADER_RE = re.compile(r"^(issue summary|impact summary|summary)\s*:\s*", re.IGNORECASE)
 
@@ -2590,6 +2591,12 @@ _ADVISORY_HEADER_RE = re.compile(r"^(issue summary|impact summary|summary)\s*:\s
 def _extract_fixed_version(affected_versions: str) -> str | None:
     """Extract the first fixed version from a range string such as '>=1.0,<2.0'."""
     m = _RE_FIXED_VERSION.search(affected_versions or "")
+    return m.group(1) if m else None
+
+
+def _extract_last_affected(affected_versions: str) -> str | None:
+    """Extract the last affected version from a range string such as '>=0.4,<=1.5.9'."""
+    m = _RE_LAST_AFFECTED.search(affected_versions or "")
     return m.group(1) if m else None
 
 
@@ -2638,9 +2645,21 @@ def _osv_to_finding(osv: dict[str, Any]) -> dict[str, Any]:
     cve_ids = osv.get("cve_ids") or []
     adv_id = osv.get("advisory_id", "")
     title = _finding_title(osv.get("dep_name", "?"), adv_id, osv.get("summary", ""))
+    aliases = [a for a in osv.get("aliases") or [] if a and a != adv_id]
+    if aliases:
+        # Carry every alias in the title so scanners reporting the same advisory
+        # under another id (pip-audit, grype, trivy) de-duplicate against it.
+        title = f"{title} [{', '.join([adv_id, *sorted(aliases)])}]"
     affected_versions = osv.get("affected_versions", "see advisory")
     fixed_version = _extract_fixed_version(affected_versions)
+    last_affected = None if fixed_version else _extract_last_affected(affected_versions)
     fixed_note = f"  Fixed in: {fixed_version}." if fixed_version else ""
+    if fixed_version:
+        remediation_fix = f" (fix available: {fixed_version})"
+    elif last_affected:
+        remediation_fix = f" (advisory affects versions up to {last_affected}; newer versions are not affected)"
+    else:
+        remediation_fix = ""
     return {
         "rule_id": adv_id,
         "severity": osv.get("severity", "UNKNOWN"),
@@ -2653,7 +2672,7 @@ def _osv_to_finding(osv: dict[str, Any]) -> dict[str, Any]:
         "affected": [osv.get("purl", osv.get("dep_name", "?"))],
         "remediation": (
             f"Upgrade {osv.get('dep_name')} to a version outside the affected range"
-            + (f" (fix available: {fixed_version})" if fixed_version else "")
+            + remediation_fix
             + f". See {osv.get('url', 'https://osv.dev')} for details."
         ),
         "source": "osv",

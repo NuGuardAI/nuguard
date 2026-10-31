@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nuguard.common.endpoint_scenario_gate import should_skip_direct_http_scenario
 from nuguard.common.logging import get_logger
@@ -118,7 +118,12 @@ from .session_metadata import (
     build_policy_version_claim,
     build_role_claim_forgery,
 )
-from .tool_abuse import build_direct_datastore_probe, build_sql_injection, build_ssrf
+from .tool_abuse import (
+    build_direct_datastore_probe,
+    build_foot_in_the_door_exec,
+    build_sql_injection,
+    build_ssrf,
+)
 
 _log = get_logger(__name__)
 
@@ -362,6 +367,42 @@ def _tool_risk_group(tool_name: str, description: str) -> tuple[str, bool]:
     return (_TOOL_GROUP_OTHER, False)
 
 
+
+_EXEC_TOOL_RE = re.compile(
+    r"(?:^|[_\-\s.])(?:execute|exec|run)[_\-\s]?(?:script|shell|command|cmd|code)|shell|subprocess",
+    re.IGNORECASE,
+)
+
+
+def _is_exec_tool(node: Any) -> bool:
+    """True for a TOOL node that executes scripts/commands (by privilege scope or name)."""
+    if getattr(node.metadata, "privilege_scope", None) == "code_execution":
+        return True
+    return bool(_EXEC_TOOL_RE.search(node.name or ""))
+
+
+def _drop_tool_shadow_agents(nodes: list) -> list:
+    """Drop AGENT nodes that merely duplicate a TOOL node by name.
+
+    LLM-enriched SBOMs can emit the same function (e.g. ``findrive__delete_file``)
+    as both a TOOL and an AGENT. Every shadow AGENT would otherwise receive its
+    own full agent-scoped scenario set (guided leaks, flooding, PII probes),
+    multiplying near-identical scenarios. The TOOL node keeps its tool scenarios.
+    """
+    tool_names = {
+        n.name.strip().lower() for n in nodes if n.component_type == ComponentType.TOOL
+    }
+    kept = [
+        n
+        for n in nodes
+        if not (n.component_type == ComponentType.AGENT and n.name.strip().lower() in tool_names)
+    ]
+    dropped = len(nodes) - len(kept)
+    if dropped:
+        _log.info("Scenario generation: ignored %d AGENT node(s) that shadow a TOOL node", dropped)
+    return kept
+
+
 class ScenarioGenerator:
     """Generates attack scenarios from an SBOM document and cognitive policy."""
 
@@ -371,13 +412,15 @@ class ScenarioGenerator:
         policy: CognitivePolicy | None = None,
         canary_config: "CanaryConfig | None" = None,
         endpoint_plan: "EndpointPlan | None" = None,
+        universal_safety_probes: bool = True,
     ) -> None:
+        self._universal_safety_probes = universal_safety_probes
         # Optional relevance plan narrowing which API endpoints each direct-HTTP
         # probe family is generated for (see endpoint_selector.build_endpoint_plan).
         self._endpoint_plan = endpoint_plan
         # Build one non-mutating effective view for every red-team consumer.
         # Soft-rejected nodes remain in the original SBOM for recall and audit.
-        effective_nodes = list(iter_effective_nodes(sbom.nodes))
+        effective_nodes = _drop_tool_shadow_agents(list(iter_effective_nodes(sbom.nodes)))
         if len(effective_nodes) == len(sbom.nodes):
             self._sbom = sbom
         else:
@@ -416,14 +459,17 @@ class ScenarioGenerator:
         # _chain_factory.py and issue #561.
         self._canary_auth_headers: dict[str, str] | None = None
         if canary_config is not None:
-            from nuguard.common.auth import AuthConfig
+            from nuguard.redteam.target.canary import CanaryTenant
 
             for tenant in getattr(canary_config, "tenants", []) or []:
-                session_token = getattr(tenant, "session_token", "")
-                if session_token:
-                    self._canary_auth_headers = AuthConfig.from_tenant_token(
-                        session_token
-                    ).to_headers()
+                if not isinstance(tenant, CanaryTenant):
+                    # Duck-typed tenant (token only): normalise to the real model.
+                    tenant = CanaryTenant(
+                        tenant_id=str(getattr(tenant, "tenant_id", "")),
+                        session_token=getattr(tenant, "session_token", ""),
+                    )
+                if tenant.has_credentials:
+                    self._canary_auth_headers = tenant.auth_headers()
                     break
         self._node_by_id = {str(node.id): node for node in self._sbom.nodes}
 
@@ -463,6 +509,11 @@ class ScenarioGenerator:
         # direct-HTTP scenario is generated with no canary credential
         # configured to route it through — see apply_secondary_credential().
         self.credential_fallback_notes: list[str] = []
+
+    @property
+    def effective_nodes(self) -> list:
+        """Nodes scenarios are generated from (soft-rejected and tool-shadow agents removed)."""
+        return list(self._sbom.nodes)
 
     _CREDENTIAL_FALLBACK_NOTE = (
         "No redteam.canary tenant with a session_token is configured — "
@@ -876,7 +927,11 @@ class ScenarioGenerator:
                 out.extend(build_restricted_topic_variants(str(node.id), topic))
         # Sexual content / violence / self-harm should be refused regardless
         # of domain — test them even when the app's own policy is silent.
-        for topic, category_id in missing_universal_topics(policy.restricted_topics):
+        for topic, category_id in (
+            missing_universal_topics(policy.restricted_topics)
+            if self._universal_safety_probes
+            else []
+        ):
             for node in target_nodes:
                 variants = build_restricted_topic_variants(str(node.id), topic)
                 for scenario in variants:
@@ -988,12 +1043,17 @@ class ScenarioGenerator:
 
             # Find agent(s) that can reach this datastore
             agent_ids = self._agents_reaching_datastore(str(node.id))
+            agent_cap = _MAX_AGENTS_PER_GOAL  # cap at 2 agents per datastore
             if not agent_ids:
+                # No graph path to this datastore: any agent is a blind guess, and
+                # the payload names only the datastore, so extra agents just
+                # produce same-titled duplicates. Probe through one.
                 agent_ids = [
                     str(n.id) for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
                 ]
+                agent_cap = 1
 
-            for agent_id in agent_ids[:_MAX_AGENTS_PER_GOAL]:  # cap at 2 agents per datastore
+            for agent_id in agent_ids[:agent_cap]:
                 chain_id = str(uuid.uuid4())
                 fields = (pii + phi + pfi)[:5]
                 field_list = ", ".join(fields)
@@ -1463,6 +1523,18 @@ class ScenarioGenerator:
                 out.append(build_sql_injection(tool_id=tool_id, tool_name=node.name))
             if meta.ssrf_possible:
                 out.append(build_ssrf(tool_id=tool_id, tool_name=node.name))
+            if _is_exec_tool(node) and not any(
+                sc.title.startswith("Foot-in-the-door") for sc in out
+            ):
+                entry_ids = self._compute_entry_agents() or [
+                    str(n.id) for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
+                ]
+                if entry_ids:
+                    out.append(
+                        build_foot_in_the_door_exec(
+                            agent_id=sorted(entry_ids)[0], tool_id=tool_id, tool_name=node.name
+                        )
+                    )
 
         # Direct datastore access — emitted when a DATASTORE node exposes a
         # connection string in its metadata (extras["connection_string"] or similar).

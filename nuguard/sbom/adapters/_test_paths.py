@@ -19,12 +19,16 @@ TEST_PATH_PARTS: frozenset[str] = frozenset({"tests", "test", "__tests__", "spec
 
 def looks_like_test_path(file_path: str) -> bool:
     """True when any path component of *file_path* names a test directory,
-    or the filename itself is a ``*.test.ts``/``*.spec.ts``-style test file."""
+    or the filename follows a common pytest/JS test naming convention."""
     path = PurePosixPath(file_path.replace("\\", "/"))
-    if set(path.parts) & TEST_PATH_PARTS:
+    if {part.lower() for part in path.parts} & TEST_PATH_PARTS:
         return True
-    stem = path.stem
-    return stem.endswith(".test") or stem.endswith(".spec")
+    stem = path.stem.lower()
+    if stem.endswith(".test") or stem.endswith(".spec"):
+        return True
+    return path.suffix.lower() in {".py", ".pyw"} and (
+        stem == "conftest" or stem.startswith("test_") or stem.endswith("_test")
+    )
 
 
 JVM_TEST_SOURCE_DIRS: frozenset[str] = frozenset({"test", "testFixtures", "integrationTest"})
@@ -91,3 +95,44 @@ def jvm_source_path_prefix(root: Path) -> PurePosixPath:
     if source_root is None:
         return PurePosixPath()
     return PurePosixPath(*absolute_root.relative_to(source_root.parent).parts)
+
+
+_JVM_CONFIG_SUFFIXES = (".properties", ".yml", ".yaml")
+
+
+def _is_jvm_source_set_file(name: str) -> bool:
+    """Files whose test status is decided by source set during discovery (``_iter_files``)."""
+    lower = name.lower()
+    return lower.endswith(".java") or (
+        lower.startswith("application") and lower.endswith(_JVM_CONFIG_SUFFIXES)
+    )
+
+
+def jvm_evidence_path(file_path: str) -> str:
+    """Path whose directory names decide whether a detection is test-only evidence.
+
+    ``looks_like_test_path`` treats any ``test``/``tests`` directory as test evidence. For Java
+    sources and ``application*`` configuration, ``src/test`` and friends are already decided by
+    file discovery (``include_test_sources``), and ``src/main/java/com/acme/test`` is a
+    production package. For those files only the module prefix before the first conventional
+    source set is returned (``tests/fixtures/app`` for
+    ``tests/fixtures/app/src/main/java/A.java``), so fixture projects stay test evidence.
+    A scan rooted at ``src`` yields ``test/java/...``, recognised by its content directory.
+    Every other file is returned unchanged.
+    """
+    normalized = file_path.replace("\\", "/")
+    parts = PurePosixPath(normalized).parts
+    if not parts or not _is_jvm_source_set_file(parts[-1]):
+        return file_path
+    source_sets = {"main", *JVM_TEST_SOURCE_DIRS}
+    directories = parts[:-1]
+    for index, name in enumerate(directories[:-1]):
+        if name == "src" and directories[index + 1] in source_sets:
+            return "/".join(parts[:index])
+    if (
+        len(directories) >= 2
+        and directories[0] in source_sets
+        and directories[1] in _JVM_CONTENT_DIRS
+    ):
+        return ""
+    return file_path

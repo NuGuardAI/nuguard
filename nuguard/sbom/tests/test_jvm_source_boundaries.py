@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from nuguard.sbom import AiSbomConfig, AiSbomExtractor
-from nuguard.sbom.adapters._test_paths import is_jvm_test_source_path
+from nuguard.sbom.adapters._test_paths import is_jvm_test_source_path, jvm_evidence_path
 from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.public_api import SbomGenerateRequest, generate_sbom
 from nuguard.sbom.types import ComponentType
@@ -215,7 +215,9 @@ def test_excluded_source_does_not_enter_llm_cache(
     assert len(caches) == 1
     assert "src/main/java/demo/Live.java" in caches[0]
     assert (test_file in caches[0]) is include
-    assert (yaml_file in caches[0]) is include
+    # Raw application configuration is deterministic-only input (develop, #665): it never
+    # enters the LLM cache, whether or not test sources are included.
+    assert yaml_file not in caches[0]
 
 
 @pytest.mark.parametrize("directory", TEST_DIRS)
@@ -348,3 +350,58 @@ def test_root_with_custom_source_set_does_not_inherit_test_ancestor(tmp_path: Pa
     root = tmp_path / "outer/src/test/custom-project"
     file = write(root, "Assistant.java")
     assert discovered(root) == {file}
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("src/main/java/com/acme/src/test/A.java", ""),
+        ("src/test/java/demo/A.java", ""),
+        ("src/test/resources/application.yml", ""),
+        ("test/java/demo/A.java", ""),
+        ("modules/customer/src/main/java/com/test/A.java", "modules/customer"),
+        ("tests/fixtures/app/src/main/java/demo/A.java", "tests/fixtures/app"),
+        ("app\\src\\main\\java\\demo\\A.java", "app"),
+        ("src/test/resources/prompts/system.md", "src/test/resources/prompts/system.md"),
+        ("src/main/kotlin/demo/A.kt", "src/main/kotlin/demo/A.kt"),
+        ("tests/test_agent.py", "tests/test_agent.py"),
+        ("tests/demo/A.java", "tests/demo/A.java"),
+    ],
+)
+def test_evidence_path_judges_only_the_module_prefix_for_jvm_files(
+    path: str, expected: str
+) -> None:
+    """Develop's test-evidence gate must not re-judge source-set directories of JVM files."""
+    assert jvm_evidence_path(path) == expected
+
+
+@pytest.mark.parametrize("include", [False, True])
+def test_fixture_app_under_a_tests_directory_stays_suppressed(
+    tmp_path: Path, include: bool
+) -> None:
+    """Develop suppresses runtime evidence below tests/; a Java fixture app is no exception."""
+    write(tmp_path, "tests/fixtures/app/src/main/java/demo/Assistant.java")
+    document = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, include_test_sources=include)
+    )
+    assert not agent_paths(document)
+
+
+@pytest.mark.parametrize("include", [False, True])
+def test_test_resource_config_model_follows_the_opt_in(tmp_path: Path, include: bool) -> None:
+    """application.properties under src/test yields its chat model only when opted in."""
+    config = "langchain4j.open-ai.chat-model.model-name=gpt-4o-mini\n"
+    write(tmp_path, "src/main/resources/application.properties", config)
+    write(tmp_path, "src/test/resources/application.properties", config)
+    document = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, include_test_sources=include)
+    )
+    paths = {
+        e.location.path
+        for n in document.nodes
+        if n.component_type == ComponentType.MODEL
+        for e in n.evidence
+        if e.location
+    }
+    assert "src/main/resources/application.properties" in paths
+    assert ("src/test/resources/application.properties" in paths) is include

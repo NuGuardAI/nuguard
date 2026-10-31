@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import ast
+import re
+from pathlib import Path
+
 import pytest
 
+from nuguard.sbom.adapters.base import AdapterMatch, ComponentDetection, RegexAdapter
+from nuguard.sbom.adapters.registry import MODEL_NAME_PATTERNS
+from nuguard.sbom.ast_parser import ParsedCall, ParsedInstantiation, parse
 from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.extractor.config import AiSbomConfig
 from nuguard.sbom.extractor.core import (
     _dedup_by_location,
     _dedup_by_name_prefix,
     _dedup_deployment_nodes,
+    _dedup_model_variants,
     _NodeAccumulator,
 )
 from nuguard.sbom.models import (
@@ -30,6 +38,9 @@ def _accumulator(
     confidence: float = 0.6,
     path: str = "workflow.yml",
     line: int | None = 10,
+    column: int | None = None,
+    end_line: int | None = None,
+    end_column: int | None = None,
     kind: str = "regex",
 ) -> _NodeAccumulator:
     return _NodeAccumulator(
@@ -44,7 +55,13 @@ def _accumulator(
                 kind=kind,
                 confidence=confidence,
                 detail=f"model_generic: {display_name}",
-                location=SourceLocation(path=path, line=line),
+                location=SourceLocation(
+                    path=path,
+                    line=line,
+                    column=column,
+                    end_line=end_line,
+                    end_column=end_column,
+                ),
             )
         ],
     )
@@ -195,18 +212,665 @@ def test_dedup_by_location_merges_truncated_model_name() -> None:
     same location must still merge (the legitimate case this pass exists for)."""
     node_map = {
         (ComponentType.MODEL, "gpt_5_4"): _accumulator(
-            "gpt_5_4", "gpt-5.4", priority=90, confidence=0.6
+            "gpt_5_4",
+            "gpt-5.4",
+            priority=110,
+            confidence=0.6,
+            column=9,
+            end_line=10,
+            end_column=16,
         ),
         (ComponentType.MODEL, "openai_gpt_5_4"): _accumulator(
-            "openai_gpt_5_4", "openai/gpt-5.4", priority=110, confidence=0.55
+            "openai_gpt_5_4",
+            "openai/gpt-5.4",
+            priority=90,
+            confidence=0.7,
+            column=1,
+            end_line=10,
+            end_column=17,
+            kind="ast_instantiation",
         ),
     }
 
     _dedup_by_location(node_map)
 
-    assert set(node_map) == {(ComponentType.MODEL, "gpt_5_4")}
-    winner = node_map[(ComponentType.MODEL, "gpt_5_4")]
+    assert set(node_map) == {(ComponentType.MODEL, "openai_gpt_5_4")}
+    winner = node_map[(ComponentType.MODEL, "openai_gpt_5_4")]
     assert len(winner.evidence) == 2
+
+
+def test_model_identity_pass_order_keeps_same_line_regex_only_prefix_models() -> None:
+    node_map = {
+        (ComponentType.MODEL, "gemini_3_6"): _accumulator(
+            "gemini_3_6", "gemini-3.6", kind="regex", line=10
+        ),
+        (ComponentType.MODEL, "gemini_3_6_flash"): _accumulator(
+            "gemini_3_6_flash", "gemini-3.6-flash", kind="regex", line=10
+        ),
+    }
+
+    _dedup_by_location(node_map)
+    _dedup_by_name_prefix(node_map)
+
+    assert set(node_map) == {
+        (ComponentType.MODEL, "gemini_3_6"),
+        (ComponentType.MODEL, "gemini_3_6_flash"),
+    }
+
+
+def test_model_identity_pass_order_merges_same_location_regex_ast_truncation() -> None:
+    node_map = {
+        (ComponentType.MODEL, "gemini_2_0"): _accumulator(
+            "gemini_2_0",
+            "gemini-2.0",
+            kind="regex",
+            priority=110,
+            line=10,
+            column=2,
+            end_line=10,
+            end_column=12,
+        ),
+        (ComponentType.MODEL, "gemini_2_0_flash"): _accumulator(
+            "gemini_2_0_flash",
+            "gemini-2.0-flash",
+            kind="ast_instantiation",
+            priority=90,
+            line=10,
+            column=1,
+            end_line=10,
+            end_column=19,
+        ),
+    }
+
+    _dedup_by_location(node_map)
+    _dedup_by_name_prefix(node_map)
+
+    assert set(node_map) == {(ComponentType.MODEL, "gemini_2_0_flash")}
+
+
+def test_model_identity_keeps_same_line_distinct_literal_occurrences() -> None:
+    node_map = {
+        (ComponentType.MODEL, "gemini_3_6"): _accumulator(
+            "gemini_3_6",
+            "gemini-3.6",
+            kind="regex",
+            line=10,
+            column=2,
+            end_line=10,
+            end_column=12,
+        ),
+        (ComponentType.MODEL, "gemini_3_6_flash"): _accumulator(
+            "gemini_3_6_flash",
+            "gemini-3.6-flash",
+            kind="ast_instantiation",
+            priority=90,
+            line=10,
+            column=20,
+            end_line=10,
+            end_column=38,
+        ),
+    }
+
+    _dedup_by_location(node_map)
+    _dedup_by_name_prefix(node_map)
+
+    assert set(node_map) == {
+        (ComponentType.MODEL, "gemini_3_6"),
+        (ComponentType.MODEL, "gemini_3_6_flash"),
+    }
+
+
+def test_model_identity_moves_only_correlated_cross_file_regex_evidence() -> None:
+    short = _accumulator(
+        "gemini_3_6",
+        "gemini-3.6",
+        kind="regex",
+        path="agent.py",
+        line=10,
+        column=9,
+        end_line=10,
+        end_column=19,
+    )
+    short.evidence.append(
+        Evidence(
+            kind="regex",
+            confidence=0.6,
+            detail="model_generic: gemini-3.6",
+            location=SourceLocation(
+                path="fallbacks.py",
+                line=4,
+                column=2,
+                end_line=4,
+                end_column=12,
+            ),
+        )
+    )
+    node_map = {
+        (ComponentType.MODEL, "gemini_3_6"): short,
+        (ComponentType.MODEL, "gemini_3_6_flash"): _accumulator(
+            "gemini_3_6_flash",
+            "gemini-3.6-flash",
+            kind="ast_instantiation",
+            priority=90,
+            path="agent.py",
+            line=10,
+            column=1,
+            end_line=10,
+            end_column=26,
+        ),
+    }
+
+    _dedup_by_location(node_map)
+    _dedup_by_name_prefix(node_map)
+
+    assert set(node_map) == {
+        (ComponentType.MODEL, "gemini_3_6"),
+        (ComponentType.MODEL, "gemini_3_6_flash"),
+    }
+    assert [e.location.path for e in node_map[(ComponentType.MODEL, "gemini_3_6")].evidence] == [
+        "fallbacks.py"
+    ]
+    assert {e.location.path for e in node_map[(ComponentType.MODEL, "gemini_3_6_flash")].evidence} == {
+        "agent.py"
+    }
+
+
+def test_multiline_model_literal_truncation_uses_exact_token_span(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "from langchain_openai import ChatOpenAI\n"
+        "llm = ChatOpenAI(\n"
+        '    model="openai/gpt-5.4",\n'
+        ")\n",
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    assert {node.name for node in doc.nodes if node.component_type == ComponentType.MODEL} == {
+        "openai/gpt-5.4"
+    }
+
+
+def test_nearby_short_literal_remains_when_full_model_token_is_multiline(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "from langchain_openai import ChatOpenAI\n"
+        'fallback = "gpt-5.4"\n'
+        "llm = ChatOpenAI(\n"
+        '    model="openai/gpt-5.4",\n'
+        ")\n",
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    assert {node.name for node in doc.nodes if node.component_type == ComponentType.MODEL} == {
+        "gpt-5.4",
+        "openai/gpt-5.4",
+    }
+
+
+def test_positional_model_literal_uses_exact_token_span(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "import ollama\n"
+        'ollama.pull("meta-llama/Llama-3.1-8B-Instruct")\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    assert {node.name for node in doc.nodes if node.component_type == ComponentType.MODEL} == {
+        "meta-llama/Llama-3.1-8B-Instruct"
+    }
+
+
+def test_resolved_model_binding_uses_assignment_literal_span(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "from langchain_openai import ChatOpenAI\n"
+        'MODEL = "openai/gpt-5.4"\n'
+        "llm = ChatOpenAI(model=MODEL)\n",
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    assert {node.name for node in doc.nodes if node.component_type == ComponentType.MODEL} == {
+        "openai/gpt-5.4"
+    }
+
+
+def test_non_ascii_prefix_uses_codepoint_columns_for_model_span(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "from langchain_openai import ChatOpenAI\n"
+        'note = "éééééééééé"; llm = ChatOpenAI(model="openai/gpt-5.4")\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    assert {node.name for node in doc.nodes if node.component_type == ComponentType.MODEL} == {
+        "openai/gpt-5.4"
+    }
+
+
+def test_unrelated_same_line_literal_is_not_used_as_model_evidence(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "from langchain_openai import ChatOpenAI\n"
+        'llm = ChatOpenAI(); note("ChatOpenAI")\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    model = next(
+        node
+        for node in doc.nodes
+        if node.component_type == ComponentType.MODEL and node.name == "ChatOpenAI"
+    )
+    assert len(model.evidence) == 1
+    assert model.evidence[0].kind == "ast_instantiation"
+    assert model.evidence[0].location.column is None
+
+
+def test_identical_same_line_model_calls_keep_occurrence_spans_and_dedup(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "from langchain_openai import ChatOpenAI\n"
+        'primary = ChatOpenAI(model="openai/gpt-5.4"); '
+        'backup = ChatOpenAI(model="openai/gpt-5.4")\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    models = [node for node in doc.nodes if node.component_type == ComponentType.MODEL]
+    assert [node.name for node in models] == ["openai/gpt-5.4"]
+    ast_spans = {
+        (
+            evidence.location.line,
+            evidence.location.column,
+            evidence.location.end_line,
+            evidence.location.end_column,
+        )
+        for evidence in models[0].evidence
+        if evidence.kind == "ast_instantiation"
+    }
+    assert ast_spans == {(2, 28, 2, 44), (2, 73, 2, 89)}
+
+
+def test_same_line_receiver_specific_call_keeps_originating_occurrence(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "import ollama\n"
+        'fake.pull("meta-llama/Llama-3.1-8B-Instruct"); '
+        'ollama.pull("meta-llama/Llama-3.1-8B-Instruct")\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    model = next(
+        node
+        for node in doc.nodes
+        if node.component_type == ComponentType.MODEL
+        and node.name == "meta-llama/Llama-3.1-8B-Instruct"
+    )
+    ast_evidence = next(evidence for evidence in model.evidence if evidence.kind == "ast_call")
+    assert (
+        ast_evidence.location.line,
+        ast_evidence.location.column,
+        ast_evidence.location.end_column,
+    ) == (2, 60, 94)
+
+
+def test_assignment_wrapped_autogen_model_call_uses_exact_argument_span(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "import autogen\n"
+        'config = dict(model="openai/gpt-5.4")\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    model = next(
+        node
+        for node in doc.nodes
+        if node.component_type == ComponentType.MODEL and node.name == "openai/gpt-5.4"
+    )
+    ast_evidence = next(evidence for evidence in model.evidence if evidence.kind == "ast_call")
+    assert (
+        ast_evidence.location.line,
+        ast_evidence.location.column,
+        ast_evidence.location.end_line,
+        ast_evidence.location.end_column,
+    ) == (2, 21, 2, 37)
+
+
+def test_dict_argument_preserves_tuple_key_and_skips_unhashable_key() -> None:
+    result = parse(
+        'configure({("provider", "region"): "us-east-1", ["unsupported"]: "ignored"})\n'
+    )
+
+    assert result.parse_error is None
+    assert result.function_calls[0].positional_args == [
+        {("provider", "region"): "us-east-1"}
+    ]
+
+
+def test_starred_autogen_config_list_uses_post_extraction_model_path(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "import autogen\n"
+        "configs = []\n"
+        'agent = autogen.AssistantAgent(name="a", llm_config={"config_list": '
+        '[*configs, {"model": "openai/gpt-5.4"}]})\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    models = [node for node in doc.nodes if node.component_type == ComponentType.MODEL]
+    assert {node.name for node in models} == {"openai/gpt-5.4"}
+    ast_evidence = next(
+        evidence
+        for evidence in models[0].evidence
+        if evidence.kind == "ast_instantiation"
+    )
+    assert ast_evidence.location.column is not None
+
+
+def test_transformed_provider_model_uses_raw_argument_span(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "from pydantic_ai import Agent\n"
+        'agent = Agent(model="openai:gpt-5.4")\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    models = [node for node in doc.nodes if node.component_type == ComponentType.MODEL]
+    assert [node.name for node in models] == ["gpt-5.4"]
+    ast_evidence = next(
+        evidence for evidence in models[0].evidence if evidence.kind == "ast_instantiation"
+    )
+    assert (
+        ast_evidence.location.line,
+        ast_evidence.location.column,
+        ast_evidence.location.end_line,
+        ast_evidence.location.end_column,
+    ) == (2, 21, 2, 37)
+
+
+def test_transformed_resolved_model_uses_constant_literal_span(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "from pydantic_ai import Agent\n"
+        'MODEL = "openai:gpt-5.4"\n'
+        "agent = Agent(model=MODEL)\n",
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    models = [node for node in doc.nodes if node.component_type == ComponentType.MODEL]
+    assert [node.name for node in models] == ["gpt-5.4"]
+    ast_evidence = next(
+        evidence for evidence in models[0].evidence if evidence.kind == "ast_instantiation"
+    )
+    assert (
+        ast_evidence.location.line,
+        ast_evidence.location.column,
+        ast_evidence.location.end_line,
+        ast_evidence.location.end_column,
+    ) == (2, 9, 2, 25)
+
+
+def test_model_source_call_without_argument_refuses_unrelated_literal(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "from langchain_openai import ChatOpenAI\n"
+        'llm = ChatOpenAI(label="ChatOpenAI")\n',
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    model = next(
+        node
+        for node in doc.nodes
+        if node.component_type == ComponentType.MODEL and node.name == "ChatOpenAI"
+    )
+    ast_evidence = next(e for e in model.evidence if e.kind == "ast_instantiation")
+    assert ast_evidence.location.column is None
+
+
+def test_repeated_model_bindings_refuse_ambiguous_literal_attachment(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "from langchain_openai import ChatOpenAI\n"
+        'MODEL = "openai/gpt-5.4"; MODEL = "openai/gpt-5.4"\n'
+        "llm = ChatOpenAI(model=MODEL)\n",
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    model = next(
+        node
+        for node in doc.nodes
+        if node.component_type == ComponentType.MODEL and node.name == "openai/gpt-5.4"
+    )
+    ast_evidence = next(e for e in model.evidence if e.kind == "ast_instantiation")
+    assert ast_evidence.location.column is None
+
+
+def test_autogen_nested_model_argument_uses_exact_literal_span(tmp_path) -> None:
+    (tmp_path / "agent.py").write_text(
+        "from autogen import AssistantAgent\n"
+        "agent = AssistantAgent(\n"
+        '    name="helper",\n'
+        '    llm_config={"config_list": [{"model": "openai/gpt-5.4"}]},\n'
+        ")\n",
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    model = next(
+        node
+        for node in doc.nodes
+        if node.component_type == ComponentType.MODEL and node.name == "openai/gpt-5.4"
+    )
+    ast_evidence = next(e for e in model.evidence if e.kind == "ast_instantiation")
+    assert (
+        ast_evidence.location.line,
+        ast_evidence.location.column,
+        ast_evidence.location.end_line,
+        ast_evidence.location.end_column,
+    ) == (4, 43, 4, 59)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from agents import Agent\nAgent(name='a', model='openai/gpt-5.4')\n",
+        "from llama_index.llms.openai import OpenAI\nOpenAI(model='openai/gpt-5.4')\n",
+        "from crewai import Agent\nAgent(role='a', llm='openai/gpt-5.4')\n",
+        "from google.adk.agents import Agent\nAgent(name='a', model='openai/gpt-5.4')\n",
+        (
+            "from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion\n"
+            "OpenAIChatCompletion(ai_model_id='openai/gpt-5.4')\n"
+        ),
+        (
+            "from claude_agent_sdk import ClaudeAgentOptions\n"
+            "ClaudeAgentOptions(model='openai/gpt-5.4')\n"
+        ),
+        "from agno.models.openai import OpenAIChat\nOpenAIChat(id='openai/gpt-5.4')\n",
+        (
+            "from azure.ai.projects import AIProjectClient\n"
+            "client.agents.create(name='a', model='openai/gpt-5.4')\n"
+        ),
+    ],
+)
+def test_python_model_adapters_attach_their_exact_argument_span(tmp_path, source) -> None:
+    (tmp_path / "agent.py").write_text(source, encoding="utf-8")
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path, AiSbomConfig(enable_llm=False, max_files=20)
+    )
+
+    model = next(
+        node
+        for node in doc.nodes
+        if node.component_type == ComponentType.MODEL and node.name == "openai/gpt-5.4"
+    )
+    ast_evidence = next(e for e in model.evidence if e.kind.startswith("ast_"))
+    assert ast_evidence.location.column is not None
+    assert ast_evidence.location.end_column is not None
+
+
+def test_every_python_model_emitter_declares_source_provenance() -> None:
+    adapters_dir = Path(__file__).parents[2] / "nuguard" / "sbom" / "adapters" / "python"
+    missing: list[str] = []
+    for path in adapters_dir.glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            if node.func.id != "ComponentDetection":
+                continue
+            keywords = {kw.arg: kw.value for kw in node.keywords if kw.arg}
+            component_type = keywords.get("component_type")
+            if not (
+                isinstance(component_type, ast.Attribute) and component_type.attr == "MODEL"
+            ):
+                continue
+            if "source_call" not in keywords or "source_model_argument" not in keywords:
+                missing.append(f"{path.name}:{node.lineno}")
+    assert missing == []
+
+
+def test_provenance_dataclasses_preserve_legacy_positional_constructors() -> None:
+    match = AdapterMatch("pattern", 2, "snippet", {"model": "gpt-5"})
+    assert match.groups == {"model": "gpt-5"}
+    assert match.column is None
+
+    detection = ComponentDetection(
+        ComponentType.MODEL,
+        "gpt_5",
+        "gpt-5",
+        "adapter",
+        10,
+        0.9,
+        {},
+        "agent.py",
+        2,
+        "snippet",
+        "ast_instantiation",
+        "code",
+        [],
+    )
+    assert detection.relationships == []
+    assert detection.column is None
+    assert detection.source_call is None
+
+    instantiation = ParsedInstantiation("Model", {}, [], "llm", 2, 2, "factory")
+    call = ParsedCall("create", "client", {}, [], "agent", 3, 3, "factory")
+    assert instantiation.context == "factory"
+    assert call.context == "factory"
+    assert instantiation.arg_locations == {}
+    assert call.arg_locations == {}
+
+
+def test_regex_match_ending_before_newline_keeps_current_end_line() -> None:
+    adapter = RegexAdapter(
+        name="model_test",
+        component_type=ComponentType.MODEL,
+        priority=1,
+        patterns=(re.compile(r"gemini-2\.0"),),
+    )
+
+    detection = adapter.detect("gemini-2.0\n")
+
+    assert detection is not None
+    match = detection.matches[0]
+    assert (match.line, match.column, match.end_line, match.end_column) == (1, 1, 1, 11)
+
+
+def test_model_format_variant_pass_keeps_unproven_repo_and_filename_forms() -> None:
+    node_map = {
+        (ComponentType.MODEL, "qwen_qwen3_5_9b_gguf"): _accumulator(
+            "qwen_qwen3_5_9b_gguf", "Qwen/Qwen3.5-9B-GGUF", line=10
+        ),
+        (ComponentType.MODEL, "qwen3_5_9b_q4_k_m_gguf"): _accumulator(
+            "qwen3_5_9b_q4_k_m_gguf", "Qwen3.5-9B-Q4_K_M.gguf", line=11
+        ),
+    }
+
+    _dedup_model_variants(node_map)
+
+    assert len(node_map) == 2
+
+
+def test_model_format_variant_pass_keeps_distinct_quantizations() -> None:
+    node_map = {
+        (ComponentType.MODEL, "qwen3_5_9b_q4_k_m_gguf"): _accumulator(
+            "qwen3_5_9b_q4_k_m_gguf", "Qwen3.5-9B-Q4_K_M.gguf", line=10
+        ),
+        (ComponentType.MODEL, "qwen3_5_9b_q8_0_gguf"): _accumulator(
+            "qwen3_5_9b_q8_0_gguf", "Qwen3.5-9B-Q8_0.gguf", line=11
+        ),
+    }
+
+    _dedup_model_variants(node_map)
+
+    assert {acc.display_name for acc in node_map.values()} == {
+        "Qwen3.5-9B-Q4_K_M.gguf",
+        "Qwen3.5-9B-Q8_0.gguf",
+    }
+
+
+def test_model_format_variant_pass_merges_same_structural_config_group() -> None:
+    repo = _accumulator(
+        "qwen_qwen3_5_9b_gguf", "Qwen/Qwen3.5-9B-GGUF", line=10
+    )
+    filename = _accumulator(
+        "qwen3_5_9b_q4_k_m_gguf", "Qwen3.5-9B-Q4_K_M.gguf", line=11
+    )
+    repo.metadata["model_config_group"] = "models.py:config[0]"
+    filename.metadata["model_config_group"] = "models.py:config[0]"
+    node_map = {
+        (ComponentType.MODEL, repo.canonical_name): repo,
+        (ComponentType.MODEL, filename.canonical_name): filename,
+    }
+
+    _dedup_model_variants(node_map)
+
+    assert len(node_map) == 1
+    assert len(next(iter(node_map.values())).evidence) == 2
 
 
 def test_dedup_by_location_keeps_generic_deployment_bucket_separate_from_iac_node() -> None:
@@ -338,16 +1002,102 @@ def test_dedup_by_name_prefix_merges_legit_truncation() -> None:
     entity should still merge when the prefix ends on a delimiter boundary."""
     node_map = {
         (ComponentType.MODEL, "gemini_2_0"): _accumulator(
-            "gemini_2_0", "gemini-2.0", priority=110, confidence=0.6
+            "gemini_2_0",
+            "gemini-2.0",
+            priority=110,
+            confidence=0.6,
+            column=2,
+            end_line=10,
+            end_column=12,
         ),
         (ComponentType.MODEL, "gemini_2_0_flash"): _accumulator(
-            "gemini_2_0_flash", "gemini-2.0-flash", priority=90, confidence=0.7
+            "gemini_2_0_flash",
+            "gemini-2.0-flash",
+            priority=90,
+            confidence=0.7,
+            column=1,
+            end_line=10,
+            end_column=19,
+            kind="ast_instantiation",
         ),
     }
 
     _dedup_by_name_prefix(node_map)
 
     assert set(node_map) == {(ComponentType.MODEL, "gemini_2_0_flash")}
+    assert {evidence.kind for evidence in next(iter(node_map.values())).evidence} == {
+        "ast_instantiation",
+        "regex",
+    }
+
+
+def test_dedup_by_name_prefix_keeps_distinct_regex_only_models() -> None:
+    node_map = {
+        (ComponentType.MODEL, "gemini_3_6"): _accumulator(
+            "gemini_3_6", "gemini-3.6", kind="regex"
+        ),
+        (ComponentType.MODEL, "gemini_3_6_flash"): _accumulator(
+            "gemini_3_6_flash", "gemini-3.6-flash", kind="regex"
+        ),
+    }
+
+    _dedup_by_name_prefix(node_map)
+
+    assert set(node_map) == {
+        (ComponentType.MODEL, "gemini_3_6"),
+        (ComponentType.MODEL, "gemini_3_6_flash"),
+    }
+
+
+def test_dedup_by_name_prefix_keeps_distinct_regex_and_ast_models_on_different_lines() -> None:
+    node_map = {
+        (ComponentType.MODEL, "gemini_3_6"): _accumulator(
+            "gemini_3_6", "gemini-3.6", kind="regex", line=10
+        ),
+        (ComponentType.MODEL, "gemini_3_6_flash"): _accumulator(
+            "gemini_3_6_flash",
+            "gemini-3.6-flash",
+            kind="ast_instantiation",
+            line=11,
+        ),
+    }
+
+    _dedup_by_name_prefix(node_map)
+
+    assert set(node_map) == {
+        (ComponentType.MODEL, "gemini_3_6"),
+        (ComponentType.MODEL, "gemini_3_6_flash"),
+    }
+
+
+def test_dedup_by_name_prefix_non_ast_evidence_never_proves_truncation() -> None:
+    node_map = {
+        (ComponentType.MODEL, "gemini_3_6"): _accumulator(
+            "gemini_3_6", "gemini-3.6", kind="regex", line=10
+        ),
+        (ComponentType.MODEL, "gemini_3_6_flash"): _accumulator(
+            "gemini_3_6_flash", "gemini-3.6-flash", kind="config", line=10
+        ),
+    }
+
+    _dedup_by_name_prefix(node_map)
+
+    assert set(node_map) == {
+        (ComponentType.MODEL, "gemini_3_6"),
+        (ComponentType.MODEL, "gemini_3_6_flash"),
+    }
+
+
+def test_generic_model_regex_keeps_full_gemini_variant() -> None:
+    source = 'model = "gemini-3.6-flash"'
+
+    matches = [
+        match.group(0)
+        for pattern in MODEL_NAME_PATTERNS
+        for match in pattern.finditer(source)
+    ]
+
+    assert matches == ["gemini-3.6-flash"]
 
 
 def test_dedup_by_name_prefix_rejects_numeric_id_collision() -> None:

@@ -19,8 +19,7 @@ _TS_ADAPTER = ClaudeAgentSDKTSAdapter()
 
 CHIEF_OF_STAFF_DIR = (
     Path(__file__).parent.parent
-    / "apps"
-    / "claude-cookbooks"
+    / "fixtures"
     / "claude_agent_sdk"
     / "chief_of_staff_agent"
 )
@@ -450,10 +449,6 @@ const agent = new Agent({ name: "test", instructions: "help" });
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(
-    not CHIEF_OF_STAFF_DIR.exists(),
-    reason="chief_of_staff_agent test fixture not available",
-)
 def test_e2e_chief_of_staff_sbom():
     """Run the full SBOM extractor on the chief_of_staff_agent and assert key nodes."""
     from nuguard.sbom.extractor import AiSbomExtractor
