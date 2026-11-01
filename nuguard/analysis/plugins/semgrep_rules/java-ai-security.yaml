@@ -18,6 +18,25 @@ rules:
           - pattern: $REQUEST.body(...)
           - pattern: $SERVER_REQUEST.queryParam(...)
           - pattern: $SERVER_REQUEST.headers().firstHeader(...)
+          - patterns:
+              - pattern-either:
+                  - pattern-inside: |
+                      $FUNC(..., @RequestParam $TYPE $SOURCE, ...) { ... }
+                  - pattern-inside: |
+                      $FUNC(..., @RequestParam(...) $TYPE $SOURCE, ...) { ... }
+                  - pattern-inside: |
+                      $FUNC(..., @RequestBody $TYPE $SOURCE, ...) { ... }
+                  - pattern-inside: |
+                      $FUNC(..., @RequestBody(...) $TYPE $SOURCE, ...) { ... }
+                  - pattern-inside: |
+                      $FUNC(..., @PathVariable $TYPE $SOURCE, ...) { ... }
+                  - pattern-inside: |
+                      $FUNC(..., @PathVariable(...) $TYPE $SOURCE, ...) { ... }
+                  - pattern-inside: |
+                      $FUNC(..., @RequestHeader $TYPE $SOURCE, ...) { ... }
+                  - pattern-inside: |
+                      $FUNC(..., @RequestHeader(...) $TYPE $SOURCE, ...) { ... }
+              - focus-metavariable: $SOURCE
     pattern-sanitizers:
       - pattern-either:
           - pattern: $VALIDATOR.validate(...)
@@ -119,3 +138,8 @@ rules:
           - pattern: return $MODEL.call(...);
           - pattern: return $MODEL.generate(...);
           - pattern: return $SERVICE.chat(...);
+          - patterns:
+              - pattern: return $R.content();
+              - pattern-inside: |
+                  Result<$X> $R = $SVC.$M(...);
+                  ...

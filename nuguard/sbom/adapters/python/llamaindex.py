@@ -134,10 +134,10 @@ class LlamaIndexAdapter(FrameworkAdapter):
             elif inst.class_name in _LLM_WRAPPER_CLASSES:
                 provider = _LLM_WRAPPER_CLASSES[inst.class_name]
                 args = inst.args or {}
-                model_name = (
-                    _clean(args.get("model") or args.get("model_name") or args.get("model_id"))
-                    or inst.class_name
+                model_argument = next(
+                    (key for key in ("model", "model_name", "model_id") if args.get(key)), None
                 )
+                model_name = _clean(args.get(model_argument)) if model_argument else inst.class_name
                 details = get_model_details(model_name, provider, args)
                 model_canon = canonicalize_text(model_name.lower())
 
@@ -159,6 +159,8 @@ class LlamaIndexAdapter(FrameworkAdapter):
                         line=inst.line,
                         snippet=f"{inst.class_name}(model={model_name!r})",
                         evidence_kind="ast_instantiation",
+                        source_call=inst,
+                        source_model_argument=model_argument,
                     )
                 )
                 model_canonicals.append(model_canon)

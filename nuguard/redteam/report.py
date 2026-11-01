@@ -533,7 +533,7 @@ _INVALID_RUN_COVERAGE_PCT = 50
 
 
 _SIMILARITY_EXCLUDED = "similar_miss"
-_NOT_TESTED_STATUSES = {"skipped", "failed", "target_unreachable", "timeout"}
+_NOT_TESTED_STATUSES = {"skipped", "not_engaged", "failed", "target_unreachable", "timeout"}
 _ENDPOINT_UNREACHABLE_STATUSES = {"completed:endpoint_not_found"}
 # Clean chain endings: the attack ran to its designed end (a bare "aborted" is a
 # designed on_failure="abort" stop after a clean miss, see _attack_coverage_summary).
@@ -791,6 +791,7 @@ def _r(r: Any, key: str, default: Any = None) -> Any:
 # entry after stripping the suffix.
 _ZERO_TURN_REASONS: dict[str, str] = {
     "skipped": "circuit breaker open",
+    "not_engaged": "main chat endpoint not engaged",
     "aborted": "target unavailable",
     "target_unreachable": "direct-HTTP endpoint unreachable",
     "similar_miss": "similar attack already missed",

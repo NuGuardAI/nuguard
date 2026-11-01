@@ -26,7 +26,7 @@ MODEL_NAME_PATTERNS: tuple[re.Pattern[str], ...] = (
         # - o-series: require word boundary or letter suffix to avoid hex
         # - deepseek/qwen/phi: common open-weight families
         # - <name>:<size_tag>: generic Ollama pull format (mistral:7b)
-        r"\b(gpt-[\d][\w.-]*|claude-[\d][\w.-]*|claude-(?:sonnet|opus|haiku|instant)[\d-][\w.-]*|gemini-[\d][\w.]*"
+        r"\b(gpt-[\d][\w.-]*|claude-[\d][\w.-]*|claude-(?:sonnet|opus|haiku|instant)[\d-][\w.-]*|gemini-[\d][\w.-]*"
         r"|llama-[\d][\w.-]*|llama[\d][\w.]*:[a-z0-9]+"
         r"|mistral-[\w.-]+|o\d(?:-[a-z][a-z0-9-]*)?\b"
         r"|deepseek-[\w.-]+|qwen[\d][\w.-]*|phi[\d][\w.-]*"
