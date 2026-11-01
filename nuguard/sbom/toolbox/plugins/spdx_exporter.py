@@ -16,6 +16,7 @@ Produces output aligned with the NuGuardAI SPDX 3.0.1 reference format:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from importlib import resources
@@ -476,9 +477,14 @@ def _add_package_extensions(element: dict[str, Any], node: Node) -> None:
 def _dep_to_element(
     dep: Any, ci_ref: str, org_id: str, created: str, repo_url: str = ""
 ) -> dict[str, Any]:
+    # Hash the full PURL, including its version and variant qualifiers, rather
+    # than the display name or the versionless identity used by the scanner.
+    # Retain deterministic behavior for caller-supplied records without a PURL.
+    identity = dep.purl or json.dumps([dep.name, dep.version_spec], ensure_ascii=False)
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     return {
         "type": _TYPE_PKG,
-        "spdxId": _spdx_ref("Dep", dep.name),
+        "spdxId": _spdx_ref("Dep", f"{dep.name}-{digest}"),
         "creationInfo": ci_ref,
         "name": dep.name,
         "software_primaryPurpose": "library",

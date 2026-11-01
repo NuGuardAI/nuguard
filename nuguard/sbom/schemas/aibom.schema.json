@@ -3787,6 +3787,45 @@
           "default": null,
           "description": "1-based line number, if known",
           "title": "Line"
+        },
+        "column": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1-based start column, if known",
+          "title": "Column"
+        },
+        "end_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1-based inclusive end line, if known",
+          "title": "End Line"
+        },
+        "end_column": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1-based exclusive end column, if known",
+          "title": "End Column"
         }
       },
       "required": [
