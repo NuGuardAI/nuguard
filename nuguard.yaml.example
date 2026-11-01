@@ -96,6 +96,15 @@ target:
   #     history: "{{history}}"
   #   session_id: "{{session_id}}"
 
+  # GET chat endpoint with the message in the query string, e.g.
+  #   GET /customerSupportAgent?sessionId=...&userMessage=...
+  # chat_method: GET                # GET | POST | PUT | PATCH (default: POST)
+  # chat_payload_in: query          # query | body (default: query for GET, body otherwise)
+  # chat_payload_extras:            # each entry becomes a query parameter
+  #   sessionId: "{{session_id}}"
+  #   userMessage: "{{message}}"
+  # A text/plain reply is used as the reply text as-is.
+
   # Authentication — uncomment ONE option:
   auth:
     # Option A: Login flow (preferred when the app exposes a /login endpoint)

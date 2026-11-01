@@ -43,7 +43,12 @@ from nuguard.common.url_sanitization import (
     sanitize_repository_url,
 )
 
-from ..adapters._test_paths import looks_like_test_path
+from ..adapters._test_paths import (
+    is_jvm_test_source_path,
+    jvm_evidence_path,
+    jvm_source_path_prefix,
+    looks_like_test_path,
+)
 from ..adapters.azure_yaml import AzureYamlAdapter, is_azure_yaml
 from ..adapters.base import (
     AdapterMatch,
@@ -109,7 +114,10 @@ from ..adapters.yaml_adapters import (
     PromptFileAdapter,
 )
 from ..config import AiSbomConfig
-from ..core.application_summary import build_scan_summary
+from ..core.application_summary import (
+    _instrumentation_evidence_for_file,
+    build_scan_summary,
+)
 from ..core.ts_parser import TSParseResult
 from ..core.ts_parser import parse_typescript as _parse_ts_impl
 from ..deps import DependencyScanner
@@ -1342,6 +1350,8 @@ class AiSbomExtractor:
         files_sample_bytes = 0
         full_cache_files = 0
         full_cache_bytes = 0
+        langsmith_active = False
+        active_tracing_tools: set[str] = set()
 
         def _human_bytes(num_bytes: int) -> str:
             if num_bytes < 1024:
@@ -1650,6 +1660,11 @@ class AiSbomExtractor:
 
             files_scanned += 1
             rel_path = str(file_path.relative_to(root))
+            file_langsmith_active, file_tracing_tools = _instrumentation_evidence_for_file(
+                rel_path, content
+            )
+            langsmith_active = langsmith_active or file_langsmith_active
+            active_tracing_tools.update(file_tracing_tools)
             if file_path.suffix.lower() in _JAVA_EXTENSIONS:
                 _java_scanned.add(rel_path)
             content_bytes = file_size
@@ -2832,6 +2847,7 @@ class AiSbomExtractor:
                 source_ref=source_ref,
                 branch=branch,
                 dc_metadata=_dc_metadata,
+                instrumentation_evidence=(langsmith_active, active_tracing_tools),
             )
         )
         # Node-level classification is intentionally scoped to datastores that
@@ -3222,6 +3238,9 @@ class AiSbomExtractor:
         # ``tests/fixtures/app.py`` becomes ``app.py`` for that focused scan.
         # Keep infrastructure/configuration detections (for example DEPLOYMENT)
         # because test and E2E directories can contain real environment facts.
+        # Java sources and application* config are classified by source set during file
+        # discovery (include_test_sources), so only the directories before the source set
+        # count here: src/main/java/com/acme/test is production, tests/fixtures/** is not.
         if det.component_type in {
             ComponentType.AGENT,
             ComponentType.GUARDRAIL,
@@ -3230,7 +3249,7 @@ class AiSbomExtractor:
             ComponentType.TOOL,
             ComponentType.PROMPT,
             ComponentType.FRAMEWORK,
-        } and looks_like_test_path(det.file_path):
+        } and looks_like_test_path(jvm_evidence_path(det.file_path)):
             return
 
         # Exact config identifiers preserve punctuation and case. Ordinary
@@ -4296,6 +4315,9 @@ class AiSbomExtractor:
         _gitignore_match = (
             _load_gitignore_matcher(root) if getattr(config, "honor_gitignore", True) else None
         )
+        # Restore only conventional source-set context for subtree scans.
+        # Evidence, gitignore and explicit exclusions still use the selected root.
+        jvm_test_prefix = jvm_source_path_prefix(root)
         count = 0
         for dirpath, dirnames, filenames in os.walk(root):
             # Keep traversal deterministic and prune irrelevant dirs early.
@@ -4319,6 +4341,23 @@ class AiSbomExtractor:
                     continue
                 # Skip .github/** except .github/workflows/**
                 if ".github" in parts and "workflows" not in parts:
+                    continue
+                # Skip JVM test source trees (src/test/**, src/testFixtures/**, ...): test
+                # helpers are not application agents/prompts and would inflate the component
+                # graph and the findings derived from it. Opt in: include_test_sources.
+                if (
+                    not getattr(config, "include_test_sources", False)
+                    and (
+                        suffix == ".java"
+                        or (
+                            path.name.lower().startswith("application")
+                            and suffix in {".properties", ".yml", ".yaml"}
+                        )
+                    )
+                    and is_jvm_test_source_path(
+                        (jvm_test_prefix / path.relative_to(root).as_posix()).as_posix()
+                    )
+                ):
                     continue
                 # Skip meta/tooling instruction files
                 if path.name in {"CLAUDE.md", "AGENTS.md"}:

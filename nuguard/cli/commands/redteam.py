@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
@@ -310,6 +310,8 @@ def redteam(
         chat_payload_list=cfg.redteam_chat_payload_list,
         chat_response_key=cfg.redteam_chat_response_key or None,
         chat_payload_extras=cfg.redteam_chat_payload_extras or None,
+        chat_method=cfg.redteam_chat_method,
+        chat_payload_in=cfg.redteam_chat_payload_in,
         guided_conversations=effective_guided,
         guided_max_turns=effective_guided_max_turns,
         guided_concurrency=effective_guided_concurrency,
@@ -666,6 +668,8 @@ async def _run_redteam(
     preflight_candidates: int = 3,
     llm_capability_dedup: bool = False,
     chat_payload_extras: dict[str, Any] | None = None,
+    chat_method: Literal["GET", "POST", "PUT", "PATCH"] = "POST",
+    chat_payload_in: Literal["body", "query"] | None = None,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
     verify_findings: bool = False,
@@ -792,6 +796,8 @@ async def _run_redteam(
                 chat_payload_list=chat_payload_list,
                 chat_response_key=chat_response_key,
                 chat_payload_extras=chat_payload_extras,
+                chat_method=chat_method,
+                chat_payload_in=chat_payload_in,
                 guided_conversations=guided_conversations,
                 guided_max_turns=guided_max_turns,
                 guided_concurrency=guided_concurrency,
@@ -872,6 +878,8 @@ async def _run_redteam(
         chat_payload_list=chat_payload_list,
         chat_response_key=chat_response_key,
         chat_payload_extras=chat_payload_extras,
+        chat_method=chat_method,
+        chat_payload_in=chat_payload_in,
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
@@ -949,6 +957,8 @@ async def _run_orchestrator(  # noqa: C901
     chat_payload_list: bool = False,
     chat_response_key: str | None = None,
     chat_payload_extras: dict[str, Any] | None = None,
+    chat_method: Literal["GET", "POST", "PUT", "PATCH"] = "POST",
+    chat_payload_in: Literal["body", "query"] | None = None,
     guided_conversations: bool = True,
     guided_max_turns: int = 12,
     guided_concurrency: int = 3,
@@ -1102,6 +1112,8 @@ async def _run_orchestrator(  # noqa: C901
         browser_discovery=browser_discovery or BrowserDiscoveryConfig(),
         llm_capability_dedup=llm_capability_dedup,
         chat_payload_extras=chat_payload_extras or None,
+        chat_method=chat_method,
+        chat_payload_in=chat_payload_in,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
         golden_data=golden_data,
