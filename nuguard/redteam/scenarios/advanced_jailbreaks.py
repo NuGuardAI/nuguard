@@ -106,7 +106,7 @@ def build_many_shot_jailbreak(
         scenario_type=ScenarioType.MANY_SHOT_JAILBREAK,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             ExploitStep(
@@ -185,7 +185,7 @@ def build_crescendo_attack(
         scenario_type=ScenarioType.CRESCENDO,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             ExploitStep(
@@ -298,7 +298,7 @@ def build_skeleton_key(
         scenario_type=ScenarioType.SKELETON_KEY,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             ExploitStep(
@@ -401,7 +401,7 @@ def build_payload_splitting(
         scenario_type=ScenarioType.PAYLOAD_SPLITTING,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             ExploitStep(
@@ -519,7 +519,7 @@ def build_fictional_framing_bypass(
         title=f"Fictional/Training Framing Bypass — {agent_name}",
         description="Fictional novel or training-data framing used to extract policy-restricted content",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026", owasp_asi_ref="ASI01",
     )
 
 
@@ -570,5 +570,5 @@ def build_false_policy_premise(
         title=f"Policy-Conflict False Premise — {agent_name}",
         description="Invented policy directive or legal argument used to override agent's actual restrictions",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026", owasp_asi_ref="ASI01",
     )

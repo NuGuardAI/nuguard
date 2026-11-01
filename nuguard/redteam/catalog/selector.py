@@ -17,6 +17,7 @@ import hashlib
 from collections import defaultdict
 
 from nuguard.common.logging import get_logger
+from nuguard.models.exploit_chain import ScenarioType
 from nuguard.sbom.models import AiSbomDocument
 
 from .builders import BUILDER_FACTORIES, AppCapabilityProfile, BuilderContext
@@ -48,6 +49,7 @@ def select_scenarios(
     policy: object | None = None,
     with_guided: bool = True,
     catalog: tuple[ScenarioSpec, ...] | None = None,
+    canary_auth_headers: dict[str, str] | None = None,
 ) -> tuple[list, CoverageReport]:
     """Return ``(scenarios, coverage)`` for the current target.
 
@@ -64,6 +66,11 @@ def select_scenarios(
     with_guided:
         When False, guided-conversation specs are skipped (consistent with the
         legacy ``with_guided=False`` path).
+    canary_auth_headers:
+        Disposable canary-tenant auth headers (issue #561), forwarded onto
+        every :class:`BuilderContext` so write-capable factories (e.g.
+        ``_build_mass_assignment``) can route mutating steps through this
+        identity instead of the run's own primary credentials.
     """
 
     active_catalog: tuple[ScenarioSpec, ...]
@@ -97,6 +104,7 @@ def select_scenarios(
             target_agent=agent,
             target_tool=None,
             policy=policy,
+            canary_auth_headers=canary_auth_headers,
         ))
 
     # Index concrete SBOM surfaces for context enrichment
@@ -131,6 +139,14 @@ def select_scenarios(
             skipped.append((spec.id, spec.category.value, "profile_capped"))
             continue
 
+        # --- destructive specs are out of CI scope ----
+        if scan_profile == "ci" and (
+            spec.category == ScenarioCategory.DESTRUCTIVE_ACTION
+            or spec.scenario_type == ScenarioType.RESOURCE_EXHAUSTION
+        ):
+            skipped.append((spec.id, spec.category.value, "destructive_not_in_ci"))
+            continue
+
         # --- explicitly disabled ----
         if not spec.enabled:
             skipped.append((spec.id, spec.category.value, "spec_disabled"))
@@ -156,7 +172,9 @@ def select_scenarios(
             C.MCP_SERVER in spec.required_capabilities
             and builder_key in ("mcp_toxic_flow", "mcp_tool_injection", "mcp_output_poisoning")
         )
-        _needs_api = builder_key in ("mass_assignment", "auth_bypass", "idor")
+        _needs_api = builder_key in (
+            "mass_assignment", "auth_bypass", "idor", "dual_path_read", "identity_invalid_cred_spoof",
+        )
 
         # Build expanded context list with concrete node bindings
         expanded_contexts: list[BuilderContext] = []
@@ -170,6 +188,7 @@ def select_scenarios(
                         target_agent=base_ctx.target_agent,
                         target_tool=tool_node,
                         policy=base_ctx.policy,
+                        canary_auth_headers=base_ctx.canary_auth_headers,
                     ))
             elif _needs_api and _api_ep_nodes:
                 for ep_node in _api_ep_nodes[:2]:
@@ -181,6 +200,7 @@ def select_scenarios(
                         target_tool=base_ctx.target_tool,
                         policy=base_ctx.policy,
                         target_endpoint=ep_node,
+                        canary_auth_headers=base_ctx.canary_auth_headers,
                     ))
             else:
                 expanded_contexts.append(BuilderContext(
@@ -190,6 +210,7 @@ def select_scenarios(
                     target_agent=base_ctx.target_agent,
                     target_tool=base_ctx.target_tool,
                     policy=base_ctx.policy,
+                    canary_auth_headers=base_ctx.canary_auth_headers,
                 ))
 
         # Run factory for each context

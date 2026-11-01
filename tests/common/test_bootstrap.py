@@ -9,6 +9,7 @@ import respx
 
 from nuguard.common.auth import AuthConfig, LoginFlowConfig
 from nuguard.common.bootstrap import BOOTSTRAP_STARTUP_RETRIES, AuthBootstrapper
+from nuguard.common.endpoint_detection.models import EndpointSource, PayloadShape, ResolvedEndpoint
 from nuguard.common.errors import TargetUnavailableError
 from nuguard.redteam.target.canary import CanaryConfig, CanaryTenant
 
@@ -52,6 +53,46 @@ async def test_default_credential_ok() -> None:
     assert len(report.checks) == 1
     assert report.checks[0].status == "ok"
     assert report.checks[0].identity == "default"
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_endpoint_resolver_runs_after_login_before_chat_probe() -> None:
+    respx.post(f"{TARGET}/login").mock(return_value=httpx.Response(200, json={"token": "jwt"}))
+    chat_route = respx.post(f"{TARGET}/extract").mock(
+        return_value=httpx.Response(200, json={"response": "hello"})
+    )
+    resolver_headers: list[dict[str, str]] = []
+
+    async def _resolve_after_login(headers: dict[str, str]) -> ResolvedEndpoint:
+        resolver_headers.append(headers)
+        return ResolvedEndpoint(
+            path="/extract",
+            payload=PayloadShape(key="text", source=EndpointSource.PROBE),
+            path_source=EndpointSource.PROBE,
+        )
+
+    bootstrapper = AuthBootstrapper(
+        target_url=TARGET,
+        endpoint="/chat",
+        default_auth=AuthConfig(
+            type="login_flow",
+            login_flow=LoginFlowConfig(
+                endpoint="/login",
+                payload={"username": "alice", "password": "password"},
+                token_response_key="token",
+            ),
+        ),
+        startup_retries=0,
+        endpoint_resolver=_resolve_after_login,
+    )
+
+    report = await bootstrapper.run()
+
+    assert resolver_headers == [{"Authorization": "Bearer jwt"}]
+    assert chat_route.called
+    assert report.endpoint == "/extract"
+    assert report.checks[0].endpoint == f"{TARGET}/extract"
 
 
 @pytest.mark.anyio
@@ -474,3 +515,48 @@ async def test_cold_start_retry_not_triggered_for_auth_failure() -> None:
 
     assert report.checks[0].status == "auth_failed"
     mock_sleep.assert_not_called()   # no sleep — auth failures skip retries
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_custom_session_headers_reach_discovery_and_bootstrap(caplog) -> None:
+    """A CSRF-protected session needs the same headers during every startup stage."""
+    from nuguard.common.auth_runtime import bootstrap_auth_runtime
+
+    custom = {
+        "Cookie": "session=fixture-session-secret",
+        "X-CSRF-Token": "fixture-csrf-secret",
+        "User-Agent": "test-session-client",
+        "Authorization": "Bearer stale-default",
+    }
+    seen = []
+
+    async def resolve(headers):
+        seen.append(headers)
+        return ResolvedEndpoint(
+            path=ENDPOINT, payload=PayloadShape(key="message"), path_source=EndpointSource.CONFIG,
+        )
+
+    def accept_session(request):
+        assert request.headers["Cookie"] == custom["Cookie"]
+        assert request.headers["X-CSRF-Token"] == custom["X-CSRF-Token"]
+        assert request.headers["User-Agent"] == custom["User-Agent"]
+        assert request.headers["Authorization"] == "Bearer identity-secret"
+        return httpx.Response(200, json={"response": "Hello"})
+
+    respx.post(FULL_URL).mock(side_effect=accept_session)
+    _, report = await bootstrap_auth_runtime(
+        target_url=TARGET,
+        endpoint=ENDPOINT,
+        auth_config=AuthConfig(type="bearer", header="Authorization: Bearer identity-secret"),
+        extra_headers=custom,
+        endpoint_resolver=resolve,
+        startup_retries=0,
+    )
+    assert report.all_ok
+    assert seen == [{**custom, "Authorization": "Bearer identity-secret"}]
+    assert custom["Authorization"] == "Bearer stale-default"
+    serialized = report.model_dump_json()
+    for secret in ("fixture-session-secret", "fixture-csrf-secret", "identity-secret"):
+        assert secret not in caplog.text
+        assert secret not in serialized

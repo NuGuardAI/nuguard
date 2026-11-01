@@ -557,6 +557,8 @@ def build_target_app_client(
     payload_key: str = "message",
     payload_list: bool = False,
     payload_format: str = "json",
+    chat_method: str = "POST",
+    chat_payload_in: str | None = None,
     response_key: str | None = None,
     timeout: float = 60.0,
     auth_headers: dict[str, str] | None = None,
@@ -585,6 +587,10 @@ def build_target_app_client(
             instead of the HTTP client.
         payload_list: Whether to wrap the payload value in a list.
         payload_format: ``"json"`` or ``"form"`` encoding for the POST body.
+        chat_method: HTTP method for chat turns (``"GET"``, ``"POST"``, ``"PUT"`` or
+            ``"PATCH"``; default ``"POST"``).
+        chat_payload_in: ``"body"`` or ``"query"``; defaults to ``"query"`` for GET
+            and ``"body"`` otherwise.
         response_key: Explicit top-level key to extract from the JSON response.
         timeout: HTTP request timeout in seconds.
         auth_headers: Headers to include on every request (e.g. auth token).
@@ -672,7 +678,7 @@ def build_target_app_client(
             discovered_path, discovered_key, discovered_list, discovered_response_key = (
                 discover_chat_config_from_sbom(
                     sbom,
-                    chat_path=endpoint or "/chat",
+                    chat_path=endpoint,
                     chat_payload_key=payload_key,
                     chat_payload_list=payload_list,
                 )
@@ -747,6 +753,8 @@ def build_target_app_client(
         chat_payload_key=payload_key,
         chat_payload_list=payload_list,
         chat_payload_format=payload_format,
+        chat_method=chat_method,
+        chat_payload_in=chat_payload_in,
         chat_response_key=response_key,
         framework_adapter=framework_adapter,
         chat_payload_extras=payload_extras or None,
@@ -764,12 +772,15 @@ def build_target_app_client_from_session(
     heal_llm: "LLMClient | None" = None,
     ws_auth_message: "dict[str, Any] | None" = None,
     ws_response_complete_key: str | None = None,
+    framework_adapter: "Any | None" = None,
 ) -> "TargetClient":
     """Construct a target client from an already resolved session contract.
 
     This deliberately skips all URL, adapter, and endpoint discovery so each
     caller can retain its own live-client lifecycle after sharing connection
-    resolution.
+    resolution. ``framework_adapter`` is opt-in: a resolved session contract
+    carries no adapter, so callers that need ADK/CES session semantics (campaign
+    mode) build one with ``make_framework_adapter`` and pass it here.
     """
     from nuguard.redteam.target.client import TargetAppClient
 
@@ -799,10 +810,14 @@ def build_target_app_client_from_session(
         chat_payload_key=session.chat_payload_key,
         chat_payload_list=session.chat_payload_list,
         chat_payload_format=session.payload_format,
+        chat_method=session.chat_method,
+        chat_payload_in=session.chat_payload_in,
         chat_response_key=session.chat_response_key,
         chat_payload_extras=session.chat_payload_extras or None,
         heal_llm=heal_llm,
         chat_payload_value_template=session.chat_payload_value_template,
+        framework_adapter=framework_adapter,
     )
+    client.set_session_refresher(session.session_refresher)
     client.resolution_notes = list(session.resolution_notes)
     return client

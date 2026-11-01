@@ -184,11 +184,18 @@ class LLMSummaryGenerator:
         profile: str,
         duration_s: float,
         auth_note: str = "",
+        risk_score: float = 0.0,
+        coverage_status: str | None = None,
     ) -> str:
         """Return a 2–4 sentence executive summary for a pentest report.
 
         *findings* are already secret-redacted by the pentest engine; only
         titles, affected targets and a short description excerpt are sent.
+        *risk_score* and *coverage_status* are passed explicitly (rather than
+        left implicit in the finding count) so the model cannot describe a
+        zero score on a degraded/insufficient-coverage scan as "low risk" —
+        see the "Coverage language" section of
+        documentation/developer-specs/pentest-finding-correlation-and-risk-score.md.
         """
         counts = _sev_counts(findings)
         finding_lines = [
@@ -201,6 +208,8 @@ class LLMSummaryGenerator:
             f"- Targets: {', '.join(targets) or 'unknown'}\n"
             f"- Scan profile: {profile}\n"
             f"- Authentication: {auth_note or 'not stated'}\n"
+            f"- Overall risk score: {risk_score:.1f} / 100\n"
+            f"- Coverage status: {coverage_status or 'unknown'}\n"
             f"- Findings: {len(findings)} "
             f"({counts.get('critical', 0)} critical, {counts.get('high', 0)} high, "
             f"{counts.get('medium', 0)} medium, {counts.get('low', 0)} low, "
@@ -213,8 +222,9 @@ class LLMSummaryGenerator:
             "\nWrite a 2–4 sentence executive summary for a technical audience. "
             "Focus on: the most serious weaknesses, their likely impact, whether the scan "
             "was authenticated, and the urgency of remediation. If there are no findings, "
-            "say what that does and does not establish. Do NOT repeat finding titles "
-            "verbatim — synthesise."
+            "say what that does and does not establish — a degraded or insufficient coverage "
+            "status means risk is unknown beyond what was tested, not that the target is clean. "
+            "Do NOT repeat finding titles verbatim — synthesise."
         )
         return await self._complete_or_empty(
             prompt, _PENTEST_EXEC_SUMMARY_SYSTEM,

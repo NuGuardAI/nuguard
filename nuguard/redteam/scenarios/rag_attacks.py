@@ -88,8 +88,8 @@ def build_rag_document_poisoning(
             f"the poisoned content influences responses or executes the embedded instruction."
         ),
         steps,
-        owasp_asi_ref="ASI05",
-        owasp_llm_ref="LLM04",
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM05:2026, LLM09:2026",
         pii_in_path=True,
     )
 
@@ -146,8 +146,8 @@ def build_vector_acl_bypass(
             f"namespace isolation filters."
         ),
         steps,
-        owasp_asi_ref="ASI02",
-        owasp_llm_ref="LLM08",
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM02:2026, LLM09:2026",
         pii_in_path=True,
     )
 
@@ -203,8 +203,8 @@ def build_embedding_hijack(
             f"vector store retrieval ranking."
         ),
         steps,
-        owasp_asi_ref="ASI05",
-        owasp_llm_ref="LLM08",
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM09:2026",
     )
 
 
@@ -257,8 +257,8 @@ def build_chunk_boundary_injection(
             f"in subsequent responses triggered by the embedded instruction."
         ),
         steps,
-        owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_asi_ref="ASI01, ASI06",
+        owasp_llm_ref="LLM01:2026, LLM09:2026",
     )
 
 
@@ -313,8 +313,8 @@ def build_stale_document_retrieval(
             f"after confirming the document has been removed or revoked from the index."
         ),
         steps,
-        owasp_asi_ref="ASI05",
-        owasp_llm_ref="LLM08",
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM09:2026",
     )
 
 
@@ -371,8 +371,8 @@ def build_cross_namespace_bleed(
             f"leaks content across tenant namespace boundaries."
         ),
         steps,
-        owasp_asi_ref="ASI02",
-        owasp_llm_ref="LLM08",
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM02:2026, LLM09:2026",
         pii_in_path=True,
     )
 
@@ -440,8 +440,8 @@ def build_citation_laundering(
             f"the underlying source text to expose the cross-document leakage."
         ),
         steps,
-        owasp_asi_ref="ASI02",
-        owasp_llm_ref="LLM08",
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM07:2026, LLM09:2026",
     )
 
 
@@ -523,7 +523,7 @@ def build_nearest_neighbor_enumeration(
             f"retrieval side-channels without triggering a single targeted query."
         ),
         steps,
-        owasp_asi_ref="ASI05",
-        owasp_llm_ref="LLM08",
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM02:2026, LLM09:2026",
         pii_in_path=True,
     )

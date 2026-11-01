@@ -13,14 +13,20 @@ if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
+    from nuguard.common.target_client_builder import TargetClient
     from nuguard.config import RedteamFindingTriggers
     from nuguard.models.token_usage import TokenUsage
     from nuguard.redteam.coverage.tracker import CoverageTracker
+    from nuguard.redteam.defence_regressions.models import DefenceRegressionRunSummary
+    from nuguard.redteam.enrichment.asm_models import AgenticSurfaceModel
     from nuguard.redteam.llm_engine.judge_cache import JudgeCache
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.redteam.target.session import AttackSession
+    from nuguard.redteam.trust_context import TrustContextResult
 
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.console import print_turn as _common_print_turn
+from nuguard.common.http import resolve_chat_request
 from nuguard.common.id_extractor import extract_customer_name, extract_ids
 from nuguard.common.logging import get_logger
 from nuguard.common.run_checkpoint import (
@@ -34,13 +40,19 @@ from nuguard.common.run_checkpoint import (
 )
 from nuguard.common.text_similarity import extract_tokens as _extract_evidence_tokens
 from nuguard.common.text_similarity import jaccard as _evidence_jaccard
-from nuguard.models.exploit_chain import ExploitChain, GoalType, ScenarioType
+from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
 from nuguard.models.finding import Finding, Severity
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.policy_engine.evaluator import PolicyViolation
 from nuguard.redteam.risk_engine import (
     compliance_mapper,
     ngrs,
+)
+from nuguard.redteam.scenarios._chain_factory import (
+    WRITE_METHODS as _CREDENTIALED_WRITE_METHODS,
+)
+from nuguard.redteam.scenarios._chain_factory import (
+    is_credentialed_mutation_step as _is_credentialed_mutation_step,
 )
 from nuguard.redteam.scenarios.generator import ScenarioGenerator
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
@@ -52,6 +64,23 @@ from nuguard.sbom.models import AiSbomDocument, NodeType
 from .executor import AttackExecutor, StepResult
 from .guided_executor import GuidedAttackExecutor
 from .similarity_miss_tracker import SimilarityMissTracker
+from .turn_latency import TurnLatencyTracker
+
+
+async def _target_is_responsive(target_url: str, timeout: float = 10.0) -> bool:
+    """Return True if *target_url* answers any HTTP request within *timeout*.
+
+    Any status code (including 404/405) proves the host is reachable, so unlike
+    ``TargetAppClient.health_check`` this does not depend on a ``/health`` route.
+    """
+    import httpx  # noqa: PLC0415
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as probe:
+            await probe.get(target_url)
+        return True
+    except Exception:  # noqa: BLE001 — any transport failure means unresponsive
+        return False
 
 _log = get_logger(__name__)
 
@@ -432,27 +461,39 @@ def _maybe_mark_endpoint_not_found(
     return chain_status
 
 
-def _record_is_error_only(record: object) -> bool:
-    """True when a scenario got responses and every one was only an error envelope."""
-    from nuguard.common.transport import error_only_response  # noqa: PLC0415
+def _chat_step_responses(record: object) -> list[str]:
+    """Responses from the scenario's chat-routed steps only.
 
-    responses = [
+    Direct-HTTP steps (``target_path`` set) hit SBOM-derived REST paths, not
+    the main chat endpoint, so their 404/401/403 envelopes say nothing about
+    whether the agent is engaged.
+    """
+    return [
         str(step.get("response") or "")
         for step in getattr(record, "steps", None) or []
-        if isinstance(step, dict) and step.get("response")
+        if isinstance(step, dict) and step.get("response") and not step.get("target_path")
     ]
+
+
+def _record_is_error_only(record: object) -> bool:
+    """True when a scenario's chat responses were all only error envelopes.
+
+    False when the scenario has no chat-routed responses (nothing to judge).
+    """
+    from nuguard.common.transport import error_only_response  # noqa: PLC0415
+
+    responses = _chat_step_responses(record)
     return bool(responses) and all(error_only_response(r) for r in responses)
 
 
 def _first_error_only_response(record: object) -> str:
-    """Return the first error-envelope text from a scenario record's steps."""
+    """Return the first chat error-envelope text from a scenario record's steps."""
     from nuguard.common.transport import error_only_response  # noqa: PLC0415
 
-    for step in getattr(record, "steps", None) or []:
-        if isinstance(step, dict):
-            text = error_only_response(str(step.get("response") or ""))
-            if text:
-                return text
+    for text in _chat_step_responses(record):
+        error = error_only_response(text)
+        if error:
+            return error
     return ""
 
 
@@ -556,6 +597,10 @@ _DESTRUCTIVE_KEYWORDS = frozenset({
     "terminat", "deactiv", "wipe", "revok", "unsubscrib", "deregist",
 })
 
+# Rate-limit probes/bursts hammer the target with rapid requests, which can
+# lock out accounts or degrade the app — classified as destructive.
+_RATE_LIMIT_RE = re.compile(r"rate[\s_-]?limit", re.IGNORECASE)
+
 
 def _is_destructive_text(title: str, description: str) -> bool:
     """Return True when title/description text suggests a destructive/mutating action.
@@ -571,6 +616,8 @@ def _is_destructive_text(title: str, description: str) -> bool:
     """
     attack_part = title.split(" — ")[0]
     text = (attack_part + " " + description).lower()
+    if _RATE_LIMIT_RE.search(text):
+        return True
     return any(k in text for k in _DESTRUCTIVE_KEYWORDS)
 
 
@@ -580,13 +627,45 @@ def _is_destructive_scenario(scenario: AttackScenario) -> bool:
     Destructive scenarios are sorted to the end of the run so non-destructive
     scenarios execute against intact account data first, and are excluded by
     the redteam.scenarios "non-destructive" filter value.
+
+    Two independent signals are ORed together: the keyword heuristic over
+    title/description (catches chat-mediated scenarios that ask an agent to
+    cancel/delete/refund/... something), and a structural check over the
+    scenario's static chain — a direct-HTTP step that mutates state under the
+    run's own credentials (see :func:`_is_credentialed_mutation_step`) is
+    destructive regardless of what its title says. The latter is what makes
+    e.g. mass-assignment/price-tampering scenarios (whose title/description
+    never contain a destructive keyword) correctly classified.
     """
-    return _is_destructive_text(scenario.title, scenario.description)
+    if _is_destructive_text(scenario.title, scenario.description):
+        return True
+    if scenario.scenario_type == ScenarioType.RESOURCE_EXHAUSTION:
+        return True
+    if scenario.chain is not None and any(
+        _is_credentialed_mutation_step(step) for step in scenario.chain.steps
+    ):
+        return True
+    return False
 
 
 def _is_destructive_finding(finding: Finding) -> bool:
-    """Post-run counterpart to :func:`_is_destructive_scenario` for Finding objects."""
-    return _is_destructive_text(finding.title, finding.description)
+    """Post-run counterpart to :func:`_is_destructive_scenario` for Finding objects.
+
+    Findings carry no ``AttackScenario``/``ExploitChain``, only the per-step
+    detail dicts in ``attack_steps`` (see ``_build_step_details``) — those
+    dicts record ``method``/``target_path``/``strip_auth`` for any step that
+    went through ``invoke_endpoint``, letting the same write-method check
+    apply here.
+    """
+    if _is_destructive_text(finding.title, finding.description):
+        return True
+    for step in finding.attack_steps:
+        if not step.get("target_path"):
+            continue
+        method = str(step.get("method") or "").upper()
+        if method in _CREDENTIALED_WRITE_METHODS and not step.get("strip_auth"):
+            return True
+    return False
 
 
 def _detect_cross_tenant_leak(
@@ -622,6 +701,37 @@ def _detect_cross_tenant_leak(
         if found_name and self_name and found_name.strip().lower() != self_name:
             return True
     return False
+
+
+
+def _drop_dead_endpoint_scenarios(
+    scenarios: list[AttackScenario], sbom: AiSbomDocument
+) -> tuple[list[AttackScenario], int]:
+    """Drop direct-HTTP-only scenarios whose every target endpoint failed liveness.
+
+    Scenario generation runs before the per-endpoint liveness ping, so scenarios
+    for endpoints just confirmed dead (``operational is False``) would otherwise
+    burn a slot and report 404s. Chat-routed scenarios are never dropped.
+    Returns ``(kept, dropped_count)``.
+    """
+    dead_ids = {
+        str(n.id)
+        for n in sbom.nodes
+        if n.component_type == NodeType.API_ENDPOINT
+        and getattr(n.metadata, "operational", None) is False
+    }
+    if not dead_ids:
+        return scenarios, 0
+    kept = [
+        s
+        for s in scenarios
+        if not (
+            _is_direct_http_only_scenario(s)
+            and s.target_node_ids
+            and all(str(nid) in dead_ids for nid in s.target_node_ids)
+        )
+    ]
+    return kept, len(scenarios) - len(kept)
 
 
 def _dedup_scenarios_by_opener(scenarios: list[AttackScenario]) -> list[AttackScenario]:
@@ -759,6 +869,10 @@ class RedteamOrchestrator:
     # up the scan but increase load on the target app.
     DEFAULT_CONCURRENCY = 5
 
+    #: Eagerly LLM-enrich the whole scenario set before dispatch. Campaign mode
+    #: turns this off and enriches just in time for the objectives about to run.
+    _eager_enrichment: bool = True
+
     def __init__(
         self,
         sbom: AiSbomDocument,
@@ -797,29 +911,46 @@ class RedteamOrchestrator:
         verbose: bool = False,
         credentials: dict[str, str] | None = None,
         scenario_timeout: float = 180.0,
+        api_endpoint_threshold: int = 25,
+        ci_api_spot_checks: int = 3,
         turn_delay_seconds: float = 5.0,
         scenario_delay_seconds: float = 0.0,
         similar_miss_threshold: int = 4,
+        universal_safety_probes: bool = True,
+        workflows: "list[dict[str, Any]] | None" = None,
+        workflow_templates: "list[str] | None" = None,
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
         require_engagement: bool = True,
         engagement_error_threshold: int = 5,
         capability_discovery: bool = True,
         liveness_cache_ttl_seconds: float = 3600.0,
+        preflight_candidates: int = 3,
         llm_capability_dedup: bool = False,
         chat_payload_extras: dict[str, Any] | None = None,
+        chat_method: str = "POST",
+        chat_payload_in: str | None = None,
         catalog: "tuple | None" = None,
         pre_run_warmup: int = 0,
         verify_findings: bool = False,
         golden_data: "dict[str, Any] | None" = None,
         suppress_spa_html_auth_bypass: bool = True,
         codegen_escalation_enabled: bool = True,
+        defence_regressions: list[dict] | None = None,
+        defence_regression_paraphrases: int = 5,
+        defence_regression_timeout: float = 180.0,
+        defence_regression_probe_timeout: float = 30.0,
+        asm_max_probe_requests: int = 25,
+        asm_extra_inventory_paths: list[str] | None = None,
+        trust_context_confirmation_cells: int = 1,
         mode: str = "concurrent",
         progressive_halt_on_severity: str = "none",
         progress_sink: Callable[[dict[str, Any]], None] | None = None,
         probe_llm: bool = False,
         resume_checkpoint: dict[str, Any] | None = None,
         resume_checkpoint_path: Path | None = None,
+        browser_discovery: BrowserDiscoveryConfig | None = None,
+        chat_payload_key_explicit: bool = False,
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
@@ -875,6 +1006,14 @@ class RedteamOrchestrator:
             for s in (scenario_filter or [])
             if s and s.strip()
         }
+        # redteam.scenarios left unconfigured (no valid tokens at all): default to
+        # non-destructive only rather than _scenario_matches_filter's generic
+        # "empty = both" semantics, which would silently run destructive/mutating
+        # scenarios without an explicit opt-in. Surfaced via config_notes once
+        # self.config_notes exists (see run()).
+        self._scenario_filter_defaulted = not self._scenario_filter
+        if self._scenario_filter_defaulted:
+            self._scenario_filter = {"non_destructive"}
         unrecognized_filters = validate_scenario_filter(scenario_filter or [])
         if unrecognized_filters:
             _log.warning(
@@ -887,9 +1026,16 @@ class RedteamOrchestrator:
         self._verbose = verbose
         self._credentials: dict[str, str] = credentials or {}
         self._scenario_timeout = max(0.0, scenario_timeout)
+        self._api_endpoint_threshold = max(1, api_endpoint_threshold)
+        self._ci_api_spot_checks = max(1, ci_api_spot_checks)
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
         self._scenario_delay_seconds = max(0.0, scenario_delay_seconds)
         self._similar_miss_threshold = max(1, similar_miss_threshold)
+        self._universal_safety_probes = universal_safety_probes
+        from nuguard.redteam.workflows import WorkflowSpec  # noqa: PLC0415
+
+        self._workflows = [WorkflowSpec.model_validate(w) for w in (workflows or [])]
+        self._workflow_templates = list(workflow_templates or [])
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
         # Engagement gate: fail fast when the chat endpoint only ever answers
@@ -900,13 +1046,41 @@ class RedteamOrchestrator:
         self._not_engaged_detail: str | None = None
         self._capability_discovery = capability_discovery
         self._liveness_cache_ttl_seconds = max(0.0, liveness_cache_ttl_seconds)
+        # Chat-endpoint pre-flight (see _ensure_endpoint_preflight): run once
+        # per scan, shared by pre-scan discovery and scenario execution.
+        self._preflight_candidates = max(0, preflight_candidates)
+        self._browser_discovery = browser_discovery
+        self._preflight_result: "tuple[bool, list[str]] | None" = None
+        self._preflight_path_params: dict[str, str] = {}
         self._llm_capability_dedup = llm_capability_dedup
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
+        self._chat_method = chat_method
+        self._chat_payload_in = chat_payload_in
         self._pre_run_warmup = max(0, pre_run_warmup)
         self._verify_findings = verify_findings
         self._golden_data: dict[str, Any] = golden_data or {}
         self._suppress_spa_html = suppress_spa_html_auth_bypass
         self._codegen_escalation_enabled = codegen_escalation_enabled
+        # W5 defence-regression pre-pass config (nuguard/redteam/defence_regressions/).
+        self._defence_regressions_cfg: list[dict] = defence_regressions or []
+        self._defence_regression_paraphrases = max(0, defence_regression_paraphrases)
+        if defence_regression_timeout <= 0 or defence_regression_probe_timeout <= 0:
+            raise ValueError("Defence-regression deadlines must be positive")
+        self._defence_regression_timeout = defence_regression_timeout
+        self._defence_regression_probe_timeout = defence_regression_probe_timeout
+        # Findings raised by the pre-pass — merged into the final return value
+        # (see _run_impl) independently of the normal scenario dispatch loop.
+        self._regression_findings: list[Finding] = []
+        self.defence_regression_summary: "DefenceRegressionRunSummary | None" = None
+        # W1 Agentic Surface Model (nuguard/redteam/enrichment/asm_prober.py).
+        self._asm_max_probe_requests = max(0, asm_max_probe_requests)
+        self._asm_extra_inventory_paths: tuple[str, ...] = tuple(asm_extra_inventory_paths or [])
+        # W01-W04 findings from the ASM pre-pass — merged into the final
+        # return value (see _run_impl) like _regression_findings.
+        self._asm_findings: list[Finding] = []
+        self.asm: "AgenticSurfaceModel | None" = None
+        # W2 trust-context matrix (nuguard/redteam/trust_context.py).
+        self._trust_context_confirmation_cells = max(0, trust_context_confirmation_cells)
         # Circuit-open flag latched when the 3-strike abort trips; consulted by
         # the escalation pass so it skips rather than re-hitting a dead target.
         self._circuit_open = False
@@ -925,6 +1099,10 @@ class RedteamOrchestrator:
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             discover_chat_config_from_sbom(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
+        self._chat_payload_key_explicit = chat_payload_key_explicit
+        if chat_payload_key_explicit:
+            self._chat_payload_key = chat_payload_key
+            self._chat_payload_list = chat_payload_list
         # Payload value template from OpenAPI schema detection (ProbeResult.value_template).
         # Populated by _maybe_probe_endpoints when the schema reveals a nested shape.
         self._chat_payload_value_template: "dict | None" = None
@@ -994,6 +1172,12 @@ class RedteamOrchestrator:
         self.scan_outcome: str = "no_findings"
         # Run-level configuration notices (e.g. automatic URL resolution).
         self.config_notes: list[str] = []
+        if self._scenario_filter_defaulted:
+            self.config_notes.append(
+                "redteam.scenarios not set — defaulting to non-destructive scenarios "
+                "only. Add 'destructive' to redteam.scenarios to also run mutating "
+                "attacks against the target."
+            )
         # Token usage accumulated across all LLM calls during the run.
         self.input_tokens_used: int = 0
         self.output_tokens_used: int = 0
@@ -1169,6 +1353,25 @@ class RedteamOrchestrator:
             self._checkpoint_payload(status=status, abort_reason=abort_reason, records=records, findings=findings),
         )
 
+    def build_partial_run_error(
+        self, exc: BaseException, *, findings: "list[Finding] | None" = None,
+    ) -> PartialRunError:
+        """Save a checkpoint from current progress and wrap ``exc`` as ``PartialRunError``.
+
+        Used both when the scan itself aborts mid-run (see :meth:`run`) and when a
+        post-scan step (e.g. remediation synthesis) fails after every scenario has
+        already completed — either way there's completed work worth a fast-resume
+        checkpoint instead of a bare crash (see issue #508).
+        """
+        self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__, findings=findings)
+        return PartialRunError(
+            exc,
+            partial_payload=self._checkpoint_payload(
+                status="aborted", abort_reason=type(exc).__name__, findings=findings,
+            ),
+            checkpoint_path=self._checkpoint_path,
+        )
+
     async def run(self) -> list[Finding]:
         """Run the full scan, salvaging partial progress into a checkpoint on failure.
 
@@ -1191,12 +1394,7 @@ class RedteamOrchestrator:
                 # Only worth a checkpoint (and a PartialRunError) when at least
                 # one scenario actually completed — an abort before that point
                 # (e.g. auth bootstrap failing) has nothing to resume from.
-                self._save_checkpoint(status="aborted", abort_reason=type(exc).__name__)
-                raise PartialRunError(
-                    exc,
-                    partial_payload=self._checkpoint_payload(status="aborted", abort_reason=type(exc).__name__),
-                    checkpoint_path=self._checkpoint_path,
-                ) from exc
+                raise self.build_partial_run_error(exc) from exc
             raise
         else:
             if self._checkpoint is not None and self._checkpoint_path is not None:
@@ -1266,9 +1464,223 @@ class RedteamOrchestrator:
             payload_list=self._chat_payload_list,
         )
 
+    async def _run_defence_regression_pre_pass(self, client: "TargetClient") -> None:
+        """Evaluate every configured defence-regression spec (W5).
+
+        Populates :attr:`_regression_findings`, merged into the final return
+        value by :meth:`_run_impl`. Single-turn, no chain, no warmup — see
+        :mod:`nuguard.redteam.defence_regressions` for the cost rationale.
+        """
+        from nuguard.redteam.defence_regressions import (
+            DefenceRegressionEvaluator,
+            build_regression_findings,
+        )
+        from nuguard.redteam.defence_regressions.models import DefenceRegressionSpec
+
+        specs: list[DefenceRegressionSpec] = []
+        for raw in self._defence_regressions_cfg:
+            spec = DefenceRegressionSpec.from_config_dict(raw)
+            if spec is None:
+                _log.warning("Skipping malformed redteam.defence_regressions entry: %r", raw)
+                continue
+            specs.append(spec)
+        if not specs:
+            return
+
+        evaluator = DefenceRegressionEvaluator(client, target_url=self._target_url)
+        results, summary = await evaluator.run(
+            specs, self._defence_regression_paraphrases, llm_client=self._redteam_llm,
+            timeout_seconds=self._defence_regression_timeout,
+            probe_timeout_seconds=self._defence_regression_probe_timeout,
+        )
+        self.defence_regression_summary = summary
+        if summary.timed_out or summary.variants_failed:
+            self.config_notes.append(
+                f"Defence-regression coverage incomplete: failed={summary.variants_failed}, "
+                f"deadline_reached={summary.timed_out}; untested probes are inconclusive."
+            )
+        new_findings = build_regression_findings(results)
+        if new_findings:
+            _log.warning(
+                "Defence-regression pre-pass: %d regression(s) got through "
+                "(blocking in CI regardless of output.fail_on)",
+                len(new_findings),
+            )
+        self._regression_findings.extend(new_findings)
+
+    async def _run_asm_pre_pass(self, client: "TargetClient") -> None:
+        """Build the W1 Agentic Surface Model and emit W01-W04 findings.
+
+        Best-effort: a failure here must never abort the scan. Mutates
+        ``self._sbom`` in place via ``apply_asm_to_sbom`` so any *later*
+        consumer in this process sees the summarized ASM facts — this
+        does not retroactively affect scenario generation for this same
+        run, which already ran before this pre-pass (the same timing
+        constraint documented on the endpoint-liveness check below).
+        """
+        from nuguard.redteam.enrichment.asm_prober import (
+            apply_asm_to_sbom,
+            build_asm,
+            build_asm_findings,
+        )
+
+        self.asm = await build_asm(
+            client, self._sbom,
+            max_probe_requests=self._asm_max_probe_requests,
+            extra_inventory_paths=self._asm_extra_inventory_paths,
+        )
+        apply_asm_to_sbom(self._sbom, self.asm)
+        new_findings = build_asm_findings(self.asm)
+        if new_findings:
+            _log.warning(
+                "ASM pre-pass: %d unauthenticated-surface finding(s) (budget used %d/%d)",
+                len(new_findings), self.asm.probe_budget_used, self._asm_max_probe_requests,
+            )
+        self._asm_findings.extend(new_findings)
+
+    async def _run_workflow_pass(self, client: "TargetClient") -> None:
+        """Run configured stateful workflow attacks and judge them with their oracle.
+
+        Best-effort: a failure here must never abort the scan. Findings join the
+        pre-pass findings (``_asm_findings``) and each workflow gets a
+        ``ScenarioRecord`` so it appears in the scenario tables.
+        """
+        from nuguard.redteam.workflows import (  # noqa: PLC0415
+            WorkflowRunner,
+            build_workflow_finding,
+        )
+
+        tenant_headers = {
+            t.tenant_id: t.auth_headers()
+            for t in (self._canary_config.tenants if self._canary_config else [])
+            if t.has_credentials
+        }
+        from nuguard.redteam.workflows.library import (  # noqa: PLC0415
+            filter_applicable,
+            resolve_templates,
+        )
+
+        templated = await filter_applicable(
+            resolve_templates(self._workflow_templates),
+            sbom_paths=[
+                str(n.metadata.endpoint)
+                for n in self._sbom.nodes
+                if n.component_type == NodeType.API_ENDPOINT and n.metadata.endpoint
+            ],
+            client=client,
+            tenant_count=len(tenant_headers),
+        )
+        _explicit_ids = {s.id for s in self._workflows}
+        specs = self._workflows + [s for s in templated if s.id not in _explicit_ids]
+        runner = WorkflowRunner(client, tenant_headers=tenant_headers)
+        for spec in specs:
+            started = time.perf_counter()
+            results = await runner.run(spec, llm=self._redteam_llm)
+            hit = next((r for r in results if r.succeeded and not r.control_matched), None)
+            if hit is not None:
+                self._asm_findings.append(build_workflow_finding(spec, hit))
+            _control_matched = any(r.control_matched for r in results)
+            _errors = [r.error for r in results if r.error]
+            self.scenario_records.append(
+                ScenarioRecord(
+                    title=f"Workflow: {spec.title}",
+                    goal_type=spec.goal_type,
+                    scenario_type="WORKFLOW_ATTACK",
+                    description=spec.description or spec.title,
+                    impact_score=7.0,
+                    affected=spec.oracle.path,
+                    chain_status=(
+                        "inconclusive:control_matched" if _control_matched
+                        else "completed" if hit is not None or not _errors
+                        else "failed"
+                    ),
+                    had_finding=hit is not None,
+                    steps=[step for r in results for step in r.steps],
+                    duration_s=time.perf_counter() - started,
+                    turns_used=sum(len(r.steps) for r in results),
+                    turns_budget=len(spec.steps) * (len(spec.payloads) + len(spec.control_payloads)),
+                )
+            )
+            _log.info(
+                "Workflow %s: %d run(s), finding=%s%s",
+                spec.id, len(results), hit is not None, f", errors={_errors}" if _errors else "",
+            )
+
+    async def _run_observation_pass(self) -> None:
+        """W7 passive observation-channel tap (catalog L-series).
+
+        Best-effort: a failure here must never abort the scan. Reuses the
+        W1 ASM's already-discovered observation channels rather than
+        rediscovering them — only channels the ASM confirmed reachable
+        without a credential are worth listening to.
+        """
+        if self.asm is None or not self.asm.observation_channels:
+            return
+        from nuguard.redteam.enrichment.observation_prober import (
+            build_observation_findings,
+            run_observation_pass,
+        )
+
+        events_by_channel = await run_observation_pass(self.asm.observation_channels)
+        new_findings = build_observation_findings(events_by_channel)
+        if new_findings:
+            _log.warning(
+                "Observation pass: %d cross-session-leakage finding(s)", len(new_findings),
+            )
+        self._asm_findings.extend(new_findings)
+
+    @staticmethod
+    def _pick_trust_context_base_step(
+        chain: ExploitChain, step_results: list[StepResult],
+    ) -> ExploitStep | None:
+        """Pick the step to re-run under the trust-context matrix (W2).
+
+        Prefers the step that already demonstrated something (confirmed
+        success) so the matrix tests the *proven* attack surface; falls
+        back to the first attack-shaped step (INJECT/INVOKE) in the chain
+        when nothing succeeded yet.
+        """
+        attack_results = [
+            sr for sr in step_results
+            if sr.step.step_type in ("INJECT", "INVOKE")
+        ]
+        confirmed = next((sr for sr in attack_results if sr.success_signal_found), None)
+        if confirmed is not None:
+            return confirmed.step
+        if attack_results:
+            return attack_results[0].step
+        return next((s for s in chain.steps if s.step_type in ("INJECT", "INVOKE")), None)
+
+    async def _run_trust_context_matrix(
+        self,
+        chain: ExploitChain,
+        step_results: list[StepResult],
+        session: "AttackSession",
+        executor: "AttackExecutor",
+    ) -> "list[TrustContextResult]":
+        """Re-execute this scenario's attack step under W2's sampled matrix.
+
+        Best-effort: a failure here must never fail the scenario. Returns
+        an empty list when there is no attack-shaped step to re-run or no
+        golden-data baseline to compare against (see
+        ``trust_context.assess_identity_mismatch``).
+        """
+        base_step = self._pick_trust_context_base_step(chain, step_results)
+        if base_step is None:
+            return []
+        from nuguard.redteam.trust_context import TrustContextRunner  # noqa: PLC0415
+
+        runner = TrustContextRunner(
+            executor.client, canary_config=self._canary_config,
+            confirmation_cells=self._trust_context_confirmation_cells,
+        )
+        return await runner.run(base_step, session)
+
     async def _run_impl(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
         self._emitted_finding_keys.clear()
+        self._preflight_result = None
+        self._preflight_path_params = {}
         _log.info(
             "Starting red-team scan against %s (profile=%s)",
             self._target_url,
@@ -1282,11 +1694,23 @@ class RedteamOrchestrator:
         # 0. Endpoint auto-discovery (Option A) or payload-shape detection (Option B).
         # Option A: no path configured — probe SBOM endpoints live.
         # Option B: path known but key is default "message" — detect nested shape.
-        if not self._chat_path or self._chat_payload_key == "message":
+        # A pinned GET / query-string chat endpoint cannot be shape-probed with POSTs.
+        _method, _payload_in = resolve_chat_request(self._chat_method, self._chat_payload_in)
+        _custom_request = _method != "POST" or _payload_in == "query"
+        _pinned_request = _custom_request and bool(self._chat_path_explicit)
+        if not self._chat_path or (
+            self._chat_payload_key == "message"
+            and not self._chat_payload_key_explicit
+            and not _pinned_request
+        ):
             await self._maybe_probe_endpoints()
 
         from nuguard.common.session_resolver import resolve_target_session
 
+        # Keep an endpoint _maybe_probe_endpoints() live-confirmed instead of re-resolving it.
+        _keep_resolved = bool(self._chat_path) and self._chat_path_source in (
+            "probe", "enriched_sbom_cache",
+        )
         self._target_session_config, self.health_report = await resolve_target_session(
             target_url=self._target_url,
             sbom=self._sbom,
@@ -1296,13 +1720,19 @@ class RedteamOrchestrator:
             chat_payload_key=self._chat_payload_key,
             chat_payload_list=self._chat_payload_list,
             chat_payload_extras=self._chat_payload_extras,
+            chat_method=self._chat_method,
+            chat_payload_in=self._chat_payload_in,
             chat_response_key=self._chat_response_key,
             canary_config=self._canary_config,
             config_path=self._config_path,
             request_timeout=self._request_timeout,
-            endpoint_explicit=self._chat_path_source == "config",
-            payload_key_explicit=self._chat_payload_key != "message",
+            browser_discovery=self._browser_discovery,
+            endpoint_explicit=self._chat_path_source == "config" or _keep_resolved,
+            payload_key_explicit=(
+                self._chat_payload_key_explicit or _keep_resolved or self._chat_payload_key != "message"
+            ),
             response_key_explicit=bool(self._chat_response_key),
+            endpoint_source_hint=self._chat_path_source if _keep_resolved else None,
         )
         self._target_url = self._target_session_config.base_url
         self._chat_path = self._target_session_config.chat_path
@@ -1404,9 +1834,19 @@ class RedteamOrchestrator:
             from nuguard.common.discovery import (  # noqa: PLC0415
                 cached_discovery_profile,
             )
-            _cached_profile_hit = cached_discovery_profile(self._sbom)
+            _cached_profile_hit = cached_discovery_profile(
+                self._sbom, self._target_url, self._auth_config
+            )
 
             async with _disc_client:
+                # Validate (and if needed rotate) the chat endpoint before
+                # discovery sends anything — an unvalidated endpoint (e.g. a
+                # one-shot generator route, or an unbound path param) makes
+                # every discovery/capability probe fail.
+                await self._ensure_endpoint_preflight(
+                    _disc_client,
+                    auth_headers=self._target_session_config.effective_headers or None,
+                )
                 if _cached_profile_hit is not None:
                     _disc_outcome = None
                 else:
@@ -1448,11 +1888,21 @@ class RedteamOrchestrator:
                     _pre_scan_profile.turns_sent,
                     _pre_scan_profile.source,
                 )
+                if not _pre_scan_profile.is_empty and self._sbom is not None:
+                    from nuguard.common.discovery import profile_cache_fingerprint  # noqa: PLC0415
+
+                    # In-memory write is unconditional (same-process reuse —
+                    # e.g. a platform caller running behavior then redteam
+                    # against the same in-memory sbom object — works even with
+                    # no backing file); only the disk write below needs a path.
+                    self._sbom.discovered_profile = _pre_scan_profile.model_dump(mode="json")
+                    self._sbom.discovered_profile_fingerprint = profile_cache_fingerprint(
+                        self._target_url, self._auth_config
+                    )
                 if not _pre_scan_profile.is_empty and self._sbom_path is not None and self._sbom is not None:
                     from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
                         persist_discovery_profile_sbom,
                     )
-                    self._sbom.discovered_profile = _pre_scan_profile.model_dump(mode="json")
                     try:
                         _profile_artifact = persist_discovery_profile_sbom(self._sbom, self._sbom_path)
                         _log.info("pre-scan discovery: persisted profile to %s", _profile_artifact)
@@ -1552,9 +2002,49 @@ class RedteamOrchestrator:
         self.security_invariants = derive_security_invariants(effective_policy)
 
         _progressive = self._mode == "progressive"
-        generator = ScenarioGenerator(self._sbom, effective_policy, canary_config=self._canary_config)
+        from nuguard.redteam.scenarios.endpoint_selector import build_endpoint_plan
+
+        _endpoint_plan = await build_endpoint_plan(
+            self._sbom,
+            profile=self._profile,
+            llm=self._redteam_llm,
+            threshold=self._api_endpoint_threshold,
+            ci_spot_checks=self._ci_api_spot_checks,
+        )
+        if _endpoint_plan is not None:
+            self.config_notes.extend(_endpoint_plan.notes)
+        if self._canary_config is not None and any(
+            t.web_session and not t.has_credentials for t in self._canary_config.tenants
+        ):
+            from nuguard.redteam.target.canary import acquire_web_session_tenants  # noqa: PLC0415
+
+            _failed_tenants = await acquire_web_session_tenants(
+                self._canary_config,
+                self._target_url,
+                headers=getattr(self._target_session_config, "effective_headers", None),
+            )
+            if _failed_tenants:
+                self.config_notes.append(
+                    "Canary web-session tenant(s) without a session: "
+                    + ", ".join(_failed_tenants)
+                    + " — cross-tenant scenarios fall back to synthetic tenant ids."
+                )
+        generator = ScenarioGenerator(
+            self._sbom,
+            effective_policy,
+            canary_config=self._canary_config,
+            endpoint_plan=_endpoint_plan,
+            universal_safety_probes=self._universal_safety_probes,
+        )
         all_scenarios = generator.generate(with_guided=_with_guided, progressive=_progressive)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
+        if self._coverage_tracker is not None:
+            self._coverage_tracker.set_expected(
+                [
+                    (str(n.id), getattr(n.component_type, "value", str(n.component_type)), n.name)
+                    for n in generator.effective_nodes
+                ]
+            )
         self.config_notes.extend(generator.skipped_endpoint_notes)
 
         # 1b. Catalog scenarios — merged into the SBOM-driven set above.
@@ -1585,6 +2075,11 @@ class RedteamOrchestrator:
         except Exception as exc:
             _log.warning("Catalog generation failed (non-fatal): %s", exc)
 
+        # Surfaces the primary-credential fallback (issue #561) recorded by
+        # either generate() or generate_from_catalog() above — both write into
+        # the same generator instance's credential_fallback_notes.
+        self.config_notes.extend(generator.credential_fallback_notes)
+
         # Both generate() and generate_from_catalog() already sort by
         # (attack_phase, -impact_score) internally, but appending the catalog
         # block above (existing_keys loop) breaks that combined ordering —
@@ -1607,11 +2102,14 @@ class RedteamOrchestrator:
 
         # 2. Filter by profile and impact score (before enrichment — avoids wasting LLM calls)
         if self._profile == "ci":
-            # ci profile: only high-impact scenarios (score >= 5.0)
+            # ci profile: only high-impact scenarios (score >= 5.0), and never
+            # destructive ones (incl. rate-limit probes) — those need an
+            # explicit non-ci run.
             scenarios = [
                 s
                 for s in all_scenarios
                 if s.impact_score >= max(self._min_impact, 5.0)
+                and not _is_destructive_scenario(s)
             ]
         elif self._profile == "standard":
             scenarios = [
@@ -1659,7 +2157,7 @@ class RedteamOrchestrator:
 
         # 3. LLM payload enrichment (opt-in — only enrich scenarios that will run)
         _llm_payloads: dict = {}
-        if self._redteam_llm and scenarios:
+        if self._eager_enrichment and self._redteam_llm and scenarios:
             from nuguard.redteam.llm_engine.prompt_cache import PromptCache
             from nuguard.redteam.llm_engine.prompt_generator import (
                 LLMPromptGenerator,
@@ -1709,7 +2207,7 @@ class RedteamOrchestrator:
             self.llm_enriched_executed = sum(
                 1 for s in scenarios if s.scenario_id in _llm_payloads
             )
-        _log.info("Running %d scenarios", self.scenarios_run)
+        _log.info("Selected %d scenarios; pre-passes run before scenario dispatch", self.scenarios_run)
         self._publish_scenarios(scenarios)
 
         if not scenarios:
@@ -1735,12 +2233,11 @@ class RedteamOrchestrator:
         # 3. Set up action logger
         logger = ActionLogger(self._log_path)
 
-        # 4. Execute scenarios (with PoisonPayloadServer for indirect injection / RAG)
+        # 4. Execute scenarios (with CallbackCanaryServer for indirect injection /
+        #    RAG poisoning payload delivery, and W8 SSRF/exfil callback proof)
         findings: list[Finding] = []
-        from nuguard.redteam.executor.poison_server import (
-            POISON_PAYLOAD_HOST,
-            PoisonPayloadServer,
-        )
+        from nuguard.redteam.executor.poison_server import POISON_PAYLOAD_HOST
+        from nuguard.redteam.target.callback_canary import CallbackCanaryServer
         app_name = ""
         if self._sbom.summary:
             app_name = getattr(self._sbom.summary, "application_name", "") or ""
@@ -1764,7 +2261,7 @@ class RedteamOrchestrator:
             self._target_url = client.base_url
 
         async with (
-            PoisonPayloadServer(app_name=app_name or "application") as poison_server,
+            CallbackCanaryServer(app_name=app_name or "application") as poison_server,
             client,
         ):
             # Pre-flight endpoint validation: verify the resolved chat endpoint is
@@ -1774,25 +2271,12 @@ class RedteamOrchestrator:
             # 4xx-doesn't-count-toward-the-circuit-breaker behaviour would otherwise
             # let an entire scan burn through every scenario with no findings.  Rotate
             # through ranked SBOM candidates, then a live probe, before giving up.
-            from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
-                validate_and_rotate_chat_endpoint,
+            _pf_ok, _pf_notes = await self._ensure_endpoint_preflight(
+                client, auth_headers=effective_headers or None
             )
-            _pf = await validate_and_rotate_chat_endpoint(
-                client,
-                self._sbom,
-                has_explicit_endpoint=self._chat_path_source == "config",
-                target_url=self._target_url,
-                auth_headers=effective_headers or None,
-            )
-            self.config_notes.extend(_pf.notes)
-            if _pf.rotated_endpoint is not None:
-                self._chat_path, self._chat_payload_key, self._chat_payload_list, _pf_resp_key = _pf.rotated_endpoint
-                if _pf_resp_key:
-                    self._chat_response_key = _pf_resp_key
-                self._chat_path_source = _pf.endpoint_source or self._chat_path_source
-            if not _pf.ok:
+            if not _pf_ok:
                 self.scan_outcome = "aborted_endpoint_unreachable"
-                _log.error("Redteam: aborting — no working chat endpoint found (%s)", _pf.notes)
+                _log.error("Redteam: aborting — no working chat endpoint found (%s)", _pf_notes)
                 return []
 
             # Per-endpoint liveness: mark every other SBOM-discovered
@@ -1826,8 +2310,57 @@ class RedteamOrchestrator:
                     _liveness.checked, _liveness.cached, _liveness.operational,
                     _liveness.non_operational, _liveness.skipped,
                 )
+                scenarios, _dead_dropped = _drop_dead_endpoint_scenarios(scenarios, self._sbom)
+                if _dead_dropped:
+                    _log.info(
+                        "Redteam: dropped %d direct-HTTP scenario(s) targeting dead endpoints",
+                        _dead_dropped,
+                    )
             except Exception as exc:
                 _log.warning("Redteam: endpoint liveness check failed (non-fatal): %s", exc)
+
+            # W5 defence-regression pre-pass (redteam-proposal.md): evaluate every
+            # configured redteam.defence_regressions entry plus its paraphrase
+            # variants, single-turn, before any scenario dispatch. Best-effort —
+            # a failure here must never abort the scan.
+            if self._defence_regressions_cfg:
+                try:
+                    await self._run_defence_regression_pre_pass(client)
+                except Exception as exc:
+                    _log.warning("Redteam: defence-regression pre-pass failed (non-fatal): %s", exc)
+
+            # W1 Agentic Surface Model pre-pass (redteam-proposal.md): recon
+            # beyond the chat endpoint — sibling schema/inventory endpoints,
+            # observation-channel connectability, CORS reflection. Runs
+            # unconditionally (unlike defence_regressions, there's no
+            # separate opt-in config block — GET/OPTIONS-only recon is safe
+            # by default); set redteam.asm.max_probe_requests: 0 to disable.
+            if self._asm_max_probe_requests > 0:
+                _phase_started = time.monotonic()
+                _log.info("Redteam pre-pass start: stage=agentic_surface request_budget=%d", self._asm_max_probe_requests)
+                try:
+                    await self._run_asm_pre_pass(client)
+                    _log.info("Redteam pre-pass end: stage=agentic_surface elapsed=%.2fs", time.monotonic() - _phase_started)
+                except Exception as exc:
+                    _log.warning("Redteam: ASM pre-pass failed (non-fatal): %s", exc)
+
+                # W7 passive observation-channel tap (catalog L-series): reuses
+                # the ASM's own discovered channels, so only runs when the ASM
+                # pre-pass above actually ran.
+                try:
+                    _phase_started = time.monotonic()
+                    _log.info("Redteam pre-pass start: stage=observation")
+                    await self._run_observation_pass()
+                    _log.info("Redteam pre-pass end: stage=observation elapsed=%.2fs", time.monotonic() - _phase_started)
+                except Exception as exc:
+                    _log.warning("Redteam: observation pass failed (non-fatal): %s", exc)
+
+            if self._workflows or self._workflow_templates:
+                try:
+                    _log.info("Redteam pre-pass start: stage=workflows")
+                    await self._run_workflow_pass(client)
+                except Exception as exc:
+                    _log.warning("Redteam: workflow pass failed (non-fatal): %s", exc)
 
             # Substitute poison server URL into all scenario step payloads that
             # contain the placeholder host.  This makes indirect injection and RAG
@@ -1848,6 +2381,8 @@ class RedteamOrchestrator:
             # connection errors and produce 0-turn ABORTED records.  Sending a
             # lightweight probe first absorbs the cold-start penalty centrally.
             if self._pre_run_warmup > 0:
+                _phase_started = time.monotonic()
+                _log.info("Redteam pre-pass start: stage=warmup probes=%d", self._pre_run_warmup)
                 from nuguard.common.transport import (  # noqa: PLC0415
                     TransportOutcome,
                     classify_transport,
@@ -1868,6 +2403,7 @@ class RedteamOrchestrator:
                             _log.info("pre-run warmup %d/%d: %s", _wu_idx + 1, self._pre_run_warmup, _wu_resp_text[:80])
                     except Exception as _wu_exc:
                         _log.warning("pre-run warmup %d/%d failed (non-fatal): %s", _wu_idx + 1, self._pre_run_warmup, _wu_exc)
+                _log.info("Redteam pre-pass end: stage=warmup elapsed=%.2fs", time.monotonic() - _phase_started)
 
             # Build a synthetic DiscoveredProfile from statically configured golden_data
             # when the live pre-scan discovery did not produce a profile (or was skipped
@@ -1906,6 +2442,7 @@ class RedteamOrchestrator:
                 suppress_spa_html_auth_bypass=self._suppress_spa_html,
                 judge_cache=_judge_cache,
                 credentials=self._credentials or None,
+                callback_canary=poison_server,
             )
 
             # Build GuidedAttackExecutor when LLM is configured and guided is enabled
@@ -2014,6 +2551,17 @@ class RedteamOrchestrator:
                     self.scenario_records.extend(escalation_records)
                     self.findings.extend(findings)
 
+        # W5 defence-regression findings ride along with whatever this pass
+        # returns (initial or escalation) — they come from an independent
+        # pre-pass, not scenario dispatch, so they are never duplicated by
+        # either path.
+        if self._regression_findings:
+            findings = self._regression_findings + findings
+            self.findings.extend(self._regression_findings)
+        # W1 ASM findings — same independent-pre-pass treatment as above.
+        if self._asm_findings:
+            findings = self._asm_findings + findings
+            self.findings.extend(self._asm_findings)
         findings = _dedup_findings_by_evidence_similarity(_dedup_findings(findings))
         _log.info("Scan complete: %d findings (after dedup)", len(findings))
 
@@ -2041,6 +2589,9 @@ class RedteamOrchestrator:
         )
         if self._not_engaged_detail is not None and not findings:
             self.scan_outcome = "aborted_target_not_engaged"
+        if self.scan_outcome == "no_findings" and self.defence_regression_summary is not None:
+            if self.defence_regression_summary.timed_out or self.defence_regression_summary.variants_failed:
+                self.scan_outcome = "inconclusive_target_errors"
         _log.info("Scan outcome: %s", self.scan_outcome)
 
         # LLM evaluation + summary (opt-in — only when eval_llm is configured)
@@ -2107,6 +2658,10 @@ class RedteamOrchestrator:
         # endpoint is still bounded: each pass re-probes at most
         # `_ABORT_THRESHOLD` times before skipping the rest of that pass.
         endpoint_abort_event = asyncio.Event()
+        # Set (together with `abort_event`) only when the run-level engagement
+        # guard trips, so skipped scenarios get their own reason instead of
+        # being reported as "circuit breaker open".
+        engagement_abort_event = asyncio.Event()
         # Circuit breaker: trip only after this many consecutive unavailability errors.
         _ABORT_THRESHOLD = 3
         consecutive_unavailable = 0
@@ -2149,6 +2704,8 @@ class RedteamOrchestrator:
         # Similarity miss tracker: skip scenarios whose payloads closely resemble
         # already-failed attacks once the miss count exceeds the threshold.
         miss_tracker = SimilarityMissTracker(miss_threshold=self._similar_miss_threshold)
+        # Observed seconds-per-turn, used to stretch the timeout of guided scenarios.
+        turn_latency = TurnLatencyTracker()
         # Code-gen escalation: allow at most one escalation per run.
         _codegen_escalation_done = False
 
@@ -2174,9 +2731,12 @@ class RedteamOrchestrator:
                     had_finding=False,
                 )
 
+            def _abort_status() -> str:
+                return "not_engaged" if engagement_abort_event.is_set() else "skipped"
+
             # Skip immediately if the circuit is already open
             if abort_event.is_set():
-                return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
+                return [], (scenario.title, scenario.goal_type.value, False), _skipped_record(_abort_status())
             # Direct-HTTP-only scenarios (all steps have target_path set — no
             # chat-routed step) are skipped independently once the direct-HTTP
             # endpoint-probe breaker trips, WITHOUT touching abort_event —
@@ -2191,7 +2751,7 @@ class RedteamOrchestrator:
                 # Re-check after acquiring the semaphore — another coroutine may
                 # have tripped the circuit while we were waiting.
                 if abort_event.is_set():
-                    return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
+                    return [], (scenario.title, scenario.goal_type.value, False), _skipped_record(_abort_status())
                 if _is_direct_http and endpoint_abort_event.is_set():
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("target_unreachable")
 
@@ -2229,6 +2789,7 @@ class RedteamOrchestrator:
 
                     if scenario.chain is None:
                         return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("failed")
+                    scenario.chain.decorator_allowed = scenario.decorator_allowed
                     chain, step_results, session = await executor.run(scenario.chain)
                     if self._verbose:
                         chat_target_url = self._target_url + self._chat_path
@@ -2259,8 +2820,24 @@ class RedteamOrchestrator:
                                 step_type=sr.step.step_type,
                             )
                     step_details = self._build_step_details(step_results)
+                    _tc_results: list[TrustContextResult] = []
+                    if (
+                        scenario.identity_sensitive
+                        and chain.status != "aborted"
+                        and self._trigger_enabled("identity_mismatch_hits")
+                    ):
+                        try:
+                            _tc_results = await self._run_trust_context_matrix(
+                                chain, step_results, session, executor,
+                            )
+                        except Exception as exc:
+                            _log.warning(
+                                "Trust-context matrix failed for scenario %r (non-fatal): %s",
+                                scenario.title, exc,
+                            )
                     new_findings = self._build_findings(
-                        scenario, chain, step_results, step_details, session=session
+                        scenario, chain, step_results, step_details, session=session,
+                        trust_context_results=_tc_results,
                     )
                     if self._verify_findings and new_findings:
                         await self._verify_findings_probe(new_findings, step_details, executor, session)
@@ -2330,6 +2907,7 @@ class RedteamOrchestrator:
                                     try:
                                         if _esc_scenario.chain is None:
                                             continue
+                                        _esc_scenario.chain.decorator_allowed = _esc_scenario.decorator_allowed
                                         _esc_chain, _esc_results, _esc_session = await executor.run(_esc_scenario.chain)
                                         _esc_step_details = self._build_step_details(_esc_results)
                                         _esc_findings = self._build_findings(
@@ -2369,8 +2947,18 @@ class RedteamOrchestrator:
                     )
 
                 _timeout = self._scenario_timeout if self._scenario_timeout > 0 else None
+                if _timeout is not None and _is_guided and scenario.guided_conversation is not None:
+                    _timeout = turn_latency.timeout_for(
+                        _timeout, scenario.guided_conversation.max_turns
+                    )
+                _t_start = time.perf_counter()
                 try:
                     result = await asyncio.wait_for(_execute_body(), timeout=_timeout)
+                    if _is_guided:
+                        turn_latency.observe(
+                            time.perf_counter() - _t_start,
+                            getattr(result[2], "turns_used", 0),
+                        )
                     # A scenario that completed without raising can still signal a
                     # structurally broken target — e.g. every step got "[HTTP 405]"
                     # and the per-chain/per-conversation circuit breaker aborted it
@@ -2400,7 +2988,12 @@ class RedteamOrchestrator:
                             )
                     else:
                         consecutive_unavailable = 0
-                    if self._require_engagement and _record_is_error_only(_record):
+                    if not _chat_step_responses(_record):
+                        # REST-only (or response-less) scenario: no evidence
+                        # about main-chat health either way, so leave the
+                        # engagement counter untouched.
+                        pass
+                    elif self._require_engagement and _record_is_error_only(_record):
                         consecutive_error_envelopes += 1
                         if consecutive_error_envelopes >= self._engagement_error_threshold:
                             self._not_engaged_detail = _first_error_only_response(_record)
@@ -2409,6 +3002,7 @@ class RedteamOrchestrator:
                                 "scenarios — aborting remaining scenarios as not engaged: %s",
                                 consecutive_error_envelopes, self._not_engaged_detail,
                             )
+                            engagement_abort_event.set()
                             abort_event.set()
                     else:
                         consecutive_error_envelopes = 0
@@ -2422,10 +3016,26 @@ class RedteamOrchestrator:
                     return result
                 except asyncio.TimeoutError:
                     consecutive_unavailable += 1
-                    if consecutive_unavailable >= _ABORT_THRESHOLD:
+                    if consecutive_unavailable >= _ABORT_THRESHOLD and await _target_is_responsive(
+                        self._target_url
+                    ):
+                        # Slow scenarios (e.g. multi-turn guided conversations
+                        # against a high-latency target) time out without the
+                        # target being down. Only a failed liveness probe may
+                        # abort the run.
+                        _log.warning(
+                            "Scenario %s timed out after %.0f s (%d consecutive) but the "
+                            "target still responds — continuing.",
+                            scenario.scenario_id,
+                            self._scenario_timeout,
+                            consecutive_unavailable,
+                        )
+                        consecutive_unavailable = 0
+                    elif consecutive_unavailable >= _ABORT_THRESHOLD:
                         _log.error(
                             "Scenario %s timed out after %.0f s — %d consecutive "
-                            "timeouts, aborting remaining scenarios.",
+                            "timeouts and the target is unresponsive, aborting remaining "
+                            "scenarios.",
                             scenario.scenario_id,
                             self._scenario_timeout,
                             consecutive_unavailable,
@@ -2745,8 +3355,15 @@ class RedteamOrchestrator:
         guided_executor: GuidedAttackExecutor,
         affected: str,
         variation_idx: int = 0,
+        session: "AttackSession | None" = None,
+        setup_done: bool = False,
     ) -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
-        """Execute a guided conversation scenario and convert to findings + record."""
+        """Execute a guided conversation scenario and convert to findings + record.
+
+        ``session`` / ``setup_done`` are campaign-mode hooks: run on a caller-owned
+        (warm) conversation branch and let the director skip happy-path/rapport
+        openers. Defaults keep the legacy behaviour exactly.
+        """
         from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
         from nuguard.redteam.target.session import AttackSession
 
@@ -2780,14 +3397,16 @@ class RedteamOrchestrator:
             allowed_topics=allowed_topics,
             variation_idx=variation_idx,
             stall_abort_threshold=self._stall_abort_threshold,
+            setup_done=setup_done,
         )
         guided_executor._director = director  # swap in scenario-specific director
 
-        session = AttackSession(
-            session_id=conv.conversation_id,
-            target_url=self._target_url,
-            chain_id=conv.conversation_id,
-        )
+        if session is None:
+            session = AttackSession(
+                session_id=conv.conversation_id,
+                target_url=self._target_url,
+                chain_id=conv.conversation_id,
+            )
         populated_conv = await guided_executor.run(conv, session)
 
         had_finding = populated_conv.succeeded
@@ -3110,6 +3729,7 @@ class RedteamOrchestrator:
             if step.target_path:
                 detail["method"] = step.http_method
                 detail["target_path"] = step.target_path
+                detail["strip_auth"] = step.strip_auth
                 if step.http_body:
                     detail["request_body"] = step.http_body
                 if step.http_params:
@@ -3206,6 +3826,7 @@ class RedteamOrchestrator:
         step_results: list[StepResult],
         step_details: list[dict],
         session: AttackSession | None = None,
+        trust_context_results: "list[TrustContextResult] | None" = None,
     ) -> list[Finding]:
         """Convert scenario execution results into Finding objects."""
         findings: list[Finding] = []
@@ -3277,6 +3898,102 @@ class RedteamOrchestrator:
                 golden_name=session.golden_name or None,
                 golden_data_excerpt=session.golden_data[:500],
             )
+        # W8 egress-callback canary (redteam-proposal.md): a confirmed inbound
+        # callback is hard evidence (source IP, headers, decoded payload) for
+        # an SSRF/exfil primitive — attach it whenever any step observed one,
+        # same pattern as the golden-data baseline above.
+        _callback_hit = next((sr.callback_hit for sr in step_results if sr.callback_hit), None)
+        if _callback_hit:
+            _base["callback_evidence"] = _callback_hit
+        # W6 payload decorators: a decorator success where the undecorated
+        # payload failed is a direct filter-quality signal ("plaintext
+        # refused, encoded succeeded = the control is a string filter").
+        _decorator_used = next((sr.decorator_used for sr in step_results if sr.decorator_used), None)
+        if _decorator_used:
+            _base["evasion_differential"] = True
+            _base["decorator_name"] = _decorator_used
+
+        # W10 dual-path tool exposure (redteam-proposal.md): compare the
+        # chat-mediated call against the same capability's direct-HTTP
+        # invocation. Only X-series scenarios set AttackScenario.dual_path;
+        # a "gate_bypass" verdict is unconditional proof regardless of the
+        # steps' own contributes_to_finding/success_signal_found (those are
+        # deliberately False/independent on dual_path steps — see
+        # scenarios/dual_path.py — the verdict IS the finding).
+        if scenario.dual_path and self._trigger_enabled("critical_success_hits"):
+            from nuguard.redteam.scenarios.dual_path import compare_dual_path
+            _chat_sr = next(
+                (sr for sr in step_results if sr.step.target_path is None and sr.step.step_type == "INVOKE"),
+                None,
+            )
+            _direct_sr = next(
+                (sr for sr in step_results if sr.step.target_path is not None and sr.step.step_type == "INVOKE"),
+                None,
+            )
+            if _chat_sr is not None and _direct_sr is not None:
+                _verdict = compare_dual_path(_chat_sr, _direct_sr)
+                if _verdict == "gate_bypass":
+                    dual_path_ngrs = ngrs.score_finding(
+                        scenario.goal_type, deterministic_evidence=True, turns_used=_turns_used,
+                    )
+                    dual_path_title = f"Dual-Path Gate Bypass — {scenario.title}"
+                    findings.append(
+                        Finding(
+                            **{**_base, "dual_path_verdict": _verdict},
+                            finding_id=_finding_id(dual_path_title),
+                            title=dual_path_title,
+                            severity=dual_path_ngrs.severity,
+                            ngrs_score=dual_path_ngrs.score,
+                            ngrs_vector=dual_path_ngrs.vector,
+                            success_indicator="dual_path_gate_bypass",
+                            description=(
+                                "The chat-mediated call was refused/non-responsive but the "
+                                "same capability's direct-HTTP invocation returned a 2xx "
+                                "response — the LLM gate holds, the raw endpoint does not."
+                            ),
+                            evidence=(
+                                f"Chat response: {(_chat_sr.response or '')[:300]!r} | "
+                                f"Direct HTTP status: {_direct_sr.http_status_code} | "
+                                f"Attack steps: {step_summary}"
+                            ),
+                        )
+                    )
+
+        # W2 trust-context matrix (redteam-proposal.md): a confirmed identity
+        # mismatch is deterministic data-membership proof — same evidence
+        # class as a canary hit — so it is checked FIRST, ahead of
+        # canary_hits, rather than folded into critical_success_hits below.
+        if trust_context_results and self._trigger_enabled("identity_mismatch_hits"):
+            _mismatch = next((r for r in trust_context_results if r.verdict == "mismatch"), None)
+            if _mismatch is not None:
+                identity_ngrs = ngrs.score_finding(
+                    GoalType.PRIVILEGE_ESCALATION, deterministic_evidence=True,
+                    cross_tenant=True, turns_used=_turns_used,
+                )
+                identity_title = f"Identity Binding Mismatch — {scenario.title}"
+                findings.append(
+                    Finding(
+                        **_base,
+                        finding_id=_finding_id(identity_title),
+                        title=identity_title,
+                        severity=identity_ngrs.severity,
+                        ngrs_score=identity_ngrs.score,
+                        ngrs_vector=identity_ngrs.vector,
+                        success_indicator="identity_mismatch",
+                        description=(
+                            f"Under trust-context cell {_mismatch.cell.name!r} "
+                            f"(credentials={_mismatch.cell.credentials.value}, "
+                            f"identity_binding={_mismatch.cell.identity_binding.value}), the "
+                            "response disclosed data scoped to the spoofed identity rather "
+                            "than the authenticated credential's identity."
+                        ),
+                        evidence=(
+                            f"Cell: {_mismatch.cell.name} | "
+                            f"Response: {(_mismatch.step_result.response or '')[:300]!r} | "
+                            f"Attack steps: {step_summary}"
+                        ),
+                    )
+                )
 
         # Canary-based finding
         if canary_hits and self._trigger_enabled("canary_hits"):
@@ -3429,6 +4146,8 @@ class RedteamOrchestrator:
                 and getattr(sr.step, "contributes_to_finding", True)
                 and (
                     sr.step.on_failure == "abort"
+                    or sr.callback_hit is not None
+                    or sr.decorator_used is not None
                     or (
                         getattr(sr.step, "use_llm_eval", False)
                         and sr.llm_eval_confidence in ("high", "medium")
@@ -3436,11 +4155,20 @@ class RedteamOrchestrator:
                 )
             ]
             if critical_hits and self._trigger_enabled("critical_success_hits"):
-                # abort-on-success steps (HTTP-status-based, e.g. auth-bypass)
-                # are unconditional proof once success_signal_found is True —
-                # same evidence class as a canary hit. Otherwise take the
-                # strongest llm_eval_confidence among the hits.
-                _deterministic_hit = any(sr.step.on_failure == "abort" for sr in critical_hits)
+                # abort-on-success steps (HTTP-status-based, e.g. auth-bypass),
+                # confirmed W8 egress-callback hits, and confirmed W6 decorator
+                # bypasses are unconditional proof once success_signal_found is
+                # True — same evidence class as a canary hit, regardless of
+                # the step's on_failure setting (a callback-canary/decorator
+                # step should fall through to the next variant on a miss, not
+                # abort the whole chain). Otherwise take the strongest
+                # llm_eval_confidence among the hits.
+                _deterministic_hit = any(
+                    sr.step.on_failure == "abort"
+                    or sr.callback_hit is not None
+                    or sr.decorator_used is not None
+                    for sr in critical_hits
+                )
                 _best_confidence = next(
                     (sr.llm_eval_confidence for sr in critical_hits if sr.llm_eval_confidence == "high"),
                     next((sr.llm_eval_confidence for sr in critical_hits if sr.llm_eval_confidence == "medium"), None),
@@ -3516,6 +4244,142 @@ class RedteamOrchestrator:
 
         return findings
 
+    async def _ensure_endpoint_preflight(
+        self,
+        client: Any,
+        *,
+        auth_headers: "dict[str, str] | None" = None,
+    ) -> "tuple[bool, list[str]]":
+        """Validate/rotate the chat endpoint once per scan and apply it to *client*.
+
+        The first call sends a test message and, when the reply is an error or a
+        structured artefact rather than chat, rotates to a more conversational
+        SBOM candidate (see
+        :func:`~nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint`).
+        The rotation is written back to this orchestrator's chat settings and to
+        ``self._target_session_config`` so clients built later inherit it.
+        Later calls replay the cached bound path params onto *client* instead
+        of re-testing.
+
+        Returns:
+            ``(ok, notes)`` — ``ok`` is ``False`` when no working chat endpoint
+            was found.
+        """
+        cached = getattr(self, "_preflight_result", None)
+        if cached is not None:
+            if hasattr(client, "chat_path") and client.chat_path != self._chat_path:
+                client.set_chat_endpoint(
+                    self._chat_path, self._chat_payload_key, self._chat_payload_list,
+                    self._chat_response_key,
+                )
+            if hasattr(client, "set_path_param"):
+                for _pp_name, _pp_value in self._preflight_path_params.items():
+                    client.set_path_param(_pp_name, _pp_value)
+            return cached
+
+        from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
+            cached_endpoint_resolution,
+            persist_endpoint_resolution,
+            validate_and_rotate_chat_endpoint,
+        )
+
+        _has_explicit = self._chat_path_source == "config"
+        _sbom_hit = cached_endpoint_resolution(
+            self._sbom,
+            self._target_url,
+            self._auth_config,
+            required_chat_path=self._chat_path if _has_explicit else None,
+        )
+        if _sbom_hit is not None:
+            _resolved, _resolved_params = _sbom_hit
+            if hasattr(client, "set_chat_endpoint"):
+                client.set_chat_endpoint(
+                    _resolved.chat_path, _resolved.chat_payload_key,
+                    _resolved.chat_payload_list, _resolved.chat_response_key,
+                )
+            if hasattr(client, "set_path_param"):
+                for _pp_name, _pp_value in _resolved_params.items():
+                    client.set_path_param(_pp_name, _pp_value)
+            self._chat_path = _resolved.chat_path
+            self._chat_payload_key = _resolved.chat_payload_key
+            self._chat_payload_list = _resolved.chat_payload_list
+            if _resolved.chat_response_key:
+                self._chat_response_key = _resolved.chat_response_key
+            if _resolved.endpoint_source and not _has_explicit and _resolved.endpoint_source != "config":
+                # "config" is only a truthful source label for the run that
+                # actually configured the endpoint explicitly — a non-explicit
+                # run reusing that run's cached resolution must not inherit
+                # the label (it never configured anything itself).
+                self._chat_path_source = _resolved.endpoint_source
+            _tsc = getattr(self, "_target_session_config", None)
+            if _tsc is not None:
+                _tsc.chat_path = self._chat_path
+                _tsc.chat_payload_key = self._chat_payload_key
+                _tsc.chat_payload_list = self._chat_payload_list
+                if _resolved.chat_response_key:
+                    _tsc.chat_response_key = _resolved.chat_response_key
+            self._preflight_path_params = dict(_resolved_params)
+            _hit_note = (
+                f"Chat endpoint {self._chat_path!r} reused from a previously-validated "
+                "SBOM resolution — skipped live preflight."
+            )
+            self.config_notes.append(_hit_note)
+            self._preflight_result = (True, [_hit_note])
+            return self._preflight_result
+
+        _pf = await validate_and_rotate_chat_endpoint(
+            client,
+            self._sbom,
+            has_explicit_endpoint=_has_explicit,
+            target_url=self._target_url,
+            auth_headers=auth_headers,
+            max_candidates=self._preflight_candidates,
+            browser_discovery=self._browser_discovery,
+        )
+        self.config_notes.extend(_pf.notes)
+        if _pf.rotated_endpoint is not None:
+            self._chat_path, self._chat_payload_key, self._chat_payload_list, _pf_resp_key = (
+                _pf.rotated_endpoint
+            )
+            if _pf_resp_key:
+                self._chat_response_key = _pf_resp_key
+            self._chat_path_source = _pf.endpoint_source or self._chat_path_source
+            _tsc = getattr(self, "_target_session_config", None)
+            if _tsc is not None:
+                _tsc.chat_path = self._chat_path
+                _tsc.chat_payload_key = self._chat_payload_key
+                _tsc.chat_payload_list = self._chat_payload_list
+                if _pf_resp_key:
+                    _tsc.chat_response_key = _pf_resp_key
+        _pp = getattr(client, "path_param_values", None)
+        self._preflight_path_params = dict(_pp) if isinstance(_pp, dict) else {}
+        self._preflight_result = (_pf.ok, list(_pf.notes))
+
+        if _pf.cacheable and self._sbom is not None:
+            persist_endpoint_resolution(
+                self._sbom,
+                self._target_url,
+                self._auth_config,
+                chat_path=self._chat_path,
+                chat_payload_key=self._chat_payload_key,
+                chat_payload_list=self._chat_payload_list,
+                chat_response_key=self._chat_response_key,
+                endpoint_source=self._chat_path_source,
+                path_param_values=self._preflight_path_params,
+            )
+            if self._sbom_path is not None:
+                from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
+                    persist_endpoint_resolution_sbom,
+                )
+
+                try:
+                    _ep_artifact = persist_endpoint_resolution_sbom(self._sbom, self._sbom_path)
+                    _log.info("preflight: persisted endpoint resolution to %s", _ep_artifact)
+                except Exception as exc:
+                    _log.warning("preflight: could not persist endpoint resolution: %s", exc)
+
+        return self._preflight_result
+
     async def _maybe_probe_endpoints(self) -> None:
         """Use the common resolver for full or targeted endpoint detection."""
         from nuguard.common.endpoint_detection import UNSET, resolve_chat_endpoint
@@ -3528,7 +4392,7 @@ class RedteamOrchestrator:
         # chat-like (e.g. "/extract"). Respects an explicitly configured
         # endpoint: only that exact path's confirmation is consulted, never a
         # different cached one.
-        if self._sbom is not None:
+        if self._sbom is not None and not self._chat_payload_key_explicit:
             _confirmed = find_confirmed_chat_endpoint(
                 self._sbom,
                 expected_path=self._chat_path if self._chat_path_explicit else None,
@@ -3541,7 +4405,7 @@ class RedteamOrchestrator:
                 self._chat_payload_list = is_list
                 self._chat_response_key = resp_key or self._chat_response_key
                 if not self._chat_path_explicit:
-                    self._chat_path_source = "sbom"
+                    self._chat_path_source = "enriched_sbom_cache"
                 _log.info(
                     "redteam: using previously-confirmed endpoint %s from enriched SBOM "
                     "(payload_key=%r list=%s)",
@@ -3559,8 +4423,19 @@ class RedteamOrchestrator:
             except Exception as exc:  # noqa: BLE001 - persistence is best effort
                 _log.debug("redteam: probe result persist failed: %s", exc)
 
+        # Probe the real API origin (not an SPA frontend), and defer live
+        # probing entirely when auth needs a login step that hasn't run yet —
+        # resolve_target_session() probes again after bootstrap, with auth.
+        from nuguard.common.endpoint_detection.context import (
+            auth_requires_login,
+            resolve_api_origin,
+        )
+
+        probe_target_url, _ = await resolve_api_origin(self._target_url, self._sbom)
+        allow_live_probe = not auth_requires_login(self._auth_config, self._sbom)
+
         resolved = await resolve_chat_endpoint(
-            target_url=self._target_url,
+            target_url=probe_target_url,
             sbom=self._sbom,
             # Pass UNSET (not self._chat_path) when the caller never explicitly
             # configured an endpoint — self._chat_path may already hold a plain
@@ -3571,17 +4446,23 @@ class RedteamOrchestrator:
             endpoint=self._chat_path if self._chat_path_explicit else UNSET,
             payload_key=(
                 self._chat_payload_key
-                if self._chat_payload_key != "message"
+                if self._chat_payload_key_explicit or self._chat_payload_key != "message"
                 else UNSET
             ),
-            payload_list=UNSET,
+            payload_list=self._chat_payload_list if self._chat_payload_key_explicit else UNSET,
             response_key=self._chat_response_key or UNSET,
             auth_headers=self._extra_headers or None,
             timeout=min(self._request_timeout, 15.0),
             probe_payload_extras=self._chat_payload_extras or None,
             llm=self._redteam_llm if self._probe_llm else None,
             probe_result_callback=_persist_probe_result,
+            allow_live_probe=allow_live_probe,
         )
+        if not resolved.path and not allow_live_probe:
+            # Leave the path unset so resolve_target_session() runs full,
+            # authenticated discovery instead of key-probing a "/chat" guess.
+            _log.info("redteam: live endpoint probing deferred until after auth bootstrap")
+            return
         self._chat_path = resolved.path or "/chat"
         self._chat_payload_key = resolved.payload_key or "message"
         self._chat_payload_list = resolved.payload_list

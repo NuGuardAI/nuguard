@@ -17,13 +17,16 @@ if TYPE_CHECKING:
 _NS = uuid.NAMESPACE_URL
 
 
-async def _validate(client: Any, sbom: AiSbomDocument, **kwargs: Any) -> PreflightOutcome:
+async def _validate(client: Any, sbom: AiSbomDocument | None, **kwargs: Any) -> PreflightOutcome:
     """Test-only shim: these fakes are structurally, not nominally, TargetAppClient."""
     return await validate_and_rotate_chat_endpoint(cast("TargetAppClient", client), sbom, **kwargs)
 
 
 class _DummyClient:
     """Minimal TargetAppClient stand-in — mirrors the fake used in behavior tests."""
+
+    last_raw_response: dict | None = None
+    _detected_response_key: str | None = None
 
     def __init__(
         self, working_path: str | None, initial_path: str = "/chat",
@@ -81,6 +84,67 @@ async def test_ok_when_first_response_is_not_404_405() -> None:
     assert outcome.ok is True
     assert outcome.rotated_endpoint is None
     assert client.called_paths == ["/chat"]
+
+
+@pytest.mark.asyncio
+async def test_metadata_auto_detection_is_not_reply_evidence() -> None:
+    client = _DummyClient(working_path="/chat")
+    client.last_raw_response = None
+    client._detected_response_key = "description"
+
+    async def send(message: str, session: object) -> tuple[str, list[dict]]:
+        client.last_raw_response = {"description": "Metadata description that is longer than thirty characters"}
+        return client.last_raw_response["description"], []
+
+    with patch.object(client, "send", new=send):
+        outcome = await _validate(client, None, has_explicit_endpoint=True)
+    assert not outcome.ok and not outcome.cacheable
+
+
+@pytest.mark.asyncio
+async def test_transport_exception_remains_fail_open_but_cannot_be_cached() -> None:
+    client = _DummyClient(working_path="/chat")
+    with patch.object(client, "send", new=AsyncMock(side_effect=RuntimeError("transport failed"))):
+        outcome = await _validate(client, _sbom_with_candidates("/chat"), has_explicit_endpoint=False)
+    assert outcome.ok
+    assert not outcome.cacheable
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply", ["[HTTP 500] backend unavailable", "[HTTP 401] unauthorized", "[TIMEOUT]"])
+async def test_transport_failure_markers_cannot_confirm_cache(reply: str) -> None:
+    client = _DummyClient(working_path=None, failure_response=reply)
+    outcome = await _validate(client, None, has_explicit_endpoint=True)
+    assert outcome.ok and not outcome.cacheable
+    assert "transport failed" not in str(outcome.model_dump())
+
+
+@pytest.mark.asyncio
+async def test_unconfirmed_probe_cannot_be_promoted_by_preflight() -> None:
+    from nuguard.common.endpoint_detection.live_probe import ProbeResult
+
+    client = _DummyClient(working_path=None)
+    with (
+        patch("nuguard.common.endpoint_detection.live_probe.probe_endpoint", new=AsyncMock(
+            return_value=ProbeResult("/other/chat", "message", False, confirmed=False),
+        )),
+        patch("nuguard.common.browser_login.session.sniff_chat_endpoint_headless", new=AsyncMock(return_value=None)),
+    ):
+        outcome = await _validate(client, _sbom_with_candidates("/chat"), has_explicit_endpoint=False)
+    assert not outcome.ok and not outcome.cacheable
+
+
+@pytest.mark.asyncio
+async def test_browser_observation_without_reply_cannot_be_cached() -> None:
+    client = _DummyClient(working_path=None)
+    with (
+        patch("nuguard.common.endpoint_detection.live_probe.probe_endpoint", new=AsyncMock(return_value=None)),
+        patch("nuguard.common.browser_login.session.sniff_chat_endpoint_headless", new=AsyncMock(
+            return_value=("/observed/chat", "text", False),
+        )),
+    ):
+        outcome = await _validate(client, _sbom_with_candidates("/chat"), has_explicit_endpoint=False)
+    assert not outcome.ok and not outcome.cacheable
 
 
 @pytest.mark.asyncio
@@ -442,10 +506,9 @@ async def test_no_path_param_sources_is_a_no_op() -> None:
 async def test_bootstrap_runs_after_probe_rotation_settles() -> None:
     """Bootstrap must bind against the *rotated* endpoint, not the original
     one — set_chat_endpoint clears any previously-bound path params, so
-    binding before rotation settles would be silently wiped. Exercised via
-    the live-probe rotation branch (SBOM-candidate rotation only fires when
-    discover_chat_candidates_from_sbom ranks a second candidate, which a
-    single two-step chat endpoint alone doesn't produce)."""
+    binding before rotation settles would be silently wiped. The templated
+    SBOM candidate is now reached by SBOM rotation directly (candidates are
+    bootstrapped before their test send), without needing the live probe."""
     chat_path = "/chat/conversations/:id/messages"
     other_path = "/api/agent/chat"
     sbom = _sbom_with_two_step_chat(chat_path=chat_path)
@@ -465,5 +528,195 @@ async def test_bootstrap_runs_after_probe_rotation_settles() -> None:
         )
 
     assert outcome.ok is True
-    assert outcome.endpoint_source == "probe"
+    assert outcome.endpoint_source == "sbom"
+    assert client.chat_path == chat_path
     assert client.bound_params == {"id": "c_rot123"}
+
+
+# ---------------------------------------------------------------------------
+# Conversational-fitness candidate selection
+# ---------------------------------------------------------------------------
+
+
+class _FitnessDummyClient:
+    """Per-path canned replies plus raw bodies, with path-param bootstrap support."""
+
+    def __init__(
+        self,
+        initial_path: str,
+        replies: dict[str, tuple[str, object]],
+        invoke_responses: dict[str, tuple[int, dict]] | None = None,
+    ) -> None:
+        self.chat_path = initial_path
+        self.replies = replies
+        self.invoke_responses = invoke_responses or {}
+        self.called_paths: list[str] = []
+        self.bound_params: dict[str, str] = {}
+        self.last_raw_response: object = None
+
+    @property
+    def path_param_values(self) -> dict[str, str]:
+        return dict(self.bound_params)
+
+    async def send(self, message: str, session: object) -> tuple[str, list[dict]]:
+        self.called_paths.append(self.chat_path)
+        if ":id" in self.chat_path and "id" not in self.bound_params:
+            return "[CONFIG_ERROR: unresolved path param 'id']", []
+        text, raw = self.replies.get(self.chat_path, ("[HTTP 404]", None))
+        self.last_raw_response = raw
+        return text, []
+
+    async def invoke_endpoint(
+        self, path: str, method: str = "POST", body: dict | None = None, **_kw: object
+    ) -> tuple[int, str, dict]:
+        status, data = self.invoke_responses.get(path, (404, {}))
+        return status, "", data
+
+    def set_path_param(self, name: str, value: str) -> None:
+        self.bound_params[name] = value
+
+    def set_chat_endpoint(
+        self,
+        chat_path: str,
+        chat_payload_key: str,
+        chat_payload_list: bool,
+        chat_response_key: str | None = None,
+    ) -> None:
+        self.chat_path = chat_path
+        self.bound_params = {}
+
+
+def _studyield_like_sbom() -> AiSbomDocument:
+    """Generator endpoint + two-step conversation chat endpoint (Studyield shape)."""
+
+    def _node(path: str, method: str, **meta: Any) -> Node:
+        return Node(
+            id=uuid.uuid5(_NS, f"API_ENDPOINT/{method}{path}"),
+            name=path,
+            component_type=ComponentType.API_ENDPOINT,
+            confidence=0.95,
+            metadata=NodeMetadata(endpoint=path, method=method, **meta),
+        )
+
+    chat = "/api/v1/chat/conversations/:id/messages"
+    return AiSbomDocument(
+        target="./app",
+        nodes=[
+            _node(
+                "/api/v1/learning-paths/generate", "POST",
+                chat_payload_key="topic",
+                request_body_schema={
+                    "topic": "string", "availableHoursPerWeek": "number", "studySetIds": "string[]",
+                },
+            ),
+            _node(
+                chat, "POST",
+                chat_payload_key="content",
+                request_body_schema={"content": "string", "stream": "boolean"},
+                path_params=["id"],
+                path_param_sources={"id": "/api/v1/chat/conversations"},
+            ),
+            _node(chat, "GET", path_params=["id"], path_param_sources={"id": "/api/v1/chat/conversations"}),
+            _node("/api/v1/chat/conversations", "POST", request_body_schema={"title": "string"}),
+        ],
+    )
+
+
+def test_sbom_ranks_two_step_chat_above_generator() -> None:
+    from nuguard.common.endpoint_detection.sbom import discover_chat_candidates_from_sbom
+
+    ranked = discover_chat_candidates_from_sbom(_studyield_like_sbom())
+    assert ranked[0][0] == "/api/v1/chat/conversations/:id/messages"
+    assert ranked[0][1] == "content"
+
+
+@pytest.mark.asyncio
+async def test_structured_2xx_rotates_to_conversational_candidate() -> None:
+    """A 2xx structured artefact (generated learning path) must not be accepted
+    as the chat endpoint when a bootstrappable conversation route answers in prose."""
+    generator = "/api/v1/learning-paths/generate"
+    chat = "/api/v1/chat/conversations/:id/messages"
+    plan = {"id": "lp1", "modules": [{"title": "Intro", "steps": [{"n": 1}, {"n": 2}]}]}
+    client = _FitnessDummyClient(
+        initial_path=generator,
+        replies={
+            generator: ("A structured learning plan for your topic", plan),
+            chat: ("Hi! How can I help you study today?", {"id": "m1", "content": "Hi!"}),
+        },
+        invoke_responses={"/api/v1/chat/conversations": (201, {"id": "c_42"})},
+    )
+
+    outcome = await _validate(client, _studyield_like_sbom(), has_explicit_endpoint=False)
+
+    assert outcome.ok is True
+    assert outcome.rotated_endpoint is not None
+    assert outcome.rotated_endpoint[0] == chat
+    assert client.chat_path == chat
+    assert client.bound_params == {"id": "c_42"}
+
+
+@pytest.mark.asyncio
+async def test_5xx_rotates_to_working_candidate() -> None:
+    client = _FitnessDummyClient(
+        initial_path="/api/agent/chat",
+        replies={
+            "/api/agent/chat": ("[HTTP 500]", None),
+            "/chat": ("Hello there, how can I help?", {"reply": "Hello there"}),
+        },
+    )
+    sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
+
+    outcome = await _validate(client, sbom, has_explicit_endpoint=False)
+
+    assert outcome.ok is True
+    assert outcome.rotated_endpoint is not None
+    assert outcome.rotated_endpoint[0] == "/chat"
+
+
+@pytest.mark.asyncio
+async def test_prose_reply_accepted_without_trying_other_candidates() -> None:
+    client = _FitnessDummyClient(
+        initial_path="/chat",
+        replies={"/chat": ("Hello! What would you like to talk about?", {"reply": "Hello!"})},
+    )
+    sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
+
+    outcome = await _validate(client, sbom, has_explicit_endpoint=False)
+
+    assert outcome.ok is True
+    assert outcome.rotated_endpoint is None
+    assert client.called_paths == ["/chat"]
+
+
+@pytest.mark.asyncio
+async def test_keeps_original_when_no_candidate_is_better() -> None:
+    client = _FitnessDummyClient(
+        initial_path="/chat",
+        replies={"/chat": ("[HTTP 500]", None), "/api/agent/chat": ("[HTTP 500]", None)},
+    )
+    sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
+
+    outcome = await _validate(client, sbom, has_explicit_endpoint=False)
+
+    assert outcome.ok is True
+    assert outcome.rotated_endpoint is None
+    assert client.chat_path == "/chat"
+
+
+@pytest.mark.asyncio
+async def test_exclude_paths_skips_candidate() -> None:
+    client = _FitnessDummyClient(
+        initial_path="/api/agent/chat",
+        replies={
+            "/api/agent/chat": ("[HTTP 500]", None),
+            "/chat": ("Hello there, how can I help?", None),
+        },
+    )
+    sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
+
+    outcome = await _validate(
+        client, sbom, has_explicit_endpoint=False, exclude_paths=["/chat"],
+    )
+
+    assert outcome.rotated_endpoint is None
+    assert "/chat" not in client.called_paths

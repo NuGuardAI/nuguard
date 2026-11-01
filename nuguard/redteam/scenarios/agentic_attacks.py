@@ -78,7 +78,7 @@ def build_confused_deputy(
         scenario_type=ScenarioType.CONFUSED_DEPUTY,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM05",
+        owasp_llm_ref="LLM03:2026",
         mitre_atlas_technique="AML.T0051 – LLM Plugin Compromise",
         steps=[
             ExploitStep(
@@ -172,8 +172,8 @@ def build_multi_agent_trust_boundary(
         goal_type=GoalType.AGENTIC_TRUST_ABUSE,
         scenario_type=ScenarioType.MULTI_AGENT_TRUST,
         sbom_path=[orchestrator_id, sub_agent_id],
-        owasp_asi_ref="ASI04",
-        owasp_llm_ref="LLM02",
+        owasp_asi_ref="ASI07",
+        owasp_llm_ref="LLM03:2026",
         mitre_atlas_technique="AML.T0048 – Exfiltration via Cyber Means",
         steps=[
             ExploitStep(
@@ -263,8 +263,8 @@ def build_memory_poisoning(
         goal_type=GoalType.AGENTIC_TRUST_ABUSE,
         scenario_type=ScenarioType.MEMORY_POISONING,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI04",
-        owasp_llm_ref="LLM03",
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM05:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             ExploitStep(
@@ -353,8 +353,8 @@ def build_goal_hijacking(
         goal_type=GoalType.AGENTIC_TRUST_ABUSE,
         scenario_type=ScenarioType.GOAL_HIJACKING,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI02",
-        owasp_llm_ref="LLM04",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0051 – LLM Plugin Compromise",
         steps=[
             ExploitStep(
@@ -434,8 +434,8 @@ def build_intent_router_confusion(
         goal_type=GoalType.AGENTIC_TRUST_ABUSE,
         scenario_type=ScenarioType.INTENT_ROUTING_CONFUSION,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI04",
-        owasp_llm_ref="LLM02",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM03:2026",
         mitre_atlas_technique="AML.T0051 – LLM Plugin Compromise",
         steps=[
             ExploitStep(
@@ -536,8 +536,8 @@ def build_upstream_agent_fabrication(
         goal_type=GoalType.AGENTIC_TRUST_ABUSE,
         scenario_type=ScenarioType.UPSTREAM_APPROVAL_FABRICATION,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI04",
-        owasp_llm_ref="LLM02",
+        owasp_asi_ref="ASI07",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0048 – Exfiltration via Cyber Means",
         steps=[
             ExploitStep(
@@ -645,8 +645,8 @@ def build_cross_agent_prompt_injection(
         goal_type=GoalType.AGENTIC_TRUST_ABUSE,
         scenario_type=ScenarioType.CROSS_AGENT_INJECTION,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI04",
-        owasp_llm_ref="LLM02",
+        owasp_asi_ref="ASI07",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             ExploitStep(
@@ -749,7 +749,7 @@ def build_kyc_override_loan_approval(
         scenario_type=ScenarioType.TOOL_CHAIN_EXPLOIT,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI03",
-        owasp_llm_ref="LLM05",
+        owasp_llm_ref="LLM03:2026",
         mitre_atlas_technique="AML.T0051 – LLM Plugin Compromise",
         steps=[
             ExploitStep(
@@ -859,8 +859,8 @@ def build_excessive_agency(
         goal_type=GoalType.AGENTIC_TRUST_ABUSE,
         scenario_type=ScenarioType.EXCESSIVE_AGENCY,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI05 – Excessive Agency",
-        owasp_llm_ref="LLM08 – Excessive Agency",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM03:2026",
         mitre_atlas_technique="AML.T0051 – LLM Plugin Compromise",
         steps=[
             # Step 1: narrow, legitimate request

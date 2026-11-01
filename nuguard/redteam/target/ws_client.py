@@ -44,6 +44,45 @@ def to_ws_url(base_url: str) -> str:
     return base_url
 
 
+async def connect_and_listen(
+    url: str, duration_s: float = 3.0, max_events: int = 50, open_timeout: float = 5.0,
+) -> list[str]:
+    """Open a WS connection, send nothing, and passively collect inbound
+    messages for up to *duration_s* seconds (redteam-proposal.md W7).
+
+    Deliberately standalone rather than a :class:`WebSocketTargetClient`
+    method — an observation channel (e.g. a broadcast log stream) is
+    typically a different path from the chat WS endpoint that class is
+    configured for. Never sends a payload; any event received proves
+    nothing about the *scanner's own* traffic, so a structured identifier
+    appearing in one is evidence of cross-session leakage, not an echo.
+    Returns an empty list (never raises) on any connection failure —
+    a closed/refused handshake is itself the "control held" outcome,
+    reported separately by the ASM's observation-channel probe.
+    """
+    import websockets  # noqa: PLC0415 — optional dep, imported lazily
+
+    events: list[str] = []
+    try:
+        async with await websockets.connect(url, open_timeout=open_timeout) as ws:
+            loop = asyncio.get_event_loop()
+            deadline = loop.time() + duration_s
+            while len(events) < max_events:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    break
+                try:
+                    message = await asyncio.wait_for(ws.recv(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    break
+                events.append(
+                    message if isinstance(message, str) else message.decode("utf-8", errors="replace")
+                )
+    except Exception as exc:  # noqa: BLE001 — best-effort passive tap
+        _log.debug("connect_and_listen: %s failed: %s", url, exc)
+    return events
+
+
 class WebSocketTargetClient:
     """Sends chat payloads over a persistent WebSocket connection.
 
@@ -217,6 +256,25 @@ class WebSocketTargetClient:
             label = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
             _log.warning("WebSocketTargetClient.invoke_endpoint: %s %s failed: %s", method, path, label)
             return 0, f"[REQUEST_ERROR: {label}]", {}
+
+    async def probe_cors(self, path: str, origin: str) -> dict[str, str] | None:
+        """Mirrors :meth:`TargetAppClient.probe_cors` over the plain-HTTP
+        side-channel (W1 ASM) — WS-chat targets still expose plain REST
+        routes CORS can apply to."""
+        client = self._ensure_http_client()
+        try:
+            request = client.build_request(
+                method="OPTIONS", url=path,
+                headers={"Origin": origin, "Access-Control-Request-Method": "GET"},
+            )
+            for name in self._auth_header_names:
+                if name in request.headers:
+                    del request.headers[name]
+            resp = await client.send(request)
+        except Exception as exc:  # noqa: BLE001 — best-effort auxiliary probe
+            _log.debug("WebSocketTargetClient.probe_cors: OPTIONS %s failed: %s", path, exc)
+            return None
+        return {k.lower(): v for k, v in resp.headers.items()}
 
     async def _connect(self) -> None:
         import websockets  # noqa: PLC0415 — optional dep, imported lazily

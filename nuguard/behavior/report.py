@@ -28,6 +28,27 @@ _log = get_logger(__name__)
 
 _MAX_DIAG_SCENARIOS = 20
 _MAX_DIAG_TURNS_PER_SCENARIO = 4
+
+
+def _coverage_outcome_label(cov: Any) -> str:
+    """Render BehaviorCoverage.scenario_outcome, or '-' when not judged."""
+    return getattr(cov, "scenario_outcome", None) or "-"
+
+
+def _coverage_live_label(cov: Any) -> str:
+    """Render BehaviorCoverage.endpoint_operational — True/False/'not verified'.
+
+    Independently-verified liveness (issue #555's sweep), never conflated with
+    scenario_outcome. Only meaningful for API_ENDPOINT rows.
+    """
+    if getattr(cov, "node_type", None) != "API_ENDPOINT":
+        return "-"
+    operational = getattr(cov, "endpoint_operational", None)
+    if operational is True:
+        return "Live"
+    if operational is False:
+        return "Dead"
+    return "not verified"
 _MAX_DIAG_SNIPPET_CHARS = 800
 
 # Finding types produced by gap aggregation — rendered in the Gap Summary section,
@@ -201,9 +222,24 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 "and did not complete. Findings below are from static analysis only."
             )
     lines.append(f"- **Overall Risk Score**: {result.overall_risk_score:.1f} / 100")
-    total_comp = len(result.coverage)
-    exercised = sum(1 for c in result.coverage if c.exercised)
-    lines.append(f"- **Coverage**: {result.coverage_percentage * 100:.0f}% ({exercised}/{total_comp} components exercised)")
+    # Three separately-scoped populations (agent/tool, endpoint, guardrail) — each
+    # percentage here is paired with a raw count from that *same* population, unlike
+    # the pre-#562 single line which paired an agent/tool-only percentage with an
+    # all-node-types raw count (mismatched, could never arithmetically agree).
+    _agent_tool_comp = [c for c in result.coverage if c.node_type in ("AGENT", "TOOL")]
+    _endpoint_comp = [c for c in result.coverage if c.node_type == "API_ENDPOINT"]
+    _guardrail_comp = [c for c in result.coverage if c.node_type == "GUARDRAIL"]
+    _agent_tool_exercised = sum(1 for c in _agent_tool_comp if c.exercised)
+    _endpoint_exercised = sum(1 for c in _endpoint_comp if c.exercised)
+    _guardrail_exercised = sum(1 for c in _guardrail_comp if c.exercised)
+    lines.append(
+        f"- **Coverage**: Agent/Tool {result.coverage_percentage * 100:.0f}% "
+        f"({_agent_tool_exercised}/{len(_agent_tool_comp)}) | "
+        f"Endpoint {result.endpoint_coverage_pct * 100:.0f}% "
+        f"({_endpoint_exercised}/{len(_endpoint_comp)}) | "
+        f"Guardrail {result.guardrail_coverage_pct * 100:.0f}% "
+        f"({_guardrail_exercised}/{len(_guardrail_comp)})"
+    )
 
     # Unexercised components — annotate with the classified refusal reason
     # where escalation classified one (behavior.escalate_on_refusal); falls
@@ -522,14 +558,16 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         lines.append("## Coverage Map")
         lines.append("")
         if matched_coverage:
-            lines.append("| Component | Type | Exercised | Within Policy | Deviations | Aliases Seen |")
-            lines.append("|-----------|------|-----------|---------------|------------|--------------|")
+            lines.append("| Component | Type | Exercised | Outcome | Live | Within Policy | Deviations | Aliases Seen |")
+            lines.append("|-----------|------|-----------|---------|------|---------------|------------|--------------|")
             for cov in matched_coverage:
                 ex = "Yes" if cov.exercised else "No"
                 wp = "Yes" if cov.exercised_within_policy else ("No" if cov.exercised else "-")
                 dev_count = len(cov.deviations)
                 aliases = ", ".join(cov.aliases_seen[:3]) if cov.aliases_seen else "-"
-                lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {dev_count} | {aliases} |")
+                outcome = _coverage_outcome_label(cov)
+                live = _coverage_live_label(cov)
+                lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {outcome} | {live} | {wp} | {dev_count} | {aliases} |")
             lines.append("")
         else:
             lines.append("_No components were exercised during this scan._")
@@ -1022,13 +1060,17 @@ def to_text(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
         table.add_column("Component")
         table.add_column("Type")
         table.add_column("Exercised")
+        table.add_column("Outcome")
+        table.add_column("Live")
         table.add_column("Within Policy")
         table.add_column("Deviations")
         for cov in result.coverage:
             ex = "[green]Yes[/green]" if cov.exercised else "[red]No[/red]"
             wp = "[green]Yes[/green]" if cov.exercised_within_policy else ("[red]No[/red]" if cov.exercised else "-")
+            outcome = _coverage_outcome_label(cov)
+            live = _coverage_live_label(cov)
             console.print_row = table.add_row  # type: ignore[attr-defined]
-            table.add_row(cov.component_name, cov.node_type, ex, wp, str(len(cov.deviations)))
+            table.add_row(cov.component_name, cov.node_type, ex, outcome, live, wp, str(len(cov.deviations)))
         console.print(table)
 
     # Findings
@@ -1079,15 +1121,22 @@ def to_text_str(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     if result.coverage:
         lines.append("Component Coverage")
         lines.append("-" * 40)
-        header = f"  {'Component':<30} {'Type':<15} {'Exercised':<10} {'In Policy':<10} {'Deviations':<10}"
+        header = (
+            f"  {'Component':<30} {'Type':<15} {'Exercised':<10} {'Outcome':<8} "
+            f"{'Live':<12} {'In Policy':<10} {'Deviations':<10}"
+        )
         lines.append(header)
-        lines.append("  " + "-" * 75)
+        lines.append("  " + "-" * 100)
         for cov in result.coverage:
             ex = "Yes" if cov.exercised else "No"
             wp = "Yes" if cov.exercised_within_policy else ("No" if cov.exercised else "-")
             name = cov.component_name[:29]
             ntype = cov.node_type[:14]
-            lines.append(f"  {name:<30} {ntype:<15} {ex:<10} {wp:<10} {len(cov.deviations):<10}")
+            outcome = _coverage_outcome_label(cov)
+            live = _coverage_live_label(cov)
+            lines.append(
+                f"  {name:<30} {ntype:<15} {ex:<10} {outcome:<8} {live:<12} {wp:<10} {len(cov.deviations):<10}"
+            )
         lines.append("")
 
     # Findings

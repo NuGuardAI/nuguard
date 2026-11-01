@@ -292,6 +292,14 @@ Every scenario declares how it's run against a live target without causing real 
 | `emulated_tool` | Uses a stubbed tool response to observe how the agent would react |
 | `sandbox` | Runs inside an isolated execution sandbox (coding-agent scenarios) |
 
+In campaign mode (`redteam.mode: campaign`) `safe_execution` is **enforced**: `synthetic_tenant`
+needs a second principal (a canary tenant with a `session_token`), `trap_endpoint` needs the
+callback canary server, and `dry_run_tool` / `sandbox` / `emulated_tool` need
+`redteam.campaign.declared_fixtures: true`. Without the fixture the objective is recorded as
+`blocked_fixture:<name>` rather than run. Each entry also has a complexity level (L1–L7) and a
+session policy (`reuse`, `fresh`, `isolated`) used by the campaign scheduler; these live beside the
+catalog in `nuguard/redteam/catalog/scheduling.py`, not in the YAML.
+
 ---
 
 ## Customizing the catalog

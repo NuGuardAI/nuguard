@@ -437,6 +437,10 @@ hash (`PromptCache`) so identical SBOM+policy inputs never re-hit the LLM.
 The content hash is SBOM+policy; the cache filename also includes the LLM
 model slug so different models write distinct prompt-cache files.
 
+`enrich_all(..., concurrency=N)` bounds *generation* only: at most N payload
+completions (family batches and per-scenario fallbacks combined) run at once.
+It is separate from `redteam.concurrency`, which governs scenario execution.
+
 Generated prompt variants pass through `prompt_validation_gate` before being
 injected into scenarios. The gate rejects malformed, empty, or unusable
 sequences so a bad LLM response does not replace deterministic scenario
@@ -1126,6 +1130,30 @@ and tool parameter injection.
 - **Prompt and artifact safeguards.** Generated prompts are validation-gated;
   artifact findings require corroboration; tool-trace and canary findings are
   controlled by explicit finding-trigger settings.
+
+---
+
+## 12a. Campaign mode
+
+`redteam.mode: campaign` (`nuguard/redteam/campaign/`) is an opt-in engine. `CampaignOrchestrator`
+subclasses `RedteamOrchestrator` and replaces only dispatch (`_run_scenarios`), so auth, endpoint
+resolution, discovery, scenario generation, finding construction, reporting and partial-run
+salvage are shared. Design: `documentation/developer-specs/redteam-v5.md`.
+
+| Module | Role |
+|---|---|
+| `transport/` | `BranchTransport` (per-branch session ids, cookies, headers), `BranchSender`, `Principal`, `HealthRegistry` / `CooldownQueue` / `RetryBudget`, target capability classification and isolation verification |
+| `branches.py` | Branch lifecycle (`new → ready → probing → tainted → retired`) and rotation rules |
+| `executor.py` | `CampaignExecutor`: one turn at a time per branch via `AttackExecutor.run_step` / the guided executor, bound through a branch-scoped client |
+| `knowledge.py`, `discovery.py` | Identity-scoped knowledge with trust levels; benign baseline kept apart from adversarial probing |
+| `ledger.py`, `scheduler.py`, `planner.py` | Coverage ledger, breadth/depth passes, budgets, redundancy suppression, campaign grouping, just-in-time payload generation |
+| `confirmation.py` | Fresh-session reproduction, causal minimization, recovery control |
+| `checkpoint.py` | Campaign state embedded in the standard checkpoint; safe resume (never replays writes) |
+| `catalog/scheduling.py` | Sidecar: complexity level, session policy, contamination tags, required fixture per catalog ID |
+
+`TargetAppClient.send` / `send_stream` / `invoke_endpoint` accept an opt-in `transport=` argument
+that moves conversation state onto the branch and raises `RetryDeferred` instead of sleeping.
+Without it, behaviour is unchanged.
 
 ---
 

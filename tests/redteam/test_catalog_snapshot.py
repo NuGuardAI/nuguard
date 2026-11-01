@@ -39,7 +39,7 @@ EXPECTED_ID_SERIES: dict[str, int] = {
     "D": 8,
     "C": 8,
     "T": 8,
-    "A": 9,
+    "A": 11,
     "I": 8,
     "M": 8,
     "P": 6,
@@ -54,6 +54,10 @@ EXPECTED_ID_SERIES: dict[str, int] = {
     "N": 6,
     "S": 8,
     "V": 7,
+    "W": 4,
+    "X": 2,
+    "Q": 3,
+    "L": 2,
 }
 EXPECTED_TOTAL = sum(EXPECTED_ID_SERIES.values())  # 126
 

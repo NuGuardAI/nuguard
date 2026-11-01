@@ -15,6 +15,8 @@ from pydantic import BaseModel
 from nuguard.analysis.public_api import AnalysisRunRequest, AnalysisRunResult
 from nuguard.behavior.models import BehaviorAnalysisResult, BehaviorRunResult
 from nuguard.behavior.public_api import BehaviorAnalysisRequest, BehaviorRunRequest
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
+from nuguard.common.browser_login.public_api import BrowserDiscoveryRequest, BrowserDiscoveryResult
 from nuguard.common.discovery import TargetDiscoveryResult
 from nuguard.common.streaming_models import (
     BehaviorProgressState,
@@ -43,6 +45,8 @@ from nuguard.output.public_api import (
 )
 from nuguard.pentest.public_api import (
     PentestAuthConfig,
+    PentestCoverageResult,
+    PentestDastSelectionResult,
     PentestExecutionResult,
     PentestLoginFlowConfig,
     PentestRunRequest,
@@ -53,6 +57,17 @@ from nuguard.policy.public_api import (
     CognitivePolicyParseRequest,
     CognitivePolicyParseResult,
 )
+from nuguard.redteam.campaign.config import CampaignConfig
+from nuguard.redteam.campaign.models import (
+    CampaignPlan,
+    CapabilityObservation,
+    ConversationBranchSummary,
+    CoverageSummary,
+    EfficiencySummary,
+    ObjectiveExecutionRecord,
+    ReproductionRecord,
+)
+from nuguard.redteam.defence_regressions.models import DefenceRegressionRunSummary
 from nuguard.redteam.public_api import (
     RedteamAuthConfig,
     RedteamExecutionResult,
@@ -88,6 +103,9 @@ from nuguard.sbom.toolbox.public_api import (
 _SCHEMA_FILE = Path(__file__).parent / "public_api.schema.json"
 
 _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
+    "common.browser_login.BrowserDiscoveryConfig": BrowserDiscoveryConfig,
+    "common.browser_login.BrowserDiscoveryRequest": BrowserDiscoveryRequest,
+    "common.browser_login.BrowserDiscoveryResult": BrowserDiscoveryResult,
     "remediation.RemediationArtefact": RemediationArtefact,
     "remediation.RuntimeRemediationContext": RuntimeRemediationContext,
     "remediation.PentestRemediationFinding": PentestRemediationFinding,
@@ -118,6 +136,8 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "output.ValidationReportExportResult": ValidationReportExportResult,
     "output.ValidationReportMetaModel": ValidationReportMetaModel,
     "pentest.PentestAuthConfig": PentestAuthConfig,
+    "pentest.PentestCoverageResult": PentestCoverageResult,
+    "pentest.PentestDastSelectionResult": PentestDastSelectionResult,
     "pentest.PentestExecutionResult": PentestExecutionResult,
     "pentest.PentestLoginFlowConfig": PentestLoginFlowConfig,
     "pentest.PentestRunRequest": PentestRunRequest,
@@ -126,9 +146,18 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "policy.CognitivePolicyParseRequest": CognitivePolicyParseRequest,
     "policy.CognitivePolicyParseResult": CognitivePolicyParseResult,
     "redteam.RedteamAuthConfig": RedteamAuthConfig,
+    "redteam.CampaignConfig": CampaignConfig,
+    "redteam.CampaignPlan": CampaignPlan,
+    "redteam.CapabilityObservation": CapabilityObservation,
+    "redteam.ConversationBranchSummary": ConversationBranchSummary,
+    "redteam.CoverageSummary": CoverageSummary,
+    "redteam.EfficiencySummary": EfficiencySummary,
+    "redteam.ObjectiveExecutionRecord": ObjectiveExecutionRecord,
+    "redteam.ReproductionRecord": ReproductionRecord,
     "redteam.RedteamExecutionResult": RedteamExecutionResult,
     "redteam.RedteamLoginFlowConfig": RedteamLoginFlowConfig,
     "redteam.RedteamRunRequest": RedteamRunRequest,
+    "redteam.DefenceRegressionRunSummary": DefenceRegressionRunSummary,
     "redteam.RedteamRunResult": RedteamRunResult,
     "sbom.SbomEnrichmentLlmConfig": SbomEnrichmentLlmConfig,
     "sbom.SbomEnrichmentRequest": SbomEnrichmentRequest,

@@ -1,69 +1,58 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430" role="img" aria-labelledby="title desc">
-  <title id="title">NuGuard workflow for AI developers</title>
-  <desc id="desc">The NuGuard lifecycle moves from Discover to Analyze, Validate, and Govern. A remediation loop returns findings to code updates in the Discover stage.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="336" viewBox="0 0 1200 336" role="img" aria-labelledby="title desc">
+  <title id="title">Discover, Define, Analyze, Validate, Govern</title>
+  <desc id="desc">NuGuard maps an AI application, defines allowed behavior, analyzes risk, validates controls, and governs releases with evidence. Findings feed back into fixes and retesting.</desc>
   <defs>
-    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#f8fafc"/><stop offset="1" stop-color="#eef7f1"/></linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#64748b" flood-opacity=".18"/></filter>
-    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 10 5 0 10z" fill="#64748b"/></marker>
-    <marker id="loop-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 10 5 0 10z" fill="#16a34a"/></marker>
-    <style>
-      .eyebrow{font:700 13px Inter,system-ui,sans-serif;letter-spacing:.11em;text-transform:uppercase;fill:#15803d}
-      .heading{font:700 24px Inter,system-ui,sans-serif;fill:#0f172a}
-      .title{font:700 20px Inter,system-ui,sans-serif;fill:#0f172a}
-      .body{font:400 15px Inter,system-ui,sans-serif;fill:#475569}
-      .pill{font:600 12px Inter,system-ui,sans-serif;fill:#166534}
-      .step{font:800 13px Inter,system-ui,sans-serif;fill:#052e16}
-    </style>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 8 4 0 8z" fill="#779888"/></marker>
+    <style>text{font-family:Inter,system-ui,-apple-system,sans-serif}</style>
   </defs>
-  <rect width="1200" height="430" rx="18" fill="url(#bg)" stroke="#dbe5df"/>
-  <circle cx="1130" cy="-30" r="210" fill="#22c55e" opacity=".08"/>
-  <text x="48" y="46" class="eyebrow">Continuous AI security lifecycle</text>
-  <text x="48" y="78" class="heading">Discover. Analyze. Validate. Govern.</text>
-
-  <g filter="url(#shadow)">
-    <rect x="48" y="116" width="218" height="184" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
-    <circle cx="78" cy="146" r="14" fill="#86efac"/><text x="74" y="151" class="step">1</text>
-    <text x="102" y="152" class="eyebrow">Discover</text>
-    <text x="72" y="194" class="title">AI application</text>
-    <text x="72" y="224" class="body">Code · config · IaC</text>
-    <text x="72" y="250" class="body">Agents · models · tools</text>
-    <rect x="72" y="270" width="116" height="25" rx="12" fill="#dcfce7"/><text x="86" y="287" class="pill">map AI assets</text>
+  <rect x="1" y="1" width="1198" height="334" rx="20" fill="#f7faf8" stroke="#d8e5dc"/>
+  <text x="36" y="48" font-size="15" font-weight="700" letter-spacing="1.4" fill="#137a43">THE AI SECURITY PIPELINE</text>
+  <text x="36" y="77" font-size="16" fill="#51665a">From source inventory to release evidence</text>
+  <g>
+    <rect x="36" y="99" width="209" height="173" rx="16" fill="#ffffff" stroke="#d8e5dc"/>
+    <circle cx="71" cy="134" r="21" fill="#dcf7e7"/>
+    <g transform="translate(71 134)" fill="none" stroke="#137a43" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="0" cy="-9" r="5"/><circle cx="-11" cy="9" r="5"/><circle cx="11" cy="9" r="5"/><path d="M-2 -4-8 4M2 -4 8 4M-6 9H6"/></g>
+    <text x="54" y="187" font-size="20" font-weight="700" fill="#102019">Discover</text>
+    <text x="54" y="213" font-size="15" fill="#51665a">Map AI assets</text>
+    <text x="54" y="249" font-size="13" font-weight="600" fill="#137a43">AI-SBOM</text>
   </g>
-  <path d="M278 208h42" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
-
-  <g filter="url(#shadow)">
-    <rect x="332" y="116" width="218" height="184" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
-    <circle cx="362" cy="146" r="14" fill="#86efac"/><text x="358" y="151" class="step">2</text>
-    <text x="386" y="152" class="eyebrow">Analyze</text>
-    <text x="356" y="194" class="title">Risk &amp; attack paths</text>
-    <text x="356" y="224" class="body">AI-SBOM · data flows</text>
-    <text x="356" y="250" class="body">Static · supply chain</text>
-    <rect x="356" y="270" width="116" height="25" rx="12" fill="#dcfce7"/><text x="370" y="287" class="pill">find exposure</text>
+  <path d="M248 185h17" fill="none" stroke="#779888" stroke-width="2" marker-end="url(#arrow)"/>
+  <g>
+    <rect x="269" y="99" width="209" height="173" rx="16" fill="#ffffff" stroke="#d8e5dc"/>
+    <circle cx="304" cy="134" r="21" fill="#dcf7e7"/>
+    <g transform="translate(304 134)" fill="none" stroke="#137a43" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M0 -17 14 -11v11c0 11-7 18-14 21C-7 18-14 11-14 0v-11z"/><path d="m-6 1 4 4 8-9"/></g>
+    <text x="287" y="187" font-size="20" font-weight="700" fill="#102019">Define</text>
+    <text x="287" y="213" font-size="15" fill="#51665a">Set boundaries</text>
+    <text x="287" y="249" font-size="13" font-weight="600" fill="#137a43">Cognitive Policy</text>
   </g>
-  <path d="M562 208h42" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
-
-  <g filter="url(#shadow)">
-    <rect x="616" y="116" width="244" height="184" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
-    <circle cx="646" cy="146" r="14" fill="#86efac"/><text x="642" y="151" class="step">3</text>
-    <text x="670" y="152" class="eyebrow">Validate</text>
-    <text x="640" y="194" class="title">Controls &amp; behavior</text>
-    <text x="640" y="224" class="body">Policy · behavior · red-team</text>
-    <text x="640" y="250" class="body">Authorized web pentest</text>
-    <rect x="640" y="270" width="121" height="25" rx="12" fill="#fef3c7"/><text x="654" y="287" class="pill" style="fill:#92400e">prove controls</text>
+  <path d="M481 185h17" fill="none" stroke="#779888" stroke-width="2" marker-end="url(#arrow)"/>
+  <g>
+    <rect x="502" y="99" width="209" height="173" rx="16" fill="#ffffff" stroke="#d8e5dc"/>
+    <circle cx="537" cy="134" r="21" fill="#dcf7e7"/>
+    <g transform="translate(537 134)" fill="none" stroke="#137a43" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="-3" cy="-4" r="11"/><path d="m5 5 11 11M-8 -4h10M-3 -9v10"/></g>
+    <text x="520" y="187" font-size="20" font-weight="700" fill="#102019">Analyze</text>
+    <text x="520" y="213" font-size="15" fill="#51665a">Find exposure</text>
+    <text x="520" y="249" font-size="13" font-weight="600" fill="#137a43">Static findings</text>
   </g>
-  <path d="M872 208h42" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
-
-  <g filter="url(#shadow)">
-    <rect x="926" y="116" width="226" height="184" rx="14" fill="#f0fdf4" stroke="#86efac"/>
-    <circle cx="956" cy="146" r="14" fill="#86efac"/><text x="952" y="151" class="step">4</text>
-    <text x="980" y="152" class="eyebrow">Govern</text>
-    <text x="950" y="194" class="title">Policy &amp; evidence</text>
-    <text x="950" y="224" class="body">Reports · SARIF · CI gates</text>
-    <text x="950" y="250" class="body">Risk posture · audit trail</text>
-    <rect x="950" y="270" width="126" height="25" rx="12" fill="#dcfce7"/><text x="964" y="287" class="pill">manage posture</text>
+  <path d="M714 185h17" fill="none" stroke="#779888" stroke-width="2" marker-end="url(#arrow)"/>
+  <g>
+    <rect x="735" y="99" width="209" height="173" rx="16" fill="#ffffff" stroke="#d8e5dc"/>
+    <circle cx="770" cy="134" r="21" fill="#dcf7e7"/>
+    <g transform="translate(770 134)" fill="none" stroke="#137a43" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="0" cy="0" r="17"/><path d="m-9 0 6 6 12-13"/></g>
+    <text x="753" y="187" font-size="20" font-weight="700" fill="#102019">Validate</text>
+    <text x="753" y="213" font-size="15" fill="#51665a">Test controls</text>
+    <text x="753" y="249" font-size="13" font-weight="600" fill="#137a43">Runtime evidence</text>
   </g>
-
-  <path d="M1039 314v68H157v-68" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-dasharray="7 6" marker-end="url(#loop-arrow)" opacity=".85"/>
-  <rect x="474" y="350" width="252" height="40" rx="20" fill="#86efac"/>
-  <text x="506" y="375" class="step" style="font-size:14px">Remediate · update code</text>
+  <path d="M947 185h17" fill="none" stroke="#779888" stroke-width="2" marker-end="url(#arrow)"/>
+  <g>
+    <rect x="968" y="99" width="209" height="173" rx="16" fill="#ffffff" stroke="#d8e5dc"/>
+    <circle cx="1003" cy="134" r="21" fill="#dcf7e7"/>
+    <g transform="translate(1003 134)" fill="none" stroke="#137a43" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M-15 15h30M-11 10V0M-2 10v-18M7 10v-11M15 10v-24"/></g>
+    <text x="986" y="187" font-size="20" font-weight="700" fill="#102019">Govern</text>
+    <text x="986" y="213" font-size="15" fill="#51665a">Gate releases</text>
+    <text x="986" y="249" font-size="13" font-weight="600" fill="#137a43">Reports + SARIF</text>
+  </g>
+  <path d="M1085 282v23H140v-23" fill="none" stroke="#779888" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#arrow)"/>
+  <rect x="483" y="291" width="234" height="30" rx="15" fill="#dcf7e7"/>
+  <text x="600" y="311" text-anchor="middle" font-size="13" font-weight="700" fill="#137a43">Fix · retest · repeat</text>
 </svg>

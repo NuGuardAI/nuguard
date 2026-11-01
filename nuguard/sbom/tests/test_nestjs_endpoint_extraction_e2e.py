@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from nuguard.sbom.config import AiSbomConfig
 from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.types import ComponentType
 
 _TS_ONLY = AiSbomConfig(include_extensions={".ts"}, enable_llm=False)
@@ -64,7 +65,9 @@ def test_nestjs_controller_produces_endpoint_nodes(tmp_path):
     doc = AiSbomExtractor().extract_from_path(tmp_path, _TS_ONLY)
     eps = _endpoints(doc)
 
-    assert len(eps) >= 4, f"expected >=4 API_ENDPOINT nodes, got {len(eps)}: {[e.name for e in eps]}"
+    assert len(eps) >= 4, (
+        f"expected >=4 API_ENDPOINT nodes, got {len(eps)}: {[e.name for e in eps]}"
+    )
 
 
 def test_similarly_named_sibling_routes_all_survive_dedup(tmp_path):
@@ -82,6 +85,31 @@ def test_similarly_named_sibling_routes_all_survive_dedup(tmp_path):
     assert ("POST", "/chat/conversations/:id/messages") in paths
     assert ("POST", "/chat/conversations/:id/messages/stream") in paths
     assert ("POST", "/chat/conversations/:id/messages/upload") in paths
+
+
+def test_same_named_handlers_have_distinct_operation_names(tmp_path):
+    for resource in ("notes", "documents"):
+        (tmp_path / f"{resource}.controller.ts").write_text(
+            "import { Controller, Delete } from '@nestjs/common';\n"
+            f"@Controller('{resource}')\n"
+            f"export class {resource.title()}Controller {{\n"
+            "  @Delete(':id')\n"
+            "  async delete() { return {}; }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _TS_ONLY)
+    endpoints = _endpoints(doc)
+    assert {ep.name for ep in endpoints} == {
+        "Delete Notes",
+        "Delete Documents",
+    }
+    assert {(ep.metadata.method, ep.metadata.endpoint) for ep in endpoints} == {
+        ("DELETE", "/notes/:id"),
+        ("DELETE", "/documents/:id"),
+    }
+    assert AiSbomDocument.model_validate(doc.model_dump(mode="json")).nodes == doc.nodes
 
 
 def test_real_chat_endpoint_resolves_content_payload_key_cross_file(tmp_path):

@@ -319,6 +319,180 @@ async def test_run_reconciles_nonmention_gap_with_final_successful_coverage() ->
     assert result.gap_aggregation_stats["buckets_suppressed_by_coverage"] == 1
 
 
+@pytest.mark.asyncio
+async def test_run_end_to_end_endpoint_coverage_report_does_not_overstate_verification() -> None:
+    """Issue #562, full pipeline: BehaviorRunner.run() -> result.coverage ->
+    to_markdown()/to_json(). One endpoint is SBOM-declared live (operational=True)
+    and gets a real PASS response; the other is SBOM-declared dead
+    (operational=False) and every request to it transport-fails (http_error) —
+    reproducing the exact scenario the issue was filed against. The rendered
+    report must show the dead endpoint as unexercised/not verified, never as
+    "exercised, within policy", and the live one with a real PASS outcome and
+    Live liveness label. Also proves the new BehaviorCoverage fields survive a
+    real model_dump(mode="json") round-trip.
+    """
+    from nuguard.behavior.models import BehaviorAnalysisResult
+    from nuguard.behavior.report import to_json, to_markdown
+
+    live_node = _endpoint_node("/api/orders")
+    live_node.metadata.operational = True
+    live_node.metadata.endpoint = "/api/orders"
+    live_node.metadata.method = "POST"
+    live_node.metadata.chat_payload_key = "query"
+    dead_node = _endpoint_node("/api/checkout")
+    dead_node.metadata.operational = False
+    dead_node.metadata.endpoint = "/api/checkout"
+    dead_node.metadata.method = "POST"
+    dead_node.metadata.chat_payload_key = "request"
+
+    runner = BehaviorRunner(
+        config=_make_config(),
+        sbom=AiSbomDocument(target="./app", nodes=[live_node, dead_node], edges=[]),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    scenarios = [
+        BehaviorScenario(
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE,
+            name="endpoint_coverage_api_orders",
+            messages=["What orders do I have?"],
+            target_endpoint="/api/orders",
+            target_component="/api/orders",
+            target_component_type="API_ENDPOINT",
+        ),
+        BehaviorScenario(
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE,
+            name="endpoint_coverage_api_checkout",
+            messages=["Check out my cart."],
+            target_endpoint="/api/checkout",
+            target_component="/api/checkout",
+            target_component_type="API_ENDPOINT",
+        ),
+    ]
+
+    configured_endpoints: dict[str, tuple[str, str]] = {}
+
+    async def _canned_result(scenario, _client, _evaluator):
+        assert _client.chat_path == scenario.target_endpoint
+        assert _client.chat_payload_key == (
+            "query" if scenario.name == "endpoint_coverage_api_orders" else "request"
+        )
+        configured_endpoints[scenario.name] = (
+            _client.chat_path,
+            _client.chat_payload_key,
+        )
+        if scenario.name == "endpoint_coverage_api_orders":
+            return ScenarioResult(
+                scenario_id=scenario.scenario_id,
+                scenario_name=scenario.name,
+                scenario_type=scenario.scenario_type.value,
+                overall_score=4.5,
+                verdicts=[{
+                    "turn": 1,
+                    "verdict": "PASS",
+                    "target_component": "/api/orders",
+                    "effective_endpoint": "/api/orders",
+                    "user_message": "What orders do I have?",
+                    "agent_response": "You have 3 orders.",
+                    "deviations": [],
+                }],
+                total_turns=1,
+            )
+        return ScenarioResult(
+            scenario_id=scenario.scenario_id,
+            scenario_name=scenario.name,
+            scenario_type=scenario.scenario_type.value,
+            overall_score=1.0,
+            verdicts=[{
+                "turn": 1,
+                "verdict": "FAIL",
+                "target_component": "/api/checkout",
+                "effective_endpoint": "/api/checkout",
+                "deviations": [{"deviation_type": "http_error", "description": "connection refused"}],
+            }],
+            total_turns=1,
+        )
+
+    # The real per-run liveness sweep (ensure_endpoint_liveness, issue #555) would
+    # try to actually ping these nodes through the mock client and reset/overwrite
+    # the operational values this test sets up — that sweep has its own dedicated
+    # tests. Here we're proving pipeline *wiring* (node.metadata.operational ->
+    # BehaviorCoverage.endpoint_operational, end to end through run()), so it's
+    # neutralized as a no-op to isolate that from the (separately-tested) sweep.
+    def _make_client():
+        mock_client = AsyncMock()
+        mock_client.base_url = "http://localhost:8080"
+        mock_client.chat_path = "/chat"
+        mock_client.chat_payload_key = "message"
+
+        def _set_chat_endpoint(path, payload_key, payload_list=False, response_key=None):
+            mock_client.chat_path = path
+            mock_client.chat_payload_key = payload_key
+
+        mock_client.set_chat_endpoint = MagicMock(side_effect=_set_chat_endpoint)
+        mock_client.aclose = AsyncMock()
+        return mock_client
+
+    with (
+        patch.object(runner, "_build_client", new=AsyncMock(side_effect=_make_client)),
+        patch.object(runner, "_build_policy_evaluator", return_value=None),
+        patch.object(runner, "_run_scenario", side_effect=_canned_result),
+        patch("nuguard.common.endpoint_liveness.ensure_endpoint_liveness", new=AsyncMock()),
+    ):
+        run_result = await runner.run(scenarios=scenarios, pre_scan_profile=DiscoveredProfile())
+
+    live_cov = next(c for c in run_result.coverage if c.component_name == "/api/orders")
+    dead_cov = next(c for c in run_result.coverage if c.component_name == "/api/checkout")
+
+    # Live endpoint: real PASS outcome, independently-verified liveness, cited evidence.
+    assert live_cov.exercised is True
+    assert live_cov.scenario_outcome == "PASS"
+    assert live_cov.endpoint_operational is True
+    assert live_cov.first_exercised_scenario == "endpoint_coverage_api_orders"
+
+    # Dead endpoint: the exact bug — a transport failure must NOT read as exercised.
+    assert dead_cov.exercised is False
+    assert dead_cov.exercised_within_policy is False
+    assert dead_cov.scenario_outcome is None
+    assert dead_cov.endpoint_operational is False
+    assert configured_endpoints == {
+        "endpoint_coverage_api_orders": ("/api/orders", "query"),
+        "endpoint_coverage_api_checkout": ("/api/checkout", "request"),
+    }
+
+    # scenario_results must be passed through — render_behavior_coverage_evidence
+    # (the "## Coverage Evidence" section) is gated on `if result.scenario_results:`
+    # (report.py). Omitting it here would silently skip exercising Item E's fix
+    # entirely, passing this test without ever rendering that section.
+    analysis_result = BehaviorAnalysisResult(
+        intent=_make_intent(), coverage=run_result.coverage, scenario_results=run_result.scenario_results,
+    )
+
+    # JSON round-trip (pydantic-interface skill requirement for public models).
+    dumped = analysis_result.model_dump(mode="json")
+    reloaded = BehaviorAnalysisResult.model_validate(dumped)
+    reloaded_live = next(c for c in reloaded.coverage if c.component_name == "/api/orders")
+    assert reloaded_live.scenario_outcome == "PASS"
+    assert reloaded_live.endpoint_operational is True
+
+    md = to_markdown(analysis_result)
+    # The dead endpoint must appear as not exercised, never as falsely compliant.
+    assert "`/api/checkout`" in md  # listed in "Not Exercised"
+    assert "Endpoint 50% (1/2)" in md
+    # Coverage Evidence section (Item E): the live endpoint must cite its real
+    # scenario/turn, not the old literal-string "exercised" fallback.
+    assert "## Coverage Evidence" in md
+    assert '| /api/orders | API_ENDPOINT | Within policy | PASS | Live |' in md
+    assert 'Scenario: "endpoint_coverage_api_orders" → turn 1' in md
+    assert "#### Evidence: /api/orders" in md
+    assert "You have 3 orders." in md
+    # The dead endpoint was never exercised, so it must not appear in Coverage
+    # Evidence at all (that section only lists matched/exercised components).
+    assert "/api/checkout" not in md.split("## Coverage Evidence")[1]
+    to_json(analysis_result)  # must not raise
+
+
 async def _run_component_gap_scenarios(
     *,
     gap_text: str,
@@ -819,6 +993,40 @@ def test_build_coverage_map_endpoint_normalized_match_confidence() -> None:
     assert endpoint_cov.mapped_from_endpoint == "/api/agent/chat"
 
 
+def test_build_coverage_map_uses_route_metadata_for_short_endpoint_name() -> None:
+    endpoint = _endpoint_node("Delete Notes")
+    endpoint.metadata.method = "DELETE"
+    endpoint.metadata.endpoint = "/api/notes"
+    sbom = AiSbomDocument(target="./app", nodes=[endpoint], edges=[])
+    runner = BehaviorRunner(
+        config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None
+    )
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="endpoint_s1",
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE.value,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "DELETE /api/notes",
+                    "effective_endpoint": "/api/notes",
+                    "deviations": [],
+                    "passed": True,
+                }
+            ],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    endpoint_cov = next(c for c in coverage if c.component_name == "Delete Notes")
+    assert endpoint_cov.exercised is True
+    assert endpoint_cov.mapping_confidence == "normalized_match"
+    assert endpoint_cov.mapped_from_endpoint == "/api/notes"
+
+
 def test_build_coverage_map_runtime_only_endpoint_fallback() -> None:
     sbom = AiSbomDocument(target="./app", nodes=[_endpoint_node("/api/agent/chat")], edges=[])
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
@@ -847,6 +1055,203 @@ def test_build_coverage_map_runtime_only_endpoint_fallback() -> None:
     assert runtime_cov.mapping_confidence == "runtime_only_unmapped"
     assert runtime_cov.mapped_from_endpoint == "/api/runtime-only"
     assert runner._coverage_mapping_diagnostics.get("runtime_only_unmapped_endpoint_count") == 1
+
+
+# ---------------------------------------------------------------------------
+# Issue #562: ENDPOINT_COVERAGE exercised/outcome must reflect real evidence,
+# not merely that a scenario ran.
+# ---------------------------------------------------------------------------
+
+
+def test_build_coverage_map_endpoint_http_error_not_marked_exercised() -> None:
+    """A transport-level failure (no response ever received) must not be
+    reported as "exercised, within policy" — the exact bug this issue found:
+    runner.py's http_error verdict path (verdict="FAIL", overall_score=1.0,
+    deviation_type="http_error") previously fell through to exercised=True +
+    exercised_within_policy=True purely because "http_error" wasn't in the
+    ("policy_violation", "data_leak") violation set.
+    """
+    sbom = AiSbomDocument(target="./app", nodes=[_endpoint_node("/api/agent/chat")], edges=[])
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="endpoint_s1",
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE.value,
+            overall_score=1.0,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "/api/agent/chat",
+                    "effective_endpoint": "/api/agent/chat",
+                    "verdict": "FAIL",
+                    "deviations": [{"deviation_type": "http_error", "description": "connection refused"}],
+                }
+            ],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    endpoint_cov = next(c for c in coverage if c.component_name == "/api/agent/chat")
+    assert endpoint_cov.exercised is False
+    assert endpoint_cov.exercised_within_policy is False
+    assert endpoint_cov.scenario_outcome is None
+    # Route-mapping bookkeeping is independent of outcome and still runs.
+    assert endpoint_cov.mapping_confidence == "direct_match"
+
+
+def test_build_coverage_map_endpoint_mixed_turns_http_error_then_real_response() -> None:
+    """A scenario where the first turn transport-fails (skipped via `continue`)
+    and the second turn gets a real response: exercised/scenario_outcome must
+    come from the real turn, and first_exercised_* must point at turn 2 (the
+    first turn that was actually exercised), never at the skipped turn 1."""
+    sbom = AiSbomDocument(target="./app", nodes=[_endpoint_node("/api/agent/chat")], edges=[])
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="endpoint_s1",
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE.value,
+            overall_score=4.0,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "/api/agent/chat",
+                    "effective_endpoint": "/api/agent/chat",
+                    "verdict": "FAIL",
+                    "deviations": [{"deviation_type": "http_error", "description": "timeout"}],
+                    "user_message": "first attempt",
+                    "agent_response": "",
+                },
+                {
+                    "turn": 2,
+                    "target_component": "/api/agent/chat",
+                    "effective_endpoint": "/api/agent/chat",
+                    "verdict": "PASS",
+                    "deviations": [],
+                    "user_message": "retry",
+                    "agent_response": "Here is your order status.",
+                },
+            ],
+            total_turns=2,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    endpoint_cov = next(c for c in coverage if c.component_name == "/api/agent/chat")
+    assert endpoint_cov.exercised is True
+    assert endpoint_cov.scenario_outcome == "PASS"
+    assert endpoint_cov.exercised_within_policy is True
+    assert endpoint_cov.first_exercised_turn == 2
+    assert endpoint_cov.first_exercised_request == "retry"
+    assert endpoint_cov.first_exercised_response == "Here is your order status."
+
+
+def test_build_coverage_map_endpoint_real_response_gets_scenario_outcome() -> None:
+    """A real (non-transport-failure) verdict reuses the same PASS/PARTIAL/FAIL
+    threshold as extract_behavior_scenario_details, from the scenario's own
+    overall_score — one endpoint per ENDPOINT_COVERAGE scenario."""
+    sbom = AiSbomDocument(target="./app", nodes=[_endpoint_node("/api/agent/chat")], edges=[])
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="endpoint_s1",
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE.value,
+            overall_score=1.5,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "/api/agent/chat",
+                    "effective_endpoint": "/api/agent/chat",
+                    "verdict": "FAIL",
+                    "deviations": [],
+                }
+            ],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    endpoint_cov = next(c for c in coverage if c.component_name == "/api/agent/chat")
+    # A genuine content FAIL (real response, low score) still counts as exercised —
+    # only a transport failure (no response at all) is excluded.
+    assert endpoint_cov.exercised is True
+    assert endpoint_cov.scenario_outcome == "FAIL"
+    assert endpoint_cov.exercised_within_policy is True
+
+
+def test_build_coverage_map_endpoint_operational_independent_of_outcome() -> None:
+    """endpoint_operational (from the #555 liveness sweep) is surfaced verbatim
+    from node.metadata.operational and must never be merged with or inferred
+    from scenario_outcome, in either direction."""
+    live_node = _endpoint_node("/api/live")
+    live_node.metadata.operational = True
+    dead_node = _endpoint_node("/api/dead")
+    dead_node.metadata.operational = False
+    unverified_node = _endpoint_node("/api/unverified")
+    unverified_node.metadata.operational = None
+
+    sbom = AiSbomDocument(target="./app", nodes=[live_node, dead_node, unverified_node], edges=[])
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    coverage = runner._build_coverage_map([])
+    by_name = {c.component_name: c for c in coverage}
+    assert by_name["/api/live"].endpoint_operational is True
+    assert by_name["/api/dead"].endpoint_operational is False
+    assert by_name["/api/unverified"].endpoint_operational is None
+    # None of these were exercised by any scenario — operational is populated
+    # at SBOM-node-init time, independent of exercised/scenario_outcome.
+    assert by_name["/api/live"].exercised is False
+    assert by_name["/api/live"].scenario_outcome is None
+
+
+def test_build_coverage_map_endpoint_first_exercised_evidence_recorded() -> None:
+    """First real exercise records the scenario/turn/request/response so the
+    report's Evidence section can cite it instead of re-deriving a match."""
+    sbom = AiSbomDocument(target="./app", nodes=[_endpoint_node("/api/agent/chat")], edges=[])
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="endpoint_s1",
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE.value,
+            overall_score=4.0,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "/api/agent/chat",
+                    "effective_endpoint": "/api/agent/chat",
+                    "verdict": "PASS",
+                    "deviations": [],
+                    "user_message": "What's my order status?",
+                    "agent_response": "Your order shipped yesterday.",
+                },
+                {
+                    "turn": 2,
+                    "target_component": "/api/agent/chat",
+                    "effective_endpoint": "/api/agent/chat",
+                    "verdict": "PASS",
+                    "deviations": [],
+                    "user_message": "second turn",
+                    "agent_response": "second response",
+                },
+            ],
+            total_turns=2,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    endpoint_cov = next(c for c in coverage if c.component_name == "/api/agent/chat")
+    assert endpoint_cov.first_exercised_scenario == "endpoint_s1"
+    assert endpoint_cov.first_exercised_turn == 1
+    assert endpoint_cov.first_exercised_request == "What's my order status?"
+    assert endpoint_cov.first_exercised_response == "Your order shipped yesterday."
 
 
 # ---------------------------------------------------------------------------
@@ -885,6 +1290,290 @@ def _mention_scenario_result(agents: list[str], tools: list[str]) -> ScenarioRes
         ],
         total_turns=1,
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #562: AGENT/TOOL scenario_outcome must only attach to a component's
+# own dedicated coverage scenario — not to an incidental mention picked up
+# while a different, non-coverage (or differently-targeted) scenario ran.
+# ---------------------------------------------------------------------------
+
+
+def test_build_coverage_map_agent_mention_from_dedicated_coverage_scenario_gets_outcome() -> None:
+    sbom = AiSbomDocument(
+        target="./app", nodes=[_agent_or_tool_node("Booking Agent", ComponentType.AGENT)], edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="agent_coverage_booking",
+            scenario_type=BehaviorScenarioType.AGENT_COVERAGE.value,
+            overall_score=4.0,
+            verdicts=[{
+                "turn": 1,
+                "target_component": "Booking Agent",
+                "agents_mentioned": ["Booking Agent"],
+                "tools_mentioned": [],
+                "deviations": [],
+            }],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    cov = next(c for c in coverage if c.component_name == "Booking Agent")
+    assert cov.exercised is True
+    assert cov.scenario_outcome == "PASS"
+
+
+def test_build_coverage_map_agent_tool_first_exercised_evidence_recorded() -> None:
+    """The AGENT/TOOL mention loop populates first_exercised_* the same way the
+    ENDPOINT_COVERAGE branch does (previously only unit-tested for endpoints) —
+    on the first turn that resolves the mention, not on later repeat mentions."""
+    sbom = AiSbomDocument(
+        target="./app", nodes=[_agent_or_tool_node("Booking Agent", ComponentType.AGENT)], edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="agent_coverage_booking",
+            scenario_type=BehaviorScenarioType.AGENT_COVERAGE.value,
+            overall_score=4.0,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "Booking Agent",
+                    "agents_mentioned": ["Booking Agent"],
+                    "tools_mentioned": [],
+                    "deviations": [],
+                    "user_message": "Can you help me book a flight?",
+                    "agent_response": "Sure, Booking Agent can help with that.",
+                },
+                {
+                    "turn": 2,
+                    "target_component": "Booking Agent",
+                    "agents_mentioned": ["Booking Agent"],
+                    "tools_mentioned": [],
+                    "deviations": [],
+                    "user_message": "second turn",
+                    "agent_response": "second response, Booking Agent again",
+                },
+            ],
+            total_turns=2,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    cov = next(c for c in coverage if c.component_name == "Booking Agent")
+    assert cov.first_exercised_scenario == "agent_coverage_booking"
+    assert cov.first_exercised_turn == 1
+    assert cov.first_exercised_request == "Can you help me book a flight?"
+    assert cov.first_exercised_response == "Sure, Booking Agent can help with that."
+
+
+def test_build_coverage_map_agent_mention_from_noncoverage_scenario_has_no_outcome() -> None:
+    """A guardrail-probe (or any non-coverage-dedicated) scenario that happens
+    to name an agent in its response must not attribute its own overall_score
+    (which measures something unrelated) as that agent's outcome — it should
+    still count as exercised (it was genuinely named), just not judged."""
+    sbom = AiSbomDocument(
+        target="./app", nodes=[_agent_or_tool_node("Booking Agent", ComponentType.AGENT)], edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="guardrail_probe_1",
+            scenario_type=BehaviorScenarioType.GUARDRAIL_PROBE.value,
+            overall_score=1.0,  # low score reflects the guardrail probe's own goal, not the agent
+            verdicts=[{
+                "turn": 1,
+                "target_component": "pii_guard",
+                "agents_mentioned": ["Booking Agent"],
+                "tools_mentioned": [],
+                "deviations": [],
+            }],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    cov = next(c for c in coverage if c.component_name == "Booking Agent")
+    assert cov.exercised is True
+    assert cov.scenario_outcome is None
+
+
+def test_build_coverage_map_agent_mention_incidental_in_coverage_scenario_not_attributed() -> None:
+    """Within a dedicated coverage scenario for Tool A, an incidental mention of
+    Tool B in the same response must not receive Tool A's scenario_outcome —
+    only the scenario's own stated target may."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            _agent_or_tool_node("Tool A", ComponentType.TOOL),
+            _agent_or_tool_node("Tool B", ComponentType.TOOL),
+        ],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="component_coverage_tool_a",
+            scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE.value,
+            overall_score=4.0,
+            verdicts=[{
+                "turn": 1,
+                "target_component": "Tool A",
+                "agents_mentioned": [],
+                "tools_mentioned": ["Tool A", "Tool B"],
+                "deviations": [],
+            }],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    cov_a = next(c for c in coverage if c.component_name == "Tool A")
+    cov_b = next(c for c in coverage if c.component_name == "Tool B")
+    assert cov_a.exercised is True
+    assert cov_a.scenario_outcome == "PASS"
+    assert cov_b.exercised is True
+    assert cov_b.scenario_outcome is None
+
+
+def test_build_coverage_map_component_coverage_tool_chain_all_scoped_tools_get_outcome() -> None:
+    """Fix for a gap found during test-planning review: a COMPONENT_COVERAGE tool
+    chain (scenarios.py's chain builder) sets target_component=tool_names[0] but
+    scoped_tools=tool_names (the full chain). Using target_component alone would
+    only ever credit the first tool in the chain with the scenario's outcome —
+    scoped_tools membership must be used so every tool in the chain, not just the
+    first, gets the real outcome its own scenario actually judged."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            _agent_or_tool_node("Lookup Tool", ComponentType.TOOL),
+            _agent_or_tool_node("Book Tool", ComponentType.TOOL),
+            _agent_or_tool_node("Confirm Tool", ComponentType.TOOL),
+        ],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="tool_chain_booking_0_0",
+            scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE.value,
+            overall_score=4.0,
+            scoped_tools=["Lookup Tool", "Book Tool", "Confirm Tool"],
+            scoped_agents=["Booking Agent"],
+            verdicts=[{
+                "turn": 1,
+                "target_component": "Lookup Tool",  # only the chain's first tool
+                "agents_mentioned": [],
+                "tools_mentioned": ["Lookup Tool", "Book Tool", "Confirm Tool"],
+                "deviations": [],
+            }],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    by_name = {c.component_name: c for c in coverage}
+    # Before the fix, only "Lookup Tool" (target_component) would get PASS;
+    # "Book Tool"/"Confirm Tool" would incorrectly stay at scenario_outcome=None.
+    assert by_name["Lookup Tool"].scenario_outcome == "PASS"
+    assert by_name["Book Tool"].scenario_outcome == "PASS"
+    assert by_name["Confirm Tool"].scenario_outcome == "PASS"
+
+
+def test_build_coverage_map_guided_coverage_scoped_tools_get_outcome_without_target_component() -> None:
+    """Fix: GUIDED_COVERAGE scenarios (scenarios.py's guided builder) never set
+    target_component at all — only scoped_tools/scoped_agents. Before the fix,
+    the target_component-only match could never fire for this scenario type, so
+    every GUIDED_COVERAGE-covered tool silently stayed at scenario_outcome=None
+    forever, despite GUIDED_COVERAGE being explicitly listed as one of the three
+    coverage-dedicated types that should receive a real outcome."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            _agent_or_tool_node("Search Tool", ComponentType.TOOL),
+            _agent_or_tool_node("Filter Tool", ComponentType.TOOL),
+        ],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="guided_assistant_0",
+            scenario_type=BehaviorScenarioType.GUIDED_COVERAGE.value,
+            overall_score=2.5,
+            scoped_tools=["Search Tool", "Filter Tool"],
+            scoped_agents=[],
+            verdicts=[{
+                "turn": 1,
+                "target_component": "",  # GUIDED_COVERAGE never sets this
+                "agents_mentioned": [],
+                "tools_mentioned": ["Search Tool", "Filter Tool"],
+                "deviations": [],
+            }],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    by_name = {c.component_name: c for c in coverage}
+    assert by_name["Search Tool"].scenario_outcome == "PARTIAL"
+    assert by_name["Filter Tool"].scenario_outcome == "PARTIAL"
+
+
+def test_build_coverage_map_scoped_tools_still_excludes_truly_unscoped_mention() -> None:
+    """A mention of a tool that is genuinely outside this scenario's own
+    scoped_tools (e.g. a stray/hallucinated mention) must still not receive the
+    scenario's outcome, even with the scoped_tools-membership fix in place."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            _agent_or_tool_node("Search Tool", ComponentType.TOOL),
+            _agent_or_tool_node("Unrelated Tool", ComponentType.TOOL),
+        ],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="guided_assistant_0",
+            scenario_type=BehaviorScenarioType.GUIDED_COVERAGE.value,
+            overall_score=4.5,
+            scoped_tools=["Search Tool"],
+            scoped_agents=[],
+            verdicts=[{
+                "turn": 1,
+                "target_component": "",
+                "agents_mentioned": [],
+                "tools_mentioned": ["Search Tool", "Unrelated Tool"],
+                "deviations": [],
+            }],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    by_name = {c.component_name: c for c in coverage}
+    assert by_name["Search Tool"].scenario_outcome == "PASS"
+    assert by_name["Unrelated Tool"].exercised is True
+    assert by_name["Unrelated Tool"].scenario_outcome is None
 
 
 def test_build_coverage_map_descriptive_name_match():
@@ -1310,6 +1999,45 @@ async def test_guided_coverage_scenario_uses_coverage_director_not_batch_gen():
     batch_gen.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_run_scenario_copies_scoped_tools_and_agents_into_result() -> None:
+    """Wiring half of the scoped_tools/scoped_agents fix: _run_scenario's own
+    ScenarioResult construction (runner.py) must copy scenario.scoped_tools/
+    scoped_agents through, not just default to empty lists — this is what
+    _build_coverage_map's scoped-membership check (issue #562) actually reads
+    at report time."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=_make_sbom_with_tool("transfer_funds"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(return_value=("Sure, I can help with that.", []))
+
+    fake_director = MagicMock()
+    fake_director.next_message = AsyncMock(side_effect=[None])
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_1",
+        messages=["I need help with banking. Can you help me get started?"],
+        scoped_tools=["transfer_funds", "check_balance"],
+        scoped_agents=["assistant"],
+        primary_agent="assistant",
+    )
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director):
+        result = await runner._run_scenario(scenario, mock_client, None)
+
+    assert result.scoped_tools == ["transfer_funds", "check_balance"]
+    assert result.scoped_agents == ["assistant"]
+
+
 # ---------------------------------------------------------------------------
 # escalate_on_refusal: escalation ladder for GUIDED_COVERAGE probes
 # ---------------------------------------------------------------------------
@@ -1590,40 +2318,103 @@ async def test_probe_tool_families_empty_sbom_returns_empty():
     assert results == {}
 
 
+@pytest.mark.asyncio
+async def test_probe_tool_families_replays_preflight_endpoint_and_path_params():
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=_make_sbom_two_agents(),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._preflight_cache = True
+    runner._rotated_chat_endpoint = ("/api/conversations/abc/messages", "prompt", False, None)
+    runner._bootstrapped_path_params = {"conversation_id": "abc"}
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.set_chat_endpoint = MagicMock()
+    mock_client.set_path_param = MagicMock()
+    mock_client.send = AsyncMock(return_value=("Sure, I can help with that.", []))
+
+    with patch.object(runner, "_build_client", new=AsyncMock(return_value=mock_client)):
+        await runner.probe_tool_families()
+
+    mock_client.set_chat_endpoint.assert_called_once_with(
+        "/api/conversations/abc/messages", "prompt", False, None
+    )
+    mock_client.set_path_param.assert_called_once_with("conversation_id", "abc")
+    assert mock_client.send.await_count == 2
+
+
 # ---------------------------------------------------------------------------
 # Cached pre-scan discovery profile (reuse across runs via enriched SBOM)
 # ---------------------------------------------------------------------------
 
 
+_DISCOVERY_TARGET_URL = "http://localhost:8080"
+
+
 def test_cached_discovery_profile_none_when_sbom_has_no_profile():
     sbom = AiSbomDocument(target="./app")
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
-    assert runner._cached_discovery_profile() is None
+    assert runner._cached_discovery_profile(_DISCOVERY_TARGET_URL) is None
 
 
 def test_cached_discovery_profile_none_when_sbom_missing():
     runner = BehaviorRunner(config=_make_config(), sbom=None, policy=None, intent=_make_intent(), llm_client=None)
-    assert runner._cached_discovery_profile() is None
+    assert runner._cached_discovery_profile(_DISCOVERY_TARGET_URL) is None
 
 
 def test_cached_discovery_profile_none_when_persisted_profile_is_empty():
     sbom = AiSbomDocument(target="./app", discovered_profile=DiscoveredProfile().model_dump(mode="json"))
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
-    assert runner._cached_discovery_profile() is None
+    assert runner._cached_discovery_profile(_DISCOVERY_TARGET_URL) is None
 
 
 def test_cached_discovery_profile_none_when_persisted_profile_is_malformed():
     sbom = AiSbomDocument(target="./app", discovered_profile={"ids": "not-a-list"})
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
-    assert runner._cached_discovery_profile() is None
+    assert runner._cached_discovery_profile(_DISCOVERY_TARGET_URL) is None
 
 
-def test_cached_discovery_profile_returns_persisted_non_empty_profile():
+def test_cached_discovery_profile_none_when_fingerprint_missing():
+    """issue #611 Bug 2: a profile persisted before discovered_profile_fingerprint
+    existed (or by any writer that didn't stamp one) is always a cache miss —
+    never blindly trusted just because the field is present and non-empty."""
     profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
     sbom = AiSbomDocument(target="./app", discovered_profile=profile.model_dump(mode="json"))
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+    assert runner._cached_discovery_profile(_DISCOVERY_TARGET_URL) is None
 
-    cached = runner._cached_discovery_profile()
+
+def test_cached_discovery_profile_none_when_target_url_differs():
+    """issue #611 Bug 2: a profile captured against a different target_url
+    must not be reused — the regression this fix exists to close."""
+    from nuguard.common.discovery import profile_cache_fingerprint
+
+    profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
+    sbom = AiSbomDocument(
+        target="./app",
+        discovered_profile=profile.model_dump(mode="json"),
+        discovered_profile_fingerprint=profile_cache_fingerprint("http://staging.example.test", None),
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+    assert runner._cached_discovery_profile("http://prod.example.test") is None
+
+
+def test_cached_discovery_profile_returns_persisted_non_empty_profile():
+    from nuguard.common.discovery import profile_cache_fingerprint
+
+    profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
+    sbom = AiSbomDocument(
+        target="./app",
+        discovered_profile=profile.model_dump(mode="json"),
+        discovered_profile_fingerprint=profile_cache_fingerprint(_DISCOVERY_TARGET_URL, None),
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    cached = runner._cached_discovery_profile(_DISCOVERY_TARGET_URL)
 
     assert cached == profile
 
@@ -1633,22 +2424,30 @@ def test_persist_discovery_profile_sbom_noop_for_empty_profile():
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
     runner._sbom_path = MagicMock()
 
-    runner._persist_discovery_profile_sbom(DiscoveredProfile())
+    runner._persist_discovery_profile_sbom(DiscoveredProfile(), _DISCOVERY_TARGET_URL)
 
     assert sbom.discovered_profile is None
 
 
-def test_persist_discovery_profile_sbom_noop_without_sbom_path():
+def test_persist_discovery_profile_sbom_writes_in_memory_without_sbom_path():
+    """issue #611: the in-memory write no longer requires a backing file —
+    same-process reuse (e.g. a platform caller running behavior then redteam
+    against the same in-memory sbom object, no file involved) must still
+    work. Only the disk-persistence step is skipped without a path."""
     sbom = AiSbomDocument(target="./app")
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
     runner._sbom_path = None
+    profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"])
 
-    runner._persist_discovery_profile_sbom(DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"]))
+    runner._persist_discovery_profile_sbom(profile, _DISCOVERY_TARGET_URL)
 
-    assert sbom.discovered_profile is None
+    assert sbom.discovered_profile == profile.model_dump(mode="json")
+    assert sbom.discovered_profile_fingerprint is not None
 
 
 def test_persist_discovery_profile_sbom_writes_profile_onto_sbom_and_disk(tmp_path):
+    from nuguard.common.discovery import profile_cache_fingerprint
+
     sbom = AiSbomDocument(target="./app")
     sbom_path = tmp_path / "app.sbom.json"
     sbom_path.write_text(sbom.model_dump_json())
@@ -1656,13 +2455,15 @@ def test_persist_discovery_profile_sbom_writes_profile_onto_sbom_and_disk(tmp_pa
     runner._sbom_path = sbom_path
     profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
 
-    runner._persist_discovery_profile_sbom(profile)
+    runner._persist_discovery_profile_sbom(profile, _DISCOVERY_TARGET_URL)
 
     assert sbom.discovered_profile == profile.model_dump(mode="json")
+    assert sbom.discovered_profile_fingerprint == profile_cache_fingerprint(_DISCOVERY_TARGET_URL, None)
     enriched_path = sbom_path.with_name("app.sbom.enriched.json")
     assert enriched_path.exists()
     written = AiSbomDocument.model_validate_json(enriched_path.read_text())
     assert DiscoveredProfile.model_validate(written.discovered_profile) == profile
+    assert written.discovered_profile_fingerprint == profile_cache_fingerprint(_DISCOVERY_TARGET_URL, None)
 
 
 @pytest.mark.asyncio
@@ -1672,8 +2473,14 @@ async def test_discover_reuses_cached_sbom_profile_and_skips_run_discovery():
     (tests/apps/kscope/reports/agentic-test-20260828T201422.log:8096 showed a
     live run coming back empty even though a good profile was already known).
     """
+    from nuguard.common.discovery import profile_cache_fingerprint
+
     cached_profile = DiscoveredProfile(customer_name="Asha Patel", ids=["PT-4471"], source="live")
-    sbom = AiSbomDocument(target="./app", discovered_profile=cached_profile.model_dump(mode="json"))
+    sbom = AiSbomDocument(
+        target="./app",
+        discovered_profile=cached_profile.model_dump(mode="json"),
+        discovered_profile_fingerprint=profile_cache_fingerprint(_DISCOVERY_TARGET_URL, None),
+    )
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
 
     mock_client = MagicMock()
@@ -1686,6 +2493,163 @@ async def test_discover_reuses_cached_sbom_profile_and_skips_run_discovery():
 
     mock_run_discovery.assert_not_awaited()
     assert result == cached_profile
+
+
+# ---------------------------------------------------------------------------
+# _ensure_endpoint_preflight's SBOM-backed resolved_chat_endpoint cache
+# (issue #611 Phase 3) — mirrors nuguard/redteam/tests/test_orchestrator_endpoint_cache.py
+# for the sibling BehaviorRunner call site.
+# ---------------------------------------------------------------------------
+
+
+class _FakePreflightClient:
+    def __init__(self, chat_path: str = "/chat") -> None:
+        self.chat_path = chat_path
+        self.path_param_values: dict[str, str] = {}
+        self._chat_payload_key = "message"
+        self._chat_payload_list = False
+        self._chat_response_key: str | None = None
+
+    def set_chat_endpoint(self, path, payload_key, payload_list, response_key=None) -> None:
+        self.chat_path = path
+        self._chat_payload_key = payload_key
+        self._chat_payload_list = payload_list
+        self._chat_response_key = response_key
+
+    def set_path_param(self, name: str, value: str) -> None:
+        self.path_param_values[name] = value
+
+
+def _make_preflight_runner(sbom: AiSbomDocument, *, explicit: bool) -> BehaviorRunner:
+    return BehaviorRunner(
+        config=_make_config(),
+        sbom=sbom,
+        policy=None,
+        intent=_make_intent(),
+        llm_client=None,
+        endpoint_explicitly_set=explicit,
+    )
+
+
+async def test_ensure_endpoint_preflight_cache_hit_skips_live_preflight(monkeypatch):
+    from nuguard.common.endpoint_preflight import persist_endpoint_resolution
+
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    persist_endpoint_resolution(
+        sbom, _DISCOVERY_TARGET_URL, None,
+        chat_path="/cached/path", chat_payload_key="messages", chat_payload_list=True,
+        chat_response_key="reply", endpoint_source="sbom", path_param_values={"id": "conv-1"},
+    )
+    runner = _make_preflight_runner(sbom, explicit=False)
+    runner._resolved_target_url = _DISCOVERY_TARGET_URL
+    mock_validate = AsyncMock()
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint", mock_validate
+    )
+    client = _FakePreflightClient()
+
+    ok = await runner._ensure_endpoint_preflight(client)
+
+    mock_validate.assert_not_awaited()
+    assert ok is True
+    assert client.chat_path == "/cached/path"
+    assert client.path_param_values == {"id": "conv-1"}
+
+
+async def test_ensure_endpoint_preflight_cache_miss_persists(monkeypatch):
+    from nuguard.common.endpoint_preflight import PreflightOutcome
+
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    runner = _make_preflight_runner(sbom, explicit=False)
+    runner._resolved_target_url = _DISCOVERY_TARGET_URL
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint",
+        AsyncMock(
+            return_value=PreflightOutcome(
+                ok=True, rotated_endpoint=("/new/path", "message", False, None),
+                endpoint_source="sbom", notes=[],
+            )
+        ),
+    )
+    client = _FakePreflightClient()
+
+    ok = await runner._ensure_endpoint_preflight(client)
+
+    assert ok is True
+    assert sbom.resolved_chat_endpoint is not None
+    assert sbom.resolved_chat_endpoint["chat_path"] == "/new/path"
+    assert sbom.resolved_chat_endpoint_fingerprint is not None
+
+
+async def test_ensure_endpoint_preflight_explicit_ignores_cache_for_different_path(monkeypatch):
+    from nuguard.common.endpoint_preflight import PreflightOutcome, persist_endpoint_resolution
+
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    persist_endpoint_resolution(
+        sbom, _DISCOVERY_TARGET_URL, None,
+        chat_path="/some/other/path", chat_payload_key="message", chat_payload_list=False,
+        chat_response_key=None, endpoint_source="sbom", path_param_values={},
+    )
+    runner = _make_preflight_runner(sbom, explicit=True)
+    runner._resolved_target_url = _DISCOVERY_TARGET_URL
+    mock_validate = AsyncMock(return_value=PreflightOutcome(ok=True, notes=[]))
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint", mock_validate
+    )
+    client = _FakePreflightClient(chat_path="/explicitly/configured")
+
+    await runner._ensure_endpoint_preflight(client)
+
+    mock_validate.assert_awaited_once()
+    assert mock_validate.await_args.kwargs["has_explicit_endpoint"] is True
+
+
+async def test_ensure_endpoint_preflight_explicit_matching_cached_path_is_reused(monkeypatch):
+    from nuguard.common.endpoint_preflight import persist_endpoint_resolution
+
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    persist_endpoint_resolution(
+        sbom, _DISCOVERY_TARGET_URL, None,
+        chat_path="/explicitly/configured", chat_payload_key="message", chat_payload_list=False,
+        chat_response_key=None, endpoint_source="config", path_param_values={"id": "conv-2"},
+    )
+    runner = _make_preflight_runner(sbom, explicit=True)
+    runner._resolved_target_url = _DISCOVERY_TARGET_URL
+    mock_validate = AsyncMock()
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint", mock_validate
+    )
+    client = _FakePreflightClient(chat_path="/explicitly/configured")
+
+    ok = await runner._ensure_endpoint_preflight(client)
+
+    mock_validate.assert_not_awaited()
+    assert ok is True
+    assert client.path_param_values == {"id": "conv-2"}
+
+
+async def test_ensure_endpoint_preflight_non_explicit_hit_does_not_inherit_config_source_label(monkeypatch):
+    """Regression: a cache entry written by an earlier EXPLICIT run must not
+    make a later NON-explicit run falsely report target_endpoint_source
+    == "config" — that run never configured anything itself."""
+    from nuguard.common.endpoint_preflight import persist_endpoint_resolution
+
+    sbom = AiSbomDocument(target="./app", nodes=[], edges=[])
+    persist_endpoint_resolution(
+        sbom, _DISCOVERY_TARGET_URL, None,
+        chat_path="/chat", chat_payload_key="message", chat_payload_list=False,
+        chat_response_key=None, endpoint_source="config", path_param_values={},
+    )
+    runner = _make_preflight_runner(sbom, explicit=False)
+    runner._resolved_target_url = _DISCOVERY_TARGET_URL
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_preflight.validate_and_rotate_chat_endpoint", AsyncMock()
+    )
+    client = _FakePreflightClient(chat_path="/chat")
+
+    await runner._ensure_endpoint_preflight(client)
+
+    assert runner._target_endpoint_source == "default"
 
 
 # ---------------------------------------------------------------------------

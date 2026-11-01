@@ -47,12 +47,22 @@ class AnalysisRunRequest(BaseModel):
     enable_trivy: bool = True
     enable_semgrep: bool = True
     enable_supply_chain: bool = True
+    enable_pip_audit: bool = True
     source_path: str | None = None
     atlas_config: dict[str, Any] | None = None
     min_severity: Severity = Severity.LOW
     verbose: bool = False
     grype_timeout: float = 180.0
     grype_retries: int = 3
+    checkov_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds.")
+    checkov_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds.")
+    semgrep_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds.")
+    semgrep_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds.")
+    pip_audit_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock pip-audit deadline in seconds.")
+    pip_audit_total_timeout: float = Field(default=600.0, gt=0, allow_inf_nan=False, description="Total wall-clock pip-audit budget across all manifests in seconds.")
+    enable_gitleaks: bool = True
+    gitleaks_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock gitleaks deadline in seconds.")
+    gitleaks_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock gitleaks budget across all paths in seconds.")
     supply_chain_profile: str = "standard"
     supply_chain_verify_artifacts: str = "off"
     supply_chain_threat_intel_feeds: list[str] | None = None
@@ -136,12 +146,22 @@ async def run_analysis(
         enable_trivy=request.enable_trivy,
         enable_semgrep=request.enable_semgrep,
         enable_supply_chain=request.enable_supply_chain,
+        enable_pip_audit=request.enable_pip_audit,
         source_path=Path(request.source_path) if request.source_path else None,
         atlas_config=request.atlas_config,
         min_severity=request.min_severity,
         verbose=request.verbose,
         grype_timeout=request.grype_timeout,
         grype_retries=request.grype_retries,
+        checkov_timeout=request.checkov_timeout,
+        checkov_total_timeout=request.checkov_total_timeout,
+        semgrep_timeout=request.semgrep_timeout,
+        semgrep_total_timeout=request.semgrep_total_timeout,
+        pip_audit_timeout=request.pip_audit_timeout,
+        pip_audit_total_timeout=request.pip_audit_total_timeout,
+        enable_gitleaks=request.enable_gitleaks,
+        gitleaks_timeout=request.gitleaks_timeout,
+        gitleaks_total_timeout=request.gitleaks_total_timeout,
         supply_chain_profile=request.supply_chain_profile,
         supply_chain_verify_artifacts=request.supply_chain_verify_artifacts,
         supply_chain_threat_intel_feeds=request.supply_chain_threat_intel_feeds,

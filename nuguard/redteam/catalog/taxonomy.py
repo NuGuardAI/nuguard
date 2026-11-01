@@ -32,6 +32,21 @@ class ScenarioCategory(str, Enum):
     AGENT_IDENTITY = "Agent Identity and Credential"  # N
     API_SCHEMA = "API Schema Exploitation"            # S
     SUPPLY_CHAIN = "Supply Chain and CI/CD"           # V
+    # Agentic-surface-mapper findings (redteam-proposal.md W1): sibling
+    # endpoints, tool/agent inventories, schema exposure, CORS reflection —
+    # discovered by live recon rather than carried in a chat payload.
+    SURFACE_EXPOSURE = "Agentic Surface Exposure"     # W
+    # Same capability reachable through chat (LLM-gated) vs. a direct
+    # REST/JSON-RPC/MCP call — the LLM refusing while the raw endpoint
+    # accepts the call (redteam-proposal.md W10).
+    DUAL_PATH_EXPOSURE = "Dual-Path Tool Exposure"    # X
+    # Which agent a request is routed to is itself an authorization
+    # decision; seeding keywords to reach a higher-privilege agent is a
+    # privilege-escalation primitive (redteam-proposal.md W4).
+    ROUTER_SELECTION = "Router and Agent-Selection Abuse"  # Q
+    # Passive side channels (unauthenticated WS/SSE broadcast, cross-session
+    # event leakage) that observe rather than speak first (redteam-proposal.md W7).
+    OBSERVATION_CHANNEL = "Observation and Side-Channel"   # L
 
 
 class DeliveryChannel(str, Enum):
@@ -177,3 +192,9 @@ class Capability(str, Enum):
     SCOPED_CREDENTIALS = "scoped_credentials"               # agent holds per-tool scoped creds
     # Streaming output
     STREAMING = "streaming"                                  # app exposes SSE/streaming endpoints
+    # Agentic Surface Model (redteam-proposal.md W1) — gates recon-derived
+    # categories that need live-probed facts, not just static SBOM structure.
+    HAS_SIBLING_SURFACE = "has_sibling_surface"              # ASM found >=1 endpoint besides chat
+    DIRECT_TOOL_ENDPOINT = "direct_tool_endpoint"            # ASM/MCP found an invocable surface besides chat
+    OBSERVATION_CHANNEL = "observation_channel"              # ASM found a connectable WS/SSE endpoint
+    MULTI_TIER_AGENTS = "multi_tier_agents"                  # >=2 agents differ materially in write/admin tools

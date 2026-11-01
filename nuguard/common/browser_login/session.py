@@ -13,6 +13,7 @@ inside the functions that need it, so the rest of NuGuard never pays for it.
 """
 from __future__ import annotations
 
+import asyncio
 import re
 import time
 from dataclasses import dataclass, field
@@ -37,6 +38,14 @@ _log = get_logger(__name__)
 # and conservative — a false negative here just means sniffing finds nothing
 # (non-fatal), a false positive would report the wrong endpoint.
 _ASSET_EXT_RE = re.compile(r"\.(?:js|css|png|jpg|jpeg|svg|gif|woff2?|ico|map)(?:\?|$)", re.I)
+
+
+def _interaction_errors() -> tuple[type[Exception], ...]:
+    try:
+        from playwright.async_api import Error
+    except ImportError:
+        return (TimeoutError,)
+    return (Error, TimeoutError)
 
 
 @dataclass
@@ -108,6 +117,7 @@ class BrowserLoginSession:
         self._page: "Page | None" = None
         # Last same-origin "Authorization: Bearer" token the app sent itself.
         self._observed_bearer: str | None = None
+        self.chat_sniff_note: str | None = None
 
     async def __aenter__(self) -> "BrowserLoginSession":
         await self._launch()
@@ -212,8 +222,7 @@ class BrowserLoginSession:
             sniffed_endpoint, sniffed_body = await self._sniff_chat_request(chat_message)
             if sniffed_body is None:
                 warnings.append(
-                    "could not observe an outgoing chat request — proceeding cookie-only. "
-                    "Set target.browser_discovery.chat_input_selector to help."
+                    self.chat_sniff_note or "Could not observe an outgoing chat request; proceeding cookie-only."
                 )
             else:
                 candidate_extra_fields, ambiguous_fields = self._resolve_extra_fields(
@@ -504,43 +513,126 @@ class BrowserLoginSession:
         return None, None
 
     async def _poll_for_locator(self, selectors: list[str], *, budget_s: float) -> Any | None:
-        """Poll ``selectors`` in order until one matches or ``budget_s`` elapses.
-
-        Several apps show a transient loading state right after login (a
-        "reading your records..." spinner, a skeleton screen) before the real
-        chat UI mounts — a single one-shot check would spuriously report "no
-        chat input found" during that window.
-        """
+        """Find a visible, enabled, editable input within the readiness budget."""
         deadline = time.monotonic() + budget_s
         while time.monotonic() < deadline:
             for sel in selectors:
                 try:
-                    loc = self.page.locator(sel).first
-                    if await loc.count() > 0:
-                        return loc
-                except Exception:  # noqa: BLE001
+                    matches = self.page.locator(sel)
+                    for index in range(await matches.count()):
+                        loc = matches.nth(index)
+                        remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
+                        if time.monotonic() >= deadline:
+                            return None
+                        if (await loc.is_visible() and await loc.is_enabled(timeout=remaining_ms)
+                                and await loc.is_editable(timeout=remaining_ms)):
+                            return loc
+                except _interaction_errors():
                     continue
-            await self.page.wait_for_timeout(300)
+            await self.page.wait_for_timeout(min(300, max(0, (deadline - time.monotonic()) * 1000)))
         return None
 
-    async def _click_first_enabled(self, selectors: list[str], *, budget_s: float) -> bool:
-        """Poll ``selectors`` for one that is present AND enabled, then click it.
+    async def _prepare_chat_input(self) -> Any | None:
+        """Open a collapsed chat once, without toggling a visible loading widget."""
+        deadline = time.monotonic() + self.browser_cfg.chat_ui_timeout_ms / 1000
+        try:
+            async with asyncio.timeout(self.browser_cfg.chat_ui_timeout_ms / 1000):
+                return await self._prepare_chat_input_until(deadline)
+        except _interaction_errors():
+            self.chat_sniff_note = "Chat UI readiness timeout; configure chat_opener_selector and chat_input_selector."
+            return None
 
-        Distinct from ``_poll_for_locator``: a send button often exists in the
-        DOM immediately but stays disabled until an in-flight request (e.g.
-        the same post-login loading state) resolves.
-        """
+    async def _prepare_chat_input_until(self, deadline: float) -> Any | None:
+        selectors = heuristics.build_candidates(
+            self.browser_cfg.chat_input_selector, heuristics.DEFAULT_CHAT_INPUT_SELECTORS
+        )
+        openers = heuristics.build_candidates(
+            self.browser_cfg.chat_opener_selector, heuristics.DEFAULT_CHAT_OPENER_SELECTORS
+        )
+        attempted: set[str] = set()
+        opened = False
+        while time.monotonic() < deadline:
+            visible = False
+            eligible: list[str] = []
+            for selector in selectors:
+                try:
+                    matches = self.page.locator(selector)
+                    for index in range(await matches.count()):
+                        loc = matches.nth(index)
+                        if selector != self.browser_cfg.chat_input_selector:
+                            chat_related = await loc.evaluate("""el => {
+                                const hint = [el.id, el.name, el.getAttribute('placeholder'),
+                                    el.getAttribute('aria-label')].join(' ');
+                                if (/chat|message|prompt|ask|assistant/i.test(hint)) return true;
+                                const parent = el.closest('form, [role="dialog"], [id*="chat"], [class*="chat"]');
+                                return !parent || /chat|message|assistant/i.test(
+                                    [parent.id, parent.className, parent.getAttribute('aria-label')].join(' '));
+                            }""")
+                            if not chat_related:
+                                continue
+                        eligible.append(f"{selector} >> nth={index}")
+                        if await loc.is_visible():
+                            visible = True
+                except _interaction_errors():
+                    continue
+            if visible:
+                found = await self._poll_for_locator(
+                    eligible, budget_s=max(0, deadline - time.monotonic())
+                )
+                if found is not None:
+                    return found
+                break
+            if not opened:
+                for selector in openers:
+                    try:
+                        matches = self.page.locator(selector)
+                        for index in range(await matches.count()):
+                            loc = matches.nth(index)
+                            if not await loc.is_visible():
+                                continue
+                            remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
+                            if time.monotonic() >= deadline:
+                                break
+                            if not await loc.is_enabled(timeout=remaining_ms):
+                                continue
+                            identity = await loc.evaluate("el => el.id || el.outerHTML")
+                            if identity in attempted:
+                                continue
+                            attempted.add(identity)
+                            opened = True
+                            await loc.click(timeout=min(2000, remaining_ms))
+                            break
+                    except _interaction_errors():
+                        continue
+                    if opened:
+                        break
+            await self.page.wait_for_timeout(min(300, max(0, (deadline - time.monotonic()) * 1000)))
+        self.chat_sniff_note = (
+            "No visible, enabled, editable chat input became available within the UI timeout. "
+            "Configure browser_discovery.chat_opener_selector and chat_input_selector."
+        )
+        return None
+
+    async def _click_first_enabled(
+        self, selectors: list[str], *, budget_s: float, root: Any = None
+    ) -> bool:
+        """Click a visible enabled send control scoped to the selected chat input."""
         deadline = time.monotonic() + budget_s
         while time.monotonic() < deadline:
             for sel in selectors:
                 try:
-                    loc = self.page.locator(sel).first
-                    if await loc.count() > 0 and await loc.is_enabled():
-                        await loc.click(timeout=2000)
-                        return True
-                except Exception:  # noqa: BLE001
+                    matches = (root if root is not None else self.page).locator(sel)
+                    for index in range(await matches.count()):
+                        loc = matches.nth(index)
+                        remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
+                        if time.monotonic() >= deadline:
+                            return False
+                        if await loc.is_visible() and await loc.is_enabled(timeout=remaining_ms):
+                            await loc.click(timeout=min(2000, remaining_ms))
+                            return True
+                except _interaction_errors():
                     continue
-            await self.page.wait_for_timeout(300)
+            await self.page.wait_for_timeout(min(300, max(0, (deadline - time.monotonic()) * 1000)))
         return False
 
     async def _sniff_chat_request(self, message: str) -> tuple[str | None, dict[str, Any] | None]:
@@ -568,42 +660,49 @@ class BrowserLoginSession:
                 parsed = json.loads(body)
             except (ValueError, TypeError):
                 return
-            if isinstance(parsed, dict):
+            if isinstance(parsed, dict) and _find_chat_payload_key(parsed, message) is not None:
                 captured["url"] = url
                 captured["body"] = parsed
 
+        self.chat_sniff_note = None
+        input_locator = await self._prepare_chat_input()
+        if input_locator is None:
+            return None, None
         self.page.on("request", _on_request)
         try:
-            input_candidates = heuristics.build_candidates(
-                self.browser_cfg.chat_input_selector, heuristics.DEFAULT_CHAT_INPUT_SELECTORS
-            )
-            # Post-login pages commonly show a brief loading state (e.g. "reading
-            # your records...") before the chat UI becomes interactable — poll
-            # for the input to appear rather than giving up on a single check.
-            input_locator = await self._poll_for_locator(input_candidates, budget_s=10)
-
-            if input_locator is None:
-                _log.info("browser_login: no chat input found for sniffing")
-                return None, None
-
             await input_locator.click(timeout=2000)
             await input_locator.fill(message, timeout=2000)
 
+            root = input_locator.locator(
+                "xpath=ancestor::*[self::form or @role='dialog' or "
+                "contains(@id,'chat') or contains(@class,'chat')][1]"
+            )
+            if not await root.count():
+                root = input_locator.locator("xpath=..")
             send_candidates = heuristics.build_candidates(
                 self.browser_cfg.send_button_selector, heuristics.DEFAULT_SEND_BUTTON_SELECTORS
             )
-            sent = await self._click_first_enabled(send_candidates, budget_s=5)
+            if self.browser_cfg.send_button_selector:
+                sent = await self._click_first_enabled([self.browser_cfg.send_button_selector], budget_s=1)
+            else:
+                sent = False
+            if not sent:
+                sent = await self._click_first_enabled(send_candidates, budget_s=5, root=root)
             if not sent:
                 _log.info("browser_login: no enabled send button found, pressing Enter")
-                await self.page.keyboard.press("Enter")
+                await input_locator.press("Enter", timeout=2000)
 
             deadline = time.monotonic() + 8
             while time.monotonic() < deadline and not captured:
                 await self.page.wait_for_timeout(250)
 
             if not captured:
+                self.chat_sniff_note = "No outgoing chat request containing the probe message was observed."
                 return None, None
             return captured["url"], captured["body"]
+        except _interaction_errors():
+            self.chat_sniff_note = "The chat UI became unavailable during interaction; no endpoint was confirmed."
+            return None, None
         finally:
             self.page.remove_listener("request", _on_request)
 
@@ -698,6 +797,8 @@ async def sniff_chat_endpoint_headless(
     *,
     chat_message: str = "Hello",
     timeout_s: int = 30,
+    browser_discovery: BrowserDiscoveryConfig | None = None,
+    discovery_notes: list[str] | None = None,
 ) -> tuple[str, str, bool] | None:
     """Ground-truth chat-endpoint discovery: open *target_url* in a headless
     browser, drive its own chat UI, and observe which request it actually
@@ -724,17 +825,24 @@ async def sniff_chat_endpoint_headless(
         async with BrowserLoginSession(
             target_url,
             AuthConfig(type="none"),
-            BrowserDiscoveryConfig(),
+            browser_discovery or BrowserDiscoveryConfig(),
             headless=True,
             timeout_s=timeout_s,
         ) as session:
             await session._navigate()  # noqa: SLF001 — no login step needed for this fallback
             url, body = await session._sniff_chat_request(chat_message)  # noqa: SLF001
+            if url is None and discovery_notes is not None:
+                discovery_notes.append(getattr(session, "chat_sniff_note", None) or "Browser chat UI discovery found no usable request.")
     except BrowserLoginError as exc:
-        _log.info("browser_login: headless chat sniff unavailable: %s", exc)
+        note = f"Browser discovery unavailable at step {exc.step}."
+        _log.info("browser_login: %s", note)
+        if discovery_notes is not None:
+            discovery_notes.append(note)
         return None
     except Exception as exc:  # noqa: BLE001 — best-effort fallback, never raise
-        _log.info("browser_login: headless chat sniff failed: %s", exc)
+        _log.info("browser_login: headless chat sniff failed (%s)", type(exc).__name__)
+        if discovery_notes is not None:
+            discovery_notes.append("Browser discovery failed before a chat request could be confirmed.")
         return None
 
     if url is None or body is None:

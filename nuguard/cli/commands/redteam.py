@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
@@ -16,6 +16,7 @@ import typer
 
 from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.cli.report_meta import ReportMeta
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.logging import get_logger
 from nuguard.common.run_checkpoint import PartialRunError
 
@@ -78,6 +79,10 @@ def redteam(
     ),
     profile: str = typer.Option(
         "ci", "--profile", help="Scan profile: ci | full."
+    ),
+    mode: Optional[str] = typer.Option(
+        None, "--mode",
+        help="Engine mode: concurrent | progressive | campaign (yaml: redteam.mode).",
     ),
     scenarios: Optional[str] = typer.Option(
         None, "--scenarios", help="Comma-separated: destructive, non-destructive (default: both)."
@@ -164,6 +169,18 @@ def redteam(
     _source_path_val = getattr(cfg, "source_path", None)
     source_dir = source or (Path(str(_source_path_val)) if _source_path_val else None)
     effective_profile = profile if profile != "ci" else cfg.redteam_profile
+    effective_mode = mode if mode is not None else cfg.redteam_mode
+    if effective_mode not in ("concurrent", "progressive", "campaign"):
+        typer.echo(
+            f"Error: --mode must be concurrent, progressive or campaign (got {mode!r})",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    effective_campaign = (
+        cfg.resolved_redteam_campaign_config().model_dump()
+        if effective_mode == "campaign"
+        else None
+    )
     effective_min_impact = (
         min_impact_score if min_impact_score != 0.0 else cfg.min_impact_score
     )
@@ -287,9 +304,14 @@ def redteam(
         launch=launch,
         chat_path=cfg.target_endpoint,
         chat_payload_key=cfg.redteam_chat_payload_key,
+        chat_payload_key_explicit=bool(
+            {"redteam_chat_payload_key", "redteam_chat_payload_list"} & cfg.model_fields_set
+        ),
         chat_payload_list=cfg.redteam_chat_payload_list,
         chat_response_key=cfg.redteam_chat_response_key or None,
         chat_payload_extras=cfg.redteam_chat_payload_extras or None,
+        chat_method=cfg.redteam_chat_method,
+        chat_payload_in=cfg.redteam_chat_payload_in,
         guided_conversations=effective_guided,
         guided_max_turns=effective_guided_max_turns,
         guided_concurrency=effective_guided_concurrency,
@@ -314,10 +336,15 @@ def redteam(
         finding_triggers=finding_triggers,
         verbose=effective_verbose,
         scenario_timeout=cfg.redteam_scenario_timeout,
+        api_endpoint_threshold=cfg.redteam_api_endpoint_threshold,
+        ci_api_spot_checks=cfg.redteam_ci_api_spot_checks,
         concurrency=cfg.redteam_concurrency,
         turn_delay_seconds=effective_turn_delay,
         scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
         similar_miss_threshold=cfg.redteam_similar_miss_threshold,
+        universal_safety_probes=cfg.redteam_universal_safety_probes,
+        workflows=cfg.redteam_workflows or None,
+        workflow_templates=cfg.redteam_workflow_templates or None,
         hard_refusal_abort_turns=cfg.redteam_hard_refusal_abort_turns,
         stall_abort_threshold=cfg.redteam_stall_abort_threshold,
         skip_discovery=cfg.redteam_skip_discovery,
@@ -326,6 +353,8 @@ def redteam(
         engagement_error_threshold=cfg.redteam_engagement_error_threshold,
         capability_discovery=cfg.redteam_capability_discovery,
         liveness_cache_ttl_seconds=cfg.redteam_liveness_cache_ttl_seconds,
+        preflight_candidates=cfg.redteam_preflight_candidates,
+        browser_discovery=cfg.redteam_browser_discovery,
         llm_capability_dedup=cfg.redteam_llm_capability_dedup,
         catalog=custom_catalog,
         pre_run_warmup=cfg.redteam_pre_run_warmup,
@@ -333,10 +362,18 @@ def redteam(
         golden_data=cfg.redteam_golden_data or None,
         suppress_spa_html_auth_bypass=cfg.redteam_suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=cfg.redteam_codegen_escalation_enabled,
-        mode=cfg.redteam_mode,
+        mode=effective_mode,
+        campaign=effective_campaign,
         progressive_halt_on_severity=cfg.redteam_progressive_halt_on_severity,
         probe_llm=cfg.probe_llm_enabled,
         resume=effective_resume,
+        defence_regressions=cfg.redteam_defence_regressions or None,
+        defence_regression_paraphrases=cfg.redteam_defence_regression_paraphrases,
+        defence_regression_timeout=cfg.redteam_defence_regression_timeout,
+        defence_regression_probe_timeout=cfg.redteam_defence_regression_probe_timeout,
+        asm_max_probe_requests=cfg.redteam_asm_max_probe_requests,
+        asm_extra_inventory_paths=cfg.redteam_asm_extra_inventory_paths or None,
+        trust_context_confirmation_cells=cfg.redteam_trust_context_confirmation_cells,
     )
 
     _partial_run = False
@@ -382,8 +419,12 @@ def redteam(
             AuthError,
             TargetEndpointNotFoundError,
             TargetNotEngagedError,
+            TargetQuotaExhaustedError,
             TargetUnavailableError,
         )
+        if isinstance(exc, TargetQuotaExhaustedError):
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
         if isinstance(exc, TargetNotEngagedError):
             typer.echo(f"Error: {exc}", err=True)
             # Distinct setup-failure exit code (2 = findings, 1 = run error) so
@@ -607,10 +648,15 @@ async def _run_redteam(
     verbose: bool = False,
     credentials: dict[str, str] | None = None,
     scenario_timeout: float = 300.0,
+    api_endpoint_threshold: int = 25,
+    ci_api_spot_checks: int = 3,
     concurrency: int = 5,
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
+    universal_safety_probes: bool = True,
+    workflows: "list[dict[str, Any]] | None" = None,
+    workflow_templates: "list[str] | None" = None,
     hard_refusal_abort_turns: int = 5,
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
@@ -619,8 +665,11 @@ async def _run_redteam(
     engagement_error_threshold: int = 5,
     capability_discovery: bool = True,
     liveness_cache_ttl_seconds: float = 3600.0,
+    preflight_candidates: int = 3,
     llm_capability_dedup: bool = False,
     chat_payload_extras: dict[str, Any] | None = None,
+    chat_method: Literal["GET", "POST", "PUT", "PATCH"] = "POST",
+    chat_payload_in: Literal["body", "query"] | None = None,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
     verify_findings: bool = False,
@@ -628,9 +677,19 @@ async def _run_redteam(
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
     mode: str = "concurrent",
+    campaign: dict | None = None,
     progressive_halt_on_severity: str = "none",
     probe_llm: bool = False,
     resume: str | None = None,
+    defence_regressions: "list[dict] | None" = None,
+    defence_regression_paraphrases: int = 5,
+    defence_regression_timeout: float = 180.0,
+    defence_regression_probe_timeout: float = 30.0,
+    asm_max_probe_requests: int = 25,
+    asm_extra_inventory_paths: "list[str] | None" = None,
+    trust_context_confirmation_cells: int = 1,
+    browser_discovery: BrowserDiscoveryConfig | None = None,
+    chat_payload_key_explicit: bool = False,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -733,9 +792,12 @@ async def _run_redteam(
                 config_path=config_path,
                 chat_path=chat_path,
                 chat_payload_key=chat_payload_key,
+                chat_payload_key_explicit=chat_payload_key_explicit,
                 chat_payload_list=chat_payload_list,
                 chat_response_key=chat_response_key,
                 chat_payload_extras=chat_payload_extras,
+                chat_method=chat_method,
+                chat_payload_in=chat_payload_in,
                 guided_conversations=guided_conversations,
                 guided_max_turns=guided_max_turns,
                 guided_concurrency=guided_concurrency,
@@ -754,13 +816,25 @@ async def _run_redteam(
                 remediation_llm_client=remediation_llm_client,
                 prompt_cache_dir=prompt_cache_dir,
                 finding_triggers=finding_triggers,
+                defence_regressions=defence_regressions,
+                defence_regression_paraphrases=defence_regression_paraphrases,
+                defence_regression_timeout=defence_regression_timeout,
+                defence_regression_probe_timeout=defence_regression_probe_timeout,
+                asm_max_probe_requests=asm_max_probe_requests,
+                asm_extra_inventory_paths=asm_extra_inventory_paths,
+                trust_context_confirmation_cells=trust_context_confirmation_cells,
                 verbose=verbose,
                 credentials=credentials,
                 scenario_timeout=scenario_timeout,
+                api_endpoint_threshold=api_endpoint_threshold,
+                ci_api_spot_checks=ci_api_spot_checks,
                 concurrency=concurrency,
                 turn_delay_seconds=turn_delay_seconds,
                 scenario_delay_seconds=scenario_delay_seconds,
                 similar_miss_threshold=similar_miss_threshold,
+                universal_safety_probes=universal_safety_probes,
+                workflows=workflows,
+                workflow_templates=workflow_templates,
                 hard_refusal_abort_turns=hard_refusal_abort_turns,
                 stall_abort_threshold=stall_abort_threshold,
                 skip_discovery=skip_discovery,
@@ -769,6 +843,8 @@ async def _run_redteam(
                 engagement_error_threshold=engagement_error_threshold,
                 capability_discovery=capability_discovery,
                 liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
+                preflight_candidates=preflight_candidates,
+                browser_discovery=browser_discovery,
                 llm_capability_dedup=llm_capability_dedup,
                 catalog=catalog,
                 pre_run_warmup=pre_run_warmup,
@@ -777,6 +853,7 @@ async def _run_redteam(
                 suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
                 codegen_escalation_enabled=codegen_escalation_enabled,
                 mode=mode,
+                campaign=campaign,
                 progressive_halt_on_severity=progressive_halt_on_severity,
                 probe_llm=probe_llm,
                 resume=resume,
@@ -797,9 +874,12 @@ async def _run_redteam(
         config_path=config_path,
         chat_path=chat_path,
         chat_payload_key=chat_payload_key,
+        chat_payload_key_explicit=chat_payload_key_explicit,
         chat_payload_list=chat_payload_list,
         chat_response_key=chat_response_key,
         chat_payload_extras=chat_payload_extras,
+        chat_method=chat_method,
+        chat_payload_in=chat_payload_in,
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
@@ -818,13 +898,25 @@ async def _run_redteam(
         remediation_llm_client=remediation_llm_client,
         prompt_cache_dir=prompt_cache_dir,
         finding_triggers=finding_triggers,
+        defence_regressions=defence_regressions,
+        defence_regression_paraphrases=defence_regression_paraphrases,
+        defence_regression_timeout=defence_regression_timeout,
+        defence_regression_probe_timeout=defence_regression_probe_timeout,
+        asm_max_probe_requests=asm_max_probe_requests,
+        asm_extra_inventory_paths=asm_extra_inventory_paths,
+        trust_context_confirmation_cells=trust_context_confirmation_cells,
         verbose=verbose,
         credentials=credentials,
         scenario_timeout=scenario_timeout,
+        api_endpoint_threshold=api_endpoint_threshold,
+        ci_api_spot_checks=ci_api_spot_checks,
         concurrency=concurrency,
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
+        universal_safety_probes=universal_safety_probes,
+        workflows=workflows,
+        workflow_templates=workflow_templates,
         hard_refusal_abort_turns=hard_refusal_abort_turns,
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
@@ -833,6 +925,8 @@ async def _run_redteam(
         engagement_error_threshold=engagement_error_threshold,
         capability_discovery=capability_discovery,
         liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
+        preflight_candidates=preflight_candidates,
+        browser_discovery=browser_discovery,
         llm_capability_dedup=llm_capability_dedup,
         catalog=catalog,
         pre_run_warmup=pre_run_warmup,
@@ -841,6 +935,7 @@ async def _run_redteam(
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=codegen_escalation_enabled,
         mode=mode,
+        campaign=campaign,
         progressive_halt_on_severity=progressive_halt_on_severity,
         probe_llm=probe_llm,
     )
@@ -862,6 +957,8 @@ async def _run_orchestrator(  # noqa: C901
     chat_payload_list: bool = False,
     chat_response_key: str | None = None,
     chat_payload_extras: dict[str, Any] | None = None,
+    chat_method: Literal["GET", "POST", "PUT", "PATCH"] = "POST",
+    chat_payload_in: Literal["body", "query"] | None = None,
     guided_conversations: bool = True,
     guided_max_turns: int = 12,
     guided_concurrency: int = 3,
@@ -883,10 +980,15 @@ async def _run_orchestrator(  # noqa: C901
     verbose: bool = False,
     credentials: dict[str, str] | None = None,
     scenario_timeout: float = 300.0,
+    api_endpoint_threshold: int = 25,
+    ci_api_spot_checks: int = 3,
     concurrency: int = 5,
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
+    universal_safety_probes: bool = True,
+    workflows: "list[dict[str, Any]] | None" = None,
+    workflow_templates: "list[str] | None" = None,
     hard_refusal_abort_turns: int = 5,
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
@@ -895,6 +997,7 @@ async def _run_orchestrator(  # noqa: C901
     engagement_error_threshold: int = 5,
     capability_discovery: bool = True,
     liveness_cache_ttl_seconds: float = 3600.0,
+    preflight_candidates: int = 3,
     llm_capability_dedup: bool = False,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
@@ -903,15 +1006,27 @@ async def _run_orchestrator(  # noqa: C901
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
     mode: str = "concurrent",
+    campaign: dict | None = None,
     progressive_halt_on_severity: str = "none",
     probe_llm: bool = False,
     resume: str | None = None,
+    defence_regressions: "list[dict] | None" = None,
+    defence_regression_paraphrases: int = 5,
+    defence_regression_timeout: float = 180.0,
+    defence_regression_probe_timeout: float = 30.0,
+    asm_max_probe_requests: int = 25,
+    asm_extra_inventory_paths: "list[str] | None" = None,
+    trust_context_confirmation_cells: int = 1,
+    browser_discovery: BrowserDiscoveryConfig | None = None,
+    chat_payload_key_explicit: bool = False,
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from pydantic import SecretStr
 
     from nuguard.common.llm_client import LLMClient
+    from nuguard.redteam.campaign.config import CampaignConfig
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
     from nuguard.redteam.public_api import RedteamAuthConfig, RedteamRunRequest, run_redteam
+    from nuguard.redteam.workflows import WorkflowSpec
 
     redteam_llm: LLMClient | None = None
     if redteam_llm_model:
@@ -930,13 +1045,17 @@ async def _run_orchestrator(  # noqa: C901
             default_system_prompt=EVAL_EXPERT_SYSTEM_PROMPT,
         )
 
+    # Preserve field presence: supplying defaults unconditionally would turn an
+    # auto-discovered request into an explicitly pinned message/list contract.
+    payload_options: dict[str, Any] = {}
+    if chat_payload_key_explicit or chat_payload_key != "message" or chat_payload_list:
+        payload_options = {"chat_payload_key": chat_payload_key, "chat_payload_list": chat_payload_list}
     request = RedteamRunRequest(
         target_url=target_url,
         profile=profile,
         min_impact_score=min_impact_score,
         chat_path=chat_path,
-        chat_payload_key=chat_payload_key,
-        chat_payload_list=chat_payload_list,
+        **payload_options,
         chat_response_key=chat_response_key,
         concurrency=concurrency,
         guided_conversations=guided_conversations,
@@ -959,6 +1078,13 @@ async def _run_orchestrator(  # noqa: C901
             else None
         ),
         finding_triggers=finding_triggers,
+        defence_regressions=defence_regressions,
+        defence_regression_paraphrases=defence_regression_paraphrases,
+        defence_regression_timeout=defence_regression_timeout,
+        defence_regression_probe_timeout=defence_regression_probe_timeout,
+        asm_max_probe_requests=asm_max_probe_requests,
+        asm_extra_inventory_paths=asm_extra_inventory_paths or [],
+        trust_context_confirmation_cells=trust_context_confirmation_cells,
         verbose=verbose,
         credentials=(
             {name: SecretStr(value) for name, value in credentials.items()}
@@ -966,9 +1092,14 @@ async def _run_orchestrator(  # noqa: C901
             else None
         ),
         scenario_timeout=scenario_timeout,
+        api_endpoint_threshold=api_endpoint_threshold,
+        ci_api_spot_checks=ci_api_spot_checks,
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
+        universal_safety_probes=universal_safety_probes,
+        workflows=[WorkflowSpec.model_validate(w) for w in workflows or []],
+        workflow_templates=workflow_templates or [],
         hard_refusal_abort_turns=hard_refusal_abort_turns,
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
@@ -977,14 +1108,19 @@ async def _run_orchestrator(  # noqa: C901
         engagement_error_threshold=engagement_error_threshold,
         capability_discovery=capability_discovery,
         liveness_cache_ttl_seconds=liveness_cache_ttl_seconds,
+        preflight_candidates=preflight_candidates,
+        browser_discovery=browser_discovery or BrowserDiscoveryConfig(),
         llm_capability_dedup=llm_capability_dedup,
         chat_payload_extras=chat_payload_extras or None,
+        chat_method=chat_method,
+        chat_payload_in=chat_payload_in,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
         golden_data=golden_data,
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=codegen_escalation_enabled,
-        mode=mode,
+        mode=mode,  # type: ignore[arg-type]  # validated by the request model
+        campaign=CampaignConfig.model_validate(campaign) if campaign else None,
         progressive_halt_on_severity=progressive_halt_on_severity,
         probe_llm=probe_llm,
         resume_from=resume,
@@ -1190,8 +1326,18 @@ def _append_remediation_plan(lines: list[str], remediation_plan: list) -> None:
 
 
 def _fail_on_severity(findings: list, fail_on: str) -> None:
-    """Exit with code 2 if any finding meets or exceeds the threshold severity."""
+    """Exit with code 2 if any finding meets or exceeds the threshold severity.
+
+    Defence-regression findings (``regression_paraphrase_kind is not None``)
+    are blocking in CI regardless of this threshold — see
+    ``redteam.defence_regressions`` in ``nuguard.yaml.example`` and
+    ``nuguard.redteam.defence_regressions``.
+    """
     from nuguard.models.finding import Severity
+
+    for f in findings:
+        if getattr(f, "regression_paraphrase_kind", None) is not None:
+            raise typer.Exit(code=2)
 
     _ORDER = [
         Severity.CRITICAL,

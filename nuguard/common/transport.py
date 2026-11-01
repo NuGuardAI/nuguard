@@ -14,11 +14,12 @@ from enum import Enum
 # ---------------------------------------------------------------------------
 # App-level transient error phrases
 # ---------------------------------------------------------------------------
-# The target application's own backend returned a transient
+# The target application's own backend returned an ambiguous
 # connection/service-unavailable error as a 200-OK chat response (e.g. an
 # orchestrator catching an MCP cold-start exception and returning a friendly
 # fallback message).  These are NOT agent refusals — they indicate the target
-# is temporarily unavailable.
+# could be unavailable or masking an upstream failure. Retry briefly; this
+# text alone cannot identify a cold start or a provider policy block.
 #
 # Re-exported by nuguard.redteam.llm_engine.refusal_patterns for backward compat.
 APP_TRANSIENT_ERROR_PATTERNS: frozenset[str] = frozenset({
@@ -106,10 +107,10 @@ class TransportOutcome(str, Enum):
     HTTP_GATEWAY_ERROR = "http_gateway_error"  # 502/503/504 — temporarily unavailable
     REQUEST_ERROR = "request_error"          # network / DNS / connectivity failure
     RATE_LIMIT = "rate_limit"                # 429 exhausted all per-request retries
-    APP_TRANSIENT = "app_transient"          # backend cold-start friendly error text
+    APP_TRANSIENT = "app_transient"          # ambiguous backend fallback/error text
 
 
-# Outcomes that should be retried with in-semaphore backoff.
+# Outcomes eligible for capped retries with backoff outside request slots.
 # 502/503/504 behave like app-transient errors: the backend is alive but
 # temporarily overloaded or being restarted.
 RETRIABLE_OUTCOMES: frozenset[TransportOutcome] = frozenset({
@@ -132,6 +133,12 @@ def classify_transport(response: str) -> TransportOutcome:
     6. Phrase match against :data:`APP_TRANSIENT_ERROR_PATTERNS` → :attr:`~TransportOutcome.APP_TRANSIENT`
     7. Default → :attr:`~TransportOutcome.OK`
     """
+    # Explicit upstream policy blocks take precedence over wrapper status and
+    # friendly fallback text. Never infer a policy block from session history.
+    if response.startswith("[PROVIDER_BLOCKED]") or (
+        response.startswith("[HTTP ") and response.endswith(" [PROVIDER_BLOCKED]")
+    ) or is_provider_blocked(response):
+        return TransportOutcome.HTTP_4XX
     # --- Sentinel-prefix responses from TargetAppClient ---
     if response.startswith("[HTTP 429"):
         return TransportOutcome.RATE_LIMIT
@@ -168,6 +175,24 @@ def classify_transport(response: str) -> TransportOutcome:
         return TransportOutcome.APP_TRANSIENT
 
     return TransportOutcome.OK
+
+
+def is_provider_blocked(response: str) -> bool:
+    """Detect explicit policy codes in structured errors without matching chat prose."""
+    try:
+        data = json.loads(response)
+    except (ValueError, TypeError):
+        return False
+    codes = {"content_filter", "responsibleaipolicyviolation", "llm_content_filter", "content_policy_violation"}
+
+    def blocked(value: object) -> bool:
+        if isinstance(value, dict):
+            if any(str(value.get(key, "")).lower() in codes for key in ("code", "type", "error_type")):
+                return True
+            return any(blocked(value.get(key)) for key in ("error", "innererror", "detail"))
+        return isinstance(value, str) and value.lower() in codes
+
+    return isinstance(data, dict) and blocked(data)
 
 
 def _is_json_transient(data: dict) -> bool:

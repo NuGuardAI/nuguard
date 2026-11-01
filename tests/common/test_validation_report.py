@@ -12,8 +12,8 @@ from nuguard.output.validation_report import (
     render_behavior_coverage_evidence,
     render_scenario_details_section,
     render_validation_summary_bullets,
+    scenario_status_from_score,
 )
-
 
 # ---------------------------------------------------------------------------
 # Minimal stubs
@@ -58,6 +58,12 @@ class _BehaviorCoverage:
     exercised_within_policy: bool = False
     exercised_against_policy: bool = False
     deviations: list[dict] = field(default_factory=list)
+    scenario_outcome: str | None = None
+    endpoint_operational: bool | None = None
+    first_exercised_scenario: str | None = None
+    first_exercised_turn: int | None = None
+    first_exercised_request: str | None = None
+    first_exercised_response: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +115,22 @@ def test_extract_redteam_http_step_request_format():
                         had_finding=False, steps=steps)
     details = extract_redteam_scenario_details([r])
     assert details[0].turns[0].request == "GET /api/data → HTTP 200"
+
+
+# ---------------------------------------------------------------------------
+# scenario_status_from_score — single source of truth shared by
+# extract_behavior_scenario_details (issue #562) and behavior/runner.py's
+# per-component coverage outcome.
+# ---------------------------------------------------------------------------
+
+
+def test_scenario_status_from_score_boundaries():
+    assert scenario_status_from_score(3.5) == "PASS"
+    assert scenario_status_from_score(5.0) == "PASS"
+    assert scenario_status_from_score(3.49) == "PARTIAL"
+    assert scenario_status_from_score(2.0) == "PARTIAL"
+    assert scenario_status_from_score(1.99) == "FAIL"
+    assert scenario_status_from_score(0.0) == "FAIL"
 
 
 # ---------------------------------------------------------------------------
@@ -242,19 +264,18 @@ def test_render_scenario_details_truncates_long_text():
 
 
 def test_render_behavior_coverage_evidence_exercised_component():
-    verdicts = [{
-        "turn": 1,
-        "prompt": "Book a flight",
-        "response": "Using booking_agent…",
-        "verdict": "PASS",
-        "agents_mentioned": ["booking_agent"],
-        "tools_mentioned": [],
-    }]
+    # Issue #562: evidence is now read directly off BehaviorCoverage.first_exercised_*
+    # (populated once, by _build_coverage_map's own resolution), not re-derived here
+    # from agents_mentioned/tools_mentioned — so the fixture sets those fields
+    # directly, the way the real pipeline would.
     sr = _ScenarioResult(scenario_id="1", scenario_name="booking_test",
-                         scenario_type="agent_coverage", verdicts=verdicts,
-                         matched_topic="flight booking")
-    cov = _BehaviorCoverage(component_name="booking_agent", node_type="AGENT",
-                             exercised=True, exercised_within_policy=True)
+                         scenario_type="agent_coverage", matched_topic="flight booking")
+    cov = _BehaviorCoverage(
+        component_name="booking_agent", node_type="AGENT",
+        exercised=True, exercised_within_policy=True, scenario_outcome="PASS",
+        first_exercised_scenario="booking_test", first_exercised_turn=1,
+        first_exercised_request="Book a flight", first_exercised_response="Using booking_agent…",
+    )
     lines: list[str] = []
     render_behavior_coverage_evidence(lines, [cov], [sr])
     joined = "\n".join(lines)
@@ -263,6 +284,7 @@ def test_render_behavior_coverage_evidence_exercised_component():
     assert "Within policy" in joined
     assert "booking_test" in joined
     assert "#### Evidence: booking_agent" in joined
+    assert "PASS" in joined
 
 
 def test_render_behavior_coverage_evidence_not_exercised_is_skipped():
@@ -274,6 +296,63 @@ def test_render_behavior_coverage_evidence_not_exercised_is_skipped():
     render_behavior_coverage_evidence(lines, [cov], [sr])
     joined = "\n".join(lines)
     assert "payment_tool" not in joined
+
+
+def test_render_behavior_coverage_evidence_endpoint_cites_real_evidence():
+    # Issue #562 (bullet 4): an API_ENDPOINT row previously could never appear in
+    # component_first (built only from agents_mentioned/tools_mentioned), so it
+    # always fell through to the literal string "exercised" as its own "evidence".
+    # With first_exercised_* populated by _build_coverage_map, the endpoint row
+    # must now cite a real scenario/turn, exactly like AGENT/TOOL rows do.
+    sr = _ScenarioResult(scenario_id="1", scenario_name="endpoint_coverage__api_orders",
+                         scenario_type="endpoint_coverage")
+    cov = _BehaviorCoverage(
+        component_name="/api/orders", node_type="API_ENDPOINT",
+        exercised=True, exercised_within_policy=True, scenario_outcome="PASS",
+        endpoint_operational=True,
+        first_exercised_scenario="endpoint_coverage__api_orders", first_exercised_turn=1,
+        first_exercised_request="What orders do I have?", first_exercised_response="You have 3 orders.",
+    )
+    lines: list[str] = []
+    render_behavior_coverage_evidence(lines, [cov], [sr])
+    joined = "\n".join(lines)
+    assert '| /api/orders | API_ENDPOINT | Within policy | PASS | Live |' in joined
+    assert 'Scenario: "endpoint_coverage__api_orders" → turn 1' in joined
+    # The old bug's fallback ("| ... | exercised |") must not appear for this row.
+    assert "| /api/orders | API_ENDPOINT | Within policy | PASS | Live | exercised |" not in joined
+    assert "#### Evidence: /api/orders" in joined
+    assert "What orders do I have?" in joined
+
+
+def test_render_behavior_coverage_evidence_endpoint_unverified_liveness_not_coerced():
+    # A None operational value (never probed, or a mutating endpoint by design)
+    # must render as "not verified" — never coerced toward Live or Dead, and
+    # never inferred from scenario_outcome.
+    sr = _ScenarioResult(scenario_id="1", scenario_name="s", scenario_type="endpoint_coverage")
+    cov = _BehaviorCoverage(
+        component_name="/api/checkout", node_type="API_ENDPOINT",
+        exercised=True, exercised_within_policy=True, scenario_outcome="FAIL",
+        endpoint_operational=None,
+    )
+    lines: list[str] = []
+    render_behavior_coverage_evidence(lines, [cov], [sr])
+    joined = "\n".join(lines)
+    assert "| /api/checkout | API_ENDPOINT | Within policy | FAIL | not verified |" in joined
+
+
+def test_render_behavior_coverage_evidence_no_first_exercised_falls_back_gracefully():
+    # A component marked exercised without first_exercised_* populated (e.g. a
+    # GUARDRAIL_PROBE row, out of scope for issue #562) must not crash and must
+    # not appear in the Evidence excerpts section.
+    sr = _ScenarioResult(scenario_id="1", scenario_name="s", scenario_type="guardrail_probe")
+    cov = _BehaviorCoverage(component_name="pii_guard", node_type="GUARDRAIL",
+                             exercised=True, exercised_within_policy=True)
+    lines: list[str] = []
+    render_behavior_coverage_evidence(lines, [cov], [sr])
+    joined = "\n".join(lines)
+    assert "pii_guard" in joined
+    assert "no turn recorded" in joined
+    assert "#### Evidence: pii_guard" not in joined
 
 
 # ---------------------------------------------------------------------------

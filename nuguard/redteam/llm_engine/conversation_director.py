@@ -128,6 +128,7 @@ def _select_tactic(
     consecutive_stalled: int,
     last_failure_type: str,
     goal_type: str = "",
+    setup_done: bool = False,
 ) -> str:
     """Return the tactic label for this turn.
 
@@ -144,7 +145,15 @@ def _select_tactic(
 
     Turn 1 is *always* a domain-specific happy-path message regardless of stall
     state, because there is no history to stall on.
+
+    ``setup_done`` (campaign mode): the conversation branch is already warm — a
+    benign baseline turn ran on it — so the happy-path/rapport openers are
+    skipped and a non-stalled conversation starts at ``bridge``.
     """
+    if setup_done and turn_number <= 2:
+        if consecutive_stalled < 2:
+            return "bridge"
+        turn_number = 3  # stalled on a warm branch: straight to stall recovery
     if turn_number <= 1:
         return "happy_path"
     if consecutive_stalled >= 4:
@@ -211,7 +220,9 @@ class ConversationDirector:
         allowed_topics: list[str] | None = None,
         variation_idx: int = 0,
         stall_abort_threshold: int | None = None,
+        setup_done: bool = False,
     ) -> None:
+        self._setup_done = setup_done
         self._llm = llm
         self._eval_llm = eval_llm
         self._goal_type = goal_type
@@ -344,6 +355,7 @@ class ConversationDirector:
                 consecutive_stalled=consecutive_stalled,
                 last_failure_type=last_failure,
                 goal_type=self._goal_type.value,
+                setup_done=self._setup_done,
             )
         milestone_str = (
             milestones[current_milestone_idx]

@@ -29,6 +29,9 @@ API_ENDPOINT nodes
     ``path_params``          — Extracted path parameter names from the URL.
     ``auth_required``        — False when no AUTH node has a PROTECTS edge to
                                this endpoint (if not already set by an adapter).
+    ``identity_role`` / ``identity_binding`` / ``mutation_semantics`` /
+    ``object_id_semantics`` / ``session_cookie_semantics`` — see
+                               :mod:`nuguard.sbom.http_semantics`.
 """
 
 from __future__ import annotations
@@ -37,6 +40,8 @@ import re
 from collections.abc import Callable
 from uuid import UUID
 
+from .deployment_topology import apply_deployment_topology
+from .http_semantics import apply_http_semantics
 from .models import AiSbomDocument, InstrumentationDetail, Node, NodeMetadata, TestingDetail
 from .types import ComponentType, RelationshipType
 
@@ -193,6 +198,8 @@ def enrich(doc: AiSbomDocument) -> None:
             post_endpoints_by_path.setdefault(ep, n)
 
     _enrich_api_endpoints(doc, targets, sources_of_type, post_endpoints_by_path)
+    apply_http_semantics(doc)
+    apply_deployment_topology(doc)
     _enrich_tools(doc, tool_frameworks, framework_auth, privilege_node_ids, targets)
     _enrich_agents(doc, targets, sources_of_type, node_by_id)
     _enrich_login_token_key(doc)

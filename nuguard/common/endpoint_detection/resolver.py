@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Callable, cast
 
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.endpoint_detection.browser import detect_with_browser
 from nuguard.common.endpoint_detection.constants import (
     DEFAULT_PAYLOAD_KEY,
     DEFAULT_PAYLOAD_LIST,
     DEFAULT_PROBE_TIMEOUT_SECONDS,
+    HAS_PATH_PARAM_RE,
     UNSET,
 )
 from nuguard.common.endpoint_detection.live_probe import ProbeResult, probe_endpoint
@@ -18,6 +20,7 @@ from nuguard.common.endpoint_detection.models import (
     ResolvedEndpoint,
 )
 from nuguard.common.endpoint_detection.payload import (
+    _sbom_payload_contract,
     detect_payload_shape,
     payload_shape_from_probe_result,
 )
@@ -38,7 +41,11 @@ async def resolve_chat_endpoint(
     probe_payload_extras: dict[str, object] | None = None,
     llm: Any = None,
     enable_browser_fallback: bool = False,
+    browser_auth_config: Any = None,
     probe_result_callback: Callable[[ProbeResult], None] | None = None,
+    allow_live_probe: bool = True,
+    browser_discovery: "BrowserDiscoveryConfig | None" = None,
+    session_bootstrap: bool = True,
 ) -> ResolvedEndpoint:
     """Resolve an endpoint and only the payload fields that are missing.
 
@@ -51,8 +58,22 @@ async def resolve_chat_endpoint(
 
     ``UNSET`` is required for omitted fields because ``"message"`` and
     ``False`` are both valid explicit configuration values.
+
+    ``allow_live_probe=False`` restricts resolution to config + SBOM (zero
+    network I/O). Callers pass it when live probing would be meaningless yet,
+    e.g. the target needs a login step that hasn't run (see
+    :func:`~nuguard.common.endpoint_detection.context.auth_requires_login`);
+    the authenticated pre-flight check validates and rotates the endpoint later.
     """
     notes: list[str] = []
+    # Filled by live probes when they auto-acquire a cookie/CSRF session; later
+    # probes in this resolution reuse it via _headers().
+    session_sink: dict[str, str] = {}
+
+    def _headers() -> dict[str, str] | None:
+        merged = {**(auth_headers or {}), **session_sink}
+        return merged or None
+
     endpoint_is_explicit = endpoint is not UNSET and bool(endpoint)
     resolved_path = str(endpoint) if endpoint_is_explicit else None
     path_source = EndpointSource.CONFIG if endpoint_is_explicit else EndpointSource.UNKNOWN
@@ -106,12 +127,16 @@ async def resolve_chat_endpoint(
     # Works without an SBOM too (issue #532) — probe_endpoint falls back to
     # the generic HTTP_ENDPOINT_FALLBACK_PATHS candidate list when sbom=None.
     probe_result = None
-    if resolved_path is None:
+    if resolved_path is None and not allow_live_probe:
+        notes.append("Live endpoint probing deferred until after auth bootstrap.")
+    if resolved_path is None and allow_live_probe:
         try:
             probe_result = await probe_endpoint(
                 target_url,
                 sbom,
-                auth_headers=auth_headers,
+                auth_headers=_headers(),
+                session_sink=session_sink,
+                session_bootstrap=session_bootstrap,
                 timeout=timeout,
                 known_payload_key=resolved_key if key_is_explicit else None,
                 known_payload_list=resolved_list or DEFAULT_PAYLOAD_LIST,
@@ -121,7 +146,7 @@ async def resolve_chat_endpoint(
             )
         except Exception as exc:  # noqa: BLE001 - detector must remain best effort
             notes.append(f"Live endpoint discovery failed: {exc}")
-        if probe_result is not None:
+        if probe_result is not None and probe_result.confirmed:
             if probe_result_callback is not None:
                 probe_result_callback(probe_result)
             resolved_path = probe_result.path
@@ -146,11 +171,36 @@ async def resolve_chat_endpoint(
     # A configured or SBOM-selected endpoint may still need payload inference —
     # also without an SBOM (issue #532): detect_payload_shape's own live probe
     # is already sbom=None-safe.
-    if resolved_path is not None and (
-        not key_is_explicit
-        or not list_is_explicit
-        or not template_is_explicit
-        or not response_is_explicit
+    # A templated SBOM path (e.g. /conversations/:id/messages) cannot be
+    # probed literally — the placeholder always 404s and would wrongly send
+    # resolution into a blind fallback scan. When the SBOM already supplies
+    # the payload key, trust it; the pre-flight check bootstraps the path
+    # params and validates the endpoint with a real request.
+    declared_key, declared_list, declared_response = _sbom_payload_contract(sbom, resolved_path or "")
+    templated_sbom_path = bool(resolved_path and HAS_PATH_PARAM_RE.search(resolved_path) and declared_key)
+    if templated_sbom_path:
+        if not key_is_explicit:
+            resolved_key = declared_key
+        if not list_is_explicit:
+            resolved_list = declared_list
+        if not response_is_explicit:
+            resolved_response = declared_response
+        payload_source = EndpointSource.CONFIG if key_is_explicit else EndpointSource.SBOM
+        notes.append(
+            f"SBOM endpoint {resolved_path!r} has path parameters — skipping "
+            "literal payload probe; pre-flight bootstraps and validates it."
+        )
+    if (
+        allow_live_probe
+        and not templated_sbom_path
+        and not (probe_result is not None and probe_result.confirmed)
+        and resolved_path is not None
+        and (
+            not key_is_explicit
+            or not list_is_explicit
+            or not template_is_explicit
+            or not response_is_explicit
+        )
     ):
         is_websocket = sbom is not None and indicates_websocket(
             sbom,
@@ -162,6 +212,13 @@ async def resolve_chat_endpoint(
             resolved_list = False
             payload_source = EndpointSource.SBOM
         if not is_websocket and resolved_key != "__websocket__":
+            confirmed_probes: list[ProbeResult] = []
+
+            def _capture_probe(result: ProbeResult) -> None:
+                confirmed_probes.append(result)
+                if probe_result_callback is not None:
+                    probe_result_callback(result)
+
             inferred = await detect_payload_shape(
                 target_url,
                 sbom,
@@ -170,12 +227,29 @@ async def resolve_chat_endpoint(
                 payload_list=payload_list,
                 value_template=value_template,
                 response_key=response_key,
-                auth_headers=auth_headers,
+                auth_headers=_headers(),
+                session_sink=session_sink,
+                session_bootstrap=session_bootstrap,
                 timeout=timeout,
                 probe_payload_extras=probe_payload_extras,
                 llm=llm,
-                probe_result_callback=probe_result_callback,
+                probe_result_callback=_capture_probe,
             )
+            # A hinted probe only ever returns the hinted path, unless an auto-acquired
+            # web session revealed that the route lives under the session's UI mount
+            # (e.g. SBOM '/api/v1/chat' served at '/vendor/api/v1/chat'). Adopt that path.
+            if (
+                confirmed_probes
+                and confirmed_probes[-1].path != resolved_path
+                and not endpoint_is_explicit
+                and session_sink
+            ):
+                notes.append(
+                    f"Endpoint {resolved_path!r} is served under a mount prefix — "
+                    f"using {confirmed_probes[-1].path!r}."
+                )
+                resolved_path = confirmed_probes[-1].path
+                path_source = EndpointSource.PROBE
             if not key_is_explicit:
                 resolved_key = inferred.key
             if not list_is_explicit:
@@ -198,7 +272,9 @@ async def resolve_chat_endpoint(
                 fallback_probe = await probe_endpoint(
                     target_url,
                     sbom,
-                    auth_headers=auth_headers,
+                    auth_headers=_headers(),
+                    session_sink=session_sink,
+                    session_bootstrap=session_bootstrap,
                     timeout=timeout,
                     known_payload_key=resolved_key if key_is_explicit else None,
                     known_payload_list=resolved_list or DEFAULT_PAYLOAD_LIST,
@@ -206,7 +282,7 @@ async def resolve_chat_endpoint(
                     probe_payload_extras=probe_payload_extras,
                     llm=llm,
                 )
-                if fallback_probe is not None:
+                if fallback_probe is not None and fallback_probe.confirmed:
                     if probe_result_callback is not None:
                         probe_result_callback(fallback_probe)
                     resolved_path = fallback_probe.path
@@ -234,23 +310,65 @@ async def resolve_chat_endpoint(
                 else:
                     notes.append(
                         f"SBOM-derived endpoint {sbom_path_unvalidated!r} did not validate as "
-                        "chat-capable, and full endpoint probing found no alternative; "
-                        "keeping it as a last resort."
+                        "chat-capable, and full endpoint probing found no confirmed alternative."
                     )
+                    resolved_path = None
+                    path_source = EndpointSource.UNKNOWN
+                    if not key_is_explicit:
+                        resolved_key = None
+                    if not list_is_explicit:
+                        resolved_list = None
+                    if not response_is_explicit:
+                        resolved_response = None
 
-    # Browser detection is deliberately opt-in because it starts a headless browser.
-    if resolved_path is None and enable_browser_fallback:
-        browser_result = await detect_with_browser(target_url)
-        if browser_result is not None:
-            resolved_path, browser_payload = browser_result
-            path_source = EndpointSource.BROWSER
-            if not key_is_explicit:
-                resolved_key = browser_payload.key
-            if not list_is_explicit:
-                resolved_list = browser_payload.is_list
-            if not template_is_explicit:
-                resolved_template = browser_payload.value_template
-            payload_source = EndpointSource.BROWSER
+    field_unresolved = (
+        payload_source is EndpointSource.FALLBACK and not key_is_explicit
+        and not declared_key and allow_live_probe
+    )
+    # Browser detection is deliberately opt-in; a configured path may still
+    # need field evidence, but observing a different path cannot override it.
+    if (resolved_path is None or field_unresolved) and enable_browser_fallback:
+        browser_result = await detect_with_browser(
+            target_url,
+            auth_config=browser_auth_config,
+            timeout_s=max(1, min(int(timeout), 60)),
+            browser_discovery=browser_discovery,
+            discovery_notes=notes,
+        )
+        if browser_result is not None and (not endpoint_is_explicit or browser_result[0] == resolved_path):
+            observed_path, browser_payload = browser_result
+            # Verify the observed field against the selected HTTP route. A UI
+            # request alone does not establish that the server can reply.
+            observed = await probe_endpoint(
+                target_url, sbom, auth_headers=_headers(), timeout=timeout,
+                session_sink=session_sink, session_bootstrap=session_bootstrap,
+                known_payload_key=str(payload_key) if key_is_explicit else browser_payload.key,
+                known_payload_list=bool(payload_list) if list_is_explicit else bool(browser_payload.is_list),
+                known_response_key=resolved_response, probe_payload_extras=probe_payload_extras,
+                hint_path=observed_path,
+            )
+            if observed is None or not observed.confirmed:
+                notes.append("Browser-observed request did not produce a usable chat reply.")
+            else:
+                if probe_result_callback is not None:
+                    probe_result_callback(observed)
+                resolved_path = observed_path
+                if not endpoint_is_explicit:
+                    path_source = EndpointSource.BROWSER
+                if not key_is_explicit:
+                    resolved_key = browser_payload.key
+                if not list_is_explicit:
+                    resolved_list = browser_payload.is_list
+                if not template_is_explicit:
+                    resolved_template = browser_payload.value_template
+                payload_source = EndpointSource.BROWSER
+                field_unresolved = False
+
+    if field_unresolved:
+        notes.append("No message field could be validated; configure chat_payload_key or enable browser discovery.")
+        if not endpoint_is_explicit:
+            resolved_path = None
+            path_source = EndpointSource.UNKNOWN
 
     if resolved_path is None:
         notes.append("No endpoint was resolved.")
@@ -279,4 +397,5 @@ async def resolve_chat_endpoint(
         path_source=path_source,
         path_explicit=endpoint_is_explicit,
         notes=tuple(notes),
+        session_headers=dict(session_sink),
     )

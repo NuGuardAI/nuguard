@@ -40,7 +40,7 @@ def build_false_action_claim(
         title=f"False Successful Action Claim — {agent_name}",
         description=f"Agent claims to {action_hint} without any real execution trace",
         steps=steps,
-        owasp_llm_ref="LLM09", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM07:2026", owasp_asi_ref="ASI09",
     )
 
 
@@ -82,7 +82,7 @@ def build_out_of_domain_advice(
         title=f"Out-of-Domain {advice_domain.title()} Advice — {agent_name}",
         description=f"Agent provides actionable {advice_domain} advice beyond its scope",
         steps=steps,
-        owasp_llm_ref="LLM09", owasp_asi_ref="ASI07",
+        owasp_llm_ref="LLM07:2026", owasp_asi_ref="ASI09",
     )
 
 
@@ -112,7 +112,7 @@ def build_hallucinated_authority(
         title=f"Hallucinated Authority/Source — {agent_name}",
         description="Agent fabricates policy, approval, or authority to justify restricted action",
         steps=steps,
-        owasp_llm_ref="LLM09", owasp_asi_ref="ASI07",
+        owasp_llm_ref="LLM07:2026", owasp_asi_ref="ASI09",
     )
 
 
@@ -143,7 +143,7 @@ def build_resource_exhaustion(
         title=f"Resource Exhaustion — {agent_name}",
         description="Attempt to cause runaway tool calls or expensive recursive processing",
         steps=steps,
-        owasp_llm_ref="LLM10", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM06:2026", owasp_asi_ref="ASI08",
     )
 
 
@@ -200,5 +200,5 @@ def build_fraud_workflow(
         title=f"Fraudulent Refund/Chargeback — {agent_name}",
         description="Social engineering to bypass refund eligibility rules and policy controls",
         steps=steps,
-        owasp_llm_ref="LLM09", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI09",
     )

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from urllib.parse import urlparse, urlunparse
 
 import typer
@@ -17,6 +17,10 @@ from nuguard.common.logging import get_logger
 from nuguard.sbom.extractor.config import AiSbomConfig
 from nuguard.sbom.generator import SbomGenerator
 from nuguard.sbom.validator import validate_sbom
+
+if TYPE_CHECKING:
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
 _console = Console()
@@ -75,6 +79,15 @@ _OPT_CONFIG = typer.Option(
 _OPT_LLM_CONCURRENCY = typer.Option(
     None, "--llm-concurrency",
     help="Max in-flight LLM calls during SBOM enrichment (overrides nuguard.yaml sbom_generation.llm_concurrency).",
+)
+
+
+_OPT_SCAN_IMAGES = typer.Option(
+    None, "--scan-images/--no-scan-images",
+    help=(
+        "Scan pulled container images with syft to record real OS and installed packages "
+        "(needs syft on PATH and registry access). Overrides sbom_generation.scan_images."
+    ),
 )
 
 
@@ -231,6 +244,42 @@ def _inject_token(url: str, token: str) -> str:
     return urlunparse(parsed._replace(netloc=netloc))
 
 
+def _clone_and_extract(
+    *,
+    extractor: "AiSbomExtractor",
+    from_repo: str,
+    clone_url: str,
+    ref: str | None,
+    cfg_source_ref: str | None,
+    config: AiSbomConfig,
+) -> "AiSbomDocument":
+    """Clone *from_repo* and extract an SBOM.
+
+    ``clone_url`` (which may have a token embedded for private-repo auth) is
+    handed to ``extract_from_repo``, which itself detects and transparently
+    resolves GitHub subfolder URLs (``.../tree/<ref>/<subpath>`` or the bare
+    shorthand ``.../org/repo/<subpath>``) — see
+    ``nuguard.sbom.extractor.github_clone.resolve_and_clone``, the single
+    shared implementation used here and by the library entry point.
+    """
+    from nuguard.common.github_url import try_parse_github_subfolder  # noqa: PLC0415
+
+    gh = try_parse_github_subfolder(from_repo)
+    url_ref = gh.url_ref if gh is not None else None
+    effective_ref = ref if ref is not None else (url_ref or cfg_source_ref)
+
+    if ref is not None and gh is not None and gh.url_ref is not None and ref != gh.url_ref:
+        _console.print(
+            f"[yellow]Note:[/yellow] --ref {ref!r} overrides the ref embedded "
+            f"in the URL ({gh.url_ref!r})."
+        )
+
+    _console.print(f"[bold]Cloning[/bold] {from_repo} ({effective_ref or 'default branch'}) …")
+    return extractor.extract_from_repo(
+        clone_url, ref=effective_ref, config=config, source_ref=from_repo
+    )
+
+
 def _resolve_token(token: str | None) -> str | None:
     """Return the first usable token from flag → GH_TOKEN → GITHUB_TOKEN.
 
@@ -267,6 +316,7 @@ def _do_generate(
     format: str,
     config_file: Optional[Path],
     llm_concurrency: Optional[int] = None,
+    scan_images: Optional[bool] = None,
 ) -> None:
     """Core generate logic shared by the callback and the explicit subcommand."""
     # Run all pre-flight checks before touching the filesystem or network
@@ -300,8 +350,10 @@ def _do_generate(
         raise typer.Exit(code=1)
 
     # --ref flag takes precedence; fall back to ref: in nuguard.yaml; else None
-    # (git clones the repository's default branch).
-    effective_ref = ref if ref is not None else cfg.source_ref
+    # (git clones the repository's default branch); else a URL-embedded ref
+    # (``/tree/<ref>/<subpath>``) when --from-repo targets a GitHub
+    # subfolder. Precedence is resolved inside _clone_and_extract, which
+    # needs to know whether a URL-embedded ref is present before merging.
 
     # --llm flag takes precedence; fall back to sbom_generation.llm from nuguard.yaml;
     # else auto-enable when llm.api_key is configured
@@ -338,6 +390,8 @@ def _do_generate(
         "auth_schema_inference_enabled": cfg.sbom_auth_schema_inference_enabled,
         "auth_schema_inference_max_calls": cfg.sbom_auth_schema_inference_max_calls,
         "auth_schema_inference_max_cost_usd": cfg.sbom_auth_schema_inference_max_cost_usd,
+        "scan_images": scan_images if scan_images is not None else cfg.sbom_scan_images,
+        "max_image_packages": cfg.sbom_max_image_packages,
     }
     if cfg.sbom_gap_fill_max_calls is not None:
         config_kwargs["gap_fill_max_calls"] = cfg.sbom_gap_fill_max_calls
@@ -354,12 +408,16 @@ def _do_generate(
         if from_repo:
             resolved_token = _resolve_token(token)
             clone_url = _inject_token(from_repo, resolved_token) if resolved_token else from_repo
-            _console.print(f"[bold]Cloning[/bold] {from_repo} ({effective_ref or 'default branch'}) …")
             # Pass the original URL as source_ref to avoid leaking the token
             from nuguard.sbom.extractor import AiSbomExtractor  # noqa: PLC0415
             extractor = AiSbomExtractor()
-            doc = extractor.extract_from_repo(
-                clone_url, ref=effective_ref, config=config, source_ref=from_repo
+            doc = _clone_and_extract(
+                extractor=extractor,
+                from_repo=from_repo,
+                clone_url=clone_url,
+                ref=ref,
+                cfg_source_ref=cfg.source_ref,
+                config=config,
             )
         else:
             assert source is not None  # guarded by the exit above
@@ -421,6 +479,7 @@ def sbom_default(
     format: str = _OPT_FORMAT,
     config_file: Optional[Path] = _OPT_CONFIG,
     llm_concurrency: Optional[int] = _OPT_LLM_CONCURRENCY,
+    scan_images: Optional[bool] = _OPT_SCAN_IMAGES,
 ) -> None:
     """Generate an AI-SBOM (default) or run a sub-command.
 
@@ -428,7 +487,9 @@ def sbom_default(
     """
     if ctx.invoked_subcommand is not None:
         return
-    _do_generate(source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency)
+    _do_generate(
+        source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency, scan_images
+    )
 
 
 @sbom_app.command("generate")
@@ -442,9 +503,12 @@ def generate(
     format: str = _OPT_FORMAT,
     config_file: Optional[Path] = _OPT_CONFIG,
     llm_concurrency: Optional[int] = _OPT_LLM_CONCURRENCY,
+    scan_images: Optional[bool] = _OPT_SCAN_IMAGES,
 ) -> None:
     """Generate an AI-SBOM by scanning SOURCE or cloning --from-repo."""
-    _do_generate(source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency)
+    _do_generate(
+        source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency, scan_images
+    )
 
 
 @sbom_app.command("validate")

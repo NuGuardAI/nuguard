@@ -309,13 +309,20 @@ async def test_run_redteam_constructs_orchestrator_and_builds_result():
     """The orchestrator receives the policy model unwrapped from a parse result."""
     findings = [_finding("prompt_driven_threat"), _finding("data_exfiltration")]
     mock_instance = _make_mock_orchestrator(findings)
+    from nuguard.redteam.defence_regressions.models import DefenceRegressionRunSummary
+    mock_instance.defence_regression_summary = DefenceRegressionRunSummary(
+        specs_evaluated=1, variants_evaluated=2, variants_failed=1,
+    )
     sbom = MagicMock()
     policy = CognitivePolicy(allowed_topics=["Support"])
     parsed_policy = CognitivePolicyParseResult(success=True, policy=policy)
 
     with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
         mock_cls.return_value = mock_instance
-        request = RedteamRunRequest(target_url="http://target", profile="standard")
+        request = RedteamRunRequest(
+            target_url="http://target", profile="standard",
+            defence_regression_timeout=120, defence_regression_probe_timeout=20,
+        )
         result = await run_redteam(request, sbom=sbom, policy=parsed_policy)
 
     mock_cls.assert_called_once()
@@ -324,8 +331,12 @@ async def test_run_redteam_constructs_orchestrator_and_builds_result():
     assert kwargs["policy"] is policy
     assert kwargs["target_url"] == "http://target"
     assert kwargs["profile"] == "standard"
+    assert kwargs["defence_regression_timeout"] == 120
+    assert kwargs["defence_regression_probe_timeout"] == 20
 
     assert isinstance(result, RedteamRunResult)
+    assert result.defence_regression_summary.variants_failed == 1
+    assert RedteamRunResult.model_validate(result.model_dump(mode="json")) == result
     assert len(result.findings) == 2
     assert result.scenario_records == [dataclasses.asdict(mock_instance.scenario_records[0])]
     assert result.scan_outcome == "high_findings"
@@ -628,9 +639,19 @@ async def test_run_redteam_remediation_plan_empty_without_findings():
 @pytest.mark.asyncio
 async def test_run_redteam_remediation_synthesis_failure_propagates():
     """A broken remediation LLM client must fail the run loudly, not
-    silently produce a report with an empty remediation plan."""
+    silently produce a report with an empty remediation plan — and since
+    every scenario already completed, the failure surfaces as a
+    PartialRunError (checkpoint-backed, resumable) rather than a bare
+    RuntimeError, exactly like a mid-scan abort (see issue #508)."""
+    from nuguard.common.run_checkpoint import PartialRunError
+
     findings = [_finding("data_exfiltration")]
     mock_instance = _make_mock_orchestrator(findings)
+    mock_instance.build_partial_run_error = MagicMock(
+        side_effect=lambda exc, **kw: PartialRunError(
+            exc, partial_payload={"scenario_records": [], "findings": []}, checkpoint_path=None,
+        )
+    )
 
     with (
         patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls,
@@ -643,5 +664,44 @@ async def test_run_redteam_remediation_synthesis_failure_propagates():
         request = RedteamRunRequest(target_url="http://target")
         from types import SimpleNamespace
 
-        with pytest.raises(RuntimeError, match="boom"):
+        with pytest.raises(PartialRunError, match="boom") as exc_info:
             await run_redteam(request, sbom=SimpleNamespace(nodes=[], edges=[]))
+        assert isinstance(exc_info.value.cause, RuntimeError)
+        mock_instance.build_partial_run_error.assert_called_once()
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.asyncio
+async def test_cli_adapter_preserves_explicit_default_payload_fields(explicit: bool) -> None:
+    from nuguard.cli.commands.redteam import _run_orchestrator
+
+    result = RedteamRunResult(
+        findings=[], scenario_records=[], scan_outcome="no_findings",
+        token_usage=TokenUsage(), resolved_chat_path="/chat", resolved_chat_path_source="config",
+    )
+    with patch("nuguard.redteam.public_api.run_redteam", new=AsyncMock(return_value=result)) as run_mock:
+        await _run_orchestrator(
+            sbom_doc=object(), target_url="http://target", cognitive_policy=None,
+            canary_config=None, profile="ci", min_impact_score=0.0,
+            scenario_filter=None,
+            chat_payload_key="message", chat_payload_list=False,
+            chat_payload_key_explicit=explicit,
+        )
+    request = run_mock.await_args.args[0]
+    assert ("chat_payload_key" in request.model_fields_set) is explicit
+    assert ("chat_payload_list" in request.model_fields_set) is explicit
+    round_trip = RedteamRunRequest.model_validate_json(request.model_dump_json(exclude_unset=True))
+    assert ("chat_payload_key" in round_trip.model_fields_set) is explicit
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.asyncio
+async def test_public_request_preserves_payload_presence_at_runtime_boundary(explicit: bool) -> None:
+    values = {"chat_payload_key": "message", "chat_payload_list": False} if explicit else {}
+    request = RedteamRunRequest(target_url="http://target", **values)
+    with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
+        mock_cls.return_value = _make_mock_orchestrator([])
+        await run_redteam(request, sbom=MagicMock())
+    assert mock_cls.call_args.kwargs["chat_payload_key_explicit"] is explicit
+    assert mock_cls.call_args.kwargs["chat_payload_key"] == "message"
+    assert mock_cls.call_args.kwargs["chat_payload_list"] is False

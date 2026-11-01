@@ -1,6 +1,6 @@
 ---
 name: nuguard-redteam
-description: Adversarial red-team testing — prompt injection, data exfiltration, privilege escalation, MCP toxic-flow
+description: Adversarial red-team / pentest testing — prompt injection, data exfiltration, privilege escalation, MCP toxic-flow
 allowed-tools: ["Read", "Bash"]
 ---
 
@@ -62,5 +62,11 @@ Total findings by severity, which scenario families fired, which were clean.
 
 If the command times out, suggest increasing `redteam.scenario_timeout` in `nuguard.yaml`
 or using `nuguard redteam --profile ci`.
+
+### 7. Quota-exhaustion guidance
+
+If the run aborts early reporting the target's usage quota, plan limit, or credits were
+exhausted, this is not an auth failure — do not suggest fixing credentials or the endpoint.
+Tell the user to raise the target's quota or plan and re-run.
 
 Available flags: `--config PATH`, `--sbom PATH`, `--target URL`, `--policy PATH`, `--fail-on LEVEL`

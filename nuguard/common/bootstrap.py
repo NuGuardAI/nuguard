@@ -9,13 +9,29 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 import httpx
 
 from nuguard.common.auth import AuthConfig, AuthSession
-from nuguard.common.errors import TargetUnavailableError
+from nuguard.common.errors import (
+    TargetEndpointNotFoundError,
+    TargetQuotaExhaustedError,
+    TargetUnavailableError,
+)
+from nuguard.common.http import (
+    QUOTA_EXHAUSTED_PREFIX,
+    quota_exhausted_detail,
+    resolve_chat_request,
+    to_query_params,
+)
 from nuguard.common.logging import get_logger
+from nuguard.common.payload_templates import (
+    build_probe_payload,
+    contains_message_token,
+    render_payload_template,
+)
 from nuguard.common.transport import error_envelope_message, error_only_response
 from nuguard.models.health_report import CredentialCheckResult, TargetHealthReport
 
@@ -23,6 +39,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from nuguard.common.auth_recovery import BrowserAuthRecovery
+    from nuguard.common.endpoint_detection.models import ResolvedEndpoint
 
     # Deferred: nuguard.redteam.target.canary imports nuguard.common.logging,
     # which would re-enter nuguard.common.__init__ mid-import (it pulls in this
@@ -30,6 +47,7 @@ if TYPE_CHECKING:
     # CanaryConfig is only ever used as a type annotation and this module has
     # `from __future__ import annotations`.
     from nuguard.redteam.target.canary import CanaryConfig
+    from nuguard.sbom.models import AiSbomDocument
 
 logger = get_logger(__name__)
 
@@ -61,8 +79,19 @@ def _probe_payload_value(key: str, is_list: bool, text: str) -> object:
     return [text]
 
 
+def _is_quota_result(result: CredentialCheckResult) -> bool:
+    """True for a probe result classified as usage-quota exhaustion."""
+    return result.status == "target_unavailable" and result.error_detail.startswith(
+        QUOTA_EXHAUSTED_PREFIX
+    )
+
+
 def _is_event_stream(resp: httpx.Response) -> bool:
     return "text/event-stream" in resp.headers.get("content-type", "").lower()
+
+
+def _is_plain_text(resp: httpx.Response) -> bool:
+    return "text/plain" in resp.headers.get("content-type", "").lower()
 
 
 class AuthBootstrapper:
@@ -96,8 +125,22 @@ class AuthBootstrapper:
         config_path: "Path | None" = None,
         payload_key: str = "message",
         payload_list: bool = False,
+        sbom: "AiSbomDocument | None" = None,
+        endpoint_resolver: "Callable[[dict[str, str]], Awaitable[ResolvedEndpoint]] | None" = None,
+        extra_headers: dict[str, str] | None = None,
+        chat_method: str = "POST",
+        chat_payload_in: str | None = None,
     ) -> None:
         self._target_url = target_url.rstrip("/")
+        # HTTP method and payload location of the real chat turns — the health-check
+        # probe uses the same, so a GET-only chat endpoint is not probed with POST.
+        self._chat_method, self._chat_payload_in = resolve_chat_request(
+            chat_method, chat_payload_in
+        )
+        # Used to resolve a templated chat endpoint (".../:id/messages") into a
+        # concrete URL before the health-check POST — see _probe_url().
+        self._sbom = sbom
+        self._resolved_probe_paths: dict[str, str] = {}
         # Chat payload shape for the health-check probe — the same key/list the
         # scenario client will send, so bootstrap exercises the real contract.
         # Sentinel keys (__websocket__, __adk__) are protocol markers, not body
@@ -116,6 +159,8 @@ class AuthBootstrapper:
         # an HTTP POST — see resolve_target_session()'s pre-bootstrap WS detection.
         self._is_websocket = is_websocket
         self._ws_auth_message = ws_auth_message
+        self._endpoint_resolver = endpoint_resolver
+        self._extra_headers = dict(extra_headers or {})
         # Path to the loaded nuguard.yaml, when known. Passed through to
         # attempt_browser_auth_recovery() so a successful browser-login
         # recovery can be persisted back into the file (see run()); None
@@ -135,6 +180,64 @@ class AuthBootstrapper:
     @property
     def full_url(self) -> str:
         return f"{self._target_url}{self._endpoint}"
+
+    async def _probe_url(self, identity: str, request_headers: dict[str, str]) -> str:
+        """Return the concrete URL to health-check for *identity*.
+
+        A templated endpoint (``/conversations/:id/messages``) sent literally
+        exercises the wrong route (404, or a guard on a bogus id), so its path
+        params are first resolved by creating the prerequisite resources with
+        *identity*'s credentials (see
+        :func:`~nuguard.common.path_params.resolve_path_param_values`).
+        Falls back to the literal path when nothing can be resolved.
+        """
+        from nuguard.common.endpoint_detection.constants import (  # noqa: PLC0415
+            HAS_PATH_PARAM_RE,
+        )
+
+        if self._sbom is None or not HAS_PATH_PARAM_RE.search(self._endpoint):
+            return self.full_url
+        cached = self._resolved_probe_paths.get(identity)
+        if cached is not None:
+            return f"{self._target_url}{cached}"
+
+        from nuguard.common.path_params import (  # noqa: PLC0415
+            resolve_path_param_values,
+            substitute_path_params,
+        )
+
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+
+            async def _post(path: str, body: dict) -> "tuple[int, object]":
+                resp = await client.post(
+                    f"{self._target_url}{path}", json=body, headers=request_headers
+                )
+                quota_detail = quota_exhausted_detail(resp.status_code, resp.text or "")
+                if quota_detail:
+                    raise TargetQuotaExhaustedError(quota_detail, url=str(resp.url))
+                try:
+                    data: object = resp.json()
+                except ValueError:
+                    data = None
+                return resp.status_code, data
+
+            try:
+                values = await resolve_path_param_values(_post, self._sbom, self._endpoint)
+            except TargetQuotaExhaustedError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - fall back to the literal path
+                logger.debug("bootstrap: path-param resolution failed: %s", exc)
+                values = {}
+        resolved, missing = substitute_path_params(self._endpoint, values)
+        if missing:
+            logger.info(
+                "bootstrap: could not resolve path param(s) %s for %s — probing literal path",
+                missing, self._endpoint,
+            )
+            return self.full_url
+        logger.info("bootstrap: probing resolved endpoint %s (template %s)", resolved, self._endpoint)
+        self._resolved_probe_paths[identity] = resolved
+        return f"{self._target_url}{resolved}"
 
     @property
     def session(self) -> AuthSession:
@@ -169,12 +272,6 @@ class AuthBootstrapper:
         self._session = AuthSession(self._default_auth, self._target_url)
         await self._session.initialize()
 
-        report = TargetHealthReport(
-            target_url=self._target_url,
-            endpoint=self._endpoint,
-            run_id=self._run_id,
-        )
-
         # If login_flow auth was configured but token acquisition failed, the SBOM's
         # declared auth endpoint isn't usable. If this config came from a "basic"
         # username/password that we upgraded to login_flow, fall back to sending
@@ -206,6 +303,43 @@ class AuthBootstrapper:
                 self.full_url,
             )
 
+        # Use acquired login-session headers for endpoint discovery when the
+        # configured auth requires a login step. This must happen before the
+        # first chat health-check request so an unverified SBOM guess never
+        # reaches bootstrap.
+        resolver_headers = (
+            fallback_auth_config.to_headers()
+            if fallback_auth_config is not None
+            else self._session.headers()
+        )
+        if self._endpoint_resolver is not None:
+            resolver_headers = {**self._extra_headers, **resolver_headers}
+            resolved_endpoint = await self._endpoint_resolver(resolver_headers)
+            # Cookie/CSRF headers auto-acquired during discovery must also reach
+            # the health check below and every later request.
+            self._extra_headers.update(getattr(resolved_endpoint, "session_headers", None) or {})
+            if not resolved_endpoint.path:
+                raise TargetEndpointNotFoundError(
+                    "Could not discover a chat endpoint from the SBOM, HTTP probes, "
+                    "or browser fallback. Set target_endpoint explicitly or verify "
+                    "the target URL and chat UI.",
+                    url=self._target_url,
+                )
+            self._endpoint = resolved_endpoint.path
+            self._payload_key = (
+                resolved_endpoint.payload_key
+                if resolved_endpoint.payload_key and not resolved_endpoint.payload_key.startswith("__")
+                else "message"
+            )
+            self._payload_list = resolved_endpoint.payload_list
+            self._is_websocket = resolved_endpoint.payload_key == "__websocket__"
+
+        report = TargetHealthReport(
+            target_url=self._target_url,
+            endpoint=self._endpoint,
+            run_id=self._run_id,
+        )
+
         # Always check the default credential. Use the fallback headers when the
         # login flow failed; otherwise the live session headers (the acquired JWT
         # for login_flow auth, or the static headers for other auth types).
@@ -218,11 +352,7 @@ class AuthBootstrapper:
         )
         result = await self._check_one(
             identity="default",
-            headers=(
-                fallback_auth_config.to_headers()
-                if fallback_auth_config is not None
-                else self._session.headers()
-            ),
+            headers=resolver_headers,
             auth_type=probe_auth_type,
         )
 
@@ -304,6 +434,12 @@ class AuthBootstrapper:
         report.checks.append(result)
 
         # Raise immediately if the default credential cannot reach the target at all
+        if _is_quota_result(result):
+            raise TargetQuotaExhaustedError(
+                result.error_detail,
+                url=self.full_url,
+                cause=result.error_detail,
+            )
         if result.status == "target_unavailable":
             raise TargetUnavailableError(
                 f"Target unreachable at {self.full_url}: {result.error_detail}",
@@ -314,7 +450,7 @@ class AuthBootstrapper:
         # Check each tenant session_token from canary.json
         if self._canary:
             for tenant in self._canary.tenants:
-                if not tenant.session_token:
+                if not tenant.has_credentials:
                     report.checks.append(
                         CredentialCheckResult(
                             identity=tenant.tenant_id,
@@ -325,13 +461,12 @@ class AuthBootstrapper:
                         )
                     )
                     continue
-                tenant_auth = AuthConfig.from_tenant_token(tenant.session_token)
-                # Tenant credentials are always static (bearer/api_key) —
-                # no login flow needed; use AuthConfig.to_headers() directly
+                # Tenant credentials are static (bearer/api_key/header) or an
+                # acquired cookie/CSRF web session — no login flow needed.
                 tenant_result = await self._check_one(
                     identity=tenant.tenant_id,
-                    headers=tenant_auth.to_headers(),
-                    auth_type=tenant_auth.type,
+                    headers=tenant.auth_headers(),
+                    auth_type="web_session" if tenant.session_headers else AuthConfig.from_tenant_token(tenant.session_token).type,
                 )
                 report.checks.append(tenant_result)
 
@@ -379,7 +514,7 @@ class AuthBootstrapper:
         """
         result = await self._probe_once(identity, headers, auth_type)
         for attempt in range(self._startup_retries):
-            if result.status != "target_unavailable":
+            if result.status != "target_unavailable" or _is_quota_result(result):
                 break
             wait = _BACKOFF_BASE * (2 ** attempt)  # 2 s, 4 s, 8 s
             logger.info(
@@ -412,6 +547,7 @@ class AuthBootstrapper:
         request_headers = {
             "User-Agent": "nuguard-bootstrap/1.0",
             "Content-Type": "application/json",
+            **self._extra_headers,
             **headers,
         }
         # A natural greeting rather than a terse "ping" — a real chat app is far
@@ -423,21 +559,59 @@ class AuthBootstrapper:
         # can sanity-check below.
         # Extra static fields (chat_payload_extras) are merged in so apps that crash on
         # missing required fields (e.g. vehicleState) don't trip the target_unavailable check.
-        probe_body = {
-            **self._probe_payload_extras,
-            self._payload_key: _probe_payload_value(
-                self._payload_key, self._payload_list, "Hello, how can you help me?"
-            ),
-        }
+        probe_text = "Hello, how can you help me?"
+        probe_body: dict[str, object]
+        if self._chat_payload_in == "query" and contains_message_token(self._probe_payload_extras):
+            # Templated query payload: the extras ARE the query parameters.
+            rendered = render_payload_template(
+                self._probe_payload_extras,
+                message=probe_text,
+                history="[]",
+                session_id="nuguard-bootstrap",
+                conversation_id="nuguard-bootstrap",
+            )
+            probe_body = rendered if isinstance(rendered, dict) else {}
+        else:
+            probe_body = build_probe_payload(
+                self._payload_key,
+                _probe_payload_value(self._payload_key, self._payload_list, probe_text),
+                self._probe_payload_extras,
+                message=probe_text,
+            )
+        try:
+            probe_url = await self._probe_url(identity, request_headers)
+        except TargetQuotaExhaustedError as exc:
+            return CredentialCheckResult(
+                identity=identity,
+                auth_type=auth_type,
+                endpoint=self.full_url,
+                status="target_unavailable",
+                error_detail=str(exc),
+            )
         start = time.monotonic()
 
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(
-                    self.full_url,
-                    json=probe_body,
-                    headers=request_headers,
-                )
+                if self._chat_method == "POST" and self._chat_payload_in == "body":
+                    resp = await client.post(
+                        probe_url,
+                        json=probe_body,
+                        headers=request_headers,
+                    )
+                elif self._chat_payload_in == "query":
+                    resp = await client.request(
+                        self._chat_method,
+                        probe_url,
+                        params=to_query_params(probe_body),
+                        headers=request_headers,
+                    )
+                else:
+                    resp = await client.request(
+                        self._chat_method,
+                        probe_url,
+                        json=probe_body,
+                        headers=request_headers,
+                    )
             elapsed_ms = (time.monotonic() - start) * 1000
 
             if 200 <= resp.status_code < 300:
@@ -466,6 +640,10 @@ class AuthBootstrapper:
                 elif _is_event_stream(resp):
                     # SSE is not JSON by design — judge its events instead.
                     engagement_error = error_only_response(resp.text)
+                elif _is_plain_text(resp):
+                    # A plain-text reply (e.g. a controller returning a String) is a
+                    # valid chat reply, not a malformed JSON body.
+                    pass
                 else:
                     try:
                         parsed = resp.json()
@@ -495,6 +673,25 @@ class AuthBootstrapper:
                     response_text=resp.text[:500] if resp.text else "",
                     body_warning=body_warning,
                     engagement_error=engagement_error,
+                )
+
+            quota_detail = quota_exhausted_detail(resp.status_code, resp.text or "")
+            if quota_detail:
+                # A quota/plan-limit rejection (often reusing 403) is not a
+                # credential problem — don't report auth_failed or attempt
+                # browser-login recovery; the account's quota must be raised.
+                logger.warning(
+                    "bootstrap quota_exhausted: identity=%s status=%d", identity, resp.status_code
+                )
+                return CredentialCheckResult(
+                    identity=identity,
+                    auth_type=auth_type,
+                    endpoint=self.full_url,
+                    status="target_unavailable",
+                    http_status_code=resp.status_code,
+                    response_time_ms=elapsed_ms,
+                    error_detail=quota_detail,
+                    response_text=resp.text[:500] if resp.text else "",
                 )
 
             if resp.status_code in (401, 403):
@@ -670,7 +867,7 @@ class AuthBootstrapper:
 
         from nuguard.redteam.target.ws_client import to_ws_url  # noqa: PLC0415
 
-        request_headers = {"User-Agent": "nuguard-bootstrap/1.0", **headers}
+        request_headers = {"User-Agent": "nuguard-bootstrap/1.0", **self._extra_headers, **headers}
         ws_url = to_ws_url(self._target_url) + self._endpoint
         start = time.monotonic()
         try:

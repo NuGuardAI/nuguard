@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nuguard.common.endpoint_scenario_gate import should_skip_direct_http_scenario
 from nuguard.common.logging import get_logger
@@ -12,6 +12,8 @@ from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, Sc
 from nuguard.models.policy import CognitivePolicy
 from nuguard.sbom.models import AiSbomDocument, Node
 from nuguard.sbom.types import ComponentType, RelationshipType
+
+from ._chain_factory import apply_secondary_credential, is_credentialed_mutation_step
 
 if TYPE_CHECKING:
     from nuguard.redteam.target.canary import CanaryConfig
@@ -67,6 +69,7 @@ from .data_exfiltration import (
     build_rag_poisoning,
     build_ssn_enumeration,
 )
+from .endpoint_selector import PROBE_FAMILIES, EndpointPlan
 from .evasion import build_encoding_evasion, build_multi_language_bypass
 from .faux_reasoning import (
     build_approval_state_forgery,
@@ -115,7 +118,12 @@ from .session_metadata import (
     build_policy_version_claim,
     build_role_claim_forgery,
 )
-from .tool_abuse import build_direct_datastore_probe, build_sql_injection, build_ssrf
+from .tool_abuse import (
+    build_direct_datastore_probe,
+    build_foot_in_the_door_exec,
+    build_sql_injection,
+    build_ssrf,
+)
 
 _log = get_logger(__name__)
 
@@ -359,6 +367,42 @@ def _tool_risk_group(tool_name: str, description: str) -> tuple[str, bool]:
     return (_TOOL_GROUP_OTHER, False)
 
 
+
+_EXEC_TOOL_RE = re.compile(
+    r"(?:^|[_\-\s.])(?:execute|exec|run)[_\-\s]?(?:script|shell|command|cmd|code)|shell|subprocess",
+    re.IGNORECASE,
+)
+
+
+def _is_exec_tool(node: Any) -> bool:
+    """True for a TOOL node that executes scripts/commands (by privilege scope or name)."""
+    if getattr(node.metadata, "privilege_scope", None) == "code_execution":
+        return True
+    return bool(_EXEC_TOOL_RE.search(node.name or ""))
+
+
+def _drop_tool_shadow_agents(nodes: list) -> list:
+    """Drop AGENT nodes that merely duplicate a TOOL node by name.
+
+    LLM-enriched SBOMs can emit the same function (e.g. ``findrive__delete_file``)
+    as both a TOOL and an AGENT. Every shadow AGENT would otherwise receive its
+    own full agent-scoped scenario set (guided leaks, flooding, PII probes),
+    multiplying near-identical scenarios. The TOOL node keeps its tool scenarios.
+    """
+    tool_names = {
+        n.name.strip().lower() for n in nodes if n.component_type == ComponentType.TOOL
+    }
+    kept = [
+        n
+        for n in nodes
+        if not (n.component_type == ComponentType.AGENT and n.name.strip().lower() in tool_names)
+    ]
+    dropped = len(nodes) - len(kept)
+    if dropped:
+        _log.info("Scenario generation: ignored %d AGENT node(s) that shadow a TOOL node", dropped)
+    return kept
+
+
 class ScenarioGenerator:
     """Generates attack scenarios from an SBOM document and cognitive policy."""
 
@@ -367,10 +411,16 @@ class ScenarioGenerator:
         sbom: AiSbomDocument,
         policy: CognitivePolicy | None = None,
         canary_config: "CanaryConfig | None" = None,
+        endpoint_plan: "EndpointPlan | None" = None,
+        universal_safety_probes: bool = True,
     ) -> None:
+        self._universal_safety_probes = universal_safety_probes
+        # Optional relevance plan narrowing which API endpoints each direct-HTTP
+        # probe family is generated for (see endpoint_selector.build_endpoint_plan).
+        self._endpoint_plan = endpoint_plan
         # Build one non-mutating effective view for every red-team consumer.
         # Soft-rejected nodes remain in the original SBOM for recall and audit.
-        effective_nodes = list(iter_effective_nodes(sbom.nodes))
+        effective_nodes = _drop_tool_shadow_agents(list(iter_effective_nodes(sbom.nodes)))
         if len(effective_nodes) == len(sbom.nodes):
             self._sbom = sbom
         else:
@@ -402,6 +452,25 @@ class ScenarioGenerator:
         self._real_tenant_id = ""
         if canary_config is not None and len(getattr(canary_config, "tenants", []) or []) >= 2:
             self._real_tenant_id = canary_config.tenants[1].tenant_id
+        # Disposable auth headers for the first canary tenant with a session_token
+        # — used to route write-capable direct-HTTP attacks (mass assignment,
+        # price tampering, ...) through an expendable identity instead of the
+        # run's own primary credentials. See apply_secondary_credential() in
+        # _chain_factory.py and issue #561.
+        self._canary_auth_headers: dict[str, str] | None = None
+        if canary_config is not None:
+            from nuguard.redteam.target.canary import CanaryTenant
+
+            for tenant in getattr(canary_config, "tenants", []) or []:
+                if not isinstance(tenant, CanaryTenant):
+                    # Duck-typed tenant (token only): normalise to the real model.
+                    tenant = CanaryTenant(
+                        tenant_id=str(getattr(tenant, "tenant_id", "")),
+                        session_token=getattr(tenant, "session_token", ""),
+                    )
+                if tenant.has_credentials:
+                    self._canary_auth_headers = tenant.auth_headers()
+                    break
         self._node_by_id = {str(node.id): node for node in self._sbom.nodes}
 
         # Build edge indexes only from edges whose endpoints are effective.
@@ -436,6 +505,51 @@ class ScenarioGenerator:
         # surfaced so a report reader knows why no direct-HTTP scenarios were
         # generated for that node, instead of silently seeing nothing.
         self.skipped_endpoint_notes: list[str] = []
+        # Recorded once (not per-endpoint) the first time a write-capable
+        # direct-HTTP scenario is generated with no canary credential
+        # configured to route it through — see apply_secondary_credential().
+        self.credential_fallback_notes: list[str] = []
+
+    @property
+    def effective_nodes(self) -> list:
+        """Nodes scenarios are generated from (soft-rejected and tool-shadow agents removed)."""
+        return list(self._sbom.nodes)
+
+    _CREDENTIAL_FALLBACK_NOTE = (
+        "No redteam.canary tenant with a session_token is configured — "
+        "destructive/write-capable direct-HTTP scenarios (mass assignment, "
+        "price tampering, ...) run under the run's own primary credentials "
+        "instead of a disposable canary identity."
+    )
+
+    def _note_credential_fallback_if_needed(self, scenarios: list[AttackScenario]) -> None:
+        """Record ``_CREDENTIAL_FALLBACK_NOTE`` once when no canary is configured
+        and at least one of *scenarios* has a credentialed-mutation step."""
+        if self._canary_auth_headers is not None or self.credential_fallback_notes:
+            return
+        if any(
+            sc.chain is not None
+            and any(is_credentialed_mutation_step(step) for step in sc.chain.steps)
+            for sc in scenarios
+        ):
+            self.credential_fallback_notes.append(self._CREDENTIAL_FALLBACK_NOTE)
+
+    def _secure_write_scenario(self, scenario: AttackScenario | None) -> AttackScenario | None:
+        """Route *scenario*'s write-capable steps through the canary credential.
+
+        When no canary tenant is configured, the scenario is returned
+        unchanged (today's primary-credential behaviour) and, the first time
+        this actually matters (the scenario has a credentialed-mutation step
+        to swap), a note is recorded in ``credential_fallback_notes`` so the
+        fallback is surfaced in the run's report rather than being a silent
+        gap — see issue #561.
+        """
+        if scenario is None or scenario.chain is None:
+            return scenario
+        if self._canary_auth_headers is None:
+            self._note_credential_fallback_if_needed([scenario])
+            return scenario
+        return apply_secondary_credential(scenario, self._canary_auth_headers)
 
     def generate(
         self, with_guided: bool = False, progressive: bool = False
@@ -629,8 +743,10 @@ class ScenarioGenerator:
             policy=self._policy,
             with_guided=with_guided,
             catalog=catalog,
+            canary_auth_headers=self._canary_auth_headers,
         )
         self.last_coverage = coverage
+        self._note_credential_fallback_if_needed(scenarios)
         for sc in scenarios:
             sc.attack_phase = attack_phase_for(sc.scenario_type.value)
         scenarios.sort(key=lambda s: (s.attack_phase, -s.impact_score))
@@ -811,7 +927,11 @@ class ScenarioGenerator:
                 out.extend(build_restricted_topic_variants(str(node.id), topic))
         # Sexual content / violence / self-harm should be refused regardless
         # of domain — test them even when the app's own policy is silent.
-        for topic, category_id in missing_universal_topics(policy.restricted_topics):
+        for topic, category_id in (
+            missing_universal_topics(policy.restricted_topics)
+            if self._universal_safety_probes
+            else []
+        ):
             for node in target_nodes:
                 variants = build_restricted_topic_variants(str(node.id), topic)
                 for scenario in variants:
@@ -923,12 +1043,17 @@ class ScenarioGenerator:
 
             # Find agent(s) that can reach this datastore
             agent_ids = self._agents_reaching_datastore(str(node.id))
+            agent_cap = _MAX_AGENTS_PER_GOAL  # cap at 2 agents per datastore
             if not agent_ids:
+                # No graph path to this datastore: any agent is a blind guess, and
+                # the payload names only the datastore, so extra agents just
+                # produce same-titled duplicates. Probe through one.
                 agent_ids = [
                     str(n.id) for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
                 ]
+                agent_cap = 1
 
-            for agent_id in agent_ids[:_MAX_AGENTS_PER_GOAL]:  # cap at 2 agents per datastore
+            for agent_id in agent_ids[:agent_cap]:
                 chain_id = str(uuid.uuid4())
                 fields = (pii + phi + pfi)[:5]
                 field_list = ", ".join(fields)
@@ -939,8 +1064,8 @@ class ScenarioGenerator:
                     goal_type=GoalType.DATA_EXFILTRATION,
                     scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
                     sbom_path=[str(agent_id), str(node.id)],
-                    owasp_asi_ref="ASI10",
-                    owasp_llm_ref="LLM06",
+                    owasp_asi_ref="ASI02",
+                    owasp_llm_ref="LLM02:2026",
                 )
                 chain.steps = [
                     ExploitStep(
@@ -1246,8 +1371,8 @@ class ScenarioGenerator:
                         goal_type=GoalType.DATA_EXFILTRATION,
                         scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
                         sbom_path=[str(node.id)],
-                        owasp_asi_ref="ASI10",
-                        owasp_llm_ref="LLM06",
+                        owasp_asi_ref="ASI02",
+                        owasp_llm_ref="LLM02:2026",
                     )
                     chain.steps = [
                         ExploitStep(
@@ -1398,6 +1523,18 @@ class ScenarioGenerator:
                 out.append(build_sql_injection(tool_id=tool_id, tool_name=node.name))
             if meta.ssrf_possible:
                 out.append(build_ssrf(tool_id=tool_id, tool_name=node.name))
+            if _is_exec_tool(node) and not any(
+                sc.title.startswith("Foot-in-the-door") for sc in out
+            ):
+                entry_ids = self._compute_entry_agents() or [
+                    str(n.id) for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
+                ]
+                if entry_ids:
+                    out.append(
+                        build_foot_in_the_door_exec(
+                            agent_id=sorted(entry_ids)[0], tool_id=tool_id, tool_name=node.name
+                        )
+                    )
 
         # Direct datastore access — emitted when a DATASTORE node exposes a
         # connection string in its metadata (extras["connection_string"] or similar).
@@ -1779,6 +1916,10 @@ class ScenarioGenerator:
             return False
         return not cls._NON_REST_ENDPOINT_RE.search(candidate)
 
+    def _endpoint_permits(self, family: str, endpoint_id: str) -> bool:
+        """Return True when the endpoint plan allows *family* for *endpoint_id*."""
+        return self._endpoint_plan is None or self._endpoint_plan.permits(family, endpoint_id)
+
     def _api_attack_scenarios(self) -> list[AttackScenario]:
         """Generate direct HTTP attack scenarios from API_ENDPOINT SBOM nodes.
 
@@ -1849,6 +1990,11 @@ class ScenarioGenerator:
             if not path_slug or path_slug in ("generic", "none", "null"):
                 continue
 
+            # Per-family relevance gate (None plan = every family allowed)
+            ok = {f: self._endpoint_permits(f, endpoint_id) for f in PROBE_FAMILIES}
+            if not any(ok.values()):
+                continue
+
             # Determine if this endpoint is obviously public
             path_segments = set(re.split(r"[/\-_.]", path_slug))
             is_public = bool(path_segments & self._PUBLIC_PATH_HINTS)
@@ -1873,37 +2019,39 @@ class ScenarioGenerator:
 
             # Auth bypass: explicit auth_required=True, or unknown (None) and not public
             if meta.auth_required or (meta.auth_required is None and not is_public):
-                out.append(
-                    build_auth_bypass(
-                        endpoint_id=endpoint_id,
-                        endpoint_name=node.name,
-                        path=path,
-                        method=method,
-                        request_body_schema=request_body_schema,
-                        sensitive_fields=endpoint_sensitive_fields,
+                if ok["auth_bypass"]:
+                    out.append(
+                        build_auth_bypass(
+                            endpoint_id=endpoint_id,
+                            endpoint_name=node.name,
+                            path=path,
+                            method=method,
+                            request_body_schema=request_body_schema,
+                            sensitive_fields=endpoint_sensitive_fields,
+                        )
                     )
-                )
 
                 # JWT tampering: same population as auth bypass — a forged
                 # token accepted is a stronger, more specific claim than a
                 # plain missing-auth-check, but only meaningful where auth is
                 # actually expected to be enforced.
-                out.append(
-                    build_jwt_tampering_probe(
-                        endpoint_id=endpoint_id,
-                        endpoint_name=node.name,
-                        path=path,
-                        method=method,
-                        request_body_schema=request_body_schema,
+                if ok["jwt_tampering"]:
+                    out.append(
+                        build_jwt_tampering_probe(
+                            endpoint_id=endpoint_id,
+                            endpoint_name=node.name,
+                            path=path,
+                            method=method,
+                            request_body_schema=request_body_schema,
+                        )
                     )
-                )
 
             # Open Endpoint Data Exposure: no auth is required by design (either
             # explicitly or by public-path match), but the endpoint is declared
             # to return sensitive data — there's no auth bypass to test, just
             # whether the data is exposed to anyone who calls it.
             if meta.auth_required is False or is_public:
-                if is_sensitive:
+                if is_sensitive and ok["open_data_exposure"]:
                     out.append(
                         build_open_data_exposure(
                             endpoint_id=endpoint_id,
@@ -1914,8 +2062,8 @@ class ScenarioGenerator:
                         )
                     )
 
-            if method in ("POST", "PUT", "PATCH"):
-                out.append(
+            if method in ("POST", "PUT", "PATCH") and (ok["mass_assignment"] or ok["price_tampering"]):
+                mass_scenario = self._secure_write_scenario(
                     build_mass_assignment(
                         endpoint_id=endpoint_id,
                         endpoint_name=node.name,
@@ -1924,15 +2072,19 @@ class ScenarioGenerator:
                         request_body_schema=request_body_schema,
                     )
                 )
+                if mass_scenario is not None and ok["mass_assignment"]:
+                    out.append(mass_scenario)
 
-                price_scenario = build_price_tampering(
-                    endpoint_id=endpoint_id,
-                    endpoint_name=node.name,
-                    path=path,
-                    method=method,
-                    request_body_schema=request_body_schema,
+                price_scenario = self._secure_write_scenario(
+                    build_price_tampering(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        request_body_schema=request_body_schema,
+                    )
                 )
-                if price_scenario is not None:
+                if price_scenario is not None and ok["price_tampering"]:
                     out.append(price_scenario)
 
             # IDOR: explicit metadata flag, explicit path params, or path template pattern
@@ -1957,7 +2109,7 @@ class ScenarioGenerator:
             has_idor_params = meta.idor_surface or any(
                 p.lower() in _ID_LIKE_PARAMS for p in inferred_params
             )
-            if has_idor_params:
+            if has_idor_params and ok["idor"]:
                 scenario = build_idor(
                     endpoint_id=endpoint_id,
                     endpoint_name=node.name,
@@ -1968,54 +2120,64 @@ class ScenarioGenerator:
                 if scenario is not None:
                     out.append(scenario)
 
-            reset_scenario = build_password_reset_probe(
-                endpoint_id=endpoint_id,
-                endpoint_name=node.name,
-                path=path,
-                path_params=inferred_params,
+            reset_scenario = (
+                build_password_reset_probe(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    path_params=inferred_params,
+                )
+                if ok["password_reset"]
+                else None
             )
             if reset_scenario is not None:
                 out.append(reset_scenario)
 
             # Injection probe: fuzz path/body params with SQLi/NoSQLi payloads
             # whenever there's at least one candidate to substitute into.
-            if inferred_params or request_body_schema:
-                injection_scenario = build_injection_probe(
-                    endpoint_id=endpoint_id,
-                    endpoint_name=node.name,
-                    path=path,
-                    method=method,
-                    path_params=inferred_params,
-                    request_body_schema=request_body_schema,
-                    sensitive_fields=endpoint_sensitive_fields,
+            if (inferred_params or request_body_schema) and ok["injection"]:
+                injection_scenario = self._secure_write_scenario(
+                    build_injection_probe(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        path_params=inferred_params,
+                        request_body_schema=request_body_schema,
+                        sensitive_fields=endpoint_sensitive_fields,
+                    )
                 )
                 if injection_scenario is not None:
                     out.append(injection_scenario)
 
             # Path traversal probe: only fires when a file/path-like param
             # name is actually present (checked inside the builder).
-            if inferred_params or request_body_schema:
-                traversal_scenario = build_path_traversal_probe(
-                    endpoint_id=endpoint_id,
-                    endpoint_name=node.name,
-                    path=path,
-                    method=method,
-                    path_params=inferred_params,
-                    request_body_schema=request_body_schema,
+            if (inferred_params or request_body_schema) and ok["path_traversal"]:
+                traversal_scenario = self._secure_write_scenario(
+                    build_path_traversal_probe(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        path_params=inferred_params,
+                        request_body_schema=request_body_schema,
+                    )
                 )
                 if traversal_scenario is not None:
                     out.append(traversal_scenario)
 
             # Open redirect probe: only fires when a redirect-target-like
             # param name is actually present (checked inside the builder).
-            if inferred_params or request_body_schema:
-                redirect_scenario = build_open_redirect_probe(
-                    endpoint_id=endpoint_id,
-                    endpoint_name=node.name,
-                    path=path,
-                    method=method,
-                    path_params=inferred_params,
-                    request_body_schema=request_body_schema,
+            if (inferred_params or request_body_schema) and ok["open_redirect"]:
+                redirect_scenario = self._secure_write_scenario(
+                    build_open_redirect_probe(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        path_params=inferred_params,
+                        request_body_schema=request_body_schema,
+                    )
                 )
                 if redirect_scenario is not None:
                     out.append(redirect_scenario)
@@ -2024,14 +2186,16 @@ class ScenarioGenerator:
             # parameter to probe (matches build_injection_probe's gate —
             # unlike path-traversal/redirect, XSS reflection isn't limited
             # to parameters with a suggestive name).
-            if inferred_params or request_body_schema:
-                xss_scenario = build_reflected_xss_probe(
-                    endpoint_id=endpoint_id,
-                    endpoint_name=node.name,
-                    path=path,
-                    method=method,
-                    path_params=inferred_params,
-                    request_body_schema=request_body_schema,
+            if (inferred_params or request_body_schema) and ok["xss"]:
+                xss_scenario = self._secure_write_scenario(
+                    build_reflected_xss_probe(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        path_params=inferred_params,
+                        request_body_schema=request_body_schema,
+                    )
                 )
                 if xss_scenario is not None:
                     out.append(xss_scenario)
@@ -2039,8 +2203,8 @@ class ScenarioGenerator:
             # BFLA/Scope bypass: when auth_scope or auth_detail metadata is present
             auth_scope = getattr(meta, "auth_scope", None)
             auth_detail = getattr(meta, "auth_detail", None)
-            if auth_scope or auth_detail:
-                out.append(
+            if (auth_scope or auth_detail) and ok["auth_scope"]:
+                scope_scenario = self._secure_write_scenario(
                     build_auth_scope_bypass(
                         endpoint_id=endpoint_id,
                         endpoint_name=node.name,
@@ -2051,6 +2215,8 @@ class ScenarioGenerator:
                         request_body_schema=request_body_schema,
                     )
                 )
+                if scope_scenario is not None:
+                    out.append(scope_scenario)
 
             # Rate-limit probe: fire on endpoints WITHOUT a confirmed
             # rate-limit posture — the same population NGA-026 (static) flags
@@ -2062,8 +2228,8 @@ class ScenarioGenerator:
             # `rate_limited` is never set at all, so the probe never fired.
             # Probing the unconfirmed population lets a real 429 upgrade the
             # static finding to a false positive, and a clean burst confirm it.
-            if not getattr(meta, "rate_limited", False):
-                out.append(
+            if not getattr(meta, "rate_limited", False) and ok["rate_limit"]:
+                rate_scenario = self._secure_write_scenario(
                     build_rate_limit_probe(
                         endpoint_id=endpoint_id,
                         endpoint_name=node.name,
@@ -2072,6 +2238,8 @@ class ScenarioGenerator:
                         request_body_schema=request_body_schema,
                     )
                 )
+                if rate_scenario is not None:
+                    out.append(rate_scenario)
 
         return out
 

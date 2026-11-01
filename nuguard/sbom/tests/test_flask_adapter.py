@@ -214,3 +214,52 @@ class TestSecurityMisconfigDetection:
         )
         eps = _endpoints(_extract(code))
         assert "security_headers_detail" not in eps[0].metadata
+
+
+class TestHttpRequestMetadata:
+    def test_emits_every_declared_method_and_visible_inputs(self) -> None:
+        code = """
+from flask import Flask, request
+app = Flask(__name__)
+
+@app.route("/items/<int:item_id>", methods=["GET", "POST"])
+def item(item_id):
+    q = request.args.get("q")
+    name = request.form["name"]
+    upload = request.files.get("doc")
+    token = request.headers.get("X-Token")
+    data = request.get_json()
+    return data.get("message")
+"""
+        endpoint = _endpoints(_extract(code))[0]
+        http_request = endpoint.metadata["http_request"]
+        params = {(p["name"], p["location"]) for p in http_request["parameters"]}
+
+        assert endpoint.metadata["method"] == "GET"
+        assert http_request["methods"] == ["GET", "POST"]
+        assert params == {
+            ("item_id", "path"),
+            ("q", "query"),
+            ("name", "form"),
+            ("doc", "multipart"),
+            ("X-Token", "header"),
+            ("message", "json"),
+        }
+        assert http_request["content_types"] == [
+            "application/json",
+            "application/x-www-form-urlencoded",
+            "multipart/form-data",
+        ]
+
+    def test_default_method_is_get(self) -> None:
+        code = """
+from flask import Flask
+app = Flask(__name__)
+
+@app.route("/health")
+def health():
+    return "ok"
+"""
+        http_request = _endpoints(_extract(code))[0].metadata["http_request"]
+        assert http_request["methods"] == ["GET"]
+        assert http_request["parameters"] == []

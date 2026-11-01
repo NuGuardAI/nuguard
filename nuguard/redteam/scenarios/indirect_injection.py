@@ -47,7 +47,7 @@ def build_indirect_web_injection(
         title=f"Indirect Injection via Web Content — {agent_name}",
         description="Poisoned webpage instructs agent while user requested a summary",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026, LLM05:2026", owasp_asi_ref="ASI01",
     )
 
 
@@ -78,7 +78,7 @@ def build_indirect_search_injection(
         title=f"Indirect Injection via Search Result — {agent_name}",
         description="Poisoned search result snippet contains injection that agent follows",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026, LLM05:2026", owasp_asi_ref="ASI01",
     )
 
 
@@ -114,7 +114,7 @@ def build_indirect_email_injection(
         title=f"Indirect Injection via Email — {agent_name}",
         description="Poisoned email message contains hidden instruction that agent follows",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026, LLM05:2026", owasp_asi_ref="ASI01",
     )
 
 
@@ -150,5 +150,5 @@ def build_indirect_tool_output_injection(
         title=f"Indirect Injection via Tool Output — {agent_name}",
         description="Tool output includes SYSTEM instruction that agent executes as a directive",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026, LLM05:2026", owasp_asi_ref="ASI01",
     )

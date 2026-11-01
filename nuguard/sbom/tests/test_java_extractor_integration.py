@@ -51,3 +51,38 @@ class ChatController {
 
 def test_java_is_in_default_source_extensions() -> None:
     assert ".java" in AiSbomConfig().include_extensions
+
+
+def test_java_http_request_metadata_is_promoted_to_typed_node_metadata(tmp_path: Path) -> None:
+    source_path = tmp_path / "src/main/java/demo/ItemController.java"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        """package demo;
+import org.springframework.web.bind.annotation.*;
+@RestController
+class ItemController {
+  @GetMapping("/items/{id}")
+  String item(@PathVariable("id") String id, @RequestParam(value = "q", required = false) String q) {
+    return id + q;
+  }
+}
+""",
+        encoding="utf-8",
+    )
+
+    document = AiSbomExtractor().extract_from_path(tmp_path, AiSbomConfig(enable_llm=False))
+    endpoint = next(
+        node
+        for node in document.nodes
+        if node.component_type == ComponentType.API_ENDPOINT
+        and node.metadata.endpoint == "/items/{id}"
+    )
+
+    http_request = endpoint.metadata.http_request
+    assert http_request is not None
+    assert http_request.methods == ["GET"]
+    assert {(p.name, p.location) for p in http_request.parameters} == {
+        ("id", "path"),
+        ("q", "query"),
+    }
+    assert "http_request" not in endpoint.metadata.extras

@@ -30,6 +30,12 @@ class RelationshipType(str, Enum):
     DEPLOYS = "DEPLOYS"
     DELEGATES_TO = "DELEGATES_TO"
     CONTAINS = "CONTAINS"  # config CONTAINS permission/script; workflow CONTAINS action ref
+    RUNS = "RUNS"  # workload RUNS container image
+    BUILT_FROM = "BUILT_FROM"  # app image BUILT_FROM base image
+    HOSTS = "HOSTS"  # workload HOSTS code component (agent/endpoint/MCP server/tool)
+    EXPOSES = "EXPOSES"  # publicly reachable workload EXPOSES endpoint
+    ROUTES_TO = "ROUTES_TO"  # gateway/ingress ROUTES_TO backend workload
+    DEPENDS_ON = "DEPENDS_ON"  # workload DEPENDS_ON workload
 
 
 class AccessType(str, Enum):

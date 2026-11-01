@@ -82,7 +82,7 @@ def build_approval_summary_mismatch(
         ),
         steps,
         owasp_asi_ref="ASI09",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM03:2026",
     )
 
 
@@ -153,7 +153,7 @@ def build_consent_laundering(
         ),
         steps,
         owasp_asi_ref="ASI09",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM03:2026",
     )
 
 
@@ -217,7 +217,7 @@ def build_authority_bias_phishing(
         ),
         steps,
         owasp_asi_ref="ASI09",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM03:2026",
     )
 
 
@@ -291,7 +291,7 @@ def build_partial_approval_overreach(
         ),
         steps,
         owasp_asi_ref="ASI09",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM03:2026",
     )
 
 
@@ -359,5 +359,5 @@ def build_hidden_action_payload(
         ),
         steps,
         owasp_asi_ref="ASI09",
-        owasp_llm_ref="LLM06",
+        owasp_llm_ref="LLM03:2026",
     )

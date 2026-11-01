@@ -104,6 +104,18 @@ class TargetUnavailableError(NuGuardError):
         self.source = source
 
 
+class TargetQuotaExhaustedError(TargetUnavailableError):
+    """Raised when the target rejects requests because a usage quota is exhausted.
+
+    Apps often signal this with 403 (or 402/429) and a message such as
+    "You've reached your free plan limit". The credentials are valid, so this
+    is distinct from :class:`AuthError`: re-authenticating or browser-login
+    recovery cannot help — the test account's plan/quota must be raised.
+    Subclasses :class:`TargetUnavailableError` so existing "target down"
+    handling (abort the run, don't hammer the target) still applies.
+    """
+
+
 class TargetEndpointNotFoundError(NuGuardError):
     """Raised when the configured/resolved chat endpoint returns 404 or 405.
 

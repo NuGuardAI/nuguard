@@ -32,6 +32,8 @@ jobs:
             report_dir: tests/apps/Gemini-Auto-app/reports
           - app: pinnacle-bank
             report_dir: tests/apps/pinnacle-bank-app/reports
+          - app: customer-support
+            report_dir: tests/apps/java/customer-support-agent-example/reports
 
     env:
       AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
@@ -40,25 +42,65 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.12"
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install dependencies
         run: uv sync --dev
 
+      # --- customer-support only: the target is a local Java app started inside the job ---
+      - name: Set up Java (customer-support)
+        if: matrix.app == 'customer-support'
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: tests/apps/java/customer-support-agent-example/pom.xml
+
+      - name: Start the Java target app and shim (customer-support)
+        if: matrix.app == 'customer-support'
+        run: tests/apps/java/customer-support-agent-example/scripts/serve.sh
+
       - name: Run prepublish sanity suite (${{ matrix.app }})
         run: bash tests/apps/prepublish-sanity.sh ${{ matrix.app }}
 
+      - name: Install Semgrep (customer-support)
+        if: matrix.app == 'customer-support'
+        run: |
+          uv tool install semgrep
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run analyze on the generated SBOM (customer-support)
+        if: matrix.app == 'customer-support'
+        run: |
+          set +e
+          APP=tests/apps/java/customer-support-agent-example
+          uv run nuguard analyze --sbom $APP/customer-support-agent.sbom.json --source $APP \
+            --no-grype --no-trivy --no-checkov --format markdown --output $APP/reports/analyze.md
+          rc=$?
+          echo "analyze exit code: $rc (0 = no findings, 1 = findings reported, 2 = analysis error)"
+          [ "$rc" -le 1 ]
+
+      - name: Stop the Java target app and shim (customer-support)
+        if: always() && matrix.app == 'customer-support'
+        run: tests/apps/java/customer-support-agent-example/scripts/stop.sh
+
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: nuguard-e2e-${{ github.base_ref }}-${{ matrix.app }}
           path: ${{ matrix.report_dir }}/**

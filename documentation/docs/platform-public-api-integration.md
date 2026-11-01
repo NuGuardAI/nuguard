@@ -32,6 +32,23 @@ Schema lock for platform-facing models:
 
 ## Public API module map
 
+### Collapsed chat widgets
+
+Pass `browser_discovery` on target verification/session and redteam requests, or
+`config.browser_discovery` on behavior requests. The JSON-safe configuration
+supports `chat_opener_selector`, `chat_input_selector`, `send_button_selector`, and
+`chat_ui_timeout_ms` (default 10000, range 1-60000). YAML uses shared
+`target.browser_discovery`; behavior/redteam fields override shared fields.
+
+Automatic discovery tries recognizable chat openers only when no eligible input
+is visible. A visible loading input is not mistaken for a collapsed widget.
+Requests must contain the probe message and must pass HTTP reply validation before
+being confirmed or cached. UI failure details appear in warnings/discovery notes,
+without raw Playwright exception text. Cancellation is not converted to failure.
+`verify_target` returns `endpoint_not_found` when endpoint discovery fails; platform
+handlers should map that result rather than treating it as an unexpected HTTP 500.
+Iframe and closed-shadow-root traversal are not added by this change.
+
 | Domain | Public module | Entry points |
 |---|---|---|
 | Static analysis | `nuguard.analysis.public_api` | `run_analysis` |
@@ -52,6 +69,15 @@ Module: `nuguard.analysis.public_api`
 
 Request model:
 - `AnalysisRunRequest`
+  - Checkov, Opengrep (Semgrep fallback), and Gitleaks accept finite positive `*_timeout` (120 seconds per process) and `*_total_timeout` (300 seconds per scanner) settings. Failed or incomplete scans retain partial findings and expose `tool_status[tool].status = "error"`; callers should distinguish this from complete coverage. Worker cleanup is bounded; cancelling the async caller leaves scanner threads bounded by their configured deadlines.
+
+Opengrep is the preferred source scanner. Keep using `enable_semgrep`, `semgrep_timeout`,
+`semgrep_total_timeout`, and `tool_status["semgrep"]`; these names remain compatible.
+`enable_pip_audit` and `enable_gitleaks` default to `True` and skip when the binary or inputs
+are missing. pip-audit audits resolved Python dependencies via OSV with `pip_audit_timeout`
+(default 300 seconds) and `pip_audit_total_timeout` (600 seconds). Gitleaks scans source for
+secrets with `gitleaks_timeout` (120 seconds) and `gitleaks_total_timeout` (300 seconds);
+matched secret values are redacted. All deadlines must be finite and positive.
 
 Response model:
 - `AnalysisRunResult`
@@ -105,6 +131,15 @@ raises `CheckpointMismatchError` instead of silently combining incompatible resu
 
 ### Redteam (v1 engine)
 
+`RedteamRunRequest.defence_regression_timeout` bounds the entire regression
+pre-pass, including paraphrase generation (default 180 seconds).
+`defence_regression_probe_timeout` bounds each probe including retries (default
+30 seconds). Both must be positive. `RedteamRunResult.defence_regression_summary`
+adds `variants_failed` and `timed_out` coverage diagnostics. Failed or expired
+probes are inconclusive, and incomplete regression coverage prevents an otherwise
+clean run from reporting `no_findings`. These changes add no filesystem or network
+side effects beyond the requested scan; cancellation propagates to active probes.
+
 Module: `nuguard.redteam.public_api`
 
 Request model:
@@ -114,6 +149,10 @@ Request model:
 Response models:
 - `RedteamRunResult`
 - `RedteamExecutionResult` (stream final result type)
+- Campaign mode (`RedteamRunRequest.mode="campaign"`, config in `RedteamRunRequest.campaign`):
+  `CampaignConfig`, `CoverageSummary`, `ObjectiveExecutionRecord`, `ReproductionRecord`,
+  `ConversationBranchSummary`, `CapabilityObservation`, `CampaignPlan`, `EfficiencySummary` —
+  additive optional fields on `RedteamRunResult`; all frozen in the public schema contract.
 
 Entry points:
 - `await run_redteam(request, sbom=..., policy=..., redteam_llm=..., eval_llm=...)`
@@ -129,6 +168,16 @@ Note:
     when the public wrapper invokes the internal orchestrator.
 - `RedteamRunResult.remediation_plan` follows the same error contract as analysis/behavior: `[]`
     only when there's no sbom/findings, otherwise a synthesis failure propagates.
+
+**Agentic-surface options (additive, all defaulted).** `RedteamRunRequest` also accepts
+`defence_regressions` / `defence_regression_paraphrases` (single-turn must-refuse pre-pass; `0`
+paraphrases evaluates only the literal message), `asm_max_probe_requests` (budget for the
+GET/OPTIONS-only surface prober; `0` disables it) with `asm_extra_inventory_paths`, and
+`trust_context_confirmation_cells` (extra identity-binding cells run after the first confirmed
+mismatch). `Finding` gains optional `evasion_differential`, `decorator_name`, `callback_evidence`,
+`regression_paraphrase_kind`, `dual_path_verdict`, and `state_diff_outcome`. The prober promotes
+only a redacted `AsmSummary` onto the SBOM `AGENT` node; raw probe headers and bodies are not
+serialized into results.
 
 **Resume (`RedteamRunRequest.resume_from`).** Set `resume_from` to the path of a checkpoint file
 from a previous aborted run; already-completed scenarios are skipped and the final result combines
@@ -147,6 +196,15 @@ A checkpoint is fingerprinted against the sbom/policy it was created with; resum
 different inputs raises `CheckpointMismatchError` (also from `nuguard.common.run_checkpoint`)
 rather than silently combining incompatible results. Both errors should be imported from
 `nuguard.common.run_checkpoint`, not from `nuguard.redteam.public_api`.
+
+Campaign checkpoints also bind to the current authentication headers using a
+deterministic PBKDF2-HMAC-SHA-256 fingerprint (600,000 iterations, 256-bit output).
+Header order and capitalization do not change the fingerprint; credential changes do.
+The public salt identifies this fingerprint's purpose and stays fixed for resume across
+processes. The fingerprint is an identity label, not a stored password verifier.
+Authenticated campaign checkpoints containing the former truncated SHA-256 fingerprint
+raise `CheckpointMismatchError` on resume; start a new campaign after upgrading.
+Public request and result schemas are unchanged, and checkpoints contain no raw auth headers.
 
 ### Cognitive policy parsing
 
@@ -191,6 +249,17 @@ platform-managed caching and excludes API keys and authorization values. Set the
 `cache_version` to invalidate cached work when secret-dependent or external state changes.
 Computed and externally cached values use the same `SbomEnrichmentResult` schema.
 
+**Container and deployment layer (AIBOM schema 1.7.0, additive).** `SbomGenerateRequest.config`
+(`AiSbomConfig`) gains `scan_images` (default `false`; runs `syft` on pulled base images and needs
+`syft` plus registry access), `max_image_packages` (default `200`) and `image_scan_timeout`
+(default `120` s). The returned `AiSbomDocument` gains nested, optional `WorkloadDetail`,
+`PortDetail`, `ScalingDetail`, `ResourceDetail` and `ImagePackage` models on `NodeMetadata`
+(`workload`, `cloud_provider`, `os_name`/`os_version`/`os_family`/`os_evidence`, `image_role`,
+`image_packages`, `exposed_ports`, `hosted_by`, `network_exposure`, ...) and six `RelationshipType`
+values (`RUNS`, `BUILT_FROM`, `HOSTS`, `EXPOSES`, `ROUTES_TO`, `DEPENDS_ON`). Consumers that switch
+exhaustively on `RelationshipType` must handle the new values. Environment variables and secrets are
+recorded by **name only**; values are never serialized. See `sbom-schema.md` for field semantics.
+
 Supported render/export formats:
 - `json`
 - `cyclonedx`
@@ -232,6 +301,21 @@ Entry points:
 - `await export_validation_report(request, redteam_run_result=..., behavior_run_result=...)`
 
 ### Target verify/session contracts
+
+HTTP chat discovery accepts actual reply text, including outputs-only replies
+and configured nested response paths. A successful response alone does not
+establish an unknown request field: blind discovery uses an omitted-field
+validation control naming that specific field, while declared or browser-observed
+fields retain their
+provenance. Ambiguous greetings cannot create an endpoint confirmation.
+If no usable contract can be resolved, Target Verify reports
+`all_ok=false` with an `endpoint_not_found` check; API-only callers can supply
+`chat_payload_key` and `chat_response_key` explicitly. This is contract and
+connectivity validation, not a guarantee of semantic message processing.
+
+Legacy endpoint confirmations are revalidated under the new rules. Transport
+exceptions in preflight retain the existing fail-open scan behavior, but do not
+write a validated endpoint cache entry. Public request/result schemas are unchanged.
 
 Module: `nuguard.common.target_verify_public_api`
 

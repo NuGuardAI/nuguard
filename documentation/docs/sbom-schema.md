@@ -4,9 +4,11 @@ This document describes the canonical AI-SBOM document shape used by NuGuard. Th
 
 Use this as a reference when writing code that reads or generates AI-SBOMs directly (custom tooling, CI checks, framework adapters) — for running `nuguard sbom generate` itself, see the [Quick Start Guide](quick-start.md) instead.
 
-Current schema version: **1.5.0**
+Current schema version: **1.7.0**
 
-Schema URI: `https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json`
+Schema source: [NuGuardAI/nuguard — aibom.schema.json](https://github.com/NuGuardAI/nuguard/blob/develop/nuguard/sbom/schemas/aibom.schema.json)
+
+Schema identifier (`$id`): `https://nuguard.ai/schemas/aibom/1.7.0/aibom.schema.json`
 
 The schema is language-neutral. Current extractors normalize Python, TypeScript/JavaScript, Go, C#, and Java application evidence into the same nodes, edges, dependencies, and summary fields.
 
@@ -21,11 +23,36 @@ Application source and manifests
 
 ---
 
+## JVM source-file selection
+
+`AiSbomConfig.include_test_sources` defaults to `false`. For files otherwise
+admitted by discovery, Java source and `application*.properties`,
+`application*.yml`, and `application*.yaml` under `src/test`, `src/testFixtures`,
+or `src/integrationTest` are excluded. This filter does not itself add file
+extensions to discovery and does not change other languages' test-file handling.
+
+The first conventional source set establishes the file's context. For example,
+`src/main/java/com/acme/src/test/Assistant.java` is production source, not a test.
+Module prefixes before a source set remain supported. When scanning `src`, a
+source-set directory, or a descendant of its `java`, `resources`, `kotlin`,
+`scala`, or `groovy` directory, classification retains the source-set context.
+Ancestor lookup stops at a Git or Maven/Gradle project boundary; unrelated parent
+directory names are not treated as source roots.
+
+Set `include_test_sources=True` in the Python configuration or public SBOM request
+to include those test sources, including when explicitly scanning a test subtree.
+Evidence paths, `.gitignore`, explicit exclusions, and file limits remain relative
+to the selected scan root; opting in does not override these filters. Nonstandard
+source layouts are not inferred from arbitrary ancestors and can be controlled
+with `exclude_patterns`.
+
+---
+
 ## Top-Level Object
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `schema_version` | string | - | AIBOM schema version (semver). Default: `"1.5.0"` |
+| `schema_version` | string | - | AIBOM schema version (semver). Default: `"1.7.0"` |
 | `generated_at` | string (ISO 8601) | yes | UTC timestamp of generation |
 | `generator` | string | - | Tool that produced the document. Default: `"nuguard"` |
 | `target` | string | **yes** | Repository URL or local path that was scanned |
@@ -38,7 +65,7 @@ Application source and manifests
 
 ```json
 {
-  "schema_version": "1.5.0",
+  "schema_version": "1.7.0",
   "generated_at": "2026-06-08T00:00:00Z",
   "generator": "nuguard",
   "target": "https://github.com/org/repo",
@@ -58,6 +85,15 @@ Application source and manifests
 A Node represents a detected AI component, service boundary, infrastructure resource, policy surface, or artifact used by the application.
 
 Java source scanning uses the same component types as every other language. Current Java adapters recognize Spring AI, LangChain4j, Quarkus LangChain4j, OpenAI Java, Azure OpenAI Java, AWS Bedrock, Google Gen AI, and Vertex AI, plus Spring MVC/WebFlux and JAX-RS/Quarkus endpoints. Consumers do not need a Java-specific schema branch.
+
+Application YAML preflight accepts the same inert CloudFormation intrinsic tags as
+its IaC adapter; cycle, depth and work limits still apply to tagged subtrees before
+construction. Tags are not evaluated or treated as resolved Java model values.
+Nested Quarkus client names containing dots (such as `"tenant.one"`) retain their
+segment boundary, while dotted property keys remain supported. When equal Java
+and config model values are merged, the added config evidence cannot turn a
+different AST-backed model into a truncation candidate. Only regex-only candidates
+can be absorbed into exact config models by location or prefix truncation rules.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -116,6 +152,7 @@ All fields are optional unless marked otherwise. Fields are populated by whichev
 | `system_prompt_excerpt` | string | First 500 chars of the agent's system prompt, instructions, or backstory. Used by red-team scenario generation. |
 | `injection_risk_score` | float [0, 1] | Pre-computed injection risk score set by the graph enricher. Derived from privileged tools, unauthenticated paths, reachable sensitive datastores, and unguarded HITL triggers. |
 | `model_name` | string | LLM or embedding model name, e.g. `"gpt-4o"`, `"gemini-2.0-flash"` |
+| `asm_summary` | AsmSummary | Summarized, credential-redacted Agentic Surface Model facts from the live red-team surface prober. Written onto AGENT nodes only by `nuguard redteam`; absent from a plain `sbom generate` |
 
 ### MODEL fields
 
@@ -166,9 +203,11 @@ A `GUARDRAIL` node is connected to the `AGENT` node(s) it protects via a `PROTEC
 
 For backward compatibility, adapters also mirror these same values into `extras` (`extras.role`, `extras.content`, `extras.char_count`, `extras.is_template`, `extras.template_variables`) — new consumers should prefer the typed fields above.
 
-A `PROMPT` node is connected to the `AGENT` or `GUARDRAIL` node whose instructions it represents via a `USES` edge (`AGENT --USES--> PROMPT` / `GUARDRAIL --USES--> PROMPT`), so it is never left isolated in the graph. When an adapter has no single owning agent in scope for a prompt-template detection (e.g. a `ChatPromptTemplate` defined independently of any `Agent(...)` call), the edge instead fans out from every `AGENT`/`FRAMEWORK` node detected in the same file.
+A `PROMPT` node is connected to its owning `AGENT` or `GUARDRAIL` through a `USES` edge when the adapter identifies that relationship. For independently detected prompts, the extractor infers `AGENT --USES--> PROMPT` when the nodes share a source file with one identifiable agent, the prompt name identifies one agent in a multi-agent file, or that agent's file imports and uses the prompt constant. A guardrail that protects the agent also receives a derived `GUARDRAIL --PROTECTS--> PROMPT` edge when the guardrail binding is explicit or it shares the prompt's source file. Ambiguous prompts remain unlinked rather than being assigned to unrelated agents.
 
 ### API_ENDPOINT fields
+
+The `name` shown in the AIBOM uses the detected handler name when it is unique. If several endpoints have the same handler name, the extractor adds a short resource label from the route, such as `Delete Notes` and `Delete Documents`. The exact HTTP method and route remain in `metadata.method` and `metadata.endpoint`.
 
 | Field | Type | Description |
 |---|---|---|
@@ -200,6 +239,21 @@ A `PROMPT` node is connected to the `AGENT` or `GUARDRAIL` node whose instructio
 | `context_payload_fields` | object | Non-chat context fields detected in POST body schemas. Values are `"identity"` for static user/tenant/account identifiers or `"session"` for per-conversation identifiers. |
 | `path_param_sources` | object | Maps each entry in `path_params` to the `API_ENDPOINT` path that creates the identified resource, e.g. `{"id": "/chat/conversations"}` for `/chat/conversations/:id/messages` |
 | `no_auth_required` | boolean | True when the endpoint is invocable without authentication |
+| `http_request.parameters[].identity_role` | string \| null | Identity-field tag on an HTTP input parameter: `"subject_id"` (caller/user identifier), `"tenant_id"` (tenant/org scope), `"role_hint"` (role/permission field), or `"none"`. Null when not identity-related. Consumed by the red-team trust-context matrix |
+| `http_request.parameters[].identity_role_evidence` | string \| null | How `identity_role` was derived: `"name_match"` (parameter-name heuristic) or `"path_context"` (a bare `id` path parameter under a `users`/`accounts`/`tenants`-style segment). Null when `identity_role` is unset |
+| `http_request.parameters[].mass_assignment_risk` | boolean \| null | True when a client-supplied `role_hint` parameter is accepted on a write method (POST/PUT/PATCH) |
+| `identity_binding` | string \| null | Where the caller's identity comes from: `"client_supplied"` (an identity parameter the caller controls), `"credential_bound"` (the handler resolves it from the credential, e.g. `Depends(get_current_user)`), or `"mixed"` |
+| `object_id_semantics` | ObjectIdSemantics | Object-ID format and enumerability facts for authorization-replay testing |
+| `mutation_semantics` | MutationSemantics | State-effect facts (mutation kind, idempotency, confirmation, rollback, audit) used to gate destructive pentest scenarios |
+| `response_echoes_input` | boolean \| null | True when the framework's validation errors echo the submitted input (framework-level fact; FastAPI 422 responses) |
+| `session_cookie_semantics` | SessionCookieSemantics | Whether handler code is expected to issue session cookies. Only set for frameworks whose handlers are analyzed (Python, NestJS, Spring, ASP.NET) |
+
+### Hosting fields (API_ENDPOINT, AGENT, MCP_SERVER, TOOL)
+
+| Field | Type | Description |
+|---|---|---|
+| `hosted_by` | string | SBOM 1.7.0 name of the workload (or workloads, comma-separated) whose source directory contains this component, from a `HOSTS` edge |
+| `network_exposure` | string | SBOM 1.7.0 `API_ENDPOINT`, `AGENT` and `MCP_SERVER` only: `"public"` (an internet-reachable port or ingress), `"internal"` (VNet/private ingress or loopback publish), `"cluster"` (cluster/compose-network only) or `"unknown"`. The most exposed hosting workload wins; `extras.exposure_by_host` keeps the per-workload value |
 
 ### DATASTORE fields
 
@@ -244,6 +298,9 @@ A `PROMPT` node is connected to the `AGENT` or `GUARDRAIL` node whose instructio
 | `encryption_detail` | EncryptionDetail | SBOM 1.5.0 structured encryption and redaction posture |
 | `ha_mode` | string | High-availability topology: `"multi-az"`, `"replicated"`, `"single"` |
 | `has_network_policy` | boolean | SBOM 1.5.0 Kubernetes workload flag. True when covered by a NetworkPolicy resource in the same namespace. |
+| `ingresses` | IngressDetail[] | Externally reachable ingresses declared in IaC: reverse proxy/gateway, a backend exposed directly, or a static frontend. A `gateway` plus a `direct` entry across the document means one logical surface with an origin-bypass path |
+| `workload` | WorkloadDetail | SBOM 1.7.0 runtime shape of one deployed service: compose service, Kubernetes workload, container app, ECS service, Lambda, Cloud Run service, App Service. Present on per-workload `DEPLOYMENT` nodes; the per-file node keeps provider, region and posture |
+| `cloud_provider` | string | SBOM 1.7.0 provider of the workload: `"aws"`, `"azure"`, `"gcp"`, `"kubernetes"` |
 
 ### CONTAINER_IMAGE fields
 
@@ -257,6 +314,15 @@ A `PROMPT` node is connected to the `AGENT` or `GUARDRAIL` node whose instructio
 | `runs_as_root` | boolean | True when the container is configured to run as root (UID 0) |
 | `has_health_check` | boolean | True when a HEALTHCHECK instruction or liveness/readiness probe is present |
 | `has_resource_limits` | boolean | True when Kubernetes resource limits are defined for the container |
+| `image_role` | string | SBOM 1.7.0. `"base"` for a `FROM`/`image:` reference, `"app"` for the image a Dockerfile builds (one per Dockerfile, final stage) |
+| `os_name` / `os_version` / `os_family` | string | SBOM 1.7.0 operating system of the image, e.g. `debian` / `12` / `debian`. Inferred from the base image reference, or read from `syft` when `--scan-images` is on |
+| `os_evidence` | string | How the OS was determined: `"tag"` (the tag names it), `"image_default"` (the image's documented default distro; version may be unknown) or `"syft"` |
+| `stage_alias` | string | Final build stage alias (`AS name`) |
+| `entrypoint` / `cmd` / `workdir` | string | Final-stage `ENTRYPOINT`, `CMD` and `WORKDIR` as written, truncated; `key=value` secrets are redacted |
+| `image_packages` | ImagePackage[] | Packages installed in the image: parsed from `RUN apt/apk/yum/pip/npm` (names and pinned versions only), or the full list from `syft`. Capped by `max_image_packages` |
+| `dependency_manifests` | string[] | Dependency manifests `COPY`'d into the image, e.g. `requirements.txt` |
+| `has_dockerignore` | boolean | True when a `.dockerignore` sits beside the Dockerfile |
+| `exposed_ports` | PortDetail[] | Ports declared with `EXPOSE` |
 
 ### IAM fields
 
@@ -356,6 +422,118 @@ Populated by the supply-chain second pass for AI coding-agent and editor configs
 | `enforcement_strict` | boolean | True when auth is enforced on every request with no opt-out |
 | `auth_roles` | string[] | Roles or scopes required for access, e.g. `["admin", "read:users"]` |
 | `jwt_algorithm_restricted` | boolean \| null | True when a JWT verification call site pins an explicit expected algorithm (e.g. `algorithms: ["HS256"]`); false when a verify call was found with no such restriction, which admits alg-confusion attacks (a forged token can switch the algorithm, e.g. to `none`, and be accepted); null when no verification call site was found |
+
+### AsmSummary
+
+Booleans and counts only. The full probed surface (URLs, headers, status codes) is a runtime artifact of `nuguard redteam` and is never written to the SBOM.
+
+| Field | Type | Description |
+|---|---|---|
+| `sibling_endpoint_count` | integer \| null | Number of endpoints discovered beyond the primary chat route |
+| `unauthenticated_inventory_exposed` | boolean \| null | True when a tool/agent inventory endpoint (e.g. `/api/tools`) is reachable without auth |
+| `observation_channel_unauthenticated` | boolean \| null | True when a WebSocket/SSE observation channel accepted a connection without auth |
+| `cors_wildcard_with_credentials_live` | boolean \| null | True when a live `OPTIONS` probe reflected an attacker `Origin` with credentials allowed |
+| `direct_tool_endpoint_path` | string \| null | Path of a confirmed directly-invocable tool endpoint, when one was found |
+
+### ObjectIdSemantics
+
+Static and best-effort. Whether adjacent IDs actually exist is a runtime fact and is never recorded.
+
+| Field | Type | Description |
+|---|---|---|
+| `param_name` | string | Path/query/body parameter that carries the object ID |
+| `id_format` | string \| null | `"int"`, `"uuid"`, `"ulid"` when the name or declared type shows it; otherwise null (never guessed) |
+| `sequential` | boolean \| null | True for integer IDs, false for UUID/ULID, null when unknown |
+| `enumerability` | string | `"high"` (sequential), `"low"` (random), or `"unknown"` |
+| `sibling_read_paths` | string[] | Other read endpoints of the same object family |
+
+### MutationSemantics
+
+`unknown` is the default and never blocks a scan; it only limits destructive-test eligibility.
+
+| Field | Type | Description |
+|---|---|---|
+| `mutation_kind` | string | `"none"`, `"create"`, `"update"`, `"delete"`, `"payment"`, `"auth_state"`, or `"unknown"`. A state-changing `GET` (e.g. `GET /transfer`) is `"unknown"`, never `"none"` |
+| `idempotency` | string | `"idempotent"` (HTTP semantics or an idempotency-key parameter), `"non_idempotent"`, or `"unknown"` |
+| `confirmation_required` | boolean \| null | True when a confirm token/field or a sibling `…/confirm` route exists; false for a payment/delete whose inputs were fully resolved and show none (the absence is the signal); null otherwise |
+| `reversible` | boolean \| null | True when a compensating route exists in the endpoint set |
+| `compensating_action` | CompensatingAction \| null | Rollback recipe: `{method, path}` of the opposite-verb route (`freeze`↔`unfreeze`) or the `DELETE` of a created resource family. Payments never get one |
+| `audit_logged` | boolean \| null | True when the handler writes an audit-log record; null when the handler body was not analyzed |
+| `evidence` | string[] | Signals used, e.g. `["http_method:POST", "path_verb:transfer"]` |
+
+### IngressDetail
+
+| Field | Type | Description |
+|---|---|---|
+| `role` | string | `"gateway"`, `"direct"`, or `"static_frontend"` |
+| `url` | string \| null | Public host when statically declared (e.g. an nginx `server_name`); never a secret |
+| `evidence` | string | What proved it: `"nginx proxy_pass"`, `"ACA ingress"`, `"k8s Ingress"`, `"k8s Service LoadBalancer"`, `"SWA config"`, `"API Management"`, … |
+
+### WorkloadDetail
+
+SBOM 1.7.0. One deployed service. Only **names** are recorded for environment variables and secrets, never values.
+
+| Field | Type | Description |
+|---|---|---|
+| `service_name` | string | Service or resource name |
+| `workload_kind` | string | `"compose_service"`, `"k8s_deployment"` (also `k8s_statefulset`, `k8s_daemonset`, `k8s_job`, `k8s_cronjob`), `"helm_chart"`, `"container_app"`, `"app_service"`, `"aks_cluster"`, `"container_instance"`, `"ecs_service"`, `"ecs_task_definition"`, `"lambda"`, `"cloud_run"`, `"k8s_cluster"` |
+| `cloud_service` | string | Managed service, e.g. `"azure_container_apps"`, `"aws_ecs"`, `"aws_lambda"`, `"gcp_cloud_run"` |
+| `namespace` | string | Kubernetes namespace |
+| `image_refs` | string[] | Image references the workload runs. Placeholder images (for example the `azd` hello-world image) are left out |
+| `build_context` / `dockerfile` | string | Compose build context and Dockerfile path, repo-relative |
+| `source_dir` | string | Directory holding the code the workload runs. Resolved from the build context, an `azure.yaml` project, or (heuristically) a matching Dockerfile directory |
+| `ports` | PortDetail[] | Container/service ports and how far each is exposed |
+| `scaling` | ScalingDetail | Replica count and autoscaling bounds |
+| `resources` | ResourceDetail | CPU and memory requests/limits as written |
+| `identity_ref` | string | Service account or managed identity (`"system-assigned"` or a name) |
+| `depends_on` | string[] | Names of workloads this one depends on (compose `depends_on`, service names referenced from env values) |
+| `env_var_names` | string[] | Environment variable names only |
+| `secret_refs` | string[] | Secret / Key Vault reference names only |
+| `probes` | string[] | Health probes, e.g. `"liveness:/healthz"` |
+| `internal_only` | boolean | True when no public ingress or published port reaches the workload |
+| `source_format` | string | `"compose"`, `"k8s"`, `"helm_values"`, `"bicep"`, `"terraform"`, `"cloudformation"`, `"cloud-run-yaml"`, `"ecs-task-definition"` |
+
+### PortDetail
+
+| Field | Type | Description |
+|---|---|---|
+| `container_port` | integer | Port the process listens on |
+| `service_port` | integer | Port a Service or load balancer exposes, when different |
+| `host_port` | integer | Published host port (compose, ECS) |
+| `protocol` | string | `"tcp"` or `"udp"` |
+| `exposure` | string | `"public"`, `"internal"`, `"cluster"` or `"unknown"` |
+| `source` | string | What declared it: `"EXPOSE"`, `"compose ports"`, `"k8s Service"`, `"aca ingress"`, `"ecs portMappings"`, ... |
+
+### ScalingDetail
+
+| Field | Type | Description |
+|---|---|---|
+| `replicas` | integer | Static or desired replica count |
+| `min_replicas` / `max_replicas` | integer | Autoscaler bounds (HPA, KEDA, ACA scale rules, ECS autoscaling, Cloud Run) |
+| `autoscaler` | string | `"hpa"`, `"keda"`, `"aca_rule"`, `"ecs_autoscaling"`, `"cloud_run"` or `"none"` |
+| `metric` / `target` | string | Scaling metric and target, e.g. `"cpu"` / `"70%"` |
+
+### ResourceDetail
+
+| Field | Type | Description |
+|---|---|---|
+| `cpu_request` / `cpu_limit` | string | As written, e.g. `"500m"`, `"0.5"` |
+| `memory_request` / `memory_limit` | string | As written, e.g. `"512Mi"`, `"1Gi"` |
+
+### ImagePackage
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Package name |
+| `version` | string \| null | Pinned version when known |
+| `manager` | string | `"apt"`, `"apk"`, `"yum"`, `"pip"`, `"npm"` or `"syft:<type>"` |
+| `source` | string | `"dockerfile_run"` or `"syft"` |
+
+### SessionCookieSemantics
+
+| Field | Type | Description |
+|---|---|---|
+| `set_cookie_expected` | boolean | True when handler code sets a cookie or uses a server-side session anywhere in the analyzed app. False together with identity carried in the request body means server-side session binding is impossible |
 
 ### EncryptionDetail
 
@@ -488,10 +666,31 @@ A directed relationship between two nodes.
 | `CALLS` | Agent calls a tool or sub-agent |
 | `ACCESSES` | Agent or tool reads from or writes to a datastore |
 | `USES` | Component depends on a framework, model, auth provider, or other component |
-| `PROTECTS` | A `GUARDRAIL` protects an `AGENT`, or an `AUTH` provider protects an `API_ENDPOINT` |
+| `PROTECTS` | A `GUARDRAIL` protects an `AGENT` or its prompt, or an `AUTH` provider protects an `API_ENDPOINT` |
 | `DEPLOYS` | A deployment resource hosts a container or service |
 | `DELEGATES_TO` | An agent hands off a conversation or task to another agent |
 | `CONTAINS` | A parent component contains a child component; used for `DEVELOPER_TOOL_CONFIG → MCP_SERVER` and `DEVELOPER_TOOL_CONFIG → LIFECYCLE_SCRIPT` relationships |
+| `RUNS` | SBOM 1.7.0. A workload runs a container image (`DEPLOYMENT → CONTAINER_IMAGE`): from its `image:`/`containers[].image`, or from its build context to the Dockerfile's app image |
+| `BUILT_FROM` | SBOM 1.7.0. A Dockerfile's app image is built from a base image (`CONTAINER_IMAGE → CONTAINER_IMAGE`) |
+| `HOSTS` | SBOM 1.7.0. A workload hosts a component found in its source directory (`DEPLOYMENT → AGENT / API_ENDPOINT / MCP_SERVER / TOOL`). Declared by a compose build context or `azure.yaml` project (`derivation: "hint"`); otherwise a name/path guess (`fallback_heuristic`) |
+| `EXPOSES` | SBOM 1.7.0. A workload with a public port exposes a hosted `API_ENDPOINT` or `MCP_SERVER` |
+| `ROUTES_TO` | SBOM 1.7.0. A gateway (K8s Ingress, nginx `proxy_pass`) routes to a backend workload |
+| `DEPENDS_ON` | SBOM 1.7.0. A workload depends on another workload (compose `depends_on`, service names referenced from environment values) |
+
+`AGENT --ACCESSES--> DATASTORE` is inferred when an agent calls a tool that accesses the datastore, when a single agent and datastore are detected in the same source file, or when a single agent's Python file imports and uses a detected datastore client. These inferred edges carry `derivation: "fallback_heuristic"` and a confidence score.
+
+### Agent tool and model relationships
+
+The shared resolver does not fill missing `AGENT --CALLS--> TOOL` or
+`AGENT --USES--> MODEL` relationships by selecting tools or models from the scan.
+Coexistence, a shared source file or framework, name order, and model detection
+confidence do not establish these dependencies. Adapter-emitted relationship hints
+are preserved, including cross-file hints and direct calls from web controllers.
+A controller-to-agent edge does not copy the callee's tool/model edges onto the
+controller. Nodes remain in the SBOM even when their relationships are unresolved;
+a missing edge is not proof that a dependency does not exist.
+
+Other scoped structural and transitive inference rules remain unchanged.
 
 ### AccessType values
 
@@ -524,6 +723,74 @@ A single declared package dependency from a manifest file. The scanner reads dec
 | C#/.NET | `*.csproj`, `packages.config`, `Directory.Packages.props` | Emits NuGet PURLs and honors centrally managed package versions |
 | Java | `pom.xml`, `build.gradle`, `build.gradle.kts`, `gradle/libs.versions.toml` | Resolves common Maven properties, dependency management, Gradle variables, and version-catalog references without invoking Maven or Gradle |
 | Go | `go.mod`, `go.sum` | Emits Go PURLs; indirect modules use the `optional:indirect` group |
+
+Maven profile activation is not evaluated. Competing declarations in the same POM
+are checked using both explicit versions and supported implicit management/parent
+versions. Conflicting or partly unresolved declarations produce one unversioned
+record rather than selecting a version by XML order; matching concrete versions
+are retained when no other profile uncertainty applies. Unversioned dependencies
+remain in the SBOM but are skipped by OSV. This is a limited offline lookup, not
+Maven's effective POM resolution.
+
+Maven management and profile matching use `groupId`, `artifactId`, `type`
+(default `jar`), and `classifier` (default empty). Distinct variants retain
+case-sensitive identity throughout consolidation and dependency scanning; their
+PURLs include `type`/`classifier` qualifiers where needed. Conflicting versions of
+one variant remain unresolved without suppressing other variants. This preserves
+declared Maven types rather than guessing custom artifact-handler mappings. The
+Spring Boot shortcut applies only to ordinary unclassified JAR dependencies;
+other variants require an explicit or matching local managed version.
+
+A concrete version inherited from a recognized Spring Boot parent is not made
+uncertain merely by a profile BOM import: imported defaults cannot replace that
+inherited management. Direct profile declarations, non-import management, and
+profile-controlled parent properties still receive uncertainty checks. An
+import-only fallback is not treated as a known inherited version.
+
+Root management and each declared/profile dependency are resolved once per POM.
+Concrete profile identities are indexed with their supported versions, including
+implicit local/Boot versions. Repeated declarations of one identity use a version
+summary rather than pairwise comparisons. Symbolic identities and possible BOM
+imports remain separate conservative checks over cached facts. Matching does not
+spend interpolation budget, and records reuse the same resolved facts. Self-only
+and agreeing declarations retain their pins; conflicting versions, variants, and
+management precedence follow the rules above. The interpolation limits below are
+unchanged; this avoids exhausting them by repeatedly resolving unrelated profiles.
+
+Property interpolation is lazy and bounded: at most 16,384 characters per value,
+64 reference levels, and per-manifest budgets of 1,000,000 characters of expansion
+work and 50,000 references. Cyclic or over-budget expressions remain unresolved
+rather than falling through to a different version. Literal dependencies and
+other manifests can still be scanned. These limits bound interpolation, not the
+size of the original manifest or unrelated parsing work.
+
+Maven `LATEST`/`RELEASE` and Gradle dynamic selectors (including `1.+` and every
+`latest.<status>` selector, such as `latest.milestone` or a custom status) remain raw
+version specifications without an exact PURL version.
+No repository metadata is fetched to resolve them, and OSV skips these unversioned
+records. Ordinary literal releases and build metadata remain queryable.
+
+Known limitations of Java dependency resolution. The scanner reads declarations
+statically and never runs Maven or Gradle. When a version depends on something it
+cannot read, the record stays unversioned (and OSV skips it) instead of being guessed:
+
+- Only the manifest itself is read. Parent POMs, parent chains, `relativePath`
+  modules, and properties or dependency management defined in a parent are not
+  loaded. Only a `spring-boot-starter-parent` or `spring-boot-dependencies` parent
+  contributes a version, and only its own `<version>`. Any other parent disables the
+  imported-BOM fallback, because its management could take precedence over the import.
+- Only an imported `spring-boot-dependencies` BOM is consulted; other imported BOMs
+  are not read.
+- Profile activation is not evaluated. Competing or uncertain profile declarations,
+  imports, management entries and properties leave the version unresolved.
+- `LATEST`, `RELEASE`, version ranges and Gradle dynamic selectors stay unresolved.
+- Gradle files are read declaratively. Platforms and BOMs, dependency-management
+  plugins, constraints and resolution strategies are not applied.
+- Across manifests one record per coordinate is kept (the first found), so modules
+  that pin different versions of one coordinate are reported once.
+
+Fully accurate resolution would require running Maven itself (for example
+`mvn help:effective-pom`), which is outside the scope of this scanner.
 
 For Java dependencies, a resolved declaration such as `org.springframework.ai:spring-ai-openai-spring-boot-starter:1.0.1` is represented as:
 
@@ -686,3 +953,21 @@ The `test_committed_schema_matches_models` test enforces that the committed `aib
 ## Example
 
 Generated SBOM examples are available under `tests/apps/*/*.sbom.json`. The committed `docs/sample-sbom.json` may lag behind the current schema until regenerated, so prefer `nuguard sbom schema` or `nuguard/sbom/schemas/aibom.schema.json` as the source of truth for validation.
+
+## SPDX dependency identifiers
+
+SPDX dependency package IDs retain a readable name segment and include a SHA-256
+suffix derived from the complete PURL, including its version, qualifiers (such as
+Maven type/classifier), and subpath. Distinct variants or releases with the same
+display name therefore remain separate package elements and SBOM membership
+references. Dependency ordering, source-file location, scope, and export time do
+not affect the ID for an otherwise identical record. The PURL is hashed as
+supplied; this does not introduce another package-URL normalization policy.
+
+For a caller-supplied dependency with an empty PURL, the name and version specifier
+provide a deterministic fallback. Package names, version fields, and external
+PURL identifiers are otherwise unchanged. Node and relationship IDs are unchanged.
+
+Dependency IDs now differ from earlier name-only exports. Consumers should use
+the exported `spdxId` values and references rather than constructing dependency
+IDs from package names. No Pydantic fields or committed JSON schemas change.

@@ -17,14 +17,18 @@ scan if none of the SBOM candidates work either.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
+from nuguard.common.discovery import auth_identity_string
 from nuguard.common.logging import get_logger
-from nuguard.common.response_extraction import build_minimal_payload, extract_response_id
 
 if TYPE_CHECKING:
+    from nuguard.common.auth import AuthConfig
+    from nuguard.common.browser_login.config import BrowserDiscoveryConfig
     from nuguard.common.target_client_builder import TargetClient
     from nuguard.sbom.models import AiSbomDocument
 
@@ -41,6 +45,10 @@ _TEST_MESSAGE = "Hello"
 # status (as opposed to 400, which apps also use for their own hand-rolled
 # validation) and is just as strong a "wrong endpoint" signal.
 _ROTATION_TRIGGER_PREFIXES = ("[HTTP 405]", "[HTTP 404]", "[HTTP 400]", "[HTTP 422]")
+
+# How many alternative SBOM candidates the pre-flight compares when the
+# current endpoint's reply is not clearly conversational.
+DEFAULT_PREFLIGHT_CANDIDATES = 3
 
 
 def _response_indicates_wrong_endpoint(response: str) -> bool:
@@ -60,9 +68,10 @@ def _response_indicates_wrong_endpoint(response: str) -> bool:
 class PreflightOutcome(BaseModel):
     """Result of :func:`validate_and_rotate_chat_endpoint`.
 
-    ``ok`` is ``True`` when *client* is left pointed at a chat endpoint that
-    did not 400/404/405 on the test request (whether that was the original
-    endpoint or a rotated one). ``rotated_endpoint`` is populated whenever
+    ``ok`` is ``True`` when *client* produces a usable chat reply, or when
+    an unexpected validation exception retains fail-open scan behavior.
+    Only ``cacheable`` outcomes establish an endpoint confirmation.
+    ``rotated_endpoint`` is populated whenever
     the endpoint changed, so callers can update their own tracked
     ``chat_path``/``chat_payload_key``/... state to match.
     """
@@ -71,6 +80,143 @@ class PreflightOutcome(BaseModel):
     rotated_endpoint: "tuple[str, str, bool, str | None] | None" = None
     endpoint_source: 'Literal["sbom", "probe"] | None' = None
     notes: list[str] = Field(default_factory=list)
+    _validation_completed: bool = PrivateAttr(default=True)
+
+    @property
+    def cacheable(self) -> bool:
+        """Only a validated reply permits caching an endpoint confirmation."""
+        return self.ok and self._validation_completed
+
+
+class CachedEndpointResolution(BaseModel):
+    """A live-validated chat endpoint resolution cached on the SBOM (see
+    :func:`cached_endpoint_resolution` / :func:`persist_endpoint_resolution`),
+    so Target Verify/Behavior/Redteam can share one validated resolution
+    instead of each re-probing the target live.
+    """
+
+    chat_path: str
+    chat_payload_key: str = "message"
+    chat_payload_list: bool = False
+    chat_response_key: str | None = None
+    endpoint_source: str | None = None
+
+
+def _path_param_sources_for(sbom: "AiSbomDocument", chat_path: str) -> dict[str, str]:
+    """The SBOM node declaring *chat_path*'s ``path_param_sources``, or ``{}``."""
+    for n in sbom.nodes:
+        if n.metadata and (n.metadata.endpoint or "") == chat_path:
+            return dict(n.metadata.path_param_sources or {})
+    return {}
+
+
+def endpoint_cache_fingerprint(
+    target_url: str,
+    auth_config: "AuthConfig | None",
+    chat_path: str,
+    path_param_sources: "dict[str, str] | None",
+) -> str:
+    """Stable fingerprint of (target_url, auth identity, resolved chat_path,
+    that path's currently-declared ``path_param_sources``) a cached
+    :class:`CachedEndpointResolution` is captured against — used to detect
+    when a cached resolution no longer applies (see
+    :func:`cached_endpoint_resolution`).
+
+    Extends :func:`nuguard.common.discovery.profile_cache_fingerprint`'s
+    target/auth identity half with the endpoint's own declared shape, since
+    endpoint resolution also depends on SBOM-declared candidates — which can
+    change independently of target/auth (e.g. a regenerated SBOM moving
+    where a templated endpoint's creation route lives).
+    """
+    identity = auth_identity_string(auth_config)
+    sources_part = json.dumps(dict(path_param_sources or {}), sort_keys=True)
+    from nuguard.common.endpoint_detection.constants import CHAT_CONTRACT_VERSION  # noqa: PLC0415
+
+    return hashlib.sha256(
+        f"{CHAT_CONTRACT_VERSION}|{target_url}|{identity}|{chat_path}|{sources_part}".encode()
+    ).hexdigest()
+
+
+def cached_endpoint_resolution(
+    sbom: "AiSbomDocument | None",
+    target_url: str,
+    auth_config: "AuthConfig | None",
+    *,
+    required_chat_path: str | None = None,
+) -> "tuple[CachedEndpointResolution, dict[str, str]] | None":
+    """Return a previously-validated chat-endpoint resolution cached on
+    *sbom*, or ``None`` if absent/stale/inapplicable.
+
+    When *required_chat_path* is given (the caller has an explicitly
+    configured endpoint), the cached entry is only used when it resolved to
+    that exact path — a cached SBOM/probe-rotated resolution for a
+    *different* path must never silently override an explicit config
+    endpoint (config-wins precedence is non-negotiable; see
+    ``documentation/docs/endpoint-resolution-precedence-plan.md``). When
+    *required_chat_path* is ``None`` (no explicit endpoint configured), any
+    fingerprint-valid cached resolution is reused regardless of which path
+    it resolved to.
+    """
+    if sbom is None:
+        return None
+    data = getattr(sbom, "resolved_chat_endpoint", None)
+    if data is None:
+        return None
+    stored_fingerprint = getattr(sbom, "resolved_chat_endpoint_fingerprint", None)
+    if stored_fingerprint is None:
+        return None
+    try:
+        resolved = CachedEndpointResolution.model_validate(data)
+    except Exception as exc:
+        _log.warning("endpoint cache: could not parse cached resolution: %s", exc)
+        return None
+    if required_chat_path is not None and resolved.chat_path != required_chat_path:
+        return None
+    sources = _path_param_sources_for(sbom, resolved.chat_path)
+    if stored_fingerprint != endpoint_cache_fingerprint(target_url, auth_config, resolved.chat_path, sources):
+        return None
+    raw_params = getattr(sbom, "resolved_path_param_values", None)
+    path_param_values = dict(raw_params) if isinstance(raw_params, dict) else {}
+    return resolved, path_param_values
+
+
+def persist_endpoint_resolution(
+    sbom: "AiSbomDocument | None",
+    target_url: str,
+    auth_config: "AuthConfig | None",
+    *,
+    chat_path: str,
+    chat_payload_key: str,
+    chat_payload_list: bool,
+    chat_response_key: str | None,
+    endpoint_source: str | None,
+    path_param_values: "dict[str, str]",
+) -> None:
+    """Cache a freshly-validated chat-endpoint resolution onto *sbom*
+    in-memory, so later runs against the same SBOM — by any of Target
+    Verify/Behavior/Redteam, in any order, even within the same process with
+    no backing file — can reuse it instead of re-probing live.
+
+    In-memory only: callers persist to disk themselves via
+    :func:`~nuguard.common.auto_sbom_enricher.persist_endpoint_resolution_sbom`
+    when a ``sbom_path`` is available, mirroring
+    :func:`nuguard.common.discovery.cached_discovery_profile`'s split write.
+    """
+    if sbom is None:
+        return
+    resolved = CachedEndpointResolution(
+        chat_path=chat_path,
+        chat_payload_key=chat_payload_key,
+        chat_payload_list=chat_payload_list,
+        chat_response_key=chat_response_key,
+        endpoint_source=endpoint_source,
+    )
+    sources = _path_param_sources_for(sbom, chat_path)
+    sbom.resolved_chat_endpoint = resolved.model_dump(mode="json")
+    sbom.resolved_path_param_values = dict(path_param_values or {})
+    sbom.resolved_chat_endpoint_fingerprint = endpoint_cache_fingerprint(
+        target_url, auth_config, chat_path, sources
+    )
 
 
 async def _bootstrap_path_params(
@@ -81,77 +227,67 @@ async def _bootstrap_path_params(
 ) -> None:
     """Resolve and bind any path params the resolved chat endpoint declares.
 
-    Reads ``path_param_sources`` (populated by ``nuguard/sbom/enricher.py``)
-    off the SBOM node matching *chat_path*. For each param with a known
-    source, POSTs to that source endpoint to create the prerequisite
-    resource, extracts its id from the response, and binds it via
+    Uses :func:`~nuguard.common.path_params.resolve_path_param_values` with
+    *client*'s authenticated ``invoke_endpoint`` and binds each id via
     :meth:`~nuguard.redteam.target.client.TargetAppClient.set_path_param`.
-    Best-effort: any failure just leaves that param unbound (falls through
-    to the existing ``[CONFIG_ERROR]`` per-request guard) rather than
-    raising or forcing ``ok=False`` — this must run *after* rotation has
-    fully settled, since :meth:`TargetAppClient.set_chat_endpoint` clears
-    previously-bound path params on every rotation.
+    Best-effort: unresolved params stay unbound (the client's per-request
+    ``[CONFIG_ERROR]`` guard reports them). Must run *after* rotation has
+    settled, since :meth:`TargetAppClient.set_chat_endpoint` clears bound
+    path params.
     """
-    from nuguard.sbom.types import ComponentType as _CT  # noqa: PLC0415
+    from nuguard.common.path_params import resolve_path_param_values  # noqa: PLC0415
 
-    chat_node = None
-    for n in sbom.nodes:
-        m = n.metadata
-        if m and (m.endpoint or "") == chat_path:
-            chat_node = n
-            break
-    if chat_node is None:
-        return
-    sources = chat_node.metadata.path_param_sources
-    if not sources:
-        return
+    async def _post(path: str, body: dict) -> "tuple[int, object]":
+        status, _text, data = await client.invoke_endpoint(path, method="POST", body=body)
+        return status, data
 
-    endpoints_by_path = {
-        n.metadata.endpoint: n
-        for n in sbom.nodes
-        if n.component_type == _CT.API_ENDPOINT and n.metadata and n.metadata.endpoint
-    }
-
-    # Process in path-param order so an outer resource id is available
-    # before an inner one that might depend on it.
-    ordered_params = [p for p in (chat_node.metadata.path_params or []) if p in sources]
-    for param in ordered_params:
-        source_path = sources[param]
-        try:
-            status, _text, data = await client.invoke_endpoint(source_path, method="POST", body={})
-            if status >= 400:
-                source_node = endpoints_by_path.get(source_path)
-                schema = (source_node.metadata.request_body_schema if source_node else None) or {}
-                if schema:
-                    body = build_minimal_payload(schema)
-                    status, _text, data = await client.invoke_endpoint(
-                        source_path, method="POST", body=body
-                    )
-        except Exception as exc:
-            _log.info(
-                "Pre-flight: path-param bootstrap POST %s raised (non-fatal): %s — leaving %r unbound",
-                source_path, exc, param,
-            )
-            continue
-
-        if status >= 400:
-            _log.info(
-                "Pre-flight: path-param bootstrap POST %s failed (HTTP %d) — leaving %r unbound",
-                source_path, status, param,
-            )
-            continue
-
-        resolved_id = extract_response_id(data, extra_keys=("id",))
-        if not resolved_id:
-            _log.info(
-                "Pre-flight: path-param bootstrap POST %s succeeded but no id found in "
-                "response — leaving %r unbound",
-                source_path, param,
-            )
-            continue
-
+    values = await resolve_path_param_values(_post, sbom, chat_path)
+    sources = _path_param_sources_for(sbom, chat_path)
+    for param, resolved_id in values.items():
         client.set_path_param(param, resolved_id)
-        notes.append(f"Bootstrapped path param {param!r}={resolved_id!r} via POST {source_path!r}.")
+        notes.append(
+            f"Bootstrapped path param {param!r}={resolved_id!r} via POST {sources.get(param, '?')!r}."
+        )
+
+
+def _path_params_unbound(client: "TargetClient") -> bool:
+    """True when *client*'s chat path has placeholders with no bound value."""
+    from nuguard.common.endpoint_detection.constants import HAS_PATH_PARAM_RE  # noqa: PLC0415
+
+    return bool(HAS_PATH_PARAM_RE.search(client.chat_path or "")) and not getattr(
+        client, "path_param_values", {}
+    )
+
+
+async def _test_current_endpoint(
+    client: "TargetClient",
+    sbom: "AiSbomDocument | None",
+    session: object,
+    notes: list[str],
+) -> tuple[str, float]:
+    """Bootstrap path params if needed, send the test message, and score the reply.
+
+    Returns ``(response_text, chat_fitness)``. Bootstrapping *before* the test
+    send matters for templated routes (``/conversations/:id/messages``): sent
+    unbound they can only ever answer ``[CONFIG_ERROR: unresolved path param]``.
+    """
+    from nuguard.common.response_extraction import chat_fitness, extract_chat_text  # noqa: PLC0415
+
+    if sbom is not None and _path_params_unbound(client):
+        await _bootstrap_path_params(client, sbom, client.chat_path, notes)
+    if hasattr(client, "last_raw_response"):
+        client.last_raw_response = None
+    response, _ = await client.send(_TEST_MESSAGE, session)  # type: ignore[arg-type]
+    raw = getattr(client, "last_raw_response", None)
+    if getattr(client, "_last_response_is_report_fallback", False):
+        response = ""
+    elif raw is not None and getattr(client, "_framework_adapter", None) is None:
+        key = getattr(client, "_chat_response_key", None)
+        if getattr(client, "_last_response_extracted_from_stream", False):
+            key = None  # the configured path was already applied to each stream frame
+        if not extract_chat_text(raw, key):
+            response = ""
+    return response, chat_fitness(response, raw)
 
 
 async def validate_and_rotate_chat_endpoint(
@@ -161,8 +297,22 @@ async def validate_and_rotate_chat_endpoint(
     has_explicit_endpoint: bool,
     target_url: str = "",
     auth_headers: dict[str, str] | None = None,
+    max_candidates: int = DEFAULT_PREFLIGHT_CANDIDATES,
+    exclude_paths: "list[str] | None" = None,
+    browser_discovery: "BrowserDiscoveryConfig | None" = None,
 ) -> PreflightOutcome:
-    """Send a test request to *client*'s current endpoint; rotate on 400/404/405.
+    """Validate *client*'s chat endpoint and rotate to a better SBOM candidate.
+
+    Sends one test message to the current endpoint (bootstrapping any path
+    params first) and scores the reply with
+    :func:`~nuguard.common.response_extraction.chat_fitness`. A prose reply is
+    accepted immediately. Otherwise up to *max_candidates* other ranked SBOM
+    candidates are tried the same way and the most conversational one wins.
+    That covers 4xx/5xx/empty replies and also 2xx replies that are
+    structured artefacts from a one-shot generator endpoint (e.g.
+    ``/learning-paths/generate``) rather than chat. When no candidate answers
+    at all, and the current endpoint signalled a wrong route (400/404/405/422
+    or empty), falls back to a live probe and then a headless-browser sniff.
 
     Args:
         client: Ready-to-use client (auth headers already set) whose chat
@@ -175,46 +325,49 @@ async def validate_and_rotate_chat_endpoint(
             surprising.
         target_url: Base URL, forwarded to the live-probe fallback.
         auth_headers: Auth headers forwarded to the live-probe fallback.
+        max_candidates: How many alternative SBOM candidates to test when the
+            current endpoint's reply is not clearly conversational
+            (yaml: ``behavior.preflight_candidates`` / ``redteam.preflight_candidates``).
+        exclude_paths: Candidate paths never to rotate to (e.g. an endpoint
+            already found broken mid-run).
 
     Returns:
         :class:`PreflightOutcome` — never raises; failures are reported via
         ``ok=False`` and ``notes``.
     """
+    from nuguard.common.response_extraction import (  # noqa: PLC0415
+        CHAT_FITNESS_NONE,
+        CHAT_FITNESS_PROSE,
+    )
     from nuguard.redteam.target.session import AttackSession as _PF_AS  # noqa: PLC0415
 
     notes: list[str] = []
     session = _PF_AS(session_id="preflight", target_url=target_url, chain_id="preflight")
+    excluded = set(exclude_paths or [])
+
+    from nuguard.common.errors import TargetQuotaExhaustedError  # noqa: PLC0415
 
     try:
-        response, _ = await client.send(_TEST_MESSAGE, session)
+        response, fitness = await _test_current_endpoint(client, sbom, session, notes)
+    except TargetQuotaExhaustedError:
+        raise  # an exhausted usage quota won't clear by rotating endpoints
     except Exception as exc:
-        _log.debug("Pre-flight: test request failed (non-fatal): %s", exc)
-        return PreflightOutcome(ok=True)
+        _log.debug("Pre-flight: test request failed (non-fatal): %s", type(exc).__name__)
+        notes.append("Chat validation could not complete; continuing without caching an endpoint confirmation.")
+        outcome = PreflightOutcome(ok=True, notes=notes)
+        outcome._validation_completed = False
+        return outcome
 
-    if not _response_indicates_wrong_endpoint(response):
-        if sbom is not None:
-            _pre_count = len(notes)
-            await _bootstrap_path_params(client, sbom, client.chat_path, notes)
-            if len(notes) > _pre_count:
-                # A param was bound — re-run the test request against the
-                # now-substituted path, same as the rotation success paths.
-                resp_after, _ = await client.send(_TEST_MESSAGE, session)
-                if _response_indicates_wrong_endpoint(resp_after) or resp_after.startswith(
-                    "[CONFIG_ERROR"
-                ):
-                    _log.info(
-                        "Pre-flight: chat endpoint still not fully functional after "
-                        "path-param bootstrap: %s",
-                        resp_after[:60],
-                    )
-        return PreflightOutcome(ok=True, notes=notes)
+    wrong_endpoint = _response_indicates_wrong_endpoint(response)
 
-    _log.warning(
-        "Pre-flight: chat endpoint returned %s — attempting rotation",
-        response[:15] or "<empty response>",
-    )
+    def current_outcome() -> PreflightOutcome:
+        outcome = PreflightOutcome(ok=True, notes=notes)
+        outcome._validation_completed = fitness > CHAT_FITNESS_NONE
+        return outcome
 
     if has_explicit_endpoint:
+        if not wrong_endpoint:
+            return current_outcome()
         note = (
             "Configured chat endpoint rejected the test request (400/404/405). Explicit "
             "endpoint precedence is enforced; no SBOM/probe rotation was attempted. "
@@ -224,20 +377,85 @@ async def validate_and_rotate_chat_endpoint(
         _log.error("Pre-flight: explicit endpoint rejected test request (400/404/405); skipping rotation")
         return PreflightOutcome(ok=False, notes=notes)
 
-    if sbom is not None:
+    if fitness >= CHAT_FITNESS_PROSE or sbom is None:
+        if not wrong_endpoint:
+            return current_outcome()
+    else:
         from nuguard.common.endpoint_detection.sbom import (  # noqa: PLC0415
             discover_chat_candidates as _dcandidates,
         )
 
-        for candidate in _dcandidates(sbom)[1:]:
-            client.set_chat_endpoint(candidate[0], candidate[1], candidate[2], candidate[3])
-            resp2, _ = await client.send(_TEST_MESSAGE, session)
-            if not _response_indicates_wrong_endpoint(resp2):
-                _log.info("Pre-flight: rotated to working endpoint %s", candidate[0])
-                notes.append(f"Chat endpoint rotated to {candidate[0]!r} after 400/404/405 on the discovered path.")
-                await _bootstrap_path_params(client, sbom, candidate[0], notes)
-                return PreflightOutcome(ok=True, rotated_endpoint=candidate, endpoint_source="sbom", notes=notes)
+        _log.info(
+            "Pre-flight: chat endpoint %s reply not clearly conversational "
+            "(fitness=%.1f, %s) — comparing up to %d SBOM candidates",
+            client.chat_path, fitness, response[:40] or "<empty response>", max_candidates,
+        )
+        original_path = client.chat_path
+        ranked = _dcandidates(sbom)
+        candidates = [
+            c for c in ranked if c[0] != original_path and c[0] not in excluded
+        ][: max(0, max_candidates)]
+        original = next((c for c in ranked if c[0] == original_path), None)
 
+        best: "tuple[float, tuple[str, str, bool, str | None] | None]" = (fitness, None)
+        for candidate in candidates:
+            client.set_chat_endpoint(candidate[0], candidate[1], candidate[2], candidate[3])
+            cand_notes: list[str] = []
+            try:
+                cand_resp, cand_fit = await _test_current_endpoint(client, sbom, session, cand_notes)
+            except TargetQuotaExhaustedError:
+                raise
+            except Exception as exc:
+                _log.debug("Pre-flight: candidate %s raised (non-fatal): %s", candidate[0], exc)
+                continue
+            _log.info(
+                "Pre-flight: candidate %s fitness=%.1f (%s)",
+                candidate[0], cand_fit, cand_resp[:40] or "<empty response>",
+            )
+            if cand_fit > best[0]:
+                best = (cand_fit, candidate)
+            if cand_fit >= CHAT_FITNESS_PROSE:
+                break
+
+        best_fit, best_candidate = best
+        if best_candidate is not None and best_fit > CHAT_FITNESS_NONE:
+            # Re-select the winner: set_chat_endpoint clears bound path params,
+            # so bootstrap again against the final endpoint.
+            client.set_chat_endpoint(
+                best_candidate[0], best_candidate[1], best_candidate[2], best_candidate[3]
+            )
+            if _path_params_unbound(client):
+                await _bootstrap_path_params(client, sbom, best_candidate[0], notes)
+            _log.info("Pre-flight: rotated to endpoint %s (fitness=%.1f)", best_candidate[0], best_fit)
+            notes.append(
+                f"Chat endpoint rotated to {best_candidate[0]!r} — it answered the test "
+                f"message more conversationally than {original_path!r}."
+            )
+            return PreflightOutcome(
+                ok=True, rotated_endpoint=best_candidate, endpoint_source="sbom", notes=notes
+            )
+
+        # No candidate beat the original — restore it.
+        if client.chat_path != original_path:
+            if original is not None:
+                client.set_chat_endpoint(original[0], original[1], original[2], original[3])
+            else:
+                client.set_chat_endpoint(
+                    original_path,
+                    getattr(client, "_chat_payload_key", "message"),
+                    bool(getattr(client, "_chat_payload_list", False)),
+                )
+            if sbom is not None and _path_params_unbound(client):
+                await _bootstrap_path_params(client, sbom, original_path, notes)
+        if not wrong_endpoint:
+            return current_outcome()
+
+    _log.warning(
+        "Pre-flight: chat endpoint returned %s — attempting live discovery",
+        response[:15] or "<empty response>",
+    )
+
+    if sbom is not None:
         # Live probe as last resort.
         from nuguard.common.endpoint_detection.live_probe import (  # noqa: PLC0415
             probe_endpoint as _probe,
@@ -248,7 +466,7 @@ async def validate_and_rotate_chat_endpoint(
         except Exception as exc:
             _log.warning("Pre-flight live probe failed: %s", exc)
             probed = None
-        if probed:
+        if probed and getattr(probed, "confirmed", True):
             path, pay_key, pay_list = probed
             client.set_chat_endpoint(path, pay_key, pay_list)
             _log.info("Pre-flight: live probe found working endpoint %s", path)
@@ -274,25 +492,35 @@ async def validate_and_rotate_chat_endpoint(
         )
 
         try:
-            sniffed = await sniff_chat_endpoint_headless(target_url, chat_message=_TEST_MESSAGE)
+            sniffed = await sniff_chat_endpoint_headless(
+                target_url, chat_message=_TEST_MESSAGE,
+                browser_discovery=browser_discovery, discovery_notes=notes,
+            )
         except Exception as exc:
             _log.info("Pre-flight: browser-sniff fallback failed: %s", exc)
             sniffed = None
         if sniffed is not None:
             path, pay_key, pay_list = sniffed
             client.set_chat_endpoint(path, pay_key, pay_list)
-            _log.info("Pre-flight: browser sniff found working endpoint %s", path)
-            notes.append(
-                f"Chat endpoint rotated to {path!r} via headless-browser sniff after SBOM "
-                "candidates and live probe both failed."
-            )
             await _bootstrap_path_params(client, sbom, path, notes)
-            return PreflightOutcome(
-                ok=True,
-                rotated_endpoint=(path, pay_key, pay_list, None),
-                endpoint_source="probe",
-                notes=notes,
-            )
+            try:
+                browser_reply, _ = await _test_current_endpoint(client, sbom, session, notes)
+            except TargetQuotaExhaustedError:
+                raise
+            except Exception:  # noqa: BLE001 - an observed request still needs a reply
+                browser_reply = ""
+            if browser_reply and not _response_indicates_wrong_endpoint(browser_reply):
+                _log.info("Pre-flight: browser sniff validated endpoint %s", path)
+                notes.append(
+                    f"Chat endpoint rotated to {path!r} via headless-browser sniff after SBOM "
+                    "candidates and live probe both failed."
+                )
+                return PreflightOutcome(
+                    ok=True,
+                    rotated_endpoint=(path, pay_key, pay_list, None),
+                    endpoint_source="probe",
+                    notes=notes,
+                )
 
     note = (
         "Chat endpoint unreachable — all SBOM candidates, the live probe, and the "

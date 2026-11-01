@@ -318,8 +318,14 @@ async def _run_behavior(
         _partial_run = True
         result = exc.partial_result
     except Exception as exc:
-        from nuguard.common.errors import AuthError, TargetUnavailableError  # noqa: PLC0415
-        if isinstance(exc, TargetUnavailableError):
+        from nuguard.common.errors import (  # noqa: PLC0415
+            AuthError,
+            TargetQuotaExhaustedError,
+            TargetUnavailableError,
+        )
+        if isinstance(exc, TargetQuotaExhaustedError):
+            _err_console.print(f"[red]Error:[/red] {exc}")
+        elif isinstance(exc, TargetUnavailableError):
             _err_console.print(
                 f"[red]Error:[/red] target is unreachable at {exc.url!r}.\n"
                 "Ensure the application is running and the URL is correct.\n"

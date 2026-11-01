@@ -5,8 +5,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ...http_semantics import HANDLER_SIGNALS_KEY
+from ...models import HttpParameterLocation, HttpParameterMetadata, HttpRequestMetadata
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from .._handler_signals_text import regex_handler_signals
 from ..base import ComponentDetection, RelationshipHint
 from ._csharp_base import CSharpFrameworkAdapter
 from ._source import (
@@ -18,6 +21,16 @@ from ._source import (
     split_top_level,
     statement_tail,
     string_constants,
+)
+
+# Handler resolves the caller from the credential rather than the request.
+_CSHARP_IDENTITY_PATTERNS = (
+    re.compile(r"\bClaimsPrincipal\s+\w+|\bICurrentUser\w*\s+\w+|\bIHttpContextAccessor\b"),
+    re.compile(r"\bUser\.(?:Identity|FindFirst|Claims)\b|\bHttpContext\.User\b"),
+)
+_CSHARP_COOKIE_PATTERNS = (
+    re.compile(r"\bResponse\.Cookies\.Append\s*\(|\bCookieOptions\b|\bHttpContext\.Session\b"),
+    re.compile(r"\bSignInAsync\s*\("),
 )
 
 _HTTP_ATTRIBUTES = {
@@ -368,6 +381,10 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                     response_schema=(response_schema),
                     chat_key=chat_key,
                     response_key=response_key,
+                    http_request=_http_request(
+                        list(method.parameters), http_method, route, request_schema
+                    ),
+                    handler_text="\n".join([*method.parameters, *method.attributes, body]),
                 )
             )
 
@@ -462,6 +479,10 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                     response_schema=(response_schema),
                     chat_key=chat_key,
                     response_key=response_key,
+                    http_request=_http_request(
+                        list(_lambda_parameters(handler)), method, normalized_route, request_schema
+                    ),
+                    handler_text=handler,
                 )
             )
 
@@ -483,6 +504,8 @@ def _endpoint_node(
     response_schema: dict[str, str],
     chat_key: str | None,
     response_key: str | None,
+    http_request: dict[str, Any] | None = None,
+    handler_text: str | None = None,
 ) -> ComponentDetection:
     canonical = canonicalize_text(f"aspnet:endpoint:{http_method}:{route}")
     metadata: dict[str, Any] = {
@@ -495,6 +518,16 @@ def _endpoint_node(
 
     if request_schema:
         metadata["request_body_schema"] = request_schema
+
+    if http_request:
+        metadata["http_request"] = http_request
+
+    if handler_text is not None:
+        metadata[HANDLER_SIGNALS_KEY] = regex_handler_signals(
+            handler_text,
+            identity_patterns=_CSHARP_IDENTITY_PATTERNS,
+            cookie_patterns=_CSHARP_COOKIE_PATTERNS,
+        )
 
     if response_schema:
         metadata["response_body_schema"] = response_schema
@@ -910,6 +943,103 @@ def _binding_source(
                 return binding
 
     return None
+
+
+_BINDING_LOCATIONS: dict[str, HttpParameterLocation] = {
+    "query": "query",
+    "route": "path",
+    "header": "header",
+    "form": "form",
+}
+_BINDING_NAME_RE = re.compile(
+    r"From(?:Query|Route|Header|Form)(?:Attribute)?\s*\(\s*Name\s*=\s*\"([^\"]+)\""
+)
+
+
+def _type_hint(type_name: str) -> str:
+    base = _base_type(type_name)
+    if _is_collection_type(type_name):
+        return "list"
+    if base in {"int", "long", "short", "uint", "ulong", "ushort", "byte"}:
+        return "int"
+    if base in {"double", "float", "decimal"}:
+        return "float"
+    if base == "bool":
+        return "bool"
+    return "string"
+
+
+def _http_request(
+    raw_parameters: list[str],
+    http_method: str,
+    route: str,
+    request_schema: dict[str, str],
+) -> dict[str, Any]:
+    """Technology-neutral request shape from ASP.NET Core parameter bindings.
+
+    Explicit ``[FromQuery]``/``[FromRoute]``/``[FromHeader]``/``[FromForm]``
+    bindings map to their location (honoring ``Name = "..."``); unbound
+    primitives follow ASP.NET's own rules (route template name -> path,
+    otherwise query); a complex body contributes its resolved fields as JSON
+    inputs, or marks the inputs unresolved when its type isn't visible.
+    """
+    route_names = {name.casefold() for name in re.findall(r"\{(\w+)", route)}
+    parameters: dict[tuple[str, str], HttpParameterMetadata] = {}
+    content_types: list[str] = []
+    unresolved = False
+
+    def add(name: str, location: HttpParameterLocation, type_name: str, required: bool) -> None:
+        if name and (name, location) not in parameters:
+            parameters[(name, location)] = HttpParameterMetadata(
+                name=name, location=location, type_hint=_type_hint(type_name), required=required
+            )
+
+    for raw in raw_parameters:
+        parsed = _parse_parameter(raw)
+        if parsed is None:
+            continue
+        type_name, name, binding = parsed
+        name = name.lstrip("@")
+        base = _base_type(type_name)
+        optional = type_name.rstrip().endswith("?") or "=" in re.sub(r"\[[^\]]*\]", "", raw)
+        named = _BINDING_NAME_RE.search(raw)
+        wire_name = named.group(1) if named else name
+
+        if base in {"IFormFile", "IFormFileCollection"}:
+            add(wire_name, "multipart", type_name, not optional)
+            continue
+        if binding in {"services", "parameters"} or base in _INFRASTRUCTURE_TYPES:
+            unresolved = unresolved or binding == "parameters"
+            continue
+        if binding in _BINDING_LOCATIONS:
+            location = _BINDING_LOCATIONS[binding]
+            add(wire_name, location, type_name, location == "path" or not optional)
+            continue
+        if base in _PRIMITIVE_TYPES and binding is None:
+            location = "path" if name.casefold() in route_names else "query"
+            add(wire_name, location, type_name, location == "path" or not optional)
+            continue
+        # [FromBody] or an implicitly body-bound complex type.
+        if request_schema:
+            for field, field_type in request_schema.items():
+                add(field, "json", field_type, False)
+        else:
+            unresolved = True
+        content_types.append("application/json")
+
+    locations = {parameter.location for parameter in parameters.values()}
+    if "multipart" in locations:
+        content_types.insert(0, "multipart/form-data")
+    if "form" in locations:
+        content_types.insert(0, "application/x-www-form-urlencoded")
+
+    method = http_method.upper()
+    return HttpRequestMetadata(
+        methods=[method] if method and method != "ANY" else ["UNKNOWN"],
+        parameters=list(parameters.values()),
+        content_types=list(dict.fromkeys(content_types)),
+        has_unresolved_inputs=unresolved,
+    ).model_dump(mode="json")
 
 
 def _request_parameter(

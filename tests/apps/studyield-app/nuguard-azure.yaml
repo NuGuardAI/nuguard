@@ -1,7 +1,7 @@
 # nuguard-azure.yaml — Studyield hosted on Azure Container Instances
 # Deploy first with deploy-azure-aci.sh, then fill in the FQDN it prints below.
 
-source: https://github.com/studyield/studyield
+source: https://github.com/infoinletdevFive/studyield
 sbom: ./studyield.sbom.json
 
 policy:

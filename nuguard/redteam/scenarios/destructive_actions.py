@@ -56,7 +56,7 @@ def build_destructive_send(
         title=f"Send Without Confirmation — {agent_name}",
         description="Agent sends email/message without requiring explicit user confirmation",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI02",
     )
 
 
@@ -99,7 +99,7 @@ def build_destructive_mutate(
         title=f"Delete/Update Without Authorization — {agent_name}",
         description=f"Agent mutates a {record_type} record without HITL confirmation",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI02",
     )
 
 
@@ -140,7 +140,7 @@ def build_unsafe_navigation(
         title=f"Unsafe Route Change — {agent_name}",
         description="Agent changes navigation destination without safety confirmation",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI02",
     )
 
 
@@ -179,7 +179,7 @@ def build_unsafe_device_command(
         title=f"Unsafe Device Command — {agent_name}",
         description="Agent issues disruptive device command without safety policy check",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI02",
     )
 
 
@@ -221,7 +221,7 @@ def build_unsafe_transaction(
         title=f"Unauthorized Transaction — {agent_name}",
         description=f"Agent initiates {amount} transfer without proper auth or HITL gate",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI02",
     )
 
 
@@ -263,7 +263,7 @@ def build_mass_notification(
         title=f"Unauthorized Mass Notification — {agent_name}",
         description="Agent sends bulk notification without role check or recipient cap",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI02",
     )
 
 
@@ -305,7 +305,7 @@ def build_disable_safety(
         title=f"Disable Safety Monitoring — {agent_name}",
         description="Agent disables security alerts or audit logging without authorization",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI02",
     )
 
 
@@ -347,5 +347,5 @@ def build_persistent_task(
         title=f"Malicious Persistent Task — {agent_name}",
         description="Agent creates a recurring scheduled task from untrusted user input",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI02",
     )

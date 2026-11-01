@@ -1,6 +1,7 @@
 """Shared auth runtime helpers used by behavior and redteam flows."""
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Mapping
 
@@ -11,9 +12,12 @@ from nuguard.models.health_report import TargetHealthReport
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from nuguard.common.endpoint_detection.models import ResolvedEndpoint
+
     # Deferred to avoid re-entering nuguard.common.__init__ mid-import — see
     # the matching comment in nuguard/common/bootstrap.py.
     from nuguard.redteam.target.canary import CanaryConfig
+    from nuguard.sbom.models import AiSbomDocument
 
 
 @dataclass(frozen=True)
@@ -84,6 +88,11 @@ async def bootstrap_auth_runtime(
     config_path: "Path | None" = None,
     payload_key: str = "message",
     payload_list: bool = False,
+    sbom: "AiSbomDocument | None" = None,
+    endpoint_resolver: "Callable[[dict[str, str]], Awaitable[ResolvedEndpoint]] | None" = None,
+    extra_headers: dict[str, str] | None = None,
+    chat_method: str = "POST",
+    chat_payload_in: str | None = None,
 ) -> tuple[AuthBootstrapper, TargetHealthReport]:
     """Run shared auth bootstrap and return both bootstrapper and report.
 
@@ -91,7 +100,11 @@ async def bootstrap_auth_runtime(
     through so a browser-login auth-recovery fallback (see
     ``AuthBootstrapper._maybe_recover_via_browser``) can persist a recovered
     cookie_file session back into the file for future runs. Omitting it does
-    not disable recovery, only the persistence step.
+    not disable recovery, only the persistence step. ``sbom``, when given,
+    lets the health check resolve a templated chat endpoint's path params
+    (two-step chat) instead of probing the literal placeholder.
+    Custom ``extra_headers`` apply to discovery and probes; identity auth headers
+    take precedence, matching the subsequent target client's header handling.
     """
     bootstrapper = AuthBootstrapper(
         target_url=target_url,
@@ -107,6 +120,11 @@ async def bootstrap_auth_runtime(
         config_path=config_path,
         payload_key=payload_key,
         payload_list=payload_list,
+        sbom=sbom,
+        endpoint_resolver=endpoint_resolver,
+        extra_headers=extra_headers,
+        chat_method=chat_method,
+        chat_payload_in=chat_payload_in,
     )
     report = await bootstrapper.run()
     return bootstrapper, report

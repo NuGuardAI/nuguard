@@ -127,3 +127,38 @@ async def test_429_with_retry_after_header_is_parsed() -> None:
         await probe_chat_endpoints(TARGET, sbom=None)
 
     assert excinfo.value.retry_after == 30.0
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_known_key_4xx_keeps_sweeping_for_a_confirmed_path() -> None:
+    # A known payload key rejected with 4xx must not be "selected" — a later
+    # path that actually answers wins (kscope: /chat 400 vs /extract 200).
+    respx.get(url__regex=r".*").mock(return_value=httpx.Response(404))
+    respx.post(f"{TARGET}/chat").mock(
+        return_value=httpx.Response(400, json={"error": "consumerID and message are required"})
+    )
+    respx.post(f"{TARGET}/run").mock(
+        return_value=httpx.Response(200, json={"response": "hi"})
+    )
+    respx.post(url__regex=r".*").mock(return_value=httpx.Response(404))
+
+    result = await probe_chat_endpoints(TARGET, sbom=None, known_payload_key="text")
+
+    assert result is not None
+    assert result.path == "/run"
+    assert result.confirmed is True
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_known_key_4xx_only_is_returned_unconfirmed() -> None:
+    respx.get(url__regex=r".*").mock(return_value=httpx.Response(404))
+    respx.post(f"{TARGET}/chat").mock(return_value=httpx.Response(400))
+    respx.post(url__regex=r".*").mock(return_value=httpx.Response(404))
+
+    result = await probe_chat_endpoints(TARGET, sbom=None, known_payload_key="text")
+
+    assert result is not None
+    assert result.path == "/chat"
+    assert result.confirmed is False

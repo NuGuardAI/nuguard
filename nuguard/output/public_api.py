@@ -117,6 +117,9 @@ async def render_redteam_report(
             scenario_records=run_result.scenario_records,
             catalog_coverage=run_result.catalog_coverage,
             coverage_tracker=run_result.coverage_tracker,
+            scan_outcome=run_result.scan_outcome,
+            campaign_coverage=run_result.campaign_coverage,
+            efficiency=run_result.efficiency,
         )
 
     if request.include_json_summary:
@@ -130,6 +133,8 @@ async def render_redteam_report(
                 output_tokens_used=run_result.output_tokens_used,
                 token_usage=run_result.token_usage,
                 scenario_records=run_result.scenario_records,
+                campaign_coverage=run_result.campaign_coverage,
+                efficiency=run_result.efficiency,
             )
         )
 

@@ -143,7 +143,9 @@ _METHOD_RE = re.compile(
     rf"synchronized|native|strictfp|default)\s+)*)"
     rf"(?:(?P<type_params><[^;{{}}()\n]+>)\s*)?"
     rf"(?:(?P<return>[A-Za-z_$][\w$.,<>?\[\] \t]*)\s+)?"
-    rf"(?P<name>{_IDENTIFIER})\s*\((?P<params>[^;{{}}()]*)\)"
+    # One level of nested parentheses so annotated parameters such as
+    # ``@PathVariable("id") String id`` don't prevent the method matching.
+    rf"(?P<name>{_IDENTIFIER})\s*\((?P<params>(?:[^;{{}}()]|\([^;{{}}()]*\))*)\)"
     rf"(?:\s+throws\s+[^{{;]+)?\s*(?P<terminator>\{{|;)"
 )
 _NON_METHOD_NAMES = {
@@ -356,7 +358,15 @@ def _containing_type(type_spans: list[_Span], position: int) -> _Span | None:
     return min(candidates, key=lambda span: span.end - span.start) if candidates else None
 
 
-def _split_parameters(raw: str) -> tuple[str, ...]:
+def _split_parameters(raw: str, original: str | None = None) -> tuple[str, ...]:
+    """Split a parameter list on top-level commas.
+
+    *raw* is the masked text (literals/comments blanked) used to find the
+    split points; *original*, when given, is the same-length source slice the
+    values are taken from so annotation arguments like ``@PathVariable("id")``
+    keep their string literals.
+    """
+    text = raw if original is None else original
     result: list[str] = []
     depth = 0
     start = 0
@@ -366,11 +376,11 @@ def _split_parameters(raw: str) -> tuple[str, ...]:
         elif char in ">)]":
             depth = max(0, depth - 1)
         elif char == "," and depth == 0:
-            value = raw[start:index].strip()
+            value = text[start:index].strip()
             if value:
                 result.append(value)
             start = index + 1
-    value = raw[start:].strip()
+    value = text[start:].strip()
     if value:
         result.append(value)
     return tuple(result)
@@ -407,7 +417,10 @@ def _extract_methods(
             JavaMethodDeclaration(
                 name=name,
                 return_type=return_type,
-                parameters=_split_parameters(match.group("params")),
+                parameters=_split_parameters(
+                    match.group("params"),
+                    source[match.start("params") : match.end("params")],
+                ),
                 annotations=_annotations(
                     source[match.start("annotations") : match.end("annotations")]
                 ),

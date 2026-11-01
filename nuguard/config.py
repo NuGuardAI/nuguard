@@ -27,11 +27,13 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from nuguard.common.auth import LoginFlowConfig, infer_auth_type
+from nuguard.common.browser_login.config import BrowserDiscoveryConfig
 from nuguard.common.errors import ConfigError
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
+    from nuguard.redteam.campaign.config import CampaignConfig
 
 _log = get_logger(__name__)
 
@@ -199,6 +201,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["sbom_llm_enabled"] = bool(sbom_gen["llm"])
     if "llm_concurrency" in sbom_gen:
         flat["sbom_llm_concurrency"] = int(sbom_gen["llm_concurrency"])
+    if "scan_images" in sbom_gen:
+        flat["sbom_scan_images"] = bool(sbom_gen["scan_images"])
+    if "max_image_packages" in sbom_gen:
+        flat["sbom_max_image_packages"] = int(sbom_gen["max_image_packages"])
 
     gap_fill = sbom_gen.get("gap_fill", {}) or {}
     if "max_calls" in gap_fill:
@@ -236,6 +242,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     # precedence and override the shared values when present.
     shared_target = data.get("target", {}) or {}
     if isinstance(shared_target, dict):
+        if isinstance(shared_target.get("browser_discovery"), dict):
+            flat["target_browser_discovery"] = shared_target["browser_discovery"]
+            flat["redteam_browser_discovery"] = shared_target["browser_discovery"]
         if "url" in shared_target:
             flat["target_url"] = shared_target["url"]
         if "endpoint" in shared_target:
@@ -249,6 +258,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_chat_payload_list"] = bool(shared_target["chat_payload_list"])
         if "chat_response_key" in shared_target:
             flat["redteam_chat_response_key"] = shared_target["chat_response_key"]
+        if "chat_method" in shared_target:
+            flat["redteam_chat_method"] = shared_target["chat_method"]
+        if "chat_payload_in" in shared_target:
+            flat["redteam_chat_payload_in"] = shared_target["chat_payload_in"]
         if "chat_payload_extras" in shared_target and isinstance(shared_target["chat_payload_extras"], dict):
             flat["redteam_chat_payload_extras"] = shared_target["chat_payload_extras"]
         if "probe_llm" in shared_target:
@@ -309,6 +322,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     # Precedence matches the shared block: ``endpoint`` wins over
     # ``target_endpoint`` when both are set in the same block.
     redteam = {k: v for k, v in (data.get("redteam", {}) or {}).items() if v is not None}
+    if isinstance(redteam.get("browser_discovery"), dict):
+        flat["redteam_browser_discovery"] = {
+            **flat.get("redteam_browser_discovery", {}), **redteam["browser_discovery"]
+        }
     if "target" in redteam:
         flat["target_url"] = redteam["target"]
     if "endpoint" in redteam:
@@ -321,6 +338,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_chat_payload_list"] = bool(redteam["chat_payload_list"])
     if "chat_response_key" in redteam:
         flat["redteam_chat_response_key"] = redteam["chat_response_key"]
+    if "chat_method" in redteam:
+        flat["redteam_chat_method"] = redteam["chat_method"]
+    if "chat_payload_in" in redteam:
+        flat["redteam_chat_payload_in"] = redteam["chat_payload_in"]
     if "chat_payload_extras" in redteam and isinstance(redteam["chat_payload_extras"], dict):
         flat["redteam_chat_payload_extras"] = redteam["chat_payload_extras"]
     if "auth_header" in redteam:
@@ -340,6 +361,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_profile"] = redteam["profile"]
     if "mode" in redteam:
         flat["redteam_mode"] = str(redteam["mode"])
+    if "campaign" in redteam and isinstance(redteam["campaign"], dict):
+        for _ck, _cv in redteam["campaign"].items():
+            flat[f"redteam_campaign_{_ck}"] = _cv
     if "progressive" in redteam and isinstance(redteam["progressive"], dict):
         _prog = redteam["progressive"]
         if "halt_on_severity" in _prog:
@@ -363,8 +387,19 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_request_timeout"] = float(redteam["request_timeout"])
     if "scenario_timeout" in redteam:
         flat["redteam_scenario_timeout"] = float(redteam["scenario_timeout"])
+    if "api_endpoint_threshold" in redteam:
+        flat["redteam_api_endpoint_threshold"] = int(redteam["api_endpoint_threshold"])
+    if "ci_api_spot_checks" in redteam:
+        flat["redteam_ci_api_spot_checks"] = int(redteam["ci_api_spot_checks"])
     if "similar_miss_threshold" in redteam:
         flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
+    if "universal_safety_probes" in redteam:
+        flat["redteam_universal_safety_probes"] = bool(redteam["universal_safety_probes"])
+    if isinstance(redteam.get("workflows"), list):
+        flat["redteam_workflows"] = list(redteam["workflows"])
+    if "workflow_templates" in redteam:
+        _wt = redteam["workflow_templates"]
+        flat["redteam_workflow_templates"] = [_wt] if isinstance(_wt, str) else list(_wt or [])
     if "hard_refusal_abort_turns" in redteam:
         flat["redteam_hard_refusal_abort_turns"] = int(redteam["hard_refusal_abort_turns"])
     if "stall_abort_threshold" in redteam:
@@ -381,6 +416,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_capability_discovery"] = bool(redteam["capability_discovery"])
     if "liveness_cache_ttl_seconds" in redteam:
         flat["redteam_liveness_cache_ttl_seconds"] = float(redteam["liveness_cache_ttl_seconds"])
+    if "preflight_candidates" in redteam:
+        flat["redteam_preflight_candidates"] = int(redteam["preflight_candidates"])
     if "browser_discover_endpoints" in redteam:
         flat["redteam_browser_discover_endpoints"] = bool(redteam["browser_discover_endpoints"])
     if "llm_capability_dedup" in redteam:
@@ -469,6 +506,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_trigger_tool_trace_hits"] = bool(
                 finding_triggers["tool_trace_hits"]
             )
+        if "identity_mismatch_hits" in finding_triggers:
+            flat["redteam_trigger_identity_mismatch_hits"] = bool(
+                finding_triggers["identity_mismatch_hits"]
+            )
 
     # Redteam LLM section — skip keys whose env-var interpolation produced None
     redteam_llm = redteam.get("llm", {}) or {}
@@ -489,7 +530,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_eval_llm_api_base"] = redteam_eval_llm["api_base"]
 
     # Behavior section — shared target block keys are the baseline; behavior.* overrides them
-    if "behavior" in data:
+    if "behavior" in data or (
+        isinstance(shared_target, dict) and isinstance(shared_target.get("browser_discovery"), dict)
+    ):
         b = data.get("behavior") or {}
         if isinstance(b, dict):
             # A YAML key written with no value (e.g. "workflows:") parses to None,
@@ -503,6 +546,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             # Keys already present in the behavior block take precedence.
             if isinstance(shared_target, dict):
                 _shared_for_behavior: dict[str, Any] = {}
+                if isinstance(shared_target.get("browser_discovery"), dict):
+                    b["browser_discovery"] = {
+                        **shared_target["browser_discovery"], **(b.get("browser_discovery") or {})
+                    }
                 if "url" in shared_target:
                     _shared_for_behavior["target"] = shared_target["url"]
                 if "endpoint" in shared_target:
@@ -517,6 +564,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                     )
                 if "chat_response_key" in shared_target:
                     _shared_for_behavior["chat_response_key"] = shared_target["chat_response_key"]
+                if "chat_method" in shared_target:
+                    _shared_for_behavior["chat_method"] = shared_target["chat_method"]
+                if "chat_payload_in" in shared_target:
+                    _shared_for_behavior["chat_payload_in"] = shared_target["chat_payload_in"]
                 if "chat_payload_extras" in shared_target and isinstance(shared_target["chat_payload_extras"], dict):
                     _shared_for_behavior.setdefault("chat_payload_extras", shared_target["chat_payload_extras"])
                 if "headers" in shared_target and isinstance(shared_target["headers"], dict):
@@ -588,11 +639,36 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 flat["redteam_auth_password"] = _recovery_password
 
     # Redteam defence_regressions
+    for key in ("defence_regression_timeout", "defence_regression_probe_timeout"):
+        if isinstance(redteam, dict) and key in redteam:
+            flat[f"redteam_{key}"] = redteam[key]
     if isinstance(redteam, dict) and "defence_regressions" in redteam:
         flat["redteam_defence_regressions"] = redteam["defence_regressions"]
+    if isinstance(redteam, dict) and "defence_regression_paraphrases" in redteam:
+        flat["redteam_defence_regression_paraphrases"] = redteam["defence_regression_paraphrases"]
+
+    # Redteam ASM (Agentic Surface Model) probing budget/paths
+    _asm = redteam.get("asm", {}) if isinstance(redteam, dict) else {}
+    if isinstance(_asm, dict):
+        if "max_probe_requests" in _asm:
+            flat["redteam_asm_max_probe_requests"] = _asm["max_probe_requests"]
+        if "extra_inventory_paths" in _asm:
+            flat["redteam_asm_extra_inventory_paths"] = _asm["extra_inventory_paths"]
+
+    # Redteam trust-context matrix (W2)
+    _trust_context = redteam.get("trust_context", {}) if isinstance(redteam, dict) else {}
+    if isinstance(_trust_context, dict) and "confirmation_cells" in _trust_context:
+        flat["redteam_trust_context_confirmation_cells"] = _trust_context["confirmation_cells"]
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
+    for key in (
+        "checkov_timeout", "checkov_total_timeout", "semgrep_timeout", "semgrep_total_timeout",
+        "pip_audit_timeout", "pip_audit_total_timeout",
+        "gitleaks_timeout", "gitleaks_total_timeout",
+    ):
+        if key in analyze:
+            flat[f"analyze_{key}"] = analyze[key]
     if "min_severity" in analyze:
         flat["analyze_min_severity"] = analyze["min_severity"]
     if "nga_only" in analyze:
@@ -710,6 +786,7 @@ class BehaviorConfig(BaseModel):
     """Configuration for nuguard behavior mode."""
 
     target: str = ""
+    browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
     target_endpoint: str = ""
     auth: AppAuthConfig = Field(default_factory=AppAuthConfig)
     headers: dict[str, str] = Field(
@@ -762,6 +839,18 @@ class BehaviorConfig(BaseModel):
             "cached in the enriched SBOM stays fresh before it's re-probed. A fresh cached "
             "result — including one written by a prior redteam run against the same "
             "enriched SBOM — is used as-is, skipping the live ping entirely."
+        ),
+    )
+    preflight_candidates: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        description=(
+            "How many alternative SBOM chat-endpoint candidates the pre-flight check "
+            "compares (yaml: behavior.preflight_candidates) when the auto-discovered "
+            "endpoint's reply to a test message is an error or a structured artefact "
+            "rather than a conversational reply. 0 disables candidate comparison. "
+            "Ignored when target_endpoint is set explicitly."
         ),
     )
     browser_discover_endpoints: bool = Field(
@@ -838,6 +927,21 @@ class BehaviorConfig(BaseModel):
     chat_payload_list: bool = False
     chat_payload_format: Literal["json", "form"] = "json"
     chat_response_key: str = ""
+    chat_method: Literal["GET", "POST", "PUT", "PATCH"] = Field(
+        default="POST",
+        description=(
+            "HTTP method for chat turns (yaml: behavior.chat_method or target.chat_method). "
+            "Use GET for endpoints such as GET /agent?sessionId=..&userMessage=..; pair it "
+            "with chat_payload_extras templates using {{message}} and {{session_id}}."
+        ),
+    )
+    chat_payload_in: Literal["body", "query"] | None = Field(
+        default=None,
+        description=(
+            "Where the chat payload is sent: 'body' or 'query' (query string). Default: "
+            "'query' for GET, 'body' for every other method."
+        ),
+    )
     chat_payload_extras: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -1059,6 +1163,10 @@ class RedteamFindingTriggers(BaseModel):
     any_inject_success: bool = False
     # Phase 3 catalog evidence layers
     tool_trace_hits: bool = True
+    # W2 trust-context matrix (redteam-proposal.md) — top-priority tier,
+    # checked ahead of canary_hits: a confirmed identity mismatch is
+    # deterministic data-membership proof, not LLM-judged.
+    identity_mismatch_hits: bool = True
 
     def any_enabled(self) -> bool:
         """Return True when at least one trigger is enabled."""
@@ -1069,6 +1177,7 @@ class RedteamFindingTriggers(BaseModel):
                 self.critical_success_hits,
                 self.any_inject_success,
                 self.tool_trace_hits,
+                self.identity_mismatch_hits,
             ]
         )
 
@@ -1157,6 +1266,21 @@ class NuGuardConfig(BaseSettings):
             "Max in-flight LLM calls during SBOM enrichment (yaml: "
             "sbom_generation.llm_concurrency, issue #197). When None, the "
             "AiSbomConfig default (5) is used."
+        ),
+    )
+    sbom_scan_images: bool = Field(
+        default=False,
+        description=(
+            "Scan pulled container images with syft for OS and installed packages "
+            "(yaml: sbom_generation.scan_images; CLI: --scan-images). Requires syft and "
+            "registry access."
+        ),
+    )
+    sbom_max_image_packages: int = Field(
+        default=200,
+        ge=1,
+        description=(
+            "Max packages recorded per container image (yaml: sbom_generation.max_image_packages)."
         ),
     )
     sbom_gap_fill_max_calls: int | None = Field(
@@ -1273,6 +1397,22 @@ class NuGuardConfig(BaseSettings):
             "(yaml: redteam.chat_response_key). Empty string = auto-detect."
         ),
     )
+    redteam_chat_method: Literal["GET", "POST", "PUT", "PATCH"] = Field(
+        default="POST",
+        description=(
+            "HTTP method for redteam chat turns (yaml: redteam.chat_method or "
+            "target.chat_method). Use GET for endpoints such as "
+            "GET /agent?sessionId=..&userMessage=.."
+        ),
+    )
+    redteam_chat_payload_in: Literal["body", "query"] | None = Field(
+        default=None,
+        description=(
+            "Where the redteam chat payload is sent: 'body' or 'query' (yaml: "
+            "redteam.chat_payload_in or target.chat_payload_in). Default: 'query' for GET, "
+            "'body' for every other method."
+        ),
+    )
     redteam_chat_payload_extras: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -1308,13 +1448,60 @@ class NuGuardConfig(BaseSettings):
             "or 'full' (all scenarios, ≥50 on rich SBOMs) (yaml: redteam.profile)."
         ),
     )
-    redteam_mode: str = Field(
+    redteam_mode: Literal["concurrent", "progressive", "campaign"] = Field(
         default="concurrent",
         description=(
             "'concurrent' (default, existing behavior — phase-gated with intra-phase "
-            "parallelism) or 'progressive' (strictly sequential named 0-12 phase "
-            "engagement, see docs/claude-redteam-3.md) (yaml: redteam.mode)."
+            "parallelism), 'progressive' (strictly sequential named 0-12 phase "
+            "engagement, see docs/claude-redteam-3.md) or 'campaign' (opt-in "
+            "conversation-reuse campaigns, see documentation/developer-specs/redteam-v5.md) "
+            "(yaml: redteam.mode)."
         ),
+    )
+    redteam_campaign_max_turns_per_branch: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_turns_per_branch)."
+    )
+    redteam_campaign_max_branch_tokens: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_branch_tokens)."
+    )
+    redteam_campaign_max_objective_turns: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_objective_turns)."
+    )
+    redteam_campaign_max_retries_per_incident: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_retries_per_incident)."
+    )
+    redteam_campaign_retry_window_seconds: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.retry_window_seconds)."
+    )
+    redteam_campaign_confirm_in_fresh_sessions: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.confirm_in_fresh_sessions)."
+    )
+    redteam_campaign_target_supports_session_reset: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.target_supports_session_reset)."
+    )
+    redteam_campaign_campaign_warmup: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.campaign_warmup)."
+    )
+    redteam_campaign_max_concurrent_requests: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_concurrent_requests)."
+    )
+    redteam_campaign_declared_fixtures: bool | None = Field(
+        default=None, description="(yaml: redteam.campaign.declared_fixtures)."
+    )
+    redteam_campaign_fixture_version: str | None = Field(
+        default=None, description="(yaml: redteam.campaign.fixture_version)."
+    )
+    redteam_campaign_confirmation_reserve_fraction: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.confirmation_reserve_fraction)."
+    )
+    redteam_campaign_max_run_target_requests: int | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_run_target_requests)."
+    )
+    redteam_campaign_max_run_seconds: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_run_seconds)."
+    )
+    redteam_campaign_max_run_llm_cost_usd: float | None = Field(
+        default=None, description="(yaml: redteam.campaign.max_run_llm_cost_usd)."
     )
     redteam_progressive_halt_on_severity: str = Field(
         default="none",
@@ -1341,7 +1528,8 @@ class NuGuardConfig(BaseSettings):
         default_factory=list,
         description=(
             "Which categories to run: 'destructive', 'non-destructive', or both — "
-            "empty = both (yaml: redteam.scenarios)."
+            "empty = non-destructive only (safe by default; list 'destructive' to "
+            "explicitly opt in to mutating attacks) (yaml: redteam.scenarios)."
         ),
     )
     mcp_trusted_servers: list[str] = Field(
@@ -1369,6 +1557,23 @@ class NuGuardConfig(BaseSettings):
             "transient-retry loops for slow cold-starting targets."
         ),
     )
+    redteam_api_endpoint_threshold: int = Field(
+        default=25,
+        ge=1,
+        description=(
+            "API endpoint count above which the redteam LLM narrows each direct-HTTP "
+            "probe family (JWT tampering, XSS, ...) to relevant endpoints "
+            "(yaml: redteam.api_endpoint_threshold)."
+        ),
+    )
+    redteam_ci_api_spot_checks: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Number of API endpoints spot-checked per probe family in the ci "
+            "profile (yaml: redteam.ci_api_spot_checks)."
+        ),
+    )
     redteam_similar_miss_threshold: int = Field(
         default=4,
         description=(
@@ -1376,6 +1581,30 @@ class NuGuardConfig(BaseSettings):
             "scenarios are suppressed (yaml: redteam.similar_miss_threshold). "
             "Prevents repeating the same failing attack angle across many scenarios. "
             "Set to 0 to disable."
+        ),
+    )
+    redteam_workflows: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Stateful workflow attacks with an outcome oracle (yaml: redteam.workflows). "
+            "Each entry is a WorkflowSpec (see nuguard.redteam.workflows). These WRITE to "
+            "the target (register vendors, submit invoices), so listing one is the opt-in."
+        ),
+    )
+    redteam_workflow_templates: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Bundled workflow-attack templates to run (yaml: redteam.workflow_templates), "
+            "e.g. [owasp-finbot], or 'auto' for every bundled template. Each template workflow "
+            "runs only when its requirements hold on the target. They WRITE to the target."
+        ),
+    )
+    redteam_universal_safety_probes: bool = Field(
+        default=True,
+        description=(
+            "Probe sexual-content / violence / self-harm refusal even when the cognitive "
+            "policy does not list them (yaml: redteam.universal_safety_probes). Set to "
+            "false for domain apps (e.g. finance) where these probes are low-signal."
         ),
     )
     redteam_hard_refusal_abort_turns: int = Field(
@@ -1447,6 +1676,20 @@ class NuGuardConfig(BaseSettings):
             "enriched SBOM — is used as-is, skipping the live ping entirely."
         ),
     )
+    redteam_preflight_candidates: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        description=(
+            "How many alternative SBOM chat-endpoint candidates the pre-flight check "
+            "compares (yaml: redteam.preflight_candidates) when the auto-discovered "
+            "endpoint's reply to a test message is an error or a structured artefact "
+            "rather than a conversational reply. 0 disables candidate comparison. "
+            "Ignored when the chat endpoint is set explicitly."
+        ),
+    )
+    target_browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
+    redteam_browser_discovery: BrowserDiscoveryConfig = Field(default_factory=BrowserDiscoveryConfig)
     redteam_browser_discover_endpoints: bool = Field(
         default=False,
         description=(
@@ -1683,6 +1926,14 @@ class NuGuardConfig(BaseSettings):
             "(yaml: redteam.finding_triggers.tool_trace_hits)."
         ),
     )
+    redteam_trigger_identity_mismatch_hits: bool = Field(
+        default=True,
+        description=(
+            "Emit findings when the W2 trust-context matrix confirms a request "
+            "with conflicting/invalid identity returned another identity's data "
+            "(yaml: redteam.finding_triggers.identity_mismatch_hits)."
+        ),
+    )
     redteam_pre_run_warmup: int = Field(
         default=0,
         ge=0,
@@ -1774,6 +2025,14 @@ class NuGuardConfig(BaseSettings):
     )
 
     # ------------------------------------------------------- Analyze
+    analyze_checkov_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds (yaml: analyze.checkov_timeout).")
+    analyze_checkov_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.checkov_total_timeout).")
+    analyze_semgrep_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds (yaml: analyze.semgrep_timeout).")
+    analyze_semgrep_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.semgrep_total_timeout).")
+    analyze_pip_audit_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock pip-audit deadline in seconds (yaml: analyze.pip_audit_timeout).")
+    analyze_pip_audit_total_timeout: float = Field(default=600.0, gt=0, allow_inf_nan=False, description="Total wall-clock pip-audit budget across all manifests in seconds (yaml: analyze.pip_audit_total_timeout).")
+    analyze_gitleaks_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock gitleaks deadline in seconds (yaml: analyze.gitleaks_timeout).")
+    analyze_gitleaks_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock gitleaks budget across all paths in seconds (yaml: analyze.gitleaks_total_timeout).")
     analyze_min_severity: str = Field(
         default="medium",
         description=(
@@ -1870,6 +2129,52 @@ class NuGuardConfig(BaseSettings):
         default_factory=list,
         description="Defence regression scenarios declared in nuguard.yaml redteam.defence_regressions.",
     )
+    redteam_defence_regression_timeout: float = Field(
+        default=180.0, gt=0,
+        description="Wall-clock deadline for the entire defence-regression pre-pass, including variant generation (yaml: redteam.defence_regression_timeout).",
+    )
+    redteam_defence_regression_probe_timeout: float = Field(
+        default=30.0, gt=0,
+        description="Wall-clock deadline per defence-regression probe, including retries (yaml: redteam.defence_regression_probe_timeout).",
+    )
+    redteam_defence_regression_paraphrases: int = Field(
+        default=5,
+        description=(
+            "Number of paraphrase variants generated per defence_regressions entry "
+            "(roleplay, extraction-between-markers, audit-evidence, encoded, "
+            "second-person indirection). 0 disables paraphrase expansion and "
+            "evaluates only the literal configured message "
+            "(yaml: redteam.defence_regression_paraphrases)."
+        ),
+    )
+
+    # ----------------------------------------- Agentic Surface Model (W1)
+    redteam_asm_max_probe_requests: int = Field(
+        default=25,
+        description=(
+            "Request budget for the Agentic Surface Model prober (openapi/schema "
+            "exposure, tool/agent inventory disclosure, observation-channel "
+            "connectability, CORS reflection) — GET/OPTIONS only "
+            "(yaml: redteam.asm.max_probe_requests)."
+        ),
+    )
+    redteam_asm_extra_inventory_paths: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra tool/agent-inventory paths to probe alongside the built-in "
+            "heuristic list (yaml: redteam.asm.extra_inventory_paths)."
+        ),
+    )
+
+    # ----------------------------------------- Trust-context matrix (W2)
+    redteam_trust_context_confirmation_cells: int = Field(
+        default=1,
+        description=(
+            "Extra trust-context cells to run after the first confirmed identity "
+            "mismatch before early-exiting the matrix "
+            "(yaml: redteam.trust_context.confirmation_cells)."
+        ),
+    )
 
     def resolved_auth_config(self) -> "AuthConfig":
         """Build an AuthConfig from the resolved *redteam* auth settings.
@@ -1907,6 +2212,35 @@ class NuGuardConfig(BaseSettings):
             )
         return AuthConfig(type="none")
 
+    def resolved_redteam_campaign_config(self) -> "CampaignConfig":
+        """Return the validated campaign config (explicit keys over defaults)."""
+        from nuguard.redteam.campaign.config import CampaignConfig
+
+        explicit = {
+            k: v
+            for k, v in self.model_dump().items()
+            if k.startswith("redteam_campaign_") and v is not None
+        }
+        # The (previously unwired) legacy limit now feeds the campaign target limiter.
+        explicit.setdefault(
+            "redteam_campaign_max_concurrent_requests", self.redteam_max_concurrent_requests
+        )
+        return CampaignConfig.from_flat(explicit)
+
+    @model_validator(mode="after")
+    def _validate_campaign_mode(self) -> "NuGuardConfig":
+        """Reject inconsistent campaign settings at load time (campaign mode only)."""
+        if self.redteam_mode != "campaign":
+            return self
+        campaign = self.resolved_redteam_campaign_config()
+        if self.redteam_pre_run_warmup > 0 and campaign.campaign_warmup:
+            raise ValueError(
+                "redteam.pre_run_warmup conflicts with redteam.campaign.campaign_warmup: "
+                "campaign mode manages its own warm-up. Set pre_run_warmup: 0 or "
+                "campaign.campaign_warmup: false."
+            )
+        return self
+
     def resolved_redteam_finding_triggers(self) -> RedteamFindingTriggers:
         """Build trigger controls from resolved redteam configuration."""
         return RedteamFindingTriggers(
@@ -1915,6 +2249,7 @@ class NuGuardConfig(BaseSettings):
             critical_success_hits=self.redteam_trigger_critical_success_hits,
             any_inject_success=self.redteam_trigger_any_inject_success,
             tool_trace_hits=self.redteam_trigger_tool_trace_hits,
+            identity_mismatch_hits=self.redteam_trigger_identity_mismatch_hits,
         )
 
     model_config = SettingsConfigDict(

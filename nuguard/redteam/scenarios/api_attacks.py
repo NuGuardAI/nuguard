@@ -128,8 +128,8 @@ def build_auth_bypass(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.AUTH_BYPASS,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
-        owasp_llm_ref="LLM05 – Improper Output Handling",
+        owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM03:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -195,7 +195,7 @@ def build_mass_assignment(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.MASS_ASSIGNMENT,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        owasp_asi_ref="ASI03",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -262,7 +262,7 @@ def build_auth_scope_bypass(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.AUTH_BYPASS,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        owasp_asi_ref="ASI03",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -381,8 +381,8 @@ def build_jwt_tampering_probe(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.JWT_TAMPERING,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
-        owasp_llm_ref="LLM05 – Improper Output Handling",
+        owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM03:2026",
         steps=steps,
     )
     chain.pre_score = pre_score(chain, has_unauth_entry=True)
@@ -438,7 +438,7 @@ def build_rate_limit_probe(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.AUTH_BYPASS,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI05",
+        owasp_asi_ref="ASI08",
         steps=steps,
     )
     chain.pre_score = pre_score(chain)
@@ -520,7 +520,7 @@ def build_idor(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.IDOR,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        owasp_asi_ref="ASI03",
         steps=steps,
     )
     chain.pre_score = pre_score(chain, pii_in_path=bool(sensitive_fields))
@@ -602,7 +602,7 @@ def build_password_reset_probe(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.PASSWORD_RESET_ABUSE,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        owasp_asi_ref="ASI03",
         steps=steps,
     )
     chain.pre_score = pre_score(chain)
@@ -656,7 +656,7 @@ def build_price_tampering(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.PRICE_TAMPERING,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        owasp_asi_ref="ASI03",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",
@@ -816,7 +816,7 @@ def build_injection_probe(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.SQL_INJECTION,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        owasp_asi_ref="ASI05",
         steps=steps,
     )
     chain.pre_score = pre_score(chain, pii_in_path=bool(sensitive_fields))
@@ -921,7 +921,7 @@ def build_path_traversal_probe(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.PATH_TRAVERSAL,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        owasp_asi_ref="ASI05",
         steps=steps,
     )
     chain.pre_score = pre_score(chain)
@@ -1016,7 +1016,7 @@ def build_open_redirect_probe(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.OPEN_REDIRECT,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        owasp_asi_ref="ASI02",
         steps=steps,
     )
     chain.pre_score = pre_score(chain)
@@ -1113,8 +1113,8 @@ def build_reflected_xss_probe(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.REFLECTED_XSS,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI06",
-        owasp_llm_ref="LLM05 – Improper Output Handling",
+        owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM10:2026",
         steps=steps,
     )
     chain.pre_score = pre_score(chain)
@@ -1156,8 +1156,8 @@ def build_open_data_exposure(
         goal_type=GoalType.API_ATTACK,
         scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
         sbom_path=[endpoint_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
-        owasp_llm_ref="LLM06 – Sensitive Information Disclosure",
+        owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM02:2026",
         steps=[
             ExploitStep(
                 step_id=f"{chain_id}_s1",

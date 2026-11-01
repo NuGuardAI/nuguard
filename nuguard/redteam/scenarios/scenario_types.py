@@ -53,6 +53,11 @@ class AttackScenario(BaseModel):
     # Set when a catalog spec was matched but could not be instantiated (e.g.
     # a required app feature is absent); surfaced in the coverage report.
     skipped_reason: str = ""
+    # ── redteam-proposal.md flags, mirrored from ScenarioSpec by _stamp() ────
+    identity_sensitive: bool = False
+    decorator_allowed: bool = True
+    dual_path: bool = False
+    observation_parallel: bool = False
     # Static chain (pre-built payloads) — mutually exclusive with guided_conversation.
     chain: ExploitChain | None = None
     # Dynamic guided conversation — generated in real time from agent responses.

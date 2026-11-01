@@ -263,7 +263,7 @@ def build_code_gen_probe(
             "data extraction via Python/TypeScript scripts and raw SQL."
         ),
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM01:2026", owasp_asi_ref="ASI05",
     )
 
 
@@ -298,7 +298,7 @@ def build_repo_injection(
         title=f"Repo Prompt Injection — {agent_name}",
         description="Hidden instruction in repo content causes agent to read sensitive files",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM01:2026, LLM04:2026", owasp_asi_ref="ASI01, ASI04",
     )
 
 
@@ -339,7 +339,7 @@ def build_shell_injection(
         title=f"Shell Injection — {agent_name}",
         description="User-controlled input reaches shell execution without sanitisation",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM01:2026", owasp_asi_ref="ASI05",
     )
 
 
@@ -382,7 +382,7 @@ def build_secret_file_read(
         title=f"Secret File Read — {agent_name}",
         description="Agent reads secret env/credential files from filesystem",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI02",
+        owasp_llm_ref="LLM02:2026", owasp_asi_ref="ASI02",
     )
 
 
@@ -437,7 +437,7 @@ def build_sandbox_escape(
         title=f"Sandbox Escape — {agent_name}",
         description="Agent reads or writes outside its designated sandbox directory",
         steps=steps,
-        owasp_llm_ref="LLM06", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM03:2026", owasp_asi_ref="ASI05",
     )
 
 
@@ -485,7 +485,7 @@ def build_delayed_ci_exfil(
         title=f"Delayed CI Exfiltration — {agent_name}",
         description="Malicious CI step added to exfiltrate secrets on future pipeline runs",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM01:2026, LLM04:2026", owasp_asi_ref="ASI04",
     )
 
 
@@ -529,5 +529,5 @@ def build_verifier_sabotage(
         title=f"Verifier/Test Sabotage — {agent_name}",
         description="Agent weakens or removes security tests to make unsafe code pass CI",
         steps=steps,
-        owasp_llm_ref="LLM01", owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM01:2026, LLM04:2026", owasp_asi_ref="ASI04",
     )

@@ -290,8 +290,8 @@ def build_refusal_oracle(
         goal_type=GoalType.RECON_INFERENCE,
         scenario_type=ScenarioType.REFUSAL_ORACLE,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI01 – Prompt Injection / Information Disclosure",
-        owasp_llm_ref="LLM06 – Sensitive Information Disclosure",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM08:2026",
         mitre_atlas_technique="AML.T0007 – ML Model Information Extraction",
         steps=steps,
     )
@@ -597,8 +597,8 @@ def build_boundary_self_probe(
         goal_type=GoalType.RECON_INFERENCE,
         scenario_type=ScenarioType.BOUNDARY_SELF_PROBE,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI01 – Information Disclosure via Self-Description",
-        owasp_llm_ref="LLM06 – Sensitive Information Disclosure",
+        owasp_asi_ref="ASI01",
+        owasp_llm_ref="LLM08:2026",
         mitre_atlas_technique="AML.T0007 – ML Model Information Extraction",
         steps=steps,
     )
@@ -679,8 +679,8 @@ def build_premise_injection(
         goal_type=GoalType.PRIVILEGE_ESCALATION,
         scenario_type=ScenarioType.PREMISE_INJECTION,
         sbom_path=[agent_id],
-        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
-        owasp_llm_ref="LLM01 – Prompt Injection",
+        owasp_asi_ref="ASI03",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             # Stage 1 — SEED: inject the false premise as neutral information.

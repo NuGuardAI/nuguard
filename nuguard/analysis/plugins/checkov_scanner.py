@@ -4,10 +4,11 @@ Wraps the ``checkov`` CLI binary to scan Terraform, Kubernetes, Helm,
 CloudFormation, and other IaC files referenced in the SBOM.  Checkov output
 is parsed into the standard ``AnalysisResult`` finding shape.
 
-The plugin is silently skipped (returns status ``"skipped"``) when:
+The plugin is skipped (returns status ``"skipped"``) when:
 - ``checkov`` is not installed / not on PATH
 - No INFRASTRUCTURE_AS_CODE nodes are found in the SBOM
-- ``checkov`` exits with an unexpected error
+
+Execution and output errors are reported as incomplete scans.
 
 Usage
 -----
@@ -19,15 +20,14 @@ Usage
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
+from nuguard.analysis.plugins.scanner_runtime import run_scanner
 from nuguard.common.logging import get_logger
 
 _log = get_logger("analysis.plugins.checkov")
@@ -67,7 +67,7 @@ class CheckovScannerPlugin(AnalysisPlugin):
         """
         binary = _checkov_path()
         if binary is None:
-            _log.debug(
+            _log.info(
                 "checkov not found on PATH; install from https://www.checkov.io "
                 "to enable IaC scanning"
             )
@@ -80,32 +80,23 @@ class CheckovScannerPlugin(AnalysisPlugin):
         iac_paths = _collect_iac_paths(sbom, config)
 
         if not iac_paths:
-            _log.debug("checkov: no IaC paths found in SBOM nodes or source_path")
+            _log.info("checkov: no IaC paths found in SBOM nodes or source_path")
             return AnalysisResult(
                 status="skipped",
                 plugin=self.name,
                 message="no IaC paths found in SBOM — checkov scan skipped",
             )
 
-        all_findings: list[dict[str, Any]] = []
-        for path in iac_paths:
-            all_findings.extend(_run_checkov(binary, path, config))
-        all_findings = _dedupe_findings(all_findings)
+        result = run_scanner(
+            self.name, iac_paths,
+            lambda path: _checkov_command(binary, path), _parse_checkov_output,
+            timeout=config.get("checkov_timeout", 120.0),
+            total_timeout=config.get("checkov_total_timeout", 300.0),
+        )
+        result.findings = _dedupe_findings(result.findings)
+        result.details["total"] = len(result.findings)
+        return result
 
-        status = "warning" if all_findings else "ok"
-        message = (
-            f"{len(all_findings)} IaC misconfiguration(s) found"
-            if all_findings
-            else "No IaC misconfigurations found"
-        )
-        _log.info("checkov: %s", message)
-        return AnalysisResult(
-            status=status,
-            plugin=self.name,
-            message=message,
-            findings=all_findings,
-            details={"total": len(all_findings), "scanned_paths": list(iac_paths)},
-        )
 
 
 def _dedupe_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -202,42 +193,18 @@ def _collect_iac_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]
     return paths
 
 
+def _checkov_command(binary: str, path: str) -> list[str]:
+    """Use Checkov's file or directory mode for the selected target."""
+    return [binary, "-f" if Path(path).is_file() else "-d", path, "--output", "json", "--quiet"]
+
+
 def _run_checkov(binary: str, path: str, config: dict[str, Any]) -> list[dict[str, Any]]:
-    """Run checkov against *path* and return parsed findings."""
-    timeout = float(config.get("checkov_timeout", 120.0))
-    cmd = [binary, "-d", path, "--output", "json", "--quiet"]
-    _log.debug("running: %s", " ".join(cmd))
-
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        _log.warning("checkov timed out scanning %s", path)
-        return []
-    except OSError as exc:
-        _log.warning("checkov process error for %s: %s", path, exc)
-        return []
-
-    # Checkov exits 1 when failures are found — that's expected
-    if result.returncode not in (0, 1):
-        stderr = result.stderr.decode(errors="replace").strip()
-        _log.warning(
-            "checkov exited %d for %s%s",
-            result.returncode, path,
-            f": {stderr[:200]}" if stderr else "",
-        )
-        return []
-
-    try:
-        data = json.loads(result.stdout)
-    except (json.JSONDecodeError, ValueError) as exc:
-        _log.warning("checkov output parse error for %s: %s", path, exc)
-        return []
-
-    return _parse_checkov_output(data, path)
+    """Compatibility helper for one path; plugin.run exposes scan diagnostics."""
+    return run_scanner(
+        "checkov", [path], lambda target: _checkov_command(binary, target), _parse_checkov_output,
+        timeout=config.get("checkov_timeout", 120.0),
+        total_timeout=config.get("checkov_total_timeout", 300.0),
+    ).findings
 
 
 def _parse_checkov_output(data: Any, scan_path: str) -> list[dict[str, Any]]:
@@ -245,10 +212,12 @@ def _parse_checkov_output(data: Any, scan_path: str) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
 
     # checkov output may be a list (one entry per check type) or a single dict
+    if not isinstance(data, (dict, list)):
+        raise ValueError("Invalid Checkov output shape")
     entries = data if isinstance(data, list) else [data]
     for entry in entries:
-        if not isinstance(entry, dict):
-            continue
+        if not isinstance(entry, dict) or not isinstance(entry.get("results"), dict):
+            raise ValueError("Invalid Checkov results shape")
         for check_result in (entry.get("results", {}).get("failed_checks") or []):
             check_id  = check_result.get("check_id", "")
             name      = check_result.get("check_name", check_id)

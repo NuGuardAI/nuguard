@@ -91,7 +91,7 @@ def build_encoding_evasion(
         scenario_type=ScenarioType.ENCODING_EVASION,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=[
             ExploitStep(
@@ -234,7 +234,7 @@ def build_multi_language_bypass(
         scenario_type=ScenarioType.MULTI_LANGUAGE_BYPASS,
         sbom_path=[agent_id],
         owasp_asi_ref="ASI01",
-        owasp_llm_ref="LLM01",
+        owasp_llm_ref="LLM01:2026",
         mitre_atlas_technique="AML.T0054 – LLM Jailbreak",
         steps=steps,
     )

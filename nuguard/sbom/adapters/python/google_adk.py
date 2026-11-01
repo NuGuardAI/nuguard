@@ -89,11 +89,15 @@ class GoogleADKPythonAdapter(FrameworkAdapter):
         for inst in parse_result.instantiations:
             if inst.class_name not in _MODEL_CLASSES:
                 continue
-            model_val = _resolve_const(
-                inst.args.get("model")
-                or (inst.positional_args[0] if inst.positional_args else None),
-                const_map,
+            model_argument: str | int | None = (
+                "model" if inst.args.get("model") else (0 if inst.positional_args else None)
             )
+            model_raw = (
+                inst.args.get("model")
+                if model_argument == "model"
+                else (inst.positional_args[0] if model_argument == 0 else None)
+            )
+            model_val = _resolve_const(model_raw, const_map)
             if model_val:
                 canon = canonicalize_text(model_val.lower())
                 if canon not in emitted_models:
@@ -118,6 +122,8 @@ class GoogleADKPythonAdapter(FrameworkAdapter):
                             line=inst.line,
                             snippet=f"{inst.class_name}(model={model_val!r})",
                             evidence_kind="ast_instantiation",
+                            source_call=inst,
+                            source_model_argument=model_argument,
                         )
                     )
 
@@ -176,6 +182,8 @@ class GoogleADKPythonAdapter(FrameworkAdapter):
                             line=inst.line,
                             snippet=f"Agent(model={model_val!r})",
                             evidence_kind="ast_instantiation",
+                            source_call=inst,
+                            source_model_argument="model",
                         )
                     )
 

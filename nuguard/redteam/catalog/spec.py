@@ -49,6 +49,22 @@ class ScenarioSpec:
     enabled: bool = True
     # Which of the doc's six prioritisation rules apply (1-6); used for ranking.
     priority_rules: tuple[int, ...] = field(default_factory=tuple)
+    # ── redteam-proposal.md flags (additive, all default to "no new behavior") ──
+    # Eligible for W2 TrustContext re-execution (credential/identity-binding
+    # matrix) once that executor wrapper lands. Set on families the proposal
+    # calls out as identity-sensitive: D02/D03, A-series, G-series.
+    identity_sensitive: bool = False
+    # Opt-out for scenarios where mutating the payload breaks the test (e.g.
+    # an exact canary-match string). True by default; the W6 decorator hook
+    # checks this before trying an encoding/framing mutation on failure.
+    decorator_allowed: bool = True
+    # Has a direct-invocation counterpart (W10) alongside the chat-mediated
+    # step — the X-series pairing.
+    dual_path: bool = False
+    # Scheduled alongside normal batches rather than through the per-scenario
+    # semaphore slot — opens a passive tap once per batch instead (W7's
+    # observation-channel scenarios).
+    observation_parallel: bool = False
 
     def resolved_builder_key(self) -> str:
         return self.builder_key or self.id

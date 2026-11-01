@@ -28,12 +28,14 @@ import re
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Iterator
+from bisect import bisect_right
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
+from nuguard.common.github_url import try_parse_github_subfolder
 from nuguard.common.logging import get_logger
 from nuguard.common.soft_reject import partition_node_counts
 from nuguard.common.url_sanitization import (
@@ -41,6 +43,13 @@ from nuguard.common.url_sanitization import (
     sanitize_repository_url,
 )
 
+from ..adapters._test_paths import (
+    is_jvm_test_source_path,
+    jvm_evidence_path,
+    jvm_source_path_prefix,
+    looks_like_test_path,
+)
+from ..adapters.azure_yaml import AzureYamlAdapter, is_azure_yaml
 from ..adapters.base import (
     AdapterMatch,
     ComponentDetection,
@@ -48,6 +57,8 @@ from ..adapters.base import (
     FrameworkAdapter,
     RelationshipHint,
 )
+from ..adapters.cloud_workloads import ServiceDescriptorAdapter
+from ..adapters.compose import ComposeAdapter, is_compose_file
 from ..adapters.csharp._csharp_base import CSharpFrameworkAdapter
 from ..adapters.data_classification import DataClassificationSQLAdapter
 from ..adapters.dockerfile import DockerfileAdapter
@@ -65,6 +76,12 @@ from ..adapters.iac import (
     TerraformAdapter,
 )
 from ..adapters.java._java_base import JavaFrameworkAdapter
+from ..adapters.java.java_config import (
+    application_yaml_allows_scan,
+    extract_java_config_models,
+    is_java_app_config_name,
+    link_config_models,
+)
 from ..adapters.json_adapters import (
     AgentJSONConfigAdapter,
     GoogleADKJSONAdapter,
@@ -75,7 +92,7 @@ from ..adapters.json_adapters import (
 )
 from ..adapters.nginx import NginxAdapter, is_nginx_file
 from ..adapters.prompt_sql import PromptSQLAdapter
-from ..adapters.registry import default_framework_adapters, default_registry
+from ..adapters.registry import MODEL_NAME_PATTERNS, default_framework_adapters, default_registry
 from ..adapters.sparkflows import (
     SparkflowsAgentAdapter,
     SparkflowsAnalyticsAppAdapter,
@@ -97,10 +114,14 @@ from ..adapters.yaml_adapters import (
     PromptFileAdapter,
 )
 from ..config import AiSbomConfig
-from ..core.application_summary import build_scan_summary
+from ..core.application_summary import (
+    _instrumentation_evidence_for_file,
+    build_scan_summary,
+)
 from ..core.ts_parser import TSParseResult
 from ..core.ts_parser import parse_typescript as _parse_ts_impl
 from ..deps import DependencyScanner
+from ..image_scan import scan_images
 from ..models import (
     AiSbomDocument,
     AuthDetail,
@@ -109,6 +130,8 @@ from ..models import (
     Edge,
     EncryptionDetail,
     Evidence,
+    HttpRequestMetadata,
+    IngressDetail,
     Node,
     NodeMetadata,
     RateLimitDetail,
@@ -117,11 +140,16 @@ from ..models import (
 )
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
+from ..workload import promote_image_fields, promote_workload_fields
+from .endpoint_names import disambiguate_endpoint_names
+from .git_safety import SAFE_REF_RE, SAFE_URL_RE, validate_ref, validate_url
+from .github_clone import clone_github_subfolder, resolve_and_clone
 from .postprocess import (
     _collapse_bulk_catalog_files,
     _dedup_by_location,
     _dedup_by_name_prefix,
     _dedup_deployment_nodes,
+    _dedup_exact_config_models,
     _dedup_generic_endpoints,
     _dedup_model_variants,
     _improve_generic_node_names,
@@ -148,6 +176,28 @@ _JAVA_EXTENSIONS = {".java"}
 _DOCKERFILE_EXTENSIONS = {".dockerfile"}
 _DOCKERFILE_NAMES = {"dockerfile"}  # lower-cased stem match
 
+
+def _is_dockerfile_name(name: str) -> bool:
+    """``Dockerfile``, ``Dockerfile.dev``, ``Dockerfile-api`` and ``api.dockerfile``.
+
+    Source files that merely start with ``dockerfile.`` (e.g. ``dockerfile.py``)
+    are excluded; otherwise their ``import`` lines parse as ``FROM`` images.
+    """
+    lower = name.lower()
+    if lower.endswith((".dockerignore", ".md", ".txt")):
+        return False
+    source_suffixes = (
+        _PYTHON_EXTENSIONS | _TYPESCRIPT_EXTENSIONS | _GO_EXTENSIONS
+        | _CSHARP_EXTENSIONS | _JAVA_EXTENSIONS | _SQL_EXTENSIONS | _NOTEBOOK_EXTENSIONS
+    )
+    if Path(lower).suffix in source_suffixes:
+        return False
+    return (
+        lower in _DOCKERFILE_NAMES
+        or lower.startswith(("dockerfile.", "dockerfile-", "dockerfile_"))
+        or lower.endswith(".dockerfile")
+    )
+
 # ---------------------------------------------------------------------------
 # Source-tier constants for dedup precedence: CODE > IAC > DOCS
 # ---------------------------------------------------------------------------
@@ -156,6 +206,137 @@ _TIER_IAC = "iac"
 _TIER_DOCS = "docs"
 # Lower rank number = higher precedence during dedup
 _TIER_RANK: dict[str, int] = {_TIER_CODE: 0, _TIER_IAC: 1, _TIER_DOCS: 2}
+
+_JSON_DATASTORE_ANCESTOR_KEYS = frozenset(
+    {
+        "database",
+        "databases",
+        "datastore",
+        "datastores",
+        "db",
+        "storage",
+        "connection",
+        "connections",
+        "dependencies",
+    }
+)
+_JSON_DATASTORE_PAIR_KEYS = frozenset({"driver", "engine", "image", "url"})
+_JSON_TOKEN_RE = re.compile(
+    r'"(?:\\.|[^"\\])*"|[{}\[\]:,]|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null'
+)
+
+
+def _json_key_parts(key: str) -> set[str]:
+    snake = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key)
+    return {part for part in re.split(r"[^a-z0-9]+", snake.lower()) if part}
+
+
+def _json_string_occurrences(content: str) -> list[tuple[str, int, tuple[str, ...], bool]]:
+    """Return decoded JSON strings with line, containing-key path, and key/value role."""
+    try:
+        json.loads(content)
+    except (json.JSONDecodeError, RecursionError, TypeError):
+        return []
+
+    newline_offsets = [match.start() for match in re.finditer(r"\n", content)]
+    tokens = [
+        (match.group(0), bisect_right(newline_offsets, match.start()) + 1)
+        for match in _JSON_TOKEN_RE.finditer(content)
+    ]
+    occurrences: list[tuple[str, int, tuple[str, ...], bool]] = []
+    index = 0
+
+    def _parse_value(path: tuple[str, ...]) -> None:
+        nonlocal index
+        token, line = tokens[index]
+        if token == "{":
+            index += 1
+            while tokens[index][0] != "}":
+                key_token, key_line = tokens[index]
+                key = str(json.loads(key_token))
+                occurrences.append((key, key_line, path, True))
+                index += 2  # key and colon
+                _parse_value((*path, key))
+                if tokens[index][0] == ",":
+                    index += 1
+            index += 1
+        elif token == "[":
+            index += 1
+            while tokens[index][0] != "]":
+                _parse_value(path)
+                if tokens[index][0] == ",":
+                    index += 1
+            index += 1
+        else:
+            if token.startswith('"'):
+                occurrences.append((str(json.loads(token)), line, path, False))
+            index += 1
+
+    if tokens:
+        try:
+            _parse_value(())
+        except (IndexError, RecursionError, ValueError, json.JSONDecodeError):
+            return []
+    return occurrences
+
+
+def _is_specific_json_datastore_pair(key: str, value: str, name: str) -> bool:
+    parts = _json_key_parts(key)
+    if not parts & _JSON_DATASTORE_PAIR_KEYS:
+        return False
+    value_lower = value.strip().lower()
+    name_lower = name.lower()
+    if "url" in parts:
+        return value_lower.startswith(f"{name_lower}://")
+    if "image" in parts:
+        return bool(re.match(rf"^(?:[^/]+/)*{re.escape(name_lower)}(?=[:@/]|$)", value_lower))
+    return value_lower == name_lower
+
+
+def _contextual_json_datastore_matches(
+    content: str, matches: tuple[AdapterMatch, ...]
+) -> tuple[AdapterMatch, ...]:
+    """Return only datastore matches occurring in authoritative JSON positions."""
+    prototypes = {
+        match.snippet.strip().lower(): match
+        for match in matches
+        if match.snippet.strip()
+    }
+    contextual: list[AdapterMatch] = []
+    for value, line, path, is_key in _json_string_occurrences(content):
+        path_has_ancestor = any(
+            _json_key_parts(key) & _JSON_DATASTORE_ANCESTOR_KEYS for key in path
+        )
+        for name, prototype in prototypes.items():
+            token = re.compile(
+                rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", re.IGNORECASE
+            )
+            occurrence_count = sum(1 for _ in token.finditer(value))
+            if occurrence_count == 0:
+                continue
+            is_root_datastore_key = (
+                is_key
+                and not path
+                and re.sub(r"[^a-z0-9]+", "", value.lower())
+                == re.sub(r"[^a-z0-9]+", "", name.lower())
+            )
+            is_specific_pair = (
+                not is_key
+                and bool(path)
+                and _is_specific_json_datastore_pair(path[-1], value, name)
+            )
+            if not (path_has_ancestor or is_root_datastore_key or is_specific_pair):
+                continue
+            contextual.extend(
+                AdapterMatch(
+                    pattern=prototype.pattern,
+                    line=line,
+                    snippet=prototype.snippet,
+                    groups=prototype.groups,
+                )
+                for _ in range(occurrence_count)
+            )
+    return tuple(contextual)
 
 
 def _strip_notebook_outputs(content: str) -> str:
@@ -179,6 +360,19 @@ def _strip_notebook_outputs(content: str) -> str:
 
 _PYTHON_COMMENT_LINE_RE = re.compile(r"^\s*#.*$", re.MULTILINE)
 
+# Long encoded payloads (images, cached artifacts, etc.) can contain short
+# byte sequences that look like model names, such as ``/O3+``.  Replace each
+# token with equal-width whitespace so regex match offsets retain their line
+# numbers while the payload itself cannot become SBOM evidence.
+_LONG_BASE64_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{64,}={0,2}(?![A-Za-z0-9+/=])"
+)
+
+
+def _strip_long_base64_tokens(content: str) -> str:
+    """Blank long base64-like tokens without changing offsets or newlines."""
+    return _LONG_BASE64_TOKEN_RE.sub(lambda match: " " * len(match.group(0)), content)
+
 
 def _strip_python_comments(content: str) -> str:
     """Remove Python single-line comments before regex scanning.
@@ -192,6 +386,128 @@ def _strip_python_comments(content: str) -> str:
     the line for other pattern matching.
     """
     return _PYTHON_COMMENT_LINE_RE.sub("", content)
+
+
+_MODEL_PRICING_FILENAMES = frozenset(
+    {
+        "cost.toml",
+        "costs.toml",
+        "model_costs.toml",
+        "model_prices.toml",
+        "price.toml",
+        "prices.toml",
+        "pricing.toml",
+        "ratecard.toml",
+        "ratecards.toml",
+    }
+)
+_TOML_TABLE_HEADER_RE = re.compile(r"^\s*\[\[?([^\]]+)\]\]?\s*(?:#.*)?$")
+_TOML_RUNTIME_REGISTRY_ROOTS = frozenset(
+    {"agents", "defaults", "llms", "model", "models", "providers", "registry", "runtime"}
+)
+_TOML_PRICING_TABLE_ROOTS = frozenset(
+    {"cost", "costing", "costs", "price", "prices", "pricing", "ratecard", "ratecards"}
+)
+_TOML_STRONG_PRICE_FIELD_RE = re.compile(
+    r"\b(?:cost|price|pricing|rate|usd_per_million_tokens|"
+    r"(?:batch_input|batch_output|cache_read|cache_write|input|output)_"
+    r"(?:cost|mtok|per_million_tokens|per_token|price|rate))\b\s*=",
+    re.IGNORECASE,
+)
+_TOML_INPUT_FIELD_RE = re.compile(r"\binput\b\s*=", re.IGNORECASE)
+_TOML_OUTPUT_FIELD_RE = re.compile(r"\boutput\b\s*=", re.IGNORECASE)
+_TOML_MODEL_BINDING_FIELD_RE = re.compile(r"\bmodel\b\s*=", re.IGNORECASE)
+
+
+def _strip_non_runtime_toml_model_pricing(content: str, rel_path: str) -> str:
+    """Blank non-runtime model pricing rows while preserving line numbers.
+
+    A pricing TOML can contain both a real runtime binding and model-shaped
+    table keys, for example ``default_model = "claude-haiku-5-5"`` followed by
+    ``[claude-haiku-5-5.long_context]``.  The latter is a price tier, not a
+    selectable model, and must not absorb the base model during prefix dedup.
+    This scrub is deliberately limited to clearly named pricing/cost TOML files
+    and generic regex scanning; AST and structured adapter evidence is untouched.
+    """
+    path = PurePosixPath(rel_path.replace("\\", "/"))
+    if path.suffix.lower() != ".toml":
+        return content
+    pricing_filename = path.name.lower() in _MODEL_PRICING_FILENAMES
+
+    def _blank(line: str) -> str:
+        return re.sub(r"[^\r\n]", " ", line)
+
+    def _contains_model_name(value: str) -> bool:
+        return any(pattern.search(value) for pattern in MODEL_NAME_PATTERNS)
+
+    def _proves_price_metadata(
+        value: str,
+        *,
+        pricing_filename_context: bool,
+        pricing_table_context: bool = False,
+    ) -> bool:
+        if _TOML_STRONG_PRICE_FIELD_RE.search(value):
+            return pricing_table_context or pricing_filename_context
+        return bool(
+            (pricing_table_context or pricing_filename_context)
+            and _TOML_INPUT_FIELD_RE.search(value)
+            and _TOML_OUTPUT_FIELD_RE.search(value)
+            and (
+                pricing_table_context
+                or not _TOML_MODEL_BINDING_FIELD_RE.search(value)
+            )
+        )
+
+    lines = content.splitlines(keepends=True)
+    table_starts = [
+        index for index, line in enumerate(lines) if _TOML_TABLE_HEADER_RE.match(line)
+    ]
+    scrub_indexes: set[int] = set()
+    runtime_indexes: set[int] = set()
+    for position, start in enumerate(table_starts):
+        end = table_starts[position + 1] if position + 1 < len(table_starts) else len(lines)
+        table_match = _TOML_TABLE_HEADER_RE.match(lines[start])
+        if table_match is None:
+            continue
+        table_name = table_match.group(1).strip().strip("\"'")
+        root_name = re.split(r"[.\s]", table_name, maxsplit=1)[0].strip("\"'").lower()
+        if root_name in _TOML_RUNTIME_REGISTRY_ROOTS:
+            runtime_indexes.update(range(start, end))
+            continue
+        block = "".join(lines[start:end])
+        if _contains_model_name(block) and _proves_price_metadata(
+            block,
+            pricing_filename_context=pricing_filename,
+            pricing_table_context=root_name in _TOML_PRICING_TABLE_ROOTS,
+        ):
+            scrub_indexes.update(range(start, end))
+
+    inline_price_indexes = {
+        index
+        for index, line in enumerate(lines)
+        if index not in runtime_indexes
+        and _contains_model_name(line)
+        and _proves_price_metadata(
+            line, pricing_filename_context=pricing_filename
+        )
+    }
+    verified_pricing_file = pricing_filename and bool(
+        scrub_indexes or inline_price_indexes
+    )
+    scrubbed: list[str] = []
+    for index, line in enumerate(lines):
+        pricing_model_comment = (
+            verified_pricing_file
+            and line.lstrip().startswith("#")
+            and _contains_model_name(line)
+        )
+        should_blank = (
+            index in scrub_indexes
+            or index in inline_price_indexes
+            or pricing_model_comment
+        )
+        scrubbed.append(_blank(line) if should_blank else line)
+    return "".join(scrubbed)
 
 
 # Pattern for variable names that explicitly indicate prompt content.
@@ -572,6 +888,11 @@ _SKIP_FILENAMES = {"Thumbs.db"}
 def _should_skip_filename(name: str) -> bool:
     if name in _SKIP_FILENAMES:
         return True
+    # Generated ecosystem lock files are dependency metadata, not application
+    # configuration.  Cover tool-specific names such as ``skills-lock.json``
+    # while leaving ordinary JSON files eligible for AI component detection.
+    if name.lower().endswith("-lock.json"):
+        return True
     return any(name.endswith(suffix) for suffix in _SKIP_FILENAME_SUFFIXES)
 
 
@@ -653,6 +974,207 @@ class _NodeAccumulator:
     best_tier_rank: int = 99  # 0=code, 1=iac, 2=docs; 99=uninitialised
 
 
+def _attach_python_model_literal_location(
+    det: ComponentDetection,
+    parse_result: Any,
+    claimed_calls: set[int],
+) -> None:
+    """Attach the literal span from the parsed call that produced one MODEL detection."""
+    if det.component_type != ComponentType.MODEL or det.column is not None:
+        return
+
+    # Exact adapter provenance is authoritative.  A call with no model
+    # argument means the adapter deliberately fell back to a class/default
+    # identity; never recover a nearby unrelated string from that call.
+    if det.source_call is not None and det.source_model_argument is None:
+        claimed_calls.add(id(det.source_call))
+        return
+
+    expected_name: str | None = None
+    if det.source_call is not None and det.source_model_argument is not None:
+        parsed_calls: Iterable[Any] = ()
+        name_attribute = ""
+    elif det.evidence_kind == "ast_instantiation":
+        parsed_calls = parse_result.instantiations
+        class_name = det.metadata.get("class_name")
+        if isinstance(class_name, str) and class_name:
+            expected_name = class_name
+        else:
+            match = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(", det.snippet)
+            expected_name = match.group(1) if match else None
+        name_attribute = "class_name"
+    elif det.evidence_kind == "ast_call":
+        parsed_calls = parse_result.function_calls
+        api_method = det.metadata.get("api_method")
+        if isinstance(api_method, str) and api_method:
+            expected_name = api_method.rsplit(".", 1)[-1]
+        else:
+            match = re.match(r"\s*(?:[A-Za-z_][A-Za-z0-9_]*\.)*([A-Za-z_][A-Za-z0-9_]*)\s*\(", det.snippet)
+            expected_name = match.group(1) if match else None
+        name_attribute = "function_name"
+    else:
+        return
+    if expected_name is None and det.source_call is None:
+        return
+
+    def _resolved_location(
+        value: Any, *, require_display_match: bool = True
+    ) -> tuple[int, int, int, int] | None:
+        if not isinstance(value, str) or not value.startswith("$"):
+            return None
+        symbol = value[1:]
+        bindings = [
+            literal
+            for literal in parse_result.string_literals
+            if literal.is_module_assignment
+            and literal.context == symbol
+            and (not require_display_match or literal.value == det.display_name)
+            and literal.column is not None
+            and literal.end_line is not None
+            and literal.end_column is not None
+        ]
+        if len(bindings) != 1:
+            return None
+        binding = bindings[0]
+        return binding.line, binding.column, binding.end_line, binding.end_column
+
+    def _literal_locations(parsed: Any) -> set[tuple[int, int, int, int]]:
+        locations: set[tuple[int, int, int, int]] = set()
+        for argument, value in parsed.args.items():
+            if value == det.display_name and argument in parsed.arg_locations:
+                locations.add(parsed.arg_locations[argument])
+            else:
+                resolved = _resolved_location(value)
+                if resolved is not None:
+                    locations.add(resolved)
+        for index, value in enumerate(parsed.positional_args):
+            if value == det.display_name and index in parsed.positional_arg_locations:
+                locations.add(parsed.positional_arg_locations[index])
+            else:
+                resolved = _resolved_location(value)
+                if resolved is not None:
+                    locations.add(resolved)
+        return locations
+
+    originating_call = det.source_call
+    if originating_call is not None and det.source_model_argument is not None:
+        argument = det.source_model_argument
+        if isinstance(argument, tuple):
+            value: Any = None
+            if argument:
+                head, *tail = argument
+                if isinstance(head, str):
+                    value = originating_call.args.get(head)
+                elif head < len(originating_call.positional_args):
+                    value = originating_call.positional_args[head]
+                for part in tail:
+                    if isinstance(value, dict):
+                        value = value.get(part)
+                    elif isinstance(value, list) and isinstance(part, int) and part < len(value):
+                        value = value[part]
+                    else:
+                        value = None
+                        break
+            location = originating_call.nested_arg_locations.get(argument)
+        elif isinstance(argument, str):
+            value = originating_call.args.get(argument)
+            location = originating_call.arg_locations.get(argument)
+        else:
+            value = (
+                originating_call.positional_args[argument]
+                if argument < len(originating_call.positional_args)
+                else None
+            )
+            location = originating_call.positional_arg_locations.get(argument)
+        location = location or _resolved_location(
+            value, require_display_match=False
+        )
+        if location is not None:
+            det.line, det.column, det.end_line, det.end_column = location
+        claimed_calls.add(id(originating_call))
+        return
+
+    candidates = [
+        parsed
+        for parsed in parsed_calls
+        if parsed.line == det.line
+        and getattr(parsed, name_attribute, None) == expected_name
+        and id(parsed) not in claimed_calls
+        and _literal_locations(parsed)
+    ]
+    # Legacy adapters that have not yet supplied exact occurrence provenance
+    # may use recovery only when the source call is unambiguous.  Never guess
+    # among repeated or receiver-distinct calls on the same line.
+    if len(candidates) != 1:
+        return
+    originating_call = candidates[0]
+    claimed_calls.add(id(originating_call))
+    locations = _literal_locations(originating_call)
+    if len(locations) == 1:
+        det.line, det.column, det.end_line, det.end_column = locations.pop()
+
+
+_DATASTORE_TECH_ALIASES = {
+    "aiosqlite": "sqlite",
+    "sqlite3": "sqlite",
+    "postgres": "postgresql",
+}
+
+
+def _datastore_technology(acc: _NodeAccumulator) -> str:
+    raw = str(acc.metadata.get("provider") or acc.display_name).strip().lower()
+    normalized = re.sub(r"[^a-z0-9]+", "", raw)
+    return _DATASTORE_TECH_ALIASES.get(normalized, normalized)
+
+
+def _dedup_generic_datastores_against_specific(
+    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
+) -> None:
+    """Merge same-location generic datastore evidence into its specific detection."""
+    specific_by_location: dict[
+        tuple[str, int | None], list[tuple[ComponentType, str]]
+    ] = {}
+    generic_keys: list[tuple[ComponentType, str]] = []
+    for key, acc in node_map.items():
+        if key[0] != ComponentType.DATASTORE:
+            continue
+        if acc.adapter_name == "datastore_generic":
+            generic_keys.append(key)
+            continue
+        for evidence in acc.evidence:
+            if evidence.location:
+                location = (evidence.location.path, evidence.location.line)
+                specific_by_location.setdefault(location, []).append(key)
+
+    for generic_key in generic_keys:
+        generic = node_map.get(generic_key)
+        if generic is None:
+            continue
+        generic_tech = _datastore_technology(generic)
+        candidates: set[tuple[ComponentType, str]] = set()
+        for evidence in generic.evidence:
+            if not evidence.location:
+                continue
+            location = (evidence.location.path, evidence.location.line)
+            candidates.update(
+                key
+                for key in specific_by_location.get(location, [])
+                if _datastore_technology(node_map[key]) == generic_tech
+            )
+        if not candidates:
+            continue
+        winner_key = min(
+            candidates,
+            key=lambda key: (node_map[key].priority, -node_map[key].confidence, key[1]),
+        )
+        winner = node_map[winner_key]
+        winner.evidence.extend(generic.evidence)
+        winner.relationships.extend(generic.relationships)
+        winner.source_tiers.update(generic.source_tiers)
+        winner.confidence = max(winner.confidence, generic.confidence)
+        del node_map[generic_key]
+
+
 def _load_gitignore_matcher(root: Path) -> "Callable[[str], bool] | None":
     """Return a predicate that matches paths against the repo's ``.gitignore``.
 
@@ -713,6 +1235,8 @@ class AiSbomExtractor:
         yaml_adapters: tuple[Any, ...] | None = None,
         json_adapters: tuple[Any, ...] | None = None,
         nginx_adapter: NginxAdapter | None = None,
+        compose_adapter: ComposeAdapter | None = None,
+        azure_yaml_adapter: AzureYamlAdapter | None = None,
         prompt_file_adapter: PromptFileAdapter | None = None,
         iac_adapters: tuple[Any, ...] | None = None,
         load_plugins: bool = False,
@@ -770,6 +1294,10 @@ class AiSbomExtractor:
             )
         )
         self.nginx_adapter = nginx_adapter if nginx_adapter is not None else NginxAdapter()
+        self.compose_adapter = compose_adapter if compose_adapter is not None else ComposeAdapter()
+        self.azure_yaml_adapter = (
+            azure_yaml_adapter if azure_yaml_adapter is not None else AzureYamlAdapter()
+        )
         self.prompt_file_adapter = (
             prompt_file_adapter if prompt_file_adapter is not None else PromptFileAdapter()
         )
@@ -783,6 +1311,7 @@ class AiSbomExtractor:
                 BicepAdapter(),
                 GcpDeploymentManagerAdapter(),
                 GitHubActionsAdapter(),
+                ServiceDescriptorAdapter(),
             )
         )
 
@@ -813,12 +1342,16 @@ class AiSbomExtractor:
         _file_imports: dict[str, set[str]] = {}
         # Minified JS files detected during the scan (for SC-019)
         _minified_js_files: list[str] = []
+        # MODEL detections read from application.properties/yml (linked to agents later)
+        _java_config_models: list[ComponentDetection] = []
         # Summary builder only needs a bounded content sample.
         files_sample: list[tuple[str, str]] = []
         files_scanned = 0
         files_sample_bytes = 0
         full_cache_files = 0
         full_cache_bytes = 0
+        langsmith_active = False
+        active_tracing_tools: set[str] = set()
 
         def _human_bytes(num_bytes: int) -> str:
             if num_bytes < 1024:
@@ -847,6 +1380,8 @@ class AiSbomExtractor:
         # fully-disambiguated detections come in — see the DATASTORE branch
         # inside the Python-file adapter loop.
         _ds_symbol_index: dict[tuple[str, str], str] = {}
+        _py_used_names: dict[str, set[str]] = {}
+        _python_sources: dict[str, str] = {}
         try:
             import ast as _ast  # noqa: PLC0415  # isort:skip
             from nuguard.sbom.adapters.python.datastores import (  # noqa: PLC0415, I001
@@ -873,14 +1408,20 @@ class AiSbomExtractor:
                 _router_rel = str(_py_path.relative_to(root))
                 _all_py_rel_paths.add(_router_rel)
                 try:
-                    _py_src = _py_path.read_text(encoding="utf-8", errors="ignore")
+                    _py_src = _py_path.read_text(encoding="utf-8-sig", errors="ignore")
                     _py_tree = _ast.parse(_py_src)
                 except Exception:
                     continue
+                _python_sources[_router_rel] = _py_src
                 _global_model_schemas.update(_collect_py_models(_py_tree))
                 _router_decls[_router_rel] = _collect_py_router_decls(_py_tree)
                 _router_includes[_router_rel] = _collect_py_includes(_py_tree)
                 _router_imports[_router_rel] = _collect_py_router_imports(_py_tree)
+                _py_used_names[_router_rel] = {
+                    node.id
+                    for node in _ast.walk(_py_tree)
+                    if isinstance(node, _ast.Name) and isinstance(node.ctx, _ast.Load)
+                }
                 _tool_names = _collect_py_tool_names(_py_tree)
                 if _tool_names:
                     _tool_defining_files[_router_rel] = _tool_names
@@ -1000,7 +1541,7 @@ class AiSbomExtractor:
                 if names is not None and _ts_path.name not in names:
                     continue
                 try:
-                    _ts_src = _ts_path.read_text(encoding="utf-8", errors="ignore")
+                    _ts_src = _ts_path.read_text(encoding="utf-8-sig", errors="ignore")
                 except Exception:
                     continue
                 yield str(_ts_path.relative_to(root)), _ts_src
@@ -1058,6 +1599,20 @@ class AiSbomExtractor:
         except Exception as _hier_exc:
             _log.debug("TS class-hierarchy pre-pass failed (non-fatal): %s", _hier_exc)
 
+        try:
+            from nuguard.sbom.adapters.python._deepagents_flow import (  # noqa: PLC0415
+                build_deep_agent_component_flow_index,
+            )
+
+            _deep_agent_component_flow = build_deep_agent_component_flow_index(
+                _python_sources
+            )
+        except Exception as _deep_agent_exc:
+            _log.debug("Deep Agent component-flow pre-pass failed (non-fatal): %s", _deep_agent_exc)
+            _deep_agent_component_flow = None
+        finally:
+            _python_sources.clear()
+
         # Inject the global indices into adapters that support them.
         _global_index_setters = {
             "set_global_model_schemas": (_global_model_schemas,),
@@ -1070,6 +1625,7 @@ class AiSbomExtractor:
                 _global_ts_class_bases,
                 _global_ts_class_locations,
             ),
+            "set_deep_agent_component_flow": (_deep_agent_component_flow,),
         }
         for _adapter in self.framework_adapters:
             for _setter_name, _args in _global_index_setters.items():
@@ -1077,9 +1633,12 @@ class AiSbomExtractor:
                 if _setter is not None:
                     _setter(*_args)
 
+        # Relative paths of every scanned .java file, so _resolve_edges can apply Java name
+        # shadowing (a same-package class hides a wildcard-imported one).
+        _java_scanned: set[str] = set()
         for file_path, file_size in self._iter_files(root, config):
             try:
-                content = file_path.read_text(encoding="utf-8", errors="ignore")
+                content = file_path.read_text(encoding="utf-8-sig", errors="ignore")
             except OSError as exc:
                 _log.warning("skipping unreadable file %s: %s", file_path, exc)
                 continue
@@ -1101,14 +1660,31 @@ class AiSbomExtractor:
 
             files_scanned += 1
             rel_path = str(file_path.relative_to(root))
+            file_langsmith_active, file_tracing_tools = _instrumentation_evidence_for_file(
+                rel_path, content
+            )
+            langsmith_active = langsmith_active or file_langsmith_active
+            active_tracing_tools.update(file_tracing_tools)
+            if file_path.suffix.lower() in _JAVA_EXTENSIONS:
+                _java_scanned.add(rel_path)
             content_bytes = file_size
             # Track LOC for every scanned file
             file_loc[rel_path] = content.count("\n") + 1
-            if keep_full_contents:
+            is_app_config = is_java_app_config_name(file_path.name)
+            if (
+                is_app_config
+                and file_path.suffix.lower() in {".yml", ".yaml"}
+                and not application_yaml_allows_scan(content, rel_path)
+            ):
+                continue  # Never reparse rejected YAML in another adapter.
+            # Raw application configuration is deterministic-only input. Exclude
+            # both the full LLM cache and the scan-summary source sample.
+            source_context_allowed = not is_app_config and file_path.suffix.lower() != ".properties"
+            if keep_full_contents and source_context_allowed:
                 file_contents[rel_path] = content
                 full_cache_files += 1
                 full_cache_bytes += content_bytes
-            if len(files_sample) < 200:
+            if source_context_allowed and len(files_sample) < 200:
                 files_sample.append((rel_path, content))
                 files_sample_bytes += content_bytes
             suffix = file_path.suffix.lower()
@@ -1119,9 +1695,7 @@ class AiSbomExtractor:
             is_csharp = suffix in _CSHARP_EXTENSIONS
             is_java = suffix in _JAVA_EXTENSIONS
             is_sql = suffix in _SQL_EXTENSIONS
-            is_dockerfile = (
-                suffix in _DOCKERFILE_EXTENSIONS or file_path.name.lower() in _DOCKERFILE_NAMES
-            )
+            is_dockerfile = _is_dockerfile_name(file_path.name)
             is_nginx_conf = is_nginx_file(rel_path)
 
             # Phase 0a: Prompt file detection (before docs-tier skip)
@@ -1183,13 +1757,21 @@ class AiSbomExtractor:
                                     exc,
                                 )
                                 continue
+                            _claimed_model_calls: set[int] = set()
                             for det in detections:
                                 if (
                                     det.component_type == ComponentType.DATASTORE
                                     and det.metadata.get("source") in ("sql_schema", "python_model")
                                 ):
-                                    _dc_metadata.append(det.metadata)
+                                    _classification_meta = dict(det.metadata)
+                                    _classification_meta["source_path"] = det.file_path
+                                    _dc_metadata.append(_classification_meta)
                                 else:
+                                    _attach_python_model_literal_location(
+                                        det,
+                                        parse_result,
+                                        _claimed_model_calls,
+                                    )
                                     self._merge_detection(node_map, det)
                                     _ds_symbol = det.metadata.get("module_level_symbol")
                                     if det.component_type == ComponentType.DATASTORE and _ds_symbol:
@@ -1239,7 +1821,9 @@ class AiSbomExtractor:
                         if det.component_type == ComponentType.DATASTORE and det.metadata.get(
                             "source"
                         ) in ("sql_schema", "python_model"):
-                            _dc_metadata.append(det.metadata)
+                            _classification_meta = dict(det.metadata)
+                            _classification_meta["source_path"] = det.file_path
+                            _dc_metadata.append(_classification_meta)
                         else:
                             self._merge_detection(node_map, det)
 
@@ -1365,14 +1949,44 @@ class AiSbomExtractor:
                 if _js_lines and max(len(ln) for ln in _js_lines) > 5000:
                     _minified_js_files.append(rel_path)
 
+            # Phase 1c-java-config: chat models named in Spring/Quarkus application config.
+            # The Java AST adapter cannot see these, the starters build the model from them.
+            if is_java_app_config_name(file_path.name):
+                for det in extract_java_config_models(content, rel_path):
+                    self._merge_detection(node_map, det)
+                    _java_config_models.append(det)
+                if suffix == ".properties":
+                    continue  # no other adapter reads .properties files
+
             # Phase 1d: Dockerfile — container image extraction
             if is_dockerfile:
                 _log.debug("running dockerfile adapter on %s", rel_path)
                 try:
+                    _has_ignore = (file_path.parent / ".dockerignore").is_file()
+                    self.dockerfile_adapter.max_packages = config.max_image_packages
                     for det in self.dockerfile_adapter.scan(content, rel_path):
+                        if det.metadata.get("image_role") == "app":
+                            det.metadata["has_dockerignore"] = _has_ignore
                         self._merge_detection(node_map, det)
                 except Exception as exc:
                     _log.warning("dockerfile adapter failed on %s: %s", rel_path, exc)
+
+            # Phase 1e: docker-compose — one workload per service
+            if suffix in {".yml", ".yaml"} and is_compose_file(rel_path):
+                _log.debug("running compose adapter on %s", rel_path)
+                try:
+                    for det in self.compose_adapter.scan(content, rel_path):
+                        self._merge_detection(node_map, det)
+                except Exception as exc:
+                    _log.warning("compose adapter failed on %s: %s", rel_path, exc)
+
+            # Phase 1e2: azure.yaml (azd) — service → source project mapping
+            if suffix in {".yml", ".yaml"} and is_azure_yaml(rel_path):
+                try:
+                    for det in self.azure_yaml_adapter.scan(content, rel_path):
+                        self._merge_detection(node_map, det)
+                except Exception as exc:
+                    _log.warning("azure.yaml adapter failed on %s: %s", rel_path, exc)
 
             # Phase 1f: Nginx config — deployment and auth extraction
             if is_nginx_conf:
@@ -1435,7 +2049,8 @@ class AiSbomExtractor:
                         # also handles .github/workflows/**/*.yml naming convention
                         adapter_handles = suffix in {".yaml", ".yml"}
                     else:
-                        # K8sAdapter + CloudFormationAdapter handle YAML and JSON
+                        # K8sAdapter, CloudFormationAdapter and ServiceDescriptorAdapter
+                        # handle YAML and JSON
                         adapter_handles = suffix in {".yaml", ".yml", ".json"}
                     if not adapter_handles:
                         continue
@@ -1461,6 +2076,7 @@ class AiSbomExtractor:
                 _regex_content = _strip_python_comments(content)
             else:
                 _regex_content = content
+            _regex_content = _strip_long_base64_tokens(_regex_content)
             for rx_adapter in (
                 self.regex_adapters
                 if suffix not in _DOCS_EXTENSIONS and Path(rel_path).stem.lower() not in _DOCS_STEMS
@@ -1482,7 +2098,12 @@ class AiSbomExtractor:
                     _skip_exts = getattr(rx_adapter, "skip_extensions", None)
                     if _skip_exts and suffix in _skip_exts:
                         continue
-                detection = rx_adapter.detect(_regex_content)
+                _adapter_content = _regex_content
+                if rx_adapter.name == "model_generic":
+                    _adapter_content = _strip_non_runtime_toml_model_pricing(
+                        _regex_content, rel_path
+                    )
+                detection = rx_adapter.detect(_adapter_content)
                 if detection is None:
                     continue
                 # For adapters with per-match naming (canonical_name=None on the
@@ -1491,41 +2112,51 @@ class AiSbomExtractor:
                 # type (e.g. a mock route.ts listing gpt-5, deepseek-v3.2,
                 # gemini-3-pro; or a CI workflow using both docker and vercel)
                 # gets a separate node for each instead of only the first match.
-                # Originally MODEL-only; also applies to DEPLOYMENT so distinct
-                # deployment technologies don't collapse into one "generic" node.
+                # Originally MODEL-only; also applies to DEPLOYMENT and DATASTORE
+                # so distinct technologies don't collapse into one "generic" node.
                 if detection.component_type in (
                     ComponentType.MODEL,
                     ComponentType.DEPLOYMENT,
+                    ComponentType.DATASTORE,
                 ) and not getattr(rx_adapter, "canonical_name", None):
-                    # Group matches by their normalised name; keep first
-                    # occurrence as the representative match for location/snippet.
-                    _match_first: dict[str, AdapterMatch] = {}
-                    _match_count: dict[str, int] = {}
-                    for _m in detection.matches:
-                        _key = _m.snippet.strip().lower()
-                        if _key not in _match_first:
-                            _match_first[_key] = _m
-                            _match_count[_key] = 1
-                        else:
-                            _match_count[_key] += 1
-                    for _raw_lower, _first_match in _match_first.items():
-                        _raw_name = _first_match.snippet.strip()
-                        _cnt = _match_count[_raw_lower]
-                        _conf = min(0.95, 0.50 + 0.05 * _cnt)
-                        _comp_det = ComponentDetection(
-                            component_type=detection.component_type,
-                            canonical_name=canonicalize_text(_raw_name),
-                            display_name=_raw_name,
-                            adapter_name=detection.adapter_name,
-                            priority=detection.priority,
-                            confidence=_conf,
-                            metadata=dict(detection.metadata),
-                            file_path=rel_path,
-                            line=_first_match.line,
-                            snippet=_first_match.snippet,
-                            evidence_kind="regex",
+                    # Group matches by normalised name, retaining every
+                    # occurrence so identity dedup can correlate exact source
+                    # spans without reattributing unrelated evidence.
+                    _matches_by_name: dict[str, list[AdapterMatch]] = {}
+                    _candidate_matches = (
+                        _contextual_json_datastore_matches(
+                            _regex_content, detection.matches
                         )
-                        self._merge_detection(node_map, _comp_det)
+                        if suffix == ".json"
+                        and detection.component_type == ComponentType.DATASTORE
+                        and detection.adapter_name == "datastore_generic"
+                        else detection.matches
+                    )
+                    for _m in _candidate_matches:
+                        _key = _m.snippet.strip().lower()
+                        _matches_by_name.setdefault(_key, []).append(_m)
+                    for _matches in _matches_by_name.values():
+                        _raw_name = _matches[0].snippet.strip()
+                        _cnt = len(_matches)
+                        _conf = min(0.95, 0.50 + 0.05 * _cnt)
+                        for _match in _matches:
+                            _comp_det = ComponentDetection(
+                                component_type=detection.component_type,
+                                canonical_name=canonicalize_text(_raw_name),
+                                display_name=_raw_name,
+                                adapter_name=detection.adapter_name,
+                                priority=detection.priority,
+                                confidence=_conf,
+                                metadata=dict(detection.metadata),
+                                file_path=rel_path,
+                                line=_match.line,
+                                column=_match.column,
+                                end_line=_match.end_line,
+                                end_column=_match.end_column,
+                                snippet=_match.snippet,
+                                evidence_kind="regex",
+                            )
+                            self._merge_detection(node_map, _comp_det)
                     continue
                 # API_ENDPOINT: group per-match by the parsed (method, path) —
                 # not raw snippet text, since different route-declaration styles
@@ -1645,22 +2276,70 @@ class AiSbomExtractor:
                 "cross-file datastore ACCESSES resolution failed (non-fatal): %s", _cross_ds_exc
             )
 
-        # Deduplicate nodes that share (component_type, file, line) — e.g. a
-        # regex adapter and an AST adapter both firing on the same token.
+        # Preserve exact identities while still merging identical code/config
+        # values and redirecting their existing adapter hints.
+        _dedup_exact_config_models(node_map)
+
+        # Distinct datastore technologies commonly share one config/import line.
+        # Their canonical names already deduplicate identical detections, and the
+        # datastore-specific suppression pass below handles generic/AST overlap.
+        # Keep them out of location dedup so e.g. Postgres + SQLite remain separate.
+        _datastore_accumulators = {
+            key: node_map.pop(key)
+            for key in list(node_map)
+            if key[0] == ComponentType.DATASTORE
+        }
+        # Deduplicate remaining nodes that share (component_type, file, line) —
+        # e.g. a regex adapter and an AST adapter both firing on the same token.
         _dedup_by_location(node_map)
+        node_map.update(_datastore_accumulators)
+        _dedup_generic_datastores_against_specific(node_map)
         # Deduplicate nodes where one name is a prefix of another from the same
-        # file — e.g. regex matches "gemini-2.0" while AST extracts the full
-        # "gemini-2.0-flash" from an adjacent line of the same call.
+        # source token — e.g. regex matches "gemini-2.0" inside the full AST
+        # literal "gemini-2.0-flash".
         _dedup_by_name_prefix(node_map)
-        # Merge MODEL nodes that are repo-id/filename spellings of the same
-        # underlying preconfigured model entry (e.g. ``unsloth/Qwen3.5-9B-GGUF``
-        # + ``Qwen3.5-9B-Q4_K_M.gguf`` from the same config dict).
+        # Merge model format spellings only when an AST/config adapter supplied
+        # the same structural ``model_config_group`` provenance for both.
         _dedup_model_variants(node_map)
         # Suppress generic tech-name DATASTORE nodes emitted by regex adapters
         # when the same file already has specific AST-detected ones for the same
         # technology (e.g. "faiss" regex when "docs_index" / "tickets_index" AST
         # nodes already exist in that file with provider="faiss").
         _suppress_generic_tech_regex_datastore(node_map)
+        # Tie config-derived MODEL nodes to the agents of the same source root.
+        link_config_models(node_map, _java_config_models)
+
+        # Record Python assets imported and actually referenced by a file with
+        # an agent. The regular hint resolver has only canonical names, so this
+        # evidence is carried into the scoped fallback pass below.
+        _imported_assets: dict[str, set[tuple[ComponentType, str]]] = {}
+        if _resolve_import_to_relpath is not None:
+            _prompt_symbols: dict[tuple[str, str], str] = {}
+            for _acc in node_map.values():
+                if (
+                    _acc.component_type == ComponentType.PROMPT
+                    and _acc.adapter_name in {"python_prompt_const", "prompt_detector"}
+                    and _acc.display_name.isidentifier()
+                ):
+                    for _ev in _acc.evidence:
+                        _prompt_symbols[(_ev.location.path, _acc.display_name)] = _acc.canonical_name
+            for _source_rel, _imports in _router_imports.items():
+                if not _imports:
+                    continue
+                for _local_name, (_level, _module, _original_name) in _imports.items():
+                    if _local_name not in _py_used_names.get(_source_rel, set()):
+                        continue
+                    _target_rel = _resolve_import_to_relpath(_source_rel, _level, _module)
+                    if _target_rel is None:
+                        continue
+                    for _kind, _canonical in (
+                        (ComponentType.PROMPT, _prompt_symbols.get((_target_rel, _original_name))),
+                        (ComponentType.DATASTORE, _ds_symbol_index.get((_target_rel, _original_name))),
+                    ):
+                        if _canonical and (_kind, canonicalize_text(_canonical)) in node_map:
+                            _imported_assets.setdefault(_source_rel, set()).add(
+                                (_kind, canonicalize_text(_canonical))
+                            )
 
         # Fold generic-regex API_ENDPOINT nodes (raw, unprefixed path guesses)
         # into the framework-adapter node for the same route once its real,
@@ -1729,6 +2408,7 @@ class AiSbomExtractor:
                         "classified_tables",
                         "classified_fields",
                         "_generic_endpoint_fallback",
+                        "http_request",
                     )
                 }
             )
@@ -1872,6 +2552,15 @@ class AiSbomExtractor:
                 _rtk = acc.metadata.get("response_text_key")
                 if _rtk:
                     node.metadata.response_text_key = str(_rtk)
+                _rei = acc.metadata.get("response_echoes_input")
+                if _rei is not None:
+                    node.metadata.response_echoes_input = bool(_rei)
+                _http = acc.metadata.get("http_request")
+                if isinstance(_http, dict) and _http:
+                    try:
+                        node.metadata.http_request = HttpRequestMetadata.model_validate(_http)
+                    except ValueError:
+                        _log.debug("Ignoring malformed http_request metadata on %s", node.name)
                 _rbs = acc.metadata.get("request_body_schema")
                 if isinstance(_rbs, dict) and _rbs:
                     node.metadata.request_body_schema = {str(k): str(v) for k, v in _rbs.items()}
@@ -1918,6 +2607,7 @@ class AiSbomExtractor:
                 node.metadata.image_digest = acc.metadata.get("image_digest")
                 node.metadata.registry = acc.metadata.get("registry")
                 node.metadata.base_image = acc.metadata.get("base_image")
+                promote_image_fields(node.metadata, acc.metadata)
                 # Security signals annotated by DockerfileAdapter
                 _rar = acc.metadata.get("runs_as_root")
                 if _rar is not None:
@@ -1927,6 +2617,7 @@ class AiSbomExtractor:
                     node.metadata.has_health_check = bool(_hc)
             # IaC security / resilience metadata (DEPLOYMENT nodes from IaC adapters)
             if acc.component_type == ComponentType.DEPLOYMENT:
+                promote_workload_fields(node.metadata, acc.metadata)
                 if acc.metadata.get("deployment_target"):
                     node.metadata.deployment_target = str(acc.metadata["deployment_target"])
                 _cr = acc.metadata.get("cloud_region")
@@ -1959,6 +2650,12 @@ class AiSbomExtractor:
                 _hnp = acc.metadata.get("has_network_policy")
                 if _hnp is not None:
                     node.metadata.has_network_policy = bool(_hnp)
+                _ing = acc.metadata.get("ingresses")
+                if isinstance(_ing, list) and _ing:
+                    try:
+                        node.metadata.ingresses = [IngressDetail.model_validate(i) for i in _ing]
+                    except ValueError:
+                        _log.debug("Ignoring malformed ingresses metadata on %s", node.name)
             # MODEL node typed fields (source_url, integrity_hash, checksum)
             if acc.component_type == ComponentType.MODEL:
                 _su = acc.metadata.get("source_url")
@@ -2025,7 +2722,13 @@ class AiSbomExtractor:
             node.evidence = sorted(acc.evidence, key=lambda e: e.confidence, reverse=True)
             doc.nodes.append(node)
 
-        self._resolve_edges(doc, node_map)
+        disambiguate_endpoint_names(doc.nodes)
+        self._resolve_edges(
+            doc,
+            node_map,
+            imported_assets=_imported_assets,
+            scanned_files=_java_scanned,
+        )
 
         # Deduplicate DEPLOYMENT nodes: merge github-actions workflow nodes into
         # the cloud-provider service nodes they deploy to.
@@ -2144,8 +2847,30 @@ class AiSbomExtractor:
                 source_ref=source_ref,
                 branch=branch,
                 dc_metadata=_dc_metadata,
+                instrumentation_evidence=(langsmith_active, active_tracing_tools),
             )
         )
+        # Node-level classification is intentionally scoped to datastores that
+        # share source evidence, but the application summary remains repo-wide.
+        # Merge raw classification metadata once so unmatched schemas remain
+        # visible without duplicating table names across datastore nodes.
+        _repo_dc_labels = {
+            label
+            for meta in _dc_metadata
+            for label in (meta.get("data_classification") or [])
+        }
+        _repo_dc_tables = {
+            table
+            for meta in _dc_metadata
+            if (table := meta.get("table_name") or meta.get("model_name"))
+        }
+        if doc.summary is not None:
+            doc.summary.data_classification = sorted(
+                set(doc.summary.data_classification) | _repo_dc_labels
+            )
+            doc.summary.classified_tables = sorted(
+                set(doc.summary.classified_tables) | _repo_dc_tables
+            )
 
         # Write total LOC and minified JS list into the summary
         if doc.summary and file_loc:
@@ -2201,6 +2926,13 @@ class AiSbomExtractor:
             except Exception as _lf_exc:
                 _log.debug("lockfile summary population failed (non-fatal): %s", _lf_exc)
 
+        # Phase 2d: optional syft scan of pulled base images (OS + installed packages)
+        if config.scan_images:
+            try:
+                scan_images(doc, max_packages=config.max_image_packages, timeout=config.image_scan_timeout)
+            except Exception as exc:  # noqa: BLE001
+                _log.warning("image scan failed, continuing without it: %s", exc)
+
         # Phase 3: LLM enrichment (skipped unless enable_llm=True)
         if config.enable_llm:
             _log.info(
@@ -2228,6 +2960,9 @@ class AiSbomExtractor:
             except Exception as exc:  # noqa: BLE001
                 _log.warning("LLM enrichment failed, continuing with deterministic output: %s", exc)
 
+        # Later passes may discover additional endpoints after the initial
+        # graph assembly. Keep their UI labels distinct in the final document.
+        disambiguate_endpoint_names(doc.nodes)
         # Keep summary counts consistent with the final retained node set.
         _refresh_summary_node_counts(doc)
         return doc
@@ -2262,7 +2997,12 @@ class AiSbomExtractor:
                 leaking auth tokens embedded in *url*.
 
         Returns:
-            The extracted :class:`AiSbomDocument`.
+            The extracted :class:`AiSbomDocument`. When *cache_dir* is supplied,
+            ``doc.local_cloned_path`` holds the absolute path of the scanned
+            source (the root that node ``SourceLocation.path`` values resolve
+            against; includes the subfolder for GitHub subfolder URLs). It is
+            ``None`` without *cache_dir* and is excluded from serialization, so
+            read it from the returned object *before* serializing.
 
         Example::
 
@@ -2276,22 +3016,114 @@ class AiSbomExtractor:
                 print(f)
         """
         display_url = sanitize_repository_url(source_ref or url)
-        repository_path = urlsplit(display_url).path.rstrip("/")
+        gh = try_parse_github_subfolder(display_url)
+        repository_path = urlsplit(
+            gh.repo_root_url if gh is not None else display_url
+        ).path.rstrip("/")
         app_name = PurePosixPath(repository_path).name.removesuffix(".git") or "repo"
 
         if cache_dir is not None:
             repo_dir = Path(cache_dir) / "repo" / app_name
             repo_dir.mkdir(parents=True, exist_ok=True)
-            self._clone_repo(url=url, ref=ref, dest=repo_dir)
-            return self.extract_from_path(repo_dir, config, source_ref=display_url, branch=ref)
+            cloned = resolve_and_clone(url, ref, repo_dir, clone_plain=self._clone_repo)
+            doc = self.extract_from_path(
+                cloned.path, config, source_ref=display_url, branch=cloned.ref_used
+            )
+            doc.local_cloned_path = str(Path(cloned.path).resolve())
+            return doc
 
         with tempfile.TemporaryDirectory(
             prefix="nuguard_clone_", ignore_cleanup_errors=True
         ) as temp_dir:
             repo_dir = Path(temp_dir) / "repo" / app_name
             repo_dir.mkdir(parents=True, exist_ok=True)
-            self._clone_repo(url=url, ref=ref, dest=repo_dir)
-            doc = self.extract_from_path(repo_dir, config, source_ref=display_url, branch=ref)
+            cloned = resolve_and_clone(url, ref, repo_dir, clone_plain=self._clone_repo)
+            doc = self.extract_from_path(
+                cloned.path, config, source_ref=display_url, branch=cloned.ref_used
+            )
+        _log.debug("Deleted cloned repo temp dir: %s", temp_dir)
+        return doc
+
+    def extract_from_repo_subfolder(
+        self,
+        repo_root_url: str,
+        ref: str | None,
+        subpath: str,
+        config: AiSbomConfig,
+        cache_dir: str | Path | None = None,
+        source_ref: str | None = None,
+        token: str | None = None,
+    ) -> AiSbomDocument:
+        """Clone only *subpath* of a GitHub repo and extract an SBOM from it.
+
+        Sibling of :meth:`extract_from_repo` for GitHub URLs that target a
+        subfolder rather than a repository root (see
+        ``nuguard.common.github_url``). Uses
+        :func:`nuguard.sbom.extractor.github_clone.clone_github_subfolder`
+        (GitHub REST API tree-manifest + sparse-checkout) instead of
+        ``_clone_repo``, so only files under *subpath* are ever
+        materialized on disk — then delegates to the same
+        :meth:`extract_from_path` used by ``extract_from_repo``, so all
+        downstream scanning/postprocessing is identical.
+
+        Args:
+            repo_root_url: Repository root URL, e.g.
+                ``https://github.com/org/repo`` (no subfolder suffix).
+            ref: Branch, tag, or commit to check out. ``None`` clones the
+                repository's default branch.
+            subpath: Subfolder path within the repo to scan, e.g.
+                ``"python-backend"`` or ``"services/api"``.
+            config: Extraction configuration.
+            cache_dir: Optional path where the cloned repository should be
+                preserved after extraction, same semantics as
+                ``extract_from_repo``. Cache layout is
+                ``cache_dir/repo/<repo-name>/<subpath>/`` — keyed by the
+                *repository's* name (not the subfolder's), so two different
+                repos that happen to share a same-named subfolder (e.g. both
+                have a ``backend/``) don't collide.
+            source_ref: Display URL stored in the SBOM ``target`` field —
+                typically the original subfolder-bearing URL the user
+                passed to ``--from-repo``.
+            token: Optional GitHub token used to authenticate the tree-
+                manifest API call (raises the unauthenticated 60/hour rate
+                limit). Never embedded into a URL — sent as an
+                ``Authorization`` header.
+
+        Returns:
+            The extracted :class:`AiSbomDocument`; ``local_cloned_path`` is set
+            to the scanned subfolder when *cache_dir* is supplied (see
+            :meth:`extract_from_repo`).
+
+        Raises:
+            ValueError: *subpath* is absolute or contains ``..``.
+        """
+        if PurePosixPath(subpath).is_absolute() or ".." in PurePosixPath(subpath).parts:
+            raise ValueError(f"Invalid subfolder path {subpath!r}: must be relative, without '..'")
+        display_url = sanitize_repository_url(source_ref or repo_root_url)
+        repo_name = (
+            PurePosixPath(urlsplit(repo_root_url).path.rstrip("/")).name.removesuffix(".git")
+            or "repo"
+        )
+
+        if cache_dir is not None:
+            repo_dir = Path(cache_dir) / "repo" / repo_name
+            repo_dir.mkdir(parents=True, exist_ok=True)
+            clone_github_subfolder(repo_root_url, ref, subpath, repo_dir, token=token)
+            doc = self.extract_from_path(
+                repo_dir / subpath, config, source_ref=display_url, branch=ref
+            )
+            doc.local_cloned_path = str((repo_dir / subpath).resolve())
+            return doc
+
+        with tempfile.TemporaryDirectory(
+            prefix="nuguard_clone_", ignore_cleanup_errors=True
+        ) as temp_dir:
+            repo_dir = Path(temp_dir) / "repo" / repo_name
+            repo_dir.mkdir(parents=True, exist_ok=True)
+            clone_github_subfolder(repo_root_url, ref, subpath, repo_dir, token=token)
+            doc = self.extract_from_path(
+                repo_dir / subpath, config, source_ref=display_url, branch=ref
+            )
         _log.debug("Deleted cloned repo temp dir: %s", temp_dir)
         return doc
 
@@ -2398,16 +3230,45 @@ class AiSbomExtractor:
         its adapter attribution and metadata take precedence.  Evidence from all
         tiers is always appended so the final node reflects every source.
         """
-        # Always canonicalize to ensure regex-adapter and AST-adapter nodes
-        # for the same component deduplicate correctly.
-        canon = canonicalize_text(det.canonical_name)
+        # Runtime declarations in test files describe fixtures and mocks, not
+        # production assets.  Apply this once at the merge boundary so every
+        # adapter gets the same behaviour and test evidence cannot leak into a
+        # production node with the same canonical name.  Paths are relative to
+        # the scan root, so scanning a fixture directory directly still works:
+        # ``tests/fixtures/app.py`` becomes ``app.py`` for that focused scan.
+        # Keep infrastructure/configuration detections (for example DEPLOYMENT)
+        # because test and E2E directories can contain real environment facts.
+        # Java sources and application* config are classified by source set during file
+        # discovery (include_test_sources), so only the directories before the source set
+        # count here: src/main/java/com/acme/test is production, tests/fixtures/** is not.
+        if det.component_type in {
+            ComponentType.AGENT,
+            ComponentType.GUARDRAIL,
+            ComponentType.MCP_SERVER,
+            ComponentType.MODEL,
+            ComponentType.TOOL,
+            ComponentType.PROMPT,
+            ComponentType.FRAMEWORK,
+        } and looks_like_test_path(jvm_evidence_path(det.file_path)):
+            return
+
+        # Exact config identifiers preserve punctuation and case. Ordinary
+        # detections retain their existing normalization and hint contracts.
+        if det.component_type == ComponentType.MODEL and det.metadata.get("config_key"):
+            canon = det.canonical_name
+        else:
+            canon = canonicalize_text(det.canonical_name)
         key = (det.component_type, canon)
         acc = node_map.get(key)
 
         tier = _classify_source_tier(det.file_path, det.adapter_name, det.evidence_kind)
         tier_rank = _TIER_RANK.get(tier, 2)
 
-        if det.component_type == ComponentType.PROMPT:
+        if is_java_app_config_name(Path(det.file_path.replace("\\", "/")).name):
+            # Verification can use evidence.detail when a source is not cached.
+            # Keep the location/provenance, never a raw config-line excerpt.
+            _detail = f"{det.adapter_name}: {det.evidence_kind} (application config)"
+        elif det.component_type == ComponentType.PROMPT:
             # Content is already stored in metadata.extras["content"]; keep
             # the evidence detail as a compact location label only.
             _detail = f"{det.adapter_name}: {det.evidence_kind}"
@@ -2417,7 +3278,13 @@ class AiSbomExtractor:
             kind=det.evidence_kind,
             confidence=det.confidence,
             detail=_detail,
-            location=SourceLocation(path=det.file_path, line=det.line or None),
+            location=SourceLocation(
+                path=det.file_path,
+                line=det.line or None,
+                column=det.column,
+                end_line=det.end_line,
+                end_column=det.end_column,
+            ),
         )
 
         if acc is None:
@@ -2481,8 +3348,9 @@ class AiSbomExtractor:
         """Merge PII/PHI classification data from schema adapters into DATASTORE nodes.
 
         Classification data (from SQL CREATE TABLE and Python model analysis) is
-        attached as metadata on every detected DATASTORE node rather than emitted
-        as separate nodes.
+        attached only when its source path identifies exactly one datastore.
+        Unmatched or ambiguous classification remains available in the repo-wide
+        application summary without being attributed to a specific datastore.
         """
         if not dc_metadata:
             return
@@ -2490,32 +3358,54 @@ class AiSbomExtractor:
         if not datastore_keys:
             return
 
-        # Aggregate labels, table names, and per-table field detail
-        all_labels: set[str] = set()
-        classified_tables: list[str] = []
-        classified_fields: dict[str, list[str]] = {}
-        # field_name -> labels, e.g. {"dob": ["PII"], "address": ["PII","PHI"]} —
-        # kept separate from `classified_fields` above (which is table -> field
-        # names, per NodeMetadata.classified_fields' documented shape) because
-        # pii_fields/phi_fields need per-field labels, not per-table field lists.
-        field_labels: dict[str, set[str]] = {}
+        datastore_paths = {
+            key: {
+                evidence.location.path
+                for evidence in node_map[key].evidence
+                if evidence.location and evidence.location.path
+            }
+            for key in datastore_keys
+        }
+        metadata_by_datastore: dict[tuple[ComponentType, str], list[dict[str, Any]]] = {
+            key: [] for key in datastore_keys
+        }
         for meta in dc_metadata:
-            all_labels.update(meta.get("data_classification") or [])
-            table = meta.get("table_name") or meta.get("model_name")
-            if table:
-                classified_tables.append(table)
-                cf = meta.get("classified_fields")
-                if cf:
-                    classified_fields[table] = sorted(cf.keys())
-                    for field_name, labels in cf.items():
-                        field_labels.setdefault(field_name, set()).update(labels or [])
+            source_path = meta.get("source_path")
+            if not source_path:
+                continue
+            matching_keys = [
+                key
+                for key, evidence_paths in datastore_paths.items()
+                if source_path in evidence_paths
+            ]
+            if len(matching_keys) == 1:
+                metadata_by_datastore[matching_keys[0]].append(meta)
 
-        pii_fields = sorted(f for f, lbls in field_labels.items() if "PII" in lbls)
-        phi_fields = sorted(f for f, lbls in field_labels.items() if "PHI" in lbls)
-
-        # Merge into every DATASTORE accumulator (project-wide enrichment)
         for key in datastore_keys:
             acc = node_map[key]
+            scoped_metadata = metadata_by_datastore[key]
+            if not scoped_metadata:
+                continue
+
+            all_labels: set[str] = set()
+            classified_tables: list[str] = []
+            classified_fields: dict[str, list[str]] = {}
+            # field_name -> labels, kept separately because pii_fields and
+            # phi_fields need labels while classified_fields stores names.
+            field_labels: dict[str, set[str]] = {}
+            for meta in scoped_metadata:
+                all_labels.update(meta.get("data_classification") or [])
+                table = meta.get("table_name") or meta.get("model_name")
+                if table:
+                    classified_tables.append(table)
+                    cf = meta.get("classified_fields")
+                    if cf:
+                        classified_fields[table] = sorted(cf.keys())
+                        for field_name, labels in cf.items():
+                            field_labels.setdefault(field_name, set()).update(labels or [])
+
+            pii_fields = sorted(f for f, labels in field_labels.items() if "PII" in labels)
+            phi_fields = sorted(f for f, labels in field_labels.items() if "PHI" in labels)
             existing_labels = set(acc.metadata.get("data_classification") or [])
             acc.metadata["data_classification"] = sorted(all_labels | existing_labels)
             existing_tables = set(acc.metadata.get("classified_tables") or [])
@@ -2566,11 +3456,15 @@ class AiSbomExtractor:
         self,
         doc: AiSbomDocument,
         node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
+        *,
+        imported_assets: dict[str, set[tuple[ComponentType, str]]] | None = None,
+        scanned_files: set[str] | None = None,
     ) -> None:
         """Turn RelationshipHints into Edge objects using built node UUIDs.
 
-        Falls back to simple type-based edge inference for any agents that
-        don't already have explicit relationships.
+        Preserve adapter hints and the scoped structural inference below.
+        Missing agent-to-tool/model hints do not establish dependencies: never
+        fill them from the repository-wide tool or model catalog.
         """
         # Build canonical_name → node.id lookup
         canonical_to_id: dict[str, Any] = {}
@@ -2578,6 +3472,10 @@ class AiSbomExtractor:
             canon = node.metadata.extras.get("canonical_name", "")
             if canon:
                 canonical_to_id[canon] = node.id
+        typed_canonical_to_id = {
+            (node.component_type, node.metadata.extras.get("canonical_name")): node.id
+            for node in doc.nodes
+        }
 
         rel_type_map = {
             "USES": RelationshipType.USES,
@@ -2586,7 +3484,35 @@ class AiSbomExtractor:
             "PROTECTS": RelationshipType.PROTECTS,
             "DEPLOYS": RelationshipType.DEPLOYS,
             "DELEGATES_TO": RelationshipType.DELEGATES_TO,
+            # Container / workload topology hints
+            "RUNS": RelationshipType.RUNS,
+            "BUILT_FROM": RelationshipType.BUILT_FROM,
+            "HOSTS": RelationshipType.HOSTS,
+            "EXPOSES": RelationshipType.EXPOSES,
+            "ROUTES_TO": RelationshipType.ROUTES_TO,
+            "DEPENDS_ON": RelationshipType.DEPENDS_ON,
         }
+
+        def _lookup(canonical: str) -> Any:
+            return canonical_to_id.get(canonical) or canonical_to_id.get(
+                canonicalize_text(canonical)
+            )
+
+        def _hint_target_id(hint: RelationshipHint) -> Any:
+            candidates = getattr(hint, "target_files", ())
+            if not candidates:
+                return _lookup(hint.target_canonical)
+            # Ordered by the language's name-shadowing rules: the first candidate whose file
+            # was scanned decides, even when that file holds no node (a plain class that hides
+            # a later agent). Without a scanned-file set, fall back to the first node found.
+            for candidate_file, canonical in candidates:
+                if scanned_files is None:
+                    found = _lookup(canonical)
+                    if found is not None:
+                        return found
+                elif candidate_file in scanned_files:
+                    return _lookup(canonical)
+            return None
 
         # Process explicit relationship hints
         seen_edges: set[tuple[Any, Any, str]] = set()
@@ -2597,9 +3523,7 @@ class AiSbomExtractor:
                 src_id = canonical_to_id.get(hint.source_canonical) or canonical_to_id.get(
                     canonicalize_text(hint.source_canonical)
                 )
-                tgt_id = canonical_to_id.get(hint.target_canonical) or canonical_to_id.get(
-                    canonicalize_text(hint.target_canonical)
-                )
+                tgt_id = _hint_target_id(hint)
                 if src_id is None or tgt_id is None:
                     continue
                 rel = rel_type_map.get(hint.relationship_type, RelationshipType.USES)
@@ -2648,35 +3572,51 @@ class AiSbomExtractor:
             if adapter_name:
                 fw_name_to_id.setdefault(adapter_name, fw.id)
 
-        model_ids: set[Any] = {n.id for n in by_type.get(ComponentType.MODEL, [])}
+        # A prompt detected independently of an agent adapter (for example a
+        # module-level constant or a prompt in an exported JSON graph) has no
+        # RelationshipHint. Associate it only when one agent has evidence in
+        # the same source file. Explicit hints remain authoritative, and files
+        # with several possible owners are left for their adapters to resolve.
+        def _evidence_paths(node: Node) -> set[str]:
+            return {ev.location.path for ev in node.evidence if ev.location.path}
 
-        # Track which agents already have tool vs. model edges separately so
-        # the fallback can add only what is missing.
-        agent_ids_with_tool_edges: set[Any] = set()
-        agent_ids_with_model_edges: set[Any] = set()
-        for e in doc.edges:
-            if e.relationship_type == RelationshipType.CALLS and e.target in {
-                n.id for n in by_type.get(ComponentType.TOOL, [])
-            }:
-                agent_ids_with_tool_edges.add(e.source)
-            if e.relationship_type == RelationshipType.USES and e.target in model_ids:
-                agent_ids_with_model_edges.add(e.source)
-
-        # Fallback: AGENT → TOOL (CALLS) for agents with no tool edges
-        for agent in by_type.get(ComponentType.AGENT, []):
-            if agent.id in agent_ids_with_tool_edges:
+        agents = by_type.get(ComponentType.AGENT, [])
+        paths_by_id = {n.id: _evidence_paths(n) for n in doc.nodes}
+        prompt_ids = {n.id for n in by_type.get(ComponentType.PROMPT, [])}
+        agent_ids = {n.id for n in agents}
+        guardrail_ids = {n.id for n in by_type.get(ComponentType.GUARDRAIL, [])}
+        prompts_with_owners = {
+            e.target
+            for e in doc.edges
+            if e.source in agent_ids | guardrail_ids
+            and e.target in prompt_ids
+            and e.relationship_type == RelationshipType.USES
+        }
+        for prompt in by_type.get(ComponentType.PROMPT, []):
+            if prompt.id in prompts_with_owners:
                 continue
-            for tool in sorted(by_type.get(ComponentType.TOOL, []), key=lambda n: n.name)[:5]:
-                _add_edge(agent.id, tool.id, "CALLS")
+            paths = paths_by_id[prompt.id]
+            owners = [agent for agent in agents if paths & paths_by_id[agent.id]]
+            if len(owners) > 1:
+                prompt_name = canonicalize_text(prompt.name.lower())
+                named_owners = [
+                    agent
+                    for agent in owners
+                    if prompt_name.startswith(canonicalize_text(agent.name.lower()) + "_")
+                ]
+                owners = named_owners if len(named_owners) == 1 else []
+            if len(owners) == 1:
+                _add_edge(owners[0].id, prompt.id, "USES", confidence=0.6)
 
-        # Fallback: AGENT → MODEL (USES) for agents with no model edges
-        for agent in by_type.get(ComponentType.AGENT, []):
-            if agent.id in agent_ids_with_model_edges:
+        for source_path, assets in (imported_assets or {}).items():
+            owners = [agent for agent in agents if source_path in paths_by_id[agent.id]]
+            if len(owners) != 1:
                 continue
-            for model in sorted(by_type.get(ComponentType.MODEL, []), key=lambda n: -n.confidence)[
-                :3
-            ]:
-                _add_edge(agent.id, model.id, "USES")
+            for asset_type, canonical in assets:
+                asset_id = typed_canonical_to_id.get((asset_type, canonical))
+                if asset_id is not None:
+                    relation = "ACCESSES" if asset_type == ComponentType.DATASTORE else "USES"
+                    _add_edge(owners[0].id, asset_id, relation, confidence=0.6)
 
         # Fallback: FRAMEWORK → AGENT (CALLS) via shared metadata.framework
         for agent in by_type.get(ComponentType.AGENT, []):
@@ -2715,17 +3655,41 @@ class AiSbomExtractor:
             if e.relationship_type == RelationshipType.ACCESSES:
                 tool_to_datastores.setdefault(e.source, []).append(e.target)
 
-        for e in doc.edges:
-            if e.relationship_type == RelationshipType.CALLS:
+        tool_ids = {n.id for n in by_type.get(ComponentType.TOOL, [])}
+        for e in list(doc.edges):
+            if (
+                e.relationship_type == RelationshipType.CALLS
+                and e.source in agent_ids
+                and e.target in tool_ids
+                and (
+                    e.derivation == "hint"
+                    or paths_by_id[e.source] & paths_by_id[e.target]
+                )
+            ):
                 for ds_id in tool_to_datastores.get(e.target, []):
                     _add_edge(e.source, ds_id, "ACCESSES")
+
+        # Agents can use a datastore directly, without a TOOL node. Infer that
+        # relationship only when a single agent and the datastore are detected
+        # in the same file; a directory or framework match is too broad here.
+        for datastore in by_type.get(ComponentType.DATASTORE, []):
+            paths = paths_by_id[datastore.id]
+            owners = [agent for agent in agents if paths & paths_by_id[agent.id]]
+            if len(owners) == 1 and (
+                owners[0].id, datastore.id, "ACCESSES"
+            ) not in seen_edges:
+                _add_edge(owners[0].id, datastore.id, "ACCESSES", confidence=0.5)
 
         # Structural edges: DEPLOYMENT → CONTAINER_IMAGE (DEPLOYS).
         # Gated by _structural_edge_related to avoid an all-to-all N*M join
         # when several unrelated DEPLOYMENT keyword nodes and CONTAINER_IMAGE
         # nodes coexist in the same scan.
         for dep in by_type.get(ComponentType.DEPLOYMENT, []):
+            if dep.metadata.workload is not None:
+                continue  # workloads link to their image precisely (RUNS), not by proximity
             for img in by_type.get(ComponentType.CONTAINER_IMAGE, []):
+                if img.metadata.image_role == "app":
+                    continue  # built images are reached through RUNS / BUILT_FROM
                 if not self._structural_edge_related(dep, img):
                     continue
                 key = (dep.id, img.id, "DEPLOYS")
@@ -2816,6 +3780,28 @@ class AiSbomExtractor:
                 if not self._structural_edge_related(guardrail, agent):
                     continue
                 _add_edge(guardrail.id, agent.id, "PROTECTS", confidence=0.4)
+
+        # A guardrail protecting an agent also covers the prompts that agent
+        # uses. This works for both explicit and scoped fallback PROTECTS edges.
+        agent_prompts: dict[Any, set[Any]] = {}
+        for edge in doc.edges:
+            if (
+                edge.source in agent_ids
+                and edge.target in prompt_ids
+                and edge.relationship_type == RelationshipType.USES
+            ):
+                agent_prompts.setdefault(edge.source, set()).add(edge.target)
+        for edge in list(doc.edges):
+            if (
+                edge.source in guardrail_ids
+                and edge.target in agent_ids
+                and edge.relationship_type == RelationshipType.PROTECTS
+            ):
+                for prompt_id in agent_prompts.get(edge.target, set()):
+                    if edge.derivation == "hint" or (
+                        paths_by_id[edge.source] & paths_by_id[prompt_id]
+                    ):
+                        _add_edge(edge.source, prompt_id, "PROTECTS", confidence=0.5)
 
     async def _llm_enrich(
         self,
@@ -3280,36 +4266,10 @@ class AiSbomExtractor:
 
         return doc
 
-    # Git rejects positional refs that begin with ``-`` by refusing them as
-    # "ambiguous argument", but only after it has already consumed earlier
-    # options.  Some versions of git also accept leading ``-`` arguments as
-    # flags in older builds (see CVE-2017-1000117 et al.), so we reject the
-    # value up-front rather than rely on the child process's behaviour.
-    # Accepting such a ref would let a hostile ref string (e.g. one pasted from
-    # a malicious README) trick ``git clone`` into invoking other git options
-    # such as ``--upload-pack=<command>`` — a known argument-injection vector.
-    _SAFE_REF_RE = re.compile(r"^[^-,\s\x00][^,\s\x00]*\Z")
-    # Same defence for the URL: even though the CLI validates it as http(s)
-    # upstream, ``extract_from_repo`` is a public API callable from any
-    # embedding, so we re-validate here to avoid the same injection class.
-    # Accepted at the clone boundary:
-    #   - http(s)://host/path
-    #   - ssh://[user@]host[:port]/path
-    #   - scp-style SSH: [user@]host:path  where the path either starts
-    #     with ``/`` (absolute) or with a non-flag character (so a
-    #     hostile provider cannot smuggle a flag through
-    #     ``git@host:--option``). ``extract_from_repo`` historically
-    #     accepted the scp form, so the regex preserves that compatibility
-    #     while still rejecting anything that smells like an injected flag.
-    # The scp path sub-pattern forbids ``-``/``,``/``\s``/``\x00``/``\Z`` at
-    # the start (no leading flag or whitespace) and continues with
-    # safe characters. The host portion also forbids ``-`` so a hostile
-    # user@ portion cannot itself look like an option.
-    _SAFE_URL_RE = re.compile(
-        r"(?:https?|ssh)://[^\s\x00]*\Z"
-        r"|"
-        r"[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:[^-,:\s\x00][^,\s\x00]*\Z"
-    )
+    # Argument-injection defenses shared with github_clone.py — see
+    # git_safety.py for why both need to validate identically.
+    _SAFE_REF_RE = SAFE_REF_RE
+    _SAFE_URL_RE = SAFE_URL_RE
 
     @staticmethod
     def _clone_repo(url: str, ref: str | None, dest: Path) -> None:
@@ -3320,16 +4280,8 @@ class AiSbomExtractor:
         # ``-`` git may interpret it as a flag (``--upload-pack=<cmd>``,
         # ``--config=<key>=<value>``, etc.), giving the ref provider a way to
         # run arbitrary commands on the operator's machine.
-        if ref is not None and not AiSbomExtractor._SAFE_REF_RE.match(ref):
-            raise ValueError(
-                f"Invalid git ref {ref!r}: must not be empty, start with '-', "
-                "or contain whitespace."
-            )
-        if not AiSbomExtractor._SAFE_URL_RE.match(url):
-            raise ValueError(
-                f"Invalid repository URL {url!r}: must be an absolute URL with "
-                "an explicit scheme (e.g. https://...)."
-            )
+        validate_ref(ref)
+        validate_url(url)
         # Use ``--`` to terminate option parsing so any future ref/url values
         # that pass validation can never be reinterpreted as flags. Omitting
         # ``--branch`` entirely (ref=None) clones the repo's default branch,
@@ -3363,6 +4315,9 @@ class AiSbomExtractor:
         _gitignore_match = (
             _load_gitignore_matcher(root) if getattr(config, "honor_gitignore", True) else None
         )
+        # Restore only conventional source-set context for subtree scans.
+        # Evidence, gitignore and explicit exclusions still use the selected root.
+        jvm_test_prefix = jvm_source_path_prefix(root)
         count = 0
         for dirpath, dirnames, filenames in os.walk(root):
             # Keep traversal deterministic and prune irrelevant dirs early.
@@ -3371,10 +4326,14 @@ class AiSbomExtractor:
                 path = Path(dirpath) / filename
                 suffix = path.suffix.lower()
                 # Always include Dockerfile* files (extensionless or .dockerfile suffix)
-                is_dockerfile = (
-                    suffix in _DOCKERFILE_EXTENSIONS or path.name.lower() in _DOCKERFILE_NAMES
-                )
-                if suffix not in config.include_extensions and not is_dockerfile:
+                is_dockerfile = _is_dockerfile_name(path.name)
+                # nginx configs (nginx.conf, default.conf, *.nginx) carry the gateway
+                # ingress facts the pentest needs; ".conf" is not a source extension.
+                is_nginx = is_nginx_file(path.relative_to(root).as_posix())
+                is_java_config = suffix == ".properties" and is_java_app_config_name(path.name)
+                if suffix not in config.include_extensions and not (
+                    is_dockerfile or is_nginx or is_java_config
+                ):
                     continue
                 # Skip common irrelevant directories
                 parts = path.parts
@@ -3382,6 +4341,23 @@ class AiSbomExtractor:
                     continue
                 # Skip .github/** except .github/workflows/**
                 if ".github" in parts and "workflows" not in parts:
+                    continue
+                # Skip JVM test source trees (src/test/**, src/testFixtures/**, ...): test
+                # helpers are not application agents/prompts and would inflate the component
+                # graph and the findings derived from it. Opt in: include_test_sources.
+                if (
+                    not getattr(config, "include_test_sources", False)
+                    and (
+                        suffix == ".java"
+                        or (
+                            path.name.lower().startswith("application")
+                            and suffix in {".properties", ".yml", ".yaml"}
+                        )
+                    )
+                    and is_jvm_test_source_path(
+                        (jvm_test_prefix / path.relative_to(root).as_posix()).as_posix()
+                    )
+                ):
                     continue
                 # Skip meta/tooling instruction files
                 if path.name in {"CLAUDE.md", "AGENTS.md"}:

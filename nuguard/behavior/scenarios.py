@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 from nuguard.behavior._utils import extract_json_object
 from nuguard.behavior.models import BehaviorScenario, BehaviorScenarioType
 from nuguard.behavior.sbom_graph import SbomGraph
+from nuguard.common.endpoint_detection.constants import HAS_PATH_PARAM_RE
 from nuguard.common.endpoint_scenario_gate import should_skip_direct_http_scenario
 from nuguard.common.logging import get_logger
 
@@ -1835,6 +1836,19 @@ def _endpoint_coverage_scenarios(
 
         endpoint_path = getattr(meta, "endpoint", "") or getattr(meta, "path", "") or getattr(node, "name", "") or ""
         if not endpoint_path:
+            continue
+        method = (getattr(meta, "method", None) or "").upper()
+        if method and method not in {"POST", "ANY"}:
+            _log.info(
+                "_endpoint_coverage_scenarios: skipped '%s': behavior coverage sends POST requests, not %s",
+                endpoint_path, method,
+            )
+            continue
+        if HAS_PATH_PARAM_RE.search(endpoint_path):
+            _log.info(
+                "_endpoint_coverage_scenarios: skipped '%s': path parameters require endpoint-specific resource binding",
+                endpoint_path,
+            )
             continue
         if endpoint_path in seen_paths:
             continue

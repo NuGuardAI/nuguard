@@ -58,3 +58,37 @@ def test_parse_java_reports_unclosed_source_without_raising() -> None:
     result = parse_java('class Broken { String value = "unterminated\n', "Broken.java")
     assert result.parse_error
     assert "Unterminated string" in result.parse_error
+
+
+def test_parse_java_keeps_methods_with_annotated_parameter_arguments() -> None:
+    """``@PathVariable("id")`` style arguments used to stop the method regex matching."""
+    source = """package demo;
+
+@RestController
+public class ItemController {
+    @GetMapping("/items/{id}")
+    public String item(@PathVariable("id") String id,
+                       @RequestParam(value = "q", required = false) String q,
+                       @RequestParam Map<String, String> filters) {
+        return id + q;
+    }
+
+    @PostMapping("/plain")
+    public String plain(@RequestParam String q, @RequestHeader HttpHeaders headers) {
+        return q;
+    }
+}
+"""
+    result = parse_java(source, "ItemController.java")
+    methods = {method.name: method for method in result.method_declarations}
+
+    assert set(methods) >= {"item", "plain"}
+    assert methods["item"].parameters == (
+        '@PathVariable("id") String id',
+        '@RequestParam(value = "q", required = false) String q',
+        "@RequestParam Map<String, String> filters",
+    )
+    assert methods["plain"].parameters == (
+        "@RequestParam String q",
+        "@RequestHeader HttpHeaders headers",
+    )

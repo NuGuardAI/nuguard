@@ -28,17 +28,25 @@ def _make_canary(tmp_path: Path, *tokens: str) -> Path:
     return p
 
 
+def _message_config(tmp_path: Path) -> Path:
+    config = tmp_path / "nuguard.yaml"
+    config.write_text("target:\n  chat_payload_key: message\n", encoding="utf-8")
+    return config
+
+
 # ── happy-path tests ──────────────────────────────────────────────────────────
 
 
 @respx.mock
-def test_verify_ok_bearer() -> None:
+def test_verify_ok_bearer(tmp_path: Path) -> None:
     respx.post(FULL_URL).mock(return_value=httpx.Response(200))
     result = runner.invoke(
         app,
         [
             "target",
             "verify",
+            "--config",
+            str(_message_config(tmp_path)),
             "--target",
             TARGET,
             "--endpoint",
@@ -57,9 +65,12 @@ def test_verify_no_sbom_discovers_fallback_endpoint() -> None:
     # discover a working chat endpoint from the fallback path list, instead of
     # silently defaulting to "/chat" and reporting whatever it gets as "ok".
     respx.get(url__regex=r".*").mock(return_value=httpx.Response(404))
-    respx.post(f"{TARGET}/api/agent/chat").mock(
-        return_value=httpx.Response(200, json={"response": "hi"})
-    )
+    def reply(request: httpx.Request) -> httpx.Response:
+        if "message" not in json.loads(request.content):
+            return httpx.Response(422, json={"detail": "message is required"})
+        return httpx.Response(200, json={"response": "hi"})
+
+    respx.post(f"{TARGET}/api/agent/chat").mock(side_effect=reply)
     respx.post(url__regex=r".*").mock(return_value=httpx.Response(404))
 
     result = runner.invoke(app, ["target", "verify", "--target", TARGET])
@@ -68,6 +79,20 @@ def test_verify_no_sbom_discovers_fallback_endpoint() -> None:
     output = " ".join(result.output.split())
     assert "/api/agent/chat" in output
     assert "All credentials verified successfully" in output
+
+
+@respx.mock
+def test_healthy_endpoint_with_only_default_greeting_requires_a_configured_field() -> None:
+    secret = "issue627-fixture-token"
+    respx.get(url__regex=r".*").mock(return_value=httpx.Response(404))
+    respx.post(FULL_URL).mock(return_value=httpx.Response(200, json={"outputs": [{"text": "Welcome"}]}))
+    result = runner.invoke(app, [
+        "target", "verify", "--target", TARGET, "--endpoint", ENDPOINT,
+        "--auth-header", f"Authorization: Bearer {secret}",
+    ])
+    assert result.exit_code == 1
+    assert "message field could not be confirmed" in " ".join(result.output.split())
+    assert secret not in result.output
 
 
 @respx.mock
@@ -154,6 +179,8 @@ def test_verify_with_canary_tenants(tmp_path: Path) -> None:
         [
             "target",
             "verify",
+            "--config",
+            str(_message_config(tmp_path)),
             "--target",
             TARGET,
             "--endpoint",
@@ -175,6 +202,8 @@ def test_verify_canary_file_not_found_warns(tmp_path: Path) -> None:
             [
                 "target",
                 "verify",
+                "--config",
+                str(_message_config(tmp_path)),
                 "--target",
                 TARGET,
                 "--endpoint",

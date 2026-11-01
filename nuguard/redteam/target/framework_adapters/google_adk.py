@@ -66,6 +66,11 @@ class GoogleADKAdapter:
             to disable SSE even when the SBOM detects streaming support.
     """
 
+    #: Campaign-mode state model (see redteam.campaign.transport.capabilities).
+    session_mode = "server_session"
+    supports_reset = True
+
+
     def __init__(
         self,
         app_name: str = "",

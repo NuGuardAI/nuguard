@@ -82,3 +82,17 @@ def test_report_meta_dict_includes_endpoint_provenance() -> None:
     assert payload["effective_endpoint"] == "/api/agent"
     assert payload["target_endpoint_source"] == "sbom"
     assert payload["endpoint_discovery_notes"] == ["SBOM endpoint selected"]
+
+
+def test_report_meta_marks_enriched_sbom_cache_hits() -> None:
+    meta = ReportMeta(
+        timestamp="2026-03-31T00:00:00+00:00",
+        target_url="http://localhost:8080",
+        effective_endpoint="/extract",
+        target_endpoint_source="enriched_sbom_cache",
+        endpoint_discovery_notes=["reused previously-confirmed endpoint from enriched SBOM"],
+    )
+
+    markdown = "\n".join(meta.to_markdown_lines())
+    assert "**Effective Endpoint:** `/extract` (source: enriched_sbom(cache: previous live_verified))" in markdown
+    assert meta.to_dict()["target_endpoint_source"] == "enriched_sbom_cache"

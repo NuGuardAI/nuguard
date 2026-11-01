@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from nuguard.common.endpoint_detection import EndpointSource, PayloadShape, ResolvedEndpoint
+from nuguard.common.endpoint_detection.constants import CHAT_CONTRACT_VERSION
 from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
@@ -157,6 +158,7 @@ async def test_redteam_maybe_probe_uses_cached_confirmed_endpoint(monkeypatch) -
             chat_payload_list=False,
             extras={
                 "source": "runtime_probe",
+                "chat_contract_version": CHAT_CONTRACT_VERSION,
                 "confirmed_at": datetime.now(timezone.utc).isoformat(),
             },
         ),
@@ -181,3 +183,52 @@ async def test_redteam_maybe_probe_uses_cached_confirmed_endpoint(monkeypatch) -
     resolver.assert_not_awaited()
     assert orchestrator.resolved_chat_path == "/extract"
     assert orchestrator._chat_payload_key == "text"
+
+
+@pytest.mark.asyncio
+async def test_explicit_default_payload_shape_survives_sbom_and_startup(monkeypatch) -> None:
+    """An explicit message/false contract is not an auto-discovery fallback."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[_endpoint_node("/api/chat", key="messages", payload_list=True)],
+    )
+    orchestrator = RedteamOrchestrator(
+        sbom=sbom, target_url="http://target.test", chat_path="/api/chat",
+        chat_payload_key="message", chat_payload_list=False, chat_payload_key_explicit=True,
+    )
+    assert orchestrator._chat_payload_key == "message"
+    assert orchestrator._chat_payload_list is False
+    probe = AsyncMock()
+    monkeypatch.setattr(orchestrator, "_maybe_probe_endpoints", probe)
+
+    async def stop_after_resolution(**kwargs):
+        assert kwargs["chat_payload_key"] == "message"
+        assert kwargs["chat_payload_list"] is False
+        assert kwargs["payload_key_explicit"] is True
+        raise RuntimeError("captured explicit startup contract")
+
+    monkeypatch.setattr("nuguard.common.session_resolver.resolve_target_session", stop_after_resolution)
+    with pytest.raises(RuntimeError, match="captured explicit startup contract"):
+        await orchestrator.run()
+    probe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_explicit_default_shape_is_forwarded_when_endpoint_is_discovered(monkeypatch) -> None:
+    sbom = AiSbomDocument(target="./app", nodes=[])
+    orchestrator = RedteamOrchestrator(
+        sbom=sbom, target_url="http://target.test", chat_path="",
+        chat_payload_key="message", chat_payload_list=False, chat_payload_key_explicit=True,
+    )
+    resolver = AsyncMock(return_value=ResolvedEndpoint(
+        path="/api/chat", payload=PayloadShape(key="message", is_list=False),
+        path_source=EndpointSource.PROBE,
+    ))
+    monkeypatch.setattr("nuguard.common.endpoint_detection.resolver.resolve_chat_endpoint", resolver)
+    monkeypatch.setattr(
+        "nuguard.common.endpoint_detection.context.resolve_api_origin",
+        AsyncMock(return_value=("http://target.test", [])),
+    )
+    await orchestrator._maybe_probe_endpoints()
+    assert resolver.await_args.kwargs["payload_key"] == "message"
+    assert resolver.await_args.kwargs["payload_list"] is False

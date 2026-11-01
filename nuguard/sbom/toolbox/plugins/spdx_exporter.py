@@ -16,6 +16,7 @@ Produces output aligned with the NuGuardAI SPDX 3.0.1 reference format:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from importlib import resources
@@ -90,6 +91,12 @@ _REL_TYPES: dict[RelationshipType, str] = {
     RelationshipType.ACCESSES: "dataFile",
     RelationshipType.DEPLOYS: "generates",
     RelationshipType.PROTECTS: "other",
+    RelationshipType.DEPENDS_ON: "dependsOn",
+    RelationshipType.HOSTS: "contains",
+    RelationshipType.RUNS: "other",
+    RelationshipType.BUILT_FROM: "other",
+    RelationshipType.EXPOSES: "other",
+    RelationshipType.ROUTES_TO: "other",
 }
 
 
@@ -452,6 +459,11 @@ def _add_package_extensions(element: dict[str, Any], node: Node) -> None:
             element["nuguard:transport"] = meta.transport
         if meta.method:
             element["nuguard:method"] = meta.method
+        if meta.http_request is not None:
+            element["nuguard:httpMethods"] = list(meta.http_request.methods)
+            element["nuguard:httpParameters"] = [
+                f"{param.location}:{param.name}" for param in meta.http_request.parameters
+            ]
     elif node.component_type == ComponentType.DEPLOYMENT:
         if meta.deployment_target:
             element["nuguard:deploymentTarget"] = meta.deployment_target
@@ -465,9 +477,14 @@ def _add_package_extensions(element: dict[str, Any], node: Node) -> None:
 def _dep_to_element(
     dep: Any, ci_ref: str, org_id: str, created: str, repo_url: str = ""
 ) -> dict[str, Any]:
+    # Hash the full PURL, including its version and variant qualifiers, rather
+    # than the display name or the versionless identity used by the scanner.
+    # Retain deterministic behavior for caller-supplied records without a PURL.
+    identity = dep.purl or json.dumps([dep.name, dep.version_spec], ensure_ascii=False)
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     return {
         "type": _TYPE_PKG,
-        "spdxId": _spdx_ref("Dep", dep.name),
+        "spdxId": _spdx_ref("Dep", f"{dep.name}-{digest}"),
         "creationInfo": ci_ref,
         "name": dep.name,
         "software_primaryPurpose": "library",

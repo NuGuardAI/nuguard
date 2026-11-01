@@ -24,7 +24,7 @@ import pytest
 from nuguard.sbom.config import AiSbomConfig
 from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.models import AiSbomDocument
-from nuguard.sbom.types import ComponentType
+from nuguard.sbom.types import ComponentType, RelationshipType
 
 FIXTURE = (
     Path(__file__).parents[3]
@@ -93,6 +93,16 @@ class TestPromptDetection:
         assert "invoicing" in validation_prompt.metadata.extras.get("content", "").lower()
         _assert_has_evidence(validation_prompt)
 
+    def test_agent_uses_its_prompt(self, doc: AiSbomDocument) -> None:
+        prompt = next(n for n in _nodes(doc, ComponentType.PROMPT) if n.name == "Validate Invoicing Fields")
+        agent_ids = {n.id for n in _nodes(doc, ComponentType.AGENT)}
+        assert any(
+            e.source in agent_ids
+            and e.target == prompt.id
+            and e.relationship_type == RelationshipType.USES
+            for e in doc.edges
+        )
+
 
 class TestModelDetection:
     def test_llm_connection_placeholder_detected(self, doc: AiSbomDocument) -> None:
@@ -114,6 +124,20 @@ class TestDatastoreDetection:
         salesforce = next((n for n in datastores if n.metadata.extras.get("provider") == "salesforce"), None)
         assert salesforce is not None, f"datastores found: {[n.name for n in datastores]}"
         _assert_has_evidence(salesforce)
+
+    def test_analytics_agent_accesses_its_jdbc_connection(self, doc: AiSbomDocument) -> None:
+        app = next(n for n in _nodes(doc, ComponentType.AGENT) if n.name == "Order Review App")
+        jdbc = next(
+            n
+            for n in _nodes(doc, ComponentType.DATASTORE)
+            if n.metadata.extras.get("connection_id") == "39"
+        )
+        assert any(
+            e.source == app.id
+            and e.target == jdbc.id
+            and e.relationship_type == RelationshipType.ACCESSES
+            for e in doc.edges
+        )
 
     def test_jdbc_mysql_datastore_merges_workflow_and_dataset_evidence(
         self, doc: AiSbomDocument
