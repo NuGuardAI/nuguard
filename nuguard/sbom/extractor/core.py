@@ -43,7 +43,12 @@ from nuguard.common.url_sanitization import (
     sanitize_repository_url,
 )
 
-from ..adapters._test_paths import looks_like_test_path
+from ..adapters._test_paths import (
+    is_jvm_test_source_path,
+    jvm_evidence_path,
+    jvm_source_path_prefix,
+    looks_like_test_path,
+)
 from ..adapters.azure_yaml import AzureYamlAdapter, is_azure_yaml
 from ..adapters.base import (
     AdapterMatch,
@@ -3233,6 +3238,9 @@ class AiSbomExtractor:
         # ``tests/fixtures/app.py`` becomes ``app.py`` for that focused scan.
         # Keep infrastructure/configuration detections (for example DEPLOYMENT)
         # because test and E2E directories can contain real environment facts.
+        # Java sources and application* config are classified by source set during file
+        # discovery (include_test_sources), so only the directories before the source set
+        # count here: src/main/java/com/acme/test is production, tests/fixtures/** is not.
         if det.component_type in {
             ComponentType.AGENT,
             ComponentType.GUARDRAIL,
@@ -3241,7 +3249,7 @@ class AiSbomExtractor:
             ComponentType.TOOL,
             ComponentType.PROMPT,
             ComponentType.FRAMEWORK,
-        } and looks_like_test_path(det.file_path):
+        } and looks_like_test_path(jvm_evidence_path(det.file_path)):
             return
 
         # Exact config identifiers preserve punctuation and case. Ordinary
@@ -4307,6 +4315,9 @@ class AiSbomExtractor:
         _gitignore_match = (
             _load_gitignore_matcher(root) if getattr(config, "honor_gitignore", True) else None
         )
+        # Restore only conventional source-set context for subtree scans.
+        # Evidence, gitignore and explicit exclusions still use the selected root.
+        jvm_test_prefix = jvm_source_path_prefix(root)
         count = 0
         for dirpath, dirnames, filenames in os.walk(root):
             # Keep traversal deterministic and prune irrelevant dirs early.
@@ -4330,6 +4341,23 @@ class AiSbomExtractor:
                     continue
                 # Skip .github/** except .github/workflows/**
                 if ".github" in parts and "workflows" not in parts:
+                    continue
+                # Skip JVM test source trees (src/test/**, src/testFixtures/**, ...): test
+                # helpers are not application agents/prompts and would inflate the component
+                # graph and the findings derived from it. Opt in: include_test_sources.
+                if (
+                    not getattr(config, "include_test_sources", False)
+                    and (
+                        suffix == ".java"
+                        or (
+                            path.name.lower().startswith("application")
+                            and suffix in {".properties", ".yml", ".yaml"}
+                        )
+                    )
+                    and is_jvm_test_source_path(
+                        (jvm_test_prefix / path.relative_to(root).as_posix()).as_posix()
+                    )
+                ):
                     continue
                 # Skip meta/tooling instruction files
                 if path.name in {"CLAUDE.md", "AGENTS.md"}:
