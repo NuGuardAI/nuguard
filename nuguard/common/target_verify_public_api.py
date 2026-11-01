@@ -64,6 +64,8 @@ class TargetVerifyRequest(BaseModel):
     chat_payload_list: bool = False
     chat_response_key: str | None = None
     chat_payload_extras: dict[str, Any] | None = None
+    chat_method: Literal["GET", "POST", "PUT", "PATCH"] = "POST"
+    chat_payload_in: Literal["body", "query"] | None = None
     request_timeout: float = 30.0
     discovery_max_turns: int = 3
     preflight_candidates: int = Field(
@@ -133,6 +135,8 @@ class TargetSessionResolveRequest(BaseModel):
     chat_payload_list: bool = False
     chat_response_key: str | None = None
     chat_payload_extras: dict[str, Any] | None = None
+    chat_method: Literal["GET", "POST", "PUT", "PATCH"] = "POST"
+    chat_payload_in: Literal["body", "query"] | None = None
     request_timeout: float = 30.0
 
     @model_validator(mode="after")
@@ -244,6 +248,8 @@ async def verify_target(
             chat_payload_extras=dict(request.chat_payload_extras or {}),
             chat_response_key=request.chat_response_key,
             probe_payload_extras=request.chat_payload_extras or None,
+            chat_method=request.chat_method,
+            chat_payload_in=request.chat_payload_in,
             config_path=config_path,
             request_timeout=request.request_timeout,
             browser_discovery=request.browser_discovery,
@@ -494,6 +500,8 @@ async def resolve_target_session_public(
         chat_payload_extras=dict(request.chat_payload_extras or {}),
         chat_response_key=request.chat_response_key,
         probe_payload_extras=request.chat_payload_extras or None,
+        chat_method=request.chat_method,
+        chat_payload_in=request.chat_payload_in,
         config_path=config_path,
         request_timeout=request.request_timeout,
         endpoint_explicit="chat_path" in request.model_fields_set,
