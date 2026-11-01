@@ -239,7 +239,8 @@ def test_dedup_by_location_merges_truncated_model_name() -> None:
     assert len(winner.evidence) == 2
 
 
-def test_model_identity_pass_order_keeps_same_line_regex_only_prefix_models() -> None:
+def test_model_identity_pass_order_merges_same_line_regex_only_prefix_models() -> None:
+    """Without column spans, a same-line prefix pair merges into the longer name."""
     node_map = {
         (ComponentType.MODEL, "gemini_3_6"): _accumulator(
             "gemini_3_6", "gemini-3.6", kind="regex", line=10
@@ -252,10 +253,8 @@ def test_model_identity_pass_order_keeps_same_line_regex_only_prefix_models() ->
     _dedup_by_location(node_map)
     _dedup_by_name_prefix(node_map)
 
-    assert set(node_map) == {
-        (ComponentType.MODEL, "gemini_3_6"),
-        (ComponentType.MODEL, "gemini_3_6_flash"),
-    }
+    assert set(node_map) == {(ComponentType.MODEL, "gemini_3_6_flash")}
+    assert len(node_map[(ComponentType.MODEL, "gemini_3_6_flash")].evidence) == 2
 
 
 def test_model_identity_pass_order_merges_same_location_regex_ast_truncation() -> None:
