@@ -47,6 +47,26 @@ def _location_contains(outer: "SourceLocation", inner: "SourceLocation") -> bool
     ) <= (outer.end_line, outer.end_column)
 
 
+def _location_spans_disjoint(left: "SourceLocation", right: "SourceLocation") -> bool:
+    """True only when both spans are fully known and do not overlap."""
+    if (
+        left.path != right.path
+        or left.line is None
+        or left.column is None
+        or left.end_line is None
+        or left.end_column is None
+        or right.line is None
+        or right.column is None
+        or right.end_line is None
+        or right.end_column is None
+    ):
+        return False
+    return (left.end_line, left.end_column) <= (right.line, right.column) or (
+        right.end_line,
+        right.end_column,
+    ) <= (left.line, left.column)
+
+
 def _model_regex_ast_correlations(
     node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
     regex_key: tuple[ComponentType, str],
@@ -84,40 +104,6 @@ def _transfer_correlated_model_regex_evidence(
         evidence for evidence in regex_acc.evidence if id(evidence) not in correlated_ids
     ]
     return True, not regex_acc.evidence
-
-
-def _provider_qualified_regex_fallback(
-    node_map: dict[tuple[ComponentType, str], "_NodeAccumulator"],
-    first: tuple[ComponentType, str],
-    second: tuple[ComponentType, str],
-) -> tuple[tuple[ComponentType, str], tuple[ComponentType, str]] | None:
-    """Return the full and short keys only for one provider-qualified token.
-
-    Older regex evidence may lack columns, so two hits on one line cannot
-    always be correlated by span. Keep that compatibility fallback narrowly
-    scoped to two regex-only spellings where the longer value adds a provider
-    namespace. Unqualified prefixes remain distinct because they can be
-    separate model declarations on the same line.
-    """
-    if not (
-        _has_only_regex_evidence(node_map[first])
-        and _has_only_regex_evidence(node_map[second])
-    ):
-        return None
-    short, full = sorted(
-        (first, second),
-        key=lambda key: len(node_map[key].display_name),
-    )
-    short_name = node_map[short].display_name.lower()
-    full_name = node_map[full].display_name.lower()
-    if "/" in short_name or "/" not in full_name:
-        return None
-    full_leaf = full_name.rsplit("/", 1)[-1]
-    if not full_leaf.startswith(short_name):
-        return None
-    if len(full_leaf) > len(short_name) and full_leaf[len(short_name)].isalnum():
-        return None
-    return full, short
 
 
 def _make_scan_summary(d: dict) -> ScanSummary:
@@ -567,12 +553,33 @@ def _dedup_by_location(
                         if regex_key == winner:
                             winner = ast_key
                     continue
-                fallback = _provider_qualified_regex_fallback(
-                    node_map, winner, loser
-                )
-                if fallback is None:
+                # Known, non-overlapping spans are distinct literals on one
+                # line (e.g. `["gemini-3.6", "gemini-3.6-flash"]`) — keep both.
+                _, loc_path, loc_line = loc
+                winner_locs = [
+                    ev.location
+                    for ev in node_map[winner].evidence
+                    if ev.location and (ev.location.path, ev.location.line) == (loc_path, loc_line)
+                ]
+                loser_locs = [
+                    ev.location
+                    for ev in node_map[loser].evidence
+                    if ev.location and (ev.location.path, ev.location.line) == (loc_path, loc_line)
+                ]
+                if (
+                    winner_locs
+                    and loser_locs
+                    and all(
+                        _location_spans_disjoint(w_loc, l_loc)
+                        for w_loc in winner_locs
+                        for l_loc in loser_locs
+                    )
+                ):
                     continue
-                winner, loser = fallback
+                # No AST/regex correlation found (e.g. two plain-regex hits on
+                # one token, as in the comment above). Fall back to absorbing
+                # the shorter name's evidence into the longer, full name —
+                # `winner` is already the longer one via the sort tie-break.
             # Absorb evidence so the winner node reflects all source locations
             node_map[winner].evidence.extend(node_map[loser].evidence)
             keys_to_remove.add(loser)
