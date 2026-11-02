@@ -1695,7 +1695,9 @@ class BehaviorRunner:
                     await asyncio.sleep(turn_delay)
 
                 message = _substitute_behavior_tokens(message, self._pre_scan_profile, local_tokens=_local_tokens)
-                response, canary_hits = await client.send(
+                # send() returns the target's tool calls, not canary hits: behavior
+                # does no canary scanning (that is redteam's CanaryScanner).
+                response, tool_calls = await client.send(
                     message,
                     session=session,
                     retry_transient=True,
@@ -1705,7 +1707,7 @@ class BehaviorRunner:
                     refreshed = await self._auth_session.refresh_if_needed()
                     if refreshed:
                         client.update_default_headers(self._auth_session.headers())
-                        response, canary_hits = await client.send(
+                        response, tool_calls = await client.send(
                             message, session=session, retry_transient=True
                         )
                 # 429 scenario-level retry — on top of TargetAppClient's per-request
@@ -1766,7 +1768,7 @@ class BehaviorRunner:
                 send_error = str(exc)
                 _log.warning("_run_scenario turn %d: send failed: %s", turn_idx + 1, exc)
                 response = ""
-                canary_hits = []
+                tool_calls = []
 
             latency_ms = int((time.monotonic() - start_ts) * 1000)
             _log.info(
@@ -1861,18 +1863,15 @@ class BehaviorRunner:
 
             if response:
                 from nuguard.common.turn_helpers import handle_mid_turn_interrupts
-                response, extra_hits = await handle_mid_turn_interrupts(
+                response, tool_calls = await handle_mid_turn_interrupts(
                     client=client,
                     session=session,
                     response=response,
                     original_message=message,
-                    tool_calls=list(canary_hits or []),
+                    tool_calls=list(tool_calls or []),
                     credentials=credentials or {},
                     llm_client=self._llm,
                 )
-                # handle_mid_turn_interrupts returns tool_calls; canary hits are
-                # the subset that were in the original canary_hits — reassign cleanly.
-                canary_hits = extra_hits[: len(canary_hits or [])]
 
                 # v7: inter-turn confirmation injection.
                 # If the agent is still asking for confirmation after the intra-turn
@@ -2142,9 +2141,9 @@ class BehaviorRunner:
                 prompt=message,
                 response=response,
                 raw_request_body=session.last_request_body,
+                tool_calls=[c for c in (tool_calls or []) if isinstance(c, dict)],
                 violations=violations,
-                canary_hits=list(canary_hits or []),
-                passed=len(violations) == 0 and len(canary_hits or []) == 0,
+                passed=len(violations) == 0,
                 scenario_name=scenario.name,
                 scenario_type=str(scenario.scenario_type.value if hasattr(scenario.scenario_type, "value") else scenario.scenario_type),
                 verdict=verdict.verdict,
@@ -2201,29 +2200,6 @@ class BehaviorRunner:
                     "severity": _vsev,
                     "attack_step": self._turn_record_to_attack_step(turn_record),
                 })
-            if canary_hits:
-                findings.append({
-                    "finding_id": _make_finding_id(
-                        finding_type="SECRET_DISCLOSURE",
-                        severity="critical",
-                        component=_component,
-                        summary=",".join(str(h) for h in canary_hits),
-                        first_seen_turn=turn_idx + 1,
-                    ),
-                    "title": "Canary data disclosure",
-                    "severity": "critical",
-                    "description": f"Canary values found in response: {canary_hits}",
-                    "affected_component": _component,
-                    "finding_type": "SECRET_DISCLOSURE",
-                    **_dynamic_finding_control_refs("SECRET_DISCLOSURE"),
-                })
-                scenario_deviations.append({
-                    "deviation_type": "data_leak",
-                    "description": f"Canary values found in response: {canary_hits}",
-                    "severity": "critical",
-                    "attack_step": self._turn_record_to_attack_step(turn_record),
-                })
-
             turn_idx += 1
 
         # Compute scenario aggregate

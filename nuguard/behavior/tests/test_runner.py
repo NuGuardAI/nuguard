@@ -2038,6 +2038,44 @@ async def test_run_scenario_copies_scoped_tools_and_agents_into_result() -> None
     assert result.scoped_agents == ["assistant"]
 
 
+@pytest.mark.asyncio
+async def test_run_scenario_target_tool_calls_are_not_canary_hits() -> None:
+    """client.send() returns the target's tool calls as its second value. They
+    used to be stored as TurnRecord.canary_hits (list[str]), so a target that
+    returns tool calls crashed the scenario with a ValidationError, or would
+    have been reported as a critical canary disclosure."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=_make_sbom_with_tool("get_account_status"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+
+    tool_call = {"tool": "get_account_status", "arguments": {"account_id": "acct_1"}}
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(return_value=("Your account is active.", [tool_call]))
+
+    fake_director = MagicMock()
+    fake_director.next_message = AsyncMock(side_effect=[None])
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_tool_calls",
+        messages=["Is my account active?"],
+        scoped_tools=["get_account_status"],
+        primary_agent="assistant",
+    )
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director):
+        result = await runner._run_scenario(scenario, mock_client, None)
+
+    assert result.total_turns == 1
+    assert not [d for d in result.deviations if d.get("deviation_type") == "data_leak"]
+
+
 # ---------------------------------------------------------------------------
 # escalate_on_refusal: escalation ladder for GUIDED_COVERAGE probes
 # ---------------------------------------------------------------------------
