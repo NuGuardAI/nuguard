@@ -3,7 +3,7 @@
 # Run again to restart: all data is in memory, so a restart reseeds infra/data + fixture/ExtraSeedData.json.
 #
 # LLM wiring (Azure OpenAI API key; the managed-identity path stays in the code):
-#   AZURE_OPENAI_KEY + AZURE_OPENAI_ENDPOINT   required
+#   AZURE_OPENAI_KEY + AZURE_OPENAI_ENDPOINT   (placeholders when unset; model calls then fail)
 #   APP_MODEL_NAME          chat deployment name (default gpt-5.4-mini)
 # Demo login (POST /auth/token {username, password}): only Mark (the NuGuard run identity) has a known
 # password, BANKING_DEMO_PASSWORD (default nuguard-demo-only). Other users get a random password per start.
@@ -22,9 +22,11 @@ if ! dotnet --list-sdks 2>/dev/null | grep -q '^9\.' && [[ -x "$HOME/.dotnet/dot
 fi
 export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
 
+# Fork PRs get no secrets: start anyway with placeholders (as the Java fixture does); model calls will fail.
 if [[ -z "${AZURE_OPENAI_KEY:-}" || -z "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
-  echo "[serve] AZURE_OPENAI_KEY and AZURE_OPENAI_ENDPOINT must be set" >&2
-  exit 1
+  echo "[serve] no LLM key in the environment (AZURE_OPENAI_KEY + AZURE_OPENAI_ENDPOINT)" >&2
+  echo "[serve] starting anyway with a placeholder key; model calls will fail" >&2
+  export AZURE_OPENAI_KEY="not-a-real-key" AZURE_OPENAI_ENDPOINT="https://placeholder.openai.azure.com/"
 fi
 
 echo "[serve] building"
