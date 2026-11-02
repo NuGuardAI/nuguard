@@ -35,6 +35,7 @@ APP_RUNS=(
   "gemini-auto|tests/apps/Gemini-Auto-app/nuguard.prepublish.yaml|tests/apps/Gemini-Auto-app/gemini-auto.sbom.json|tests/apps/Gemini-Auto-app/reports/gemini-auto-prepublish-behavior|tests/apps/Gemini-Auto-app/reports/gemini-auto-prepublish-redteam|/api/agent/chat"
   "pinnacle-bank|tests/apps/pinnacle-bank-app/nuguard-azure.prepublish.yaml|tests/apps/pinnacle-bank-app/pinnacle-bank.sbom.json|tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-behavior|tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-redteam|/api/chat"
   "customer-support|tests/apps/java/customer-support-agent-example/nuguard.prepublish.yaml|tests/apps/java/customer-support-agent-example/customer-support-agent.sbom.json|tests/apps/java/customer-support-agent-example/reports/customer-support-prepublish-behavior|tests/apps/java/customer-support-agent-example/reports/customer-support-prepublish-redteam|/chat"
+  "go-support|tests/apps/go/eino-support-copilot/nuguard.prepublish.yaml|tests/apps/go/eino-support-copilot/eino-support-copilot.sbom.json|tests/apps/go/eino-support-copilot/reports/go-support-prepublish-behavior|tests/apps/go/eino-support-copilot/reports/go-support-prepublish-redteam|/chat"
 )
 
 # Optional first argument restricts the run to a single app (matching the
