@@ -93,6 +93,13 @@ _PROMPT_FIELD_NAMES = {
 }
 
 
+_CREDENTIAL_SHAPE_RE = re.compile(
+    r"[a-z][a-z0-9+.-]*://[^/\s\"']*@"
+    r"|\b(?:password|pwd|account\s*key|shared\s*access\s*key|access\s*token)\s*=",
+    re.IGNORECASE,
+)
+
+
 def _is_prompt_constant(
     value: str,
     assigned_to: str | None,
@@ -100,6 +107,10 @@ def _is_prompt_constant(
 ) -> bool:
     """Return True if the string looks like an AI prompt constant."""
     if not value or len(value) < 30:
+        return False
+    # Never emit credential-shaped literals (connection strings, URL userinfo)
+    # as prompt content, even when they happen to contain a prompt cue.
+    if _CREDENTIAL_SHAPE_RE.search(value):
         return False
 
     lowered = value.lower()
