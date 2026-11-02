@@ -99,7 +99,11 @@ describe the original `X-Demo-User` header and three read-only tools.
 
 - Needs Go 1.25+ (`scripts/serve.sh` falls back to `~/.local/go/bin`) and Docker, or an existing Postgres with
   pgvector in `DATABASE_URL`.
-- Needs `AZURE_OPENAI_KEY` and `AZURE_OPENAI_ENDPOINT`. The app's OpenAI-compatible client is pointed at
+- Without `AZURE_OPENAI_KEY` and `AZURE_OPENAI_ENDPOINT` (fork PRs get no secrets) `serve.sh` starts
+  `scripts/openai_chat_stub.py`, a deterministic loopback stub that answers every request with a valid
+  Draft and never calls tools. That keeps the pipeline live in CI; the findings in `FINDINGS.md` come
+  from runs against the real model.
+- Uses `AZURE_OPENAI_KEY` and `AZURE_OPENAI_ENDPOINT`. The app's OpenAI-compatible client is pointed at
   `${AZURE_OPENAI_ENDPOINT%/}/openai/v1/` with model `${APP_MODEL_NAME:-gpt-5.4-mini}`
   (env `APP_MODE=openai-compatible`, `MODEL_BASE_URL`, `MODEL_API_KEY`, `MODEL_NAME`).
 - `scripts/serve.sh` builds `bin/api` and `bin/mcp-server`. Without `DATABASE_URL`, it starts the container

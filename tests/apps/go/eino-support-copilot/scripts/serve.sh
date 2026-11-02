@@ -8,7 +8,7 @@
 #   DATABASE_URL set   use it (e.g. a CI service container); the schema is reset on start
 #   else               start Docker container nuguard-eino-pg (pgvector/pgvector:pg17) on 127.0.0.1:${PG_PORT:-55432}
 # LLM wiring (OpenAI-compatible client pointed at the Azure OpenAI v1 endpoint):
-#   AZURE_OPENAI_KEY + AZURE_OPENAI_ENDPOINT   (placeholders when unset; model calls then fail)
+#   AZURE_OPENAI_KEY + AZURE_OPENAI_ENDPOINT   (when unset: local stub, scripts/openai_chat_stub.py)
 #   APP_MODEL_NAME     deployment name (default gpt-5.4-mini)
 # Demo login (POST /auth/token {username, password}):
 #   ada                DEMO_USER_PASSWORD (default nuguard-demo-only)
@@ -17,7 +17,7 @@
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_DIR="$APP_DIR/.run"; LOG_DIR="$APP_DIR/reports/logs"; BIN_DIR="$APP_DIR/bin"
-API_PORT=8092; MCP_PORT=8093; PG_PORT="${PG_PORT:-55432}"
+API_PORT=8092; MCP_PORT=8093; STUB_PORT=8095; PG_PORT="${PG_PORT:-55432}"
 PG_CONTAINER=nuguard-eino-pg
 mkdir -p "$RUN_DIR" "$LOG_DIR" "$BIN_DIR"
 "$APP_DIR/scripts/stop.sh" >/dev/null 2>&1 || true
@@ -27,11 +27,19 @@ go_ok() { command -v go >/dev/null 2>&1 && go version | grep -Eq 'go1\.(2[5-9]|[
 if ! go_ok && [[ -x "$HOME/.local/go/bin/go" ]]; then export PATH="$HOME/.local/go/bin:$PATH"; fi
 go_ok || { echo "[serve] Go 1.25+ is required" >&2; exit 1; }
 
-# Fork PRs get no secrets: start anyway with placeholders (as the Java fixture does); model calls will fail.
+# Fork PRs get no secrets: use a deterministic loopback stub of the OpenAI chat API instead
+# (fork-safe E2E, as the Java fixture does). It answers with a valid Draft and never calls tools.
 if [[ -z "${AZURE_OPENAI_KEY:-}" || -z "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
-  echo "[serve] no LLM key in the environment (AZURE_OPENAI_KEY + AZURE_OPENAI_ENDPOINT)" >&2
-  echo "[serve] starting anyway with a placeholder key; model calls will fail" >&2
-  export AZURE_OPENAI_KEY="not-a-real-key" AZURE_OPENAI_ENDPOINT="https://placeholder.openai.azure.com/"
+  echo "[serve] LLM: deterministic local OpenAI-compatible stub"
+  python3 "$APP_DIR/scripts/openai_chat_stub.py" --port "$STUB_PORT" >"$LOG_DIR/openai-stub.log" 2>&1 &
+  echo $! >"$RUN_DIR/openai-stub.pid"
+  for _ in $(seq 1 20); do
+    curl -fsS "http://127.0.0.1:$STUB_PORT/health" >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+  curl -fsS "http://127.0.0.1:$STUB_PORT/health" >/dev/null 2>&1 \
+    || { echo "[serve] local OpenAI stub did not become ready" >&2; tail -n 20 "$LOG_DIR/openai-stub.log" >&2; exit 1; }
+  export AZURE_OPENAI_KEY="nuguard-e2e-stub" AZURE_OPENAI_ENDPOINT="http://127.0.0.1:$STUB_PORT/"
 fi
 
 echo "[serve] building"
