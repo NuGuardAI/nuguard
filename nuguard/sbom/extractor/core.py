@@ -1633,6 +1633,18 @@ class AiSbomExtractor:
                 collect_kernel_plugins as _collect_cs_kernel_plugins,
             )
 
+            def _read_csproj(proj: Path) -> str:
+                # Same limits as _iter_files: scanned repos are untrusted, so
+                # never follow symlinks or read oversized project files.
+                try:
+                    if proj.is_symlink() or not proj.is_file():
+                        return ""
+                    if proj.stat().st_size > config.max_file_size_bytes:
+                        return ""
+                    return proj.read_text(encoding="utf-8-sig", errors="ignore")
+                except OSError:
+                    return ""
+
             _csproj_dirs: dict[Path, bool] = {}
             for _cs_path, _ in self._iter_files(root, config):
                 if _cs_path.suffix.lower() not in _CSHARP_EXTENSIONS:
@@ -1640,9 +1652,7 @@ class AiSbomExtractor:
                 for _cs_dir in _cs_path.parents:
                     if _cs_dir not in _csproj_dirs:
                         _csproj_dirs[_cs_dir] = any(
-                            _web_sdk_implicit_usings(
-                                _proj.read_text(encoding="utf-8-sig", errors="ignore")
-                            )
+                            _web_sdk_implicit_usings(_read_csproj(_proj))
                             for _proj in _cs_dir.glob("*.csproj")
                         )
                     if _csproj_dirs[_cs_dir]:

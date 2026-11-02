@@ -122,3 +122,24 @@ def test_web_sdk_implicit_usings_and_cross_file_route_groups(tmp_path) -> None:
     }
 
     assert endpoints == {"/auth/token": False, "/v1/chat": True}
+
+
+def test_symlinked_csproj_is_not_read(tmp_path) -> None:
+    """A .csproj symlink can point anywhere on the scanning host, so it must not
+    enable implicit usings (Program.cs without ``using`` is then not scanned)."""
+    outside = tmp_path / "outside.csproj"
+    outside.write_text(
+        '<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup>'
+        "<ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>"
+    )
+    project = tmp_path / "repo" / "src" / "Api"
+    project.mkdir(parents=True)
+    (project / "Api.csproj").symlink_to(outside)
+    (project / "Program.cs").write_text(
+        "var app = WebApplication.CreateBuilder(args).Build();\n"
+        'app.MapPost("/chat", () => Results.Ok());\n'
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path / "repo", CS_ONLY)
+
+    assert nodes(doc, ComponentType.API_ENDPOINT) == []
