@@ -9,4 +9,9 @@ if [[ -f "$pidfile" ]]; then
   kill "$pid" 2>/dev/null || true
   rm -f "$pidfile"
 fi
+stubpid="$APP_DIR/.run/openai-stub.pid"
+if [[ -f "$stubpid" ]]; then
+  kill "$(cat "$stubpid")" 2>/dev/null || true
+  rm -f "$stubpid"
+fi
 exit 0

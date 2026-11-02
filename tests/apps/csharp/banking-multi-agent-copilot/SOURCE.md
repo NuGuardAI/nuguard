@@ -49,8 +49,11 @@ unchanged upstream copy, so `git log -p` on it shows the exact diff.
 ## Running it
 
 - Needs the .NET 9 SDK. `scripts/serve.sh` falls back to `~/.dotnet` when the `dotnet` on PATH has none.
-- Needs `AZURE_OPENAI_KEY` and `AZURE_OPENAI_ENDPOINT`; `APP_MODEL_NAME` sets the chat deployment
-  (default `gpt-5.4-mini`).
+- Uses `AZURE_OPENAI_KEY` and `AZURE_OPENAI_ENDPOINT`; `APP_MODEL_NAME` sets the chat deployment
+  (default `gpt-5.4-mini`). Without them (fork PRs get no secrets) `serve.sh` starts
+  `scripts/openai_chat_stub.py`, a deterministic loopback stub of the Azure OpenAI chat API: it routes
+  every turn to the Coordinator, stops after one reply and never calls tools. That keeps the pipeline
+  live in CI; the findings in `FINDINGS.md` come from runs against the real model.
 - `scripts/serve.sh` builds and starts the app on 127.0.0.1:8091 (loopback only), with a random
   JWT signing key per start. Only `Mark` (the NuGuard run identity) has a known password:
   `BANKING_DEMO_PASSWORD` (default `nuguard-demo-only`). The other users (`Sandeep`, `Theo` in Contoso;
