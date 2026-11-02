@@ -435,3 +435,51 @@ func main() {
     assert endpoint.metadata["chat_payload_list"] is False
     assert endpoint.metadata["auth_required"] is False
     assert "accepts_user_input" not in endpoint.metadata
+
+
+def test_net_http_handler_auth_wrapper_and_dependency_mark_routes_protected() -> None:
+    source = """package api
+
+import "net/http"
+
+func NewServer(deps Dependencies) http.Handler {
+    mux := http.NewServeMux()
+    mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {})
+    mux.HandleFunc("POST /chat", chatAdapter(deps.Conversations, deps.Identity))
+    mux.Handle("GET /admin", requireAuth(adminHandler))
+    mux.Handle("GET /me", jwtMiddleware.Handler(meHandler))
+    mux.HandleFunc("POST /auth/token", loginHandler(deps.Auth))
+    mux.Handle("GET /mcp", mcpserver.NewHTTPHandler(service))
+    return withRequestID(mux)
+}
+"""
+
+    detections = _extract(
+        NetHTTPAdapter(),
+        source,
+    )
+    endpoints = {
+        endpoint.display_name: endpoint.metadata
+        for endpoint in _by_type(
+            detections,
+            ComponentType.API_ENDPOINT,
+        )
+    }
+
+    assert endpoints["POST /chat"]["auth_required"] is True
+    assert endpoints["POST /chat"]["auth_inference"] == "handler_dependency"
+    assert endpoints["GET /admin"]["auth_inference"] == "handler_wrapper"
+    assert endpoints["GET /me"]["auth_inference"] == "handler_wrapper"
+
+    for unprotected in ("GET /healthz", "POST /auth/token", "GET /mcp"):
+        assert endpoints[unprotected]["auth_required"] is False
+        assert "auth_inference" not in endpoints[unprotected]
+
+    # Inference names no mechanism, so no AUTH node is fabricated.
+    assert (
+        _by_type(
+            detections,
+            ComponentType.AUTH,
+        )
+        == []
+    )

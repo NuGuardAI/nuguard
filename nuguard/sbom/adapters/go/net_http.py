@@ -3,11 +3,16 @@
 ``net/http`` routing has no verb in the call name — ``http.HandleFunc(path,
 handler)`` (or ``mux.HandleFunc(...)`` on a ``*http.ServeMux``) registers a
 handler for all methods unless the handler itself branches on
-``r.Method``. Endpoints are therefore emitted with ``method: "ANY"``.
+``r.Method``. Such endpoints are emitted with ``method: "ANY"``.
+
+Go 1.22 patterns carry the method and an optional host in the pattern itself
+(``"POST /api/v1/conversations"``, ``"GET example.com/x/{id}"``); those are
+emitted with the real method and path, ``{name}`` wildcards kept verbatim.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...core.go_parser import GoParseResult, parse_go
@@ -18,6 +23,16 @@ from ._http_endpoint_metadata import enrich_http_endpoint_detections
 
 _MODULE = "net/http"
 _HANDLER_CALLS = {"HandleFunc", "Handle"}
+# ``[METHOD ][HOST]/[PATH]`` — see net/http.ServeMux "Patterns".
+_PATTERN_RE = re.compile(r"^(?:(?P<method>[A-Z]+)[ \t]+)?(?P<host>[^/\s]*)(?P<path>/\S*)$")
+
+
+def _split_pattern(pattern: str) -> tuple[str, str, str] | None:
+    """Return ``(method, host, path)`` for a ServeMux pattern, or None."""
+    match = _PATTERN_RE.fullmatch(pattern.strip())
+    if match is None:
+        return None
+    return match.group("method") or "ANY", match.group("host"), match.group("path")
 
 
 class NetHTTPAdapter(GoFrameworkAdapter):
@@ -49,29 +64,33 @@ class NetHTTPAdapter(GoFrameworkAdapter):
         for call in result.function_calls:
             if call.function_name not in _HANDLER_CALLS:
                 continue
-            path = self._resolve(call, 0)
-            if not path or not path.startswith("/"):
+            split = _split_pattern(self._resolve(call, 0) or "")
+            if split is None:
                 continue
+            method, host, path = split
 
-            key = ("ANY", path)
+            key = (method, f"{host}{path}")
             if key in seen:
                 continue
             seen.add(key)
 
-            canon = f"endpoint:ANY:{path}"
+            canon = f"endpoint:{method}:{host}{path}"
+            metadata = {
+                "framework": self.name,
+                "method": method,
+                "endpoint": path,
+                "language": "golang",
+            }
+            if host:
+                metadata["host"] = host
             endpoint = ComponentDetection(
                 component_type=ComponentType.API_ENDPOINT,
                 canonical_name=canon,
-                display_name=f"ANY {path}",
+                display_name=f"{method} {host}{path}",
                 adapter_name=self.name,
                 priority=self.priority,
                 confidence=0.85,
-                metadata={
-                    "framework": self.name,
-                    "method": "ANY",
-                    "endpoint": path,
-                    "language": "golang",
-                },
+                metadata=metadata,
                 file_path=file_path,
                 line=call.line,
                 snippet=call.source_snippet or f"http.{call.function_name}({path!r})",
@@ -97,7 +116,13 @@ class NetHTTPAdapter(GoFrameworkAdapter):
                 name: "ANY"
                 for name in _HANDLER_CALLS
             },
+            route_key=_route_key,
         )
+
+
+def _route_key(_method: str, pattern: str) -> tuple[str, str] | None:
+    split = _split_pattern(pattern)
+    return (split[0], split[2]) if split else None
 
 
 __all__ = ["NetHTTPAdapter"]

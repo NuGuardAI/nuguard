@@ -1339,6 +1339,24 @@ def test_auth_protects_endpoint_falls_back_when_no_auth_type_signal() -> None:
     assert len(protects) == 3
 
 
+def test_auth_protects_fallback_follows_explicit_endpoint_auth_required() -> None:
+    """The fallback must not contradict an adapter's auth_required verdict:
+    endpoints marked unprotected get no edge, and endpoints marked protected
+    (without an auth_type) are the targets instead of the top-10 guess."""
+    auth = _node("JWT", ComponentType.AUTH, extras={})
+    protected = [_node(f"POST /api/r{i}", ComponentType.API_ENDPOINT) for i in range(12)]
+    for endpoint in protected:
+        endpoint.metadata.auth_required = True
+    public = _node("ANY /mcp", ComponentType.API_ENDPOINT)
+    public.metadata.auth_required = False
+
+    doc = AiSbomDocument(target=".", nodes=[auth, *protected, public], summary=ScanSummary())
+    AiSbomExtractor()._resolve_edges(doc, {})
+
+    targets = {e.target for e in doc.edges if e.relationship_type == RelationshipType.PROTECTS}
+    assert targets == {endpoint.id for endpoint in protected}
+
+
 def test_guardrail_protects_agent_fallback_when_file_related() -> None:
     """GUARDRAIL nodes with no explicit PROTECTS edge (e.g. guardrails_ai.py's
     Guard()/register_validator/hub-import detections, which emit no

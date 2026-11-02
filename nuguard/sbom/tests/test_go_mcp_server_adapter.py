@@ -243,3 +243,38 @@ func build(name string) { mcp.NewTool(name) }
 
     assert len(_by_type(detections, ComponentType.FRAMEWORK)) == 1
     assert _by_type(detections, ComponentType.TOOL) == []
+
+
+def test_destructive_hint_and_write_verb_names_mark_high_privilege() -> None:
+    source = """package main
+
+import (
+    "github.com/mark3labs/mcp-go/mcp"
+    "github.com/mark3labs/mcp-go/server"
+)
+
+func main() {
+    s := server.NewMCPServer("billing", "1.0.0")
+    s.AddTool(mcp.NewTool("refund_payment",
+        mcp.WithDescription("Refund a payment."),
+        mcp.WithReadOnlyHintAnnotation(false),
+        mcp.WithDestructiveHintAnnotation(true),
+    ), refund)
+    s.AddTool(mcp.NewTool("deleteInvoice", mcp.WithDescription("Delete.")), deleteInvoice)
+    s.AddTool(mcp.NewTool("update_cache",
+        mcp.WithReadOnlyHintAnnotation(true),
+    ), updateCache)
+    s.AddTool(mcp.NewTool("get_payment_status", toolOptions("Read status.")...), getStatus)
+}
+"""
+
+    tools = {
+        tool.display_name: tool.metadata for tool in _by_type(_extract(source), ComponentType.TOOL)
+    }
+
+    assert tools["refund_payment"]["high_privilege"] is True
+    assert tools["refund_payment"]["destructive_hint"] is True
+    assert tools["refund_payment"]["read_only_hint"] is False
+    assert tools["deleteInvoice"]["high_privilege"] is True
+    assert "high_privilege" not in tools["update_cache"]
+    assert "high_privilege" not in tools["get_payment_status"]

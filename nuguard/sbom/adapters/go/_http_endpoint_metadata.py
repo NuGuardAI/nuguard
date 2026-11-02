@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -86,6 +87,20 @@ _HANDLER_WRAPPER_RE = re.compile(
     r"(?P<handler>[A-Za-z_][A-Za-z0-9_]*)"
     r"\s*\)$"
 )
+# net/http and chi have no middleware argument in the route call; auth shows
+# up as a wrapper around the handler (``requireAuth(h)``, ``jwtMW.Handler(h)``)
+# or as an auth dependency handed to a handler factory (``chat(deps.Identity)``).
+_AUTH_WRAPPER_NAME_RE = re.compile(
+    r"(?i)(?:require|with|ensure|must|check|verify)?_?"
+    r"(?:auth|authn|authenticated?|authentication|jwt|jwtauth|bearer|bearertoken)"
+    r"_?(?:middleware|mw|handler|required|guard|only)?"
+)
+_AUTH_DEPENDENCY_NAME_RE = re.compile(
+    r"(?i)(?:auth|authn|authenticator|identity|identityresolver|jwt|jwtauth"
+    r"|verifier|tokenverifier)"
+)
+_HANDLER_METHOD_NAMES = {"Handler", "HandlerFunc", "Wrap", "Middleware"}
+_LOGIN_PATH_RE = re.compile(r"(?i)/(?:login|logout|signin|signup|register|token|oauth)\b")
 _AUTH_DISPLAY_NAMES = {
     "basic": "HTTP Basic Auth",
     "jwt": "JWT Middleware",
@@ -109,11 +124,12 @@ class GoHTTPRouteAnalysis:
     chat_payload_key: str | None
     chat_payload_list: bool
     auth_evidence: tuple[GoHTTPAuthEvidence, ...]
+    auth_inference: str = ""
 
     @property
     def auth_required(self) -> bool:
         """Return whether recognized middleware protects this route."""
-        return bool(self.auth_evidence)
+        return bool(self.auth_evidence or self.auth_inference)
 
 
 def enrich_http_endpoint_detections(
@@ -123,8 +139,13 @@ def enrich_http_endpoint_detections(
     *,
     framework: str,
     verb_names: dict[str, str],
+    route_key: Callable[[str, str], tuple[str, str] | None] | None = None,
 ) -> list[ComponentDetection]:
-    """Enrich existing endpoint detections with schema and auth evidence."""
+    """Enrich existing endpoint detections with schema and auth evidence.
+
+    ``route_key`` maps ``(verb, first argument)`` to the endpoint's
+    ``(method, path)`` when the route string carries more than the path.
+    """
     endpoints: dict[tuple[str, str], ComponentDetection] = {}
 
     for detection in detections:
@@ -145,10 +166,10 @@ def enrich_http_endpoint_detections(
             continue
 
         path = _resolved_string_argument(call, 0)
-        key = (method, path)
-        endpoint = endpoints.get(key)
+        key = route_key(method, path) if route_key else (method, path)
+        endpoint = endpoints.get(key) if key else None
 
-        if endpoint is None or key in analyzed:
+        if key is None or endpoint is None or key in analyzed:
             continue
 
         analyzed.add(key)
@@ -170,6 +191,9 @@ def enrich_http_endpoint_detections(
 
         if analysis.request_body_schema:
             endpoint.metadata["accepts_user_input"] = True
+
+        if analysis.auth_inference:
+            endpoint.metadata["auth_inference"] = analysis.auth_inference
 
         auth_types = [item.auth_type for item in analysis.auth_evidence]
 
@@ -263,13 +287,56 @@ def analyze_http_route(
         arguments,
         framework=framework,
     )
+    auth_inference = (
+        ""
+        if auth_evidence or framework in {"gin", "echo"}
+        else _inferred_handler_auth(
+            arguments[1] if len(arguments) > 1 else "",
+            _resolved_string_argument(call, 0),
+        )
+    )
 
     return GoHTTPRouteAnalysis(
         request_body_schema=schema,
         chat_payload_key=chat_key,
         chat_payload_list=chat_list,
         auth_evidence=auth_evidence,
+        auth_inference=auth_inference,
     )
+
+
+def _inferred_handler_auth(
+    expression: str,
+    route: str,
+) -> str:
+    """Name the handler-side auth signal for a net/http-style route, if any."""
+    expression = expression.strip()
+    open_paren = expression.find("(")
+
+    if open_paren <= 0 or expression.startswith("func"):
+        return ""
+
+    callee = expression[:open_paren].strip().split(".")
+
+    if _AUTH_WRAPPER_NAME_RE.fullmatch(callee[-1]) or (
+        len(callee) > 1
+        and callee[-1] in _HANDLER_METHOD_NAMES
+        and _AUTH_WRAPPER_NAME_RE.fullmatch(callee[-2])
+    ):
+        return "handler_wrapper"
+
+    # A login/token route takes the authenticator to issue credentials, not
+    # to check them.
+    if _LOGIN_PATH_RE.search(route):
+        return ""
+
+    for argument in _call_arguments(expression):
+        name = argument.strip().lstrip("&").rsplit(".", 1)[-1]
+
+        if _AUTH_DEPENDENCY_NAME_RE.fullmatch(name):
+            return "handler_dependency"
+
+    return ""
 
 
 def _resolved_string_argument(

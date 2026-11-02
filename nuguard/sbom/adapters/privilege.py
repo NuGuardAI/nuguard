@@ -326,11 +326,12 @@ def privilege_adapters() -> list[RegexAdapter]:
                 ),
                 # shell=True flag — explicit shell injection risk marker
                 re.compile(r"\bshell\s*=\s*True\b"),
-                # exec/eval used on dynamic strings (agent code-gen context)
+                # exec/eval used on dynamic strings (agent code-gen context).
+                # Only the bare lowercase builtins: method calls such as Go's
+                # ``db.Exec(ctx, sql)`` or SQLite's ``db.exec(sql)`` run SQL.
                 re.compile(
-                    r"\b(exec\s*\([^)]*(?:code|script|source|generated|llm|response|output)"
-                    r"|eval\s*\([^)]*(?:code|expr|generated|llm|response))\b",
-                    re.IGNORECASE,
+                    r"(?<![.\w])(exec\s*\([^)]*(?i:code|script|source|generated|llm|response|output)"
+                    r"|eval\s*\([^)]*(?i:code|expr|generated|llm|response))\b",
                 ),
                 # Sandboxed code-execution tool class names
                 re.compile(

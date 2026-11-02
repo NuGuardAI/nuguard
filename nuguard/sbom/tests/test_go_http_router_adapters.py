@@ -129,6 +129,39 @@ def test_net_http_handle_func_emits_any_method_endpoint() -> None:
     assert endpoints[0].metadata["endpoint"] == "/ping"
 
 
+_NET_HTTP_PATTERN_SRC = """
+package main
+
+import "net/http"
+
+func main() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/conversations", createConversation)
+	mux.Handle("GET /api/v1/tickets/{id}", getTicket)
+	mux.HandleFunc("GET example.com/status", status)
+	mux.HandleFunc("/", notFound)
+}
+"""
+
+
+def test_net_http_go122_patterns_carry_method_host_and_wildcards() -> None:
+    detections = _extract(NetHTTPAdapter(), _NET_HTTP_PATTERN_SRC)
+    endpoints = {
+        endpoint.display_name: endpoint.metadata
+        for endpoint in _by_type(detections, ComponentType.API_ENDPOINT)
+    }
+    assert set(endpoints) == {
+        "POST /api/v1/conversations",
+        "GET /api/v1/tickets/{id}",
+        "GET example.com/status",
+        "ANY /",
+    }
+    assert endpoints["GET /api/v1/tickets/{id}"]["endpoint"] == "/api/v1/tickets/{id}"
+    assert endpoints["GET example.com/status"]["host"] == "example.com"
+    assert endpoints["GET example.com/status"]["endpoint"] == "/status"
+    assert "host" not in endpoints["ANY /"]
+
+
 _MUX_SRC = """
 package main
 

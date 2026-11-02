@@ -454,6 +454,21 @@ class TestCodeExecution:
         assert det is not None
         assert det.canonical_name == "privilege:code_execution"
 
+    def test_builtin_exec_on_generated_code(self) -> None:
+        assert _detect("privilege:code_execution", "exec(generated_code)") is not None
+        assert _detect("privilege:code_execution", "result = eval(llm_response)") is not None
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "command, err := r.db.Exec(ctx, `update agent_runs set error_code = $2`, id, code)",
+            "_, err := pool.Exec(ctx, query, source)",
+            "db.exec(`insert into runs (output) values (?)`)",
+        ],
+    )
+    def test_sql_exec_method_is_not_code_execution(self, code: str) -> None:
+        assert _detect("privilege:code_execution", code) is None
+
 
 # ---------------------------------------------------------------------------
 # privilege:network_out

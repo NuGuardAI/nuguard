@@ -584,3 +584,83 @@ func main() {
             ComponentType.AGENT,
         )
     ] == ["graph"]
+
+
+def test_adk_chat_model_agent_links_model_prompt_tools_and_runner() -> None:
+    source = """package agent
+
+import (
+    "github.com/cloudwego/eino-ext/components/model/openai"
+    "github.com/cloudwego/eino/adk"
+    "github.com/cloudwego/eino/components/tool/utils"
+    "github.com/cloudwego/eino/compose"
+)
+
+func build(ctx context.Context) {
+    cm, _ := openai.NewChatModel(ctx, &openai.ChatModelConfig{Model: "gpt-4o-mini"})
+    lookup := utils.NewTool(&schema.ToolInfo{Name: "lookup_order", Desc: "Look up"}, fn)
+    agent, _ := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+        Name:        "support",
+        Description: "Answer support questions",
+        Instruction: systemPrompt,
+        Model:       cm,
+        ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{
+            Tools: []tool.BaseTool{lookup},
+        }},
+    })
+    runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent})
+    _ = runner
+}
+"""
+
+    detections = _extract(source)
+    (framework,) = _by_type(detections, ComponentType.FRAMEWORK)
+    (agent,) = _by_type(detections, ComponentType.AGENT)
+    (tool,) = _by_type(detections, ComponentType.TOOL)
+    targets = {
+        (relationship.relationship_type, relationship.target_canonical)
+        for relationship in agent.relationships
+        if relationship.source_canonical == agent.canonical_name
+    }
+
+    assert agent.display_name == "support"
+    assert agent.line == _line_of(source, "adk.NewChatModelAgent")
+    assert agent.metadata["orchestration_kind"] == "adk_chat_model_agent"
+    assert agent.metadata["description"] == "Answer support questions"
+    assert agent.metadata["model_name"] == "gpt-4o-mini"
+    assert agent.metadata["provider"] == "openai"
+    assert agent.metadata["instruction_variable"] == "systemPrompt"
+    assert agent.metadata["runner"]["line"] == _line_of(source, "adk.NewRunner")
+    assert ("USES", "systemprompt") in targets
+    assert ("USES", "gpt_4o_mini") in targets
+    assert ("CALLS", tool.canonical_name) in targets
+    assert _has_relationship(agent, source=framework, relationship_type="USES")
+
+
+def test_adk_agent_with_unresolvable_fields_emits_no_guessed_edges() -> None:
+    source = """package agent
+
+import "github.com/cloudwego/eino/adk"
+
+func New(ctx context.Context, deps Deps, tools []tool.BaseTool) {
+    agentInstance, _ := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+        Name:        "support-copilot",
+        Instruction: "Answer briefly.",
+        Model:       deps.Model,
+        ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{
+            Tools: tools,
+        }},
+    })
+    _ = agentInstance
+}
+"""
+
+    (agent,) = _by_type(_extract(source), ComponentType.AGENT)
+
+    assert agent.display_name == "support-copilot"
+    assert agent.metadata["system_prompt"] == "Answer briefly."
+    assert "model_name" not in agent.metadata
+    assert all(
+        relationship.source_canonical != agent.canonical_name
+        for relationship in agent.relationships
+    )
