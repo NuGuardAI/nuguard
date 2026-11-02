@@ -51,17 +51,20 @@ namespace MultiAgentCopilot.Auth
         {
             var configuration = app.Configuration;
             var signingKey = SigningKey(configuration);
-            var password = configuration["DemoAuth:Password"];
             var lifetime = TimeSpan.FromMinutes(configuration.GetValue("DemoAuth:TokenMinutes", 240));
 
+            // Each user has their own password (DemoAuth:Passwords:<userId>); a user without one cannot log in.
             app.MapPost("/auth/token", (TokenRequest request, IServiceProvider services) =>
             {
                 var store = services.GetService<InMemoryStore>();
-                if (store == null || string.IsNullOrEmpty(password))
-                    return Results.Problem("Demo login needs DataStore:Type=InMemory and DemoAuth:Password.", statusCode: 501);
+                if (store == null)
+                    return Results.Problem("Demo login needs DataStore:Type=InMemory.", statusCode: 501);
 
                 var user = store.Users.FirstOrDefault(u => InMemoryStore.Str(u, "id") == request.Username);
-                if (user == null || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(request.Password ?? ""), Encoding.UTF8.GetBytes(password)))
+                var password = user == null ? null : configuration[$"DemoAuth:Passwords:{request.Username}"];
+                var given = SHA256.HashData(Encoding.UTF8.GetBytes(request.Password ?? ""));
+                var expected = SHA256.HashData(Encoding.UTF8.GetBytes(password ?? Guid.NewGuid().ToString()));
+                if (string.IsNullOrEmpty(password) || !CryptographicOperations.FixedTimeEquals(given, expected))
                     return Results.Unauthorized();
 
                 var tenantId = InMemoryStore.Str(user, "tenantId")!;

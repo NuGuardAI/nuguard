@@ -5,8 +5,8 @@
 # LLM wiring (Azure OpenAI API key; the managed-identity path stays in the code):
 #   AZURE_OPENAI_KEY + AZURE_OPENAI_ENDPOINT   required
 #   APP_MODEL_NAME          chat deployment name (default gpt-5.4-mini)
-# Demo login (POST /auth/token {username, password}): any seeded user id, e.g. Mark or Sandeep.
-#   BANKING_DEMO_PASSWORD   default nuguard-demo-only
+# Demo login (POST /auth/token {username, password}): only Mark (the NuGuard run identity) has a known
+# password, BANKING_DEMO_PASSWORD (default nuguard-demo-only). Other users get a random password per start.
 # Usage: scripts/serve.sh      Stop: scripts/stop.sh      Logs: reports/logs/
 set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -44,7 +44,12 @@ SemanticKernelServiceSettings__AzureOpenAISettings__Endpoint="$AZURE_OPENAI_ENDP
 SemanticKernelServiceSettings__AzureOpenAISettings__Key="$AZURE_OPENAI_KEY" \
 SemanticKernelServiceSettings__AzureOpenAISettings__CompletionsDeployment="${APP_MODEL_NAME:-gpt-5.4-mini}" \
 DemoAuth__SigningKey="$(openssl rand -hex 32)" \
-DemoAuth__Password="${BANKING_DEMO_PASSWORD:-nuguard-demo-only}" \
+DemoAuth__Passwords__Mark="${BANKING_DEMO_PASSWORD:-nuguard-demo-only}" \
+DemoAuth__Passwords__Sandeep="$(openssl rand -hex 16)" \
+DemoAuth__Passwords__Theo="$(openssl rand -hex 16)" \
+DemoAuth__Passwords__Sajee="$(openssl rand -hex 16)" \
+DemoAuth__Passwords__Abhishek="$(openssl rand -hex 16)" \
+DemoAuth__Passwords__David="$(openssl rand -hex 16)" \
   dotnet run --no-build --no-launch-profile -c Release --project "$PROJECT_DIR/MultiAgentCopilot.csproj" >"$LOG_DIR/app.log" 2>&1 &
 echo $! >"$RUN_DIR/app.pid"
 
