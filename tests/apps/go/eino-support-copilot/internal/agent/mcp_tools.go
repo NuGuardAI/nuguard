@@ -18,6 +18,7 @@ var mcpToolAllowlist = []string{
 	"get_account_status",
 	"get_payment_status",
 	"get_service_status",
+	"refund_payment", // NuGuard fixture: write tool added for testing
 }
 
 type MCPToolset struct {

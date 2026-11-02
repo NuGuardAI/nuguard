@@ -34,7 +34,8 @@ func TestLoadMCPToolsUsesStreamableHTTPAllowlist(t *testing.T) {
 		names = append(names, info.Name)
 	}
 	sort.Strings(names)
-	assert.Equal(t, []string{"get_account_status", "get_payment_status", "get_service_status"}, names)
+	// NuGuard fixture: refund_payment added to the allowlist.
+	assert.Equal(t, []string{"get_account_status", "get_payment_status", "get_service_status", "refund_payment"}, names)
 }
 
 func TestTimeoutToolRetriesOnlyTemporaryUnavailableOnce(t *testing.T) {

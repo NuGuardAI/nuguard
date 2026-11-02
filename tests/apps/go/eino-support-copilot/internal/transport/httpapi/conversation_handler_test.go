@@ -28,7 +28,7 @@ func TestConversationStreamReturnsSSEEvents(t *testing.T) {
 	})
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conversationID.String()+"/messages:stream", bytes.NewBufferString(`{"text":"Is my account active?"}`))
-	request.Header.Set("X-Demo-User", "demo-customer")
+	request.Header.Set("Authorization", "Bearer "+"demo-customer") // NuGuard fixture: was X-Demo-User
 
 	handler.ServeHTTP(recorder, request)
 
@@ -62,7 +62,7 @@ func TestConversationStreamValidatesTextAndAccess(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conversationID.String()+"/messages:stream", bytes.NewBufferString(tt.body))
 			if tt.header != "" {
-				request.Header.Set("X-Demo-User", tt.header)
+				request.Header.Set("Authorization", "Bearer "+tt.header) // NuGuard fixture: was X-Demo-User
 			}
 
 			handler.ServeHTTP(recorder, request)

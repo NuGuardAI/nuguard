@@ -22,7 +22,7 @@ func TestUploadKnowledgeDocumentReturnsCreatedDocument(t *testing.T) {
 	service := &knowledgeServiceStub{uploadResult: domain.KnowledgeDocument{
 		ID: documentID, Filename: "guide.md", MediaType: "text/markdown", Status: domain.KnowledgeReady,
 	}}
-	handler := NewServer(Dependencies{Mode: "mock", Knowledge: service})
+	handler := NewServer(Dependencies{Mode: "mock", Identity: knowledgeAgent(), Knowledge: service})
 	request := multipartUploadRequest(t, "guide.md", "text/markdown", []byte("# Guide\n\nSafe content."))
 	recorder := httptest.NewRecorder()
 
@@ -48,7 +48,7 @@ func TestUploadKnowledgeDocumentMapsStableErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := NewServer(Dependencies{Mode: "mock", Knowledge: &knowledgeServiceStub{uploadErr: tt.err}})
+			handler := NewServer(Dependencies{Mode: "mock", Identity: knowledgeAgent(), Knowledge: &knowledgeServiceStub{uploadErr: tt.err}})
 			request := multipartUploadRequest(t, "guide.md", "text/markdown", []byte("content"))
 			recorder := httptest.NewRecorder()
 
@@ -66,9 +66,10 @@ func TestUploadKnowledgeDocumentMapsStableErrors(t *testing.T) {
 
 func TestListKnowledgeDocuments(t *testing.T) {
 	expected := []domain.KnowledgeDocument{{ID: uuid.New(), Filename: "guide.md", Status: domain.KnowledgeReady}}
-	handler := NewServer(Dependencies{Mode: "mock", Knowledge: &knowledgeServiceStub{listResult: expected}})
+	handler := NewServer(Dependencies{Mode: "mock", Identity: knowledgeAgent(), Knowledge: &knowledgeServiceStub{listResult: expected}})
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/knowledge/documents", nil)
+	request.Header.Set("Authorization", "Bearer demo-agent") // NuGuard fixture
 
 	handler.ServeHTTP(recorder, request)
 
@@ -107,5 +108,9 @@ func multipartUploadRequest(t *testing.T, filename, mediaType string, content []
 	require.NoError(t, writer.Close())
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/knowledge/documents", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
+	request.Header.Set("Authorization", "Bearer demo-agent") // NuGuard fixture
 	return request
 }
+
+// NuGuard fixture: knowledge endpoints now require the agent role.
+func knowledgeAgent() *identityStub { return &identityStub{id: uuid.New(), role: "agent"} }

@@ -31,7 +31,7 @@ func TestReviewTicketRequiresAgentAndReturnsAudit(t *testing.T) {
 			handler := NewServer(Dependencies{Mode: "mock", Tickets: tickets, Identity: &identityStub{id: uuid.New(), role: test.role}})
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, "/api/v1/tickets/"+ticketID.String()+"/review", bytes.NewBufferString(`{"action":"approve","final_answer":"Approved generated answer"}`))
-			request.Header.Set("X-Demo-User", "demo-user")
+			request.Header.Set("Authorization", "Bearer "+"demo-user") // NuGuard fixture: was X-Demo-User
 
 			handler.ServeHTTP(recorder, request)
 
@@ -48,7 +48,7 @@ func TestListTicketsRejectsUnknownFilter(t *testing.T) {
 	})
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/tickets?status=unknown", nil)
-	request.Header.Set("X-Demo-User", "demo-agent")
+	request.Header.Set("Authorization", "Bearer "+"demo-agent") // NuGuard fixture: was X-Demo-User
 
 	handler.ServeHTTP(recorder, request)
 

@@ -12,3 +12,10 @@ test-results/
 .data/
 .volumes/
 .cache/
+# NuGuard fixture: build output, run state, reports and generated SBOMs
+bin/
+reports/
+.run/
+*.sbom.json
+*.sbom.enriched.json
+cognitive_policy.json

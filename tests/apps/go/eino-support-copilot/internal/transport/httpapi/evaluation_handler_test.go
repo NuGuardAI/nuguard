@@ -21,7 +21,7 @@ func TestEvaluationEndpointsRequireAgentAndStartAsynchronously(t *testing.T) {
 		handler := NewServer(Dependencies{Mode: "mock", Evaluations: service, Identity: &identityStub{id: uuid.New(), role: test.role}})
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/evaluations", nil)
-		request.Header.Set("X-Demo-User", "demo-user")
+		request.Header.Set("Authorization", "Bearer "+"demo-user") // NuGuard fixture: was X-Demo-User
 
 		handler.ServeHTTP(recorder, request)
 

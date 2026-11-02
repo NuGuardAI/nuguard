@@ -165,6 +165,30 @@ func (e *EinoEngine) Close() error {
 }
 
 func decodeDraft(content string) (domain.Draft, error) {
+	draft, err := decodeDraftStrict(content)
+	if err == nil {
+		return draft, nil
+	}
+	// NuGuard fixture: upstream fails every openai-compatible run here. That mode has no retrieval
+	// tool, so the model cites tool results with made-up chunk_ids that are not UUIDs, and the strict
+	// decode rejects the whole draft. Retry once without the citations array; the guard then flags
+	// the draft for review as missing citations, as upstream intends.
+	var loose map[string]json.RawMessage
+	if json.Unmarshal([]byte(content), &loose) != nil || loose["citations"] == nil {
+		return domain.Draft{}, err
+	}
+	loose["citations"] = json.RawMessage(`[]`)
+	stripped, marshalErr := json.Marshal(loose)
+	if marshalErr != nil {
+		return domain.Draft{}, err
+	}
+	if draft, retryErr := decodeDraftStrict(string(stripped)); retryErr == nil {
+		return draft, nil
+	}
+	return domain.Draft{}, err
+}
+
+func decodeDraftStrict(content string) (domain.Draft, error) {
 	decoder := json.NewDecoder(bytes.NewBufferString(content))
 	decoder.DisallowUnknownFields()
 	var draft domain.Draft
@@ -226,7 +250,11 @@ func (t *runtimeTool) InvokableRun(ctx context.Context, arguments string, opts .
 		}); emitErr != nil {
 			return "", eventSinkError(emitErr)
 		}
-		return "", err
+		// NuGuard fixture: upstream returned err here, which aborts the whole agent run (HTTP 502 from
+		// /chat) whenever a tool reports NOT_FOUND or INVALID_ARGUMENT, e.g. for a guessed account_id.
+		// The error is handed back to the model as the tool result instead.
+		encoded, _ := json.Marshal(map[string]string{"tool_error": err.Error()})
+		return string(encoded), nil
 	}
 	if err := emit(ctx, runtimeState.sink, runtimeState.input, domain.EventToolCompleted, map[string]any{
 		"tool": info.Name, "result_bytes": len(result),

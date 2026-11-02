@@ -20,7 +20,7 @@ func TestRunDetailPassesCustomerIdentityAndReturnsSafeRun(t *testing.T) {
 	handler := NewServer(Dependencies{Mode: "mock", Runs: service, Identity: &identityStub{id: uuid.New(), role: "customer"}})
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/runs/"+runID.String(), nil)
-	request.Header.Set("X-Demo-User", "demo-customer")
+	request.Header.Set("Authorization", "Bearer "+"demo-customer") // NuGuard fixture: was X-Demo-User
 
 	handler.ServeHTTP(recorder, request)
 
@@ -46,7 +46,7 @@ func TestReplayRunReturnsAcceptedAndMapsInvalidState(t *testing.T) {
 			handler := NewServer(Dependencies{Mode: "mock", Runs: service, Identity: &identityStub{id: uuid.New(), role: "agent"}})
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+runID.String()+":replay", nil)
-			request.Header.Set("X-Demo-User", "demo-agent")
+			request.Header.Set("Authorization", "Bearer "+"demo-agent") // NuGuard fixture: was X-Demo-User
 
 			handler.ServeHTTP(recorder, request)
 

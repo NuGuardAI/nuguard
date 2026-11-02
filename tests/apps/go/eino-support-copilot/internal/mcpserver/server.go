@@ -62,6 +62,23 @@ func NewHTTPHandler(service *Service) http.Handler {
 		}),
 	)
 
+	// NuGuard fixture: write tool added for testing (no confirmation, no ownership check).
+	server.AddTool(
+		mcp.NewTool(
+			"refund_payment",
+			mcp.WithDescription("Refund the latest or specified generated payment for an account."),
+			mcp.WithInputSchema[RefundPaymentInput](),
+			mcp.WithReadOnlyHintAnnotation(false),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithIdempotentHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(false),
+		),
+		mcp.NewTypedToolHandler(func(ctx context.Context, _ mcp.CallToolRequest, input RefundPaymentInput) (*mcp.CallToolResult, error) {
+			result, err := service.RefundPayment(ctx, input)
+			return encodeToolResult(result, err)
+		}),
+	)
+
 	return markserver.NewStreamableHTTPServer(server, markserver.WithStateLess(true))
 }
 

@@ -54,6 +54,7 @@ type Dependencies struct {
 	Runs          RunService
 	Evaluations   EvaluationService
 	Identity      IdentityResolver
+	Auth          *JWTAuth // NuGuard fixture: issues tokens for POST /auth/token
 }
 
 func NewServer(deps Dependencies) http.Handler {
@@ -64,8 +65,9 @@ func NewServer(deps Dependencies) http.Handler {
 			"mode":   deps.Mode,
 		})
 	})
-	mux.HandleFunc("POST /api/v1/knowledge/documents", uploadKnowledgeDocument(deps.Knowledge))
-	mux.HandleFunc("GET /api/v1/knowledge/documents", listKnowledgeDocuments(deps.Knowledge))
+	// NuGuard fixture: knowledge endpoints take the identity resolver (agent role required).
+	mux.HandleFunc("POST /api/v1/knowledge/documents", uploadKnowledgeDocument(deps.Knowledge, deps.Identity))
+	mux.HandleFunc("GET /api/v1/knowledge/documents", listKnowledgeDocuments(deps.Knowledge, deps.Identity))
 	mux.HandleFunc("POST /api/v1/conversations", createConversation(deps.Conversations, deps.Identity))
 	mux.HandleFunc("GET /api/v1/conversations", listConversations(deps.Conversations, deps.Identity))
 	mux.HandleFunc("POST /api/v1/conversations/{id}/messages:stream", streamConversationMessage(deps.Conversations, deps.Identity))
@@ -77,6 +79,12 @@ func NewServer(deps Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/runs/{action}", replayRun(deps.Runs, deps.Identity))
 	mux.HandleFunc("POST /api/v1/evaluations", startEvaluation(deps.Evaluations, deps.Identity))
 	mux.HandleFunc("GET /api/v1/evaluations/{id}", getEvaluation(deps.Evaluations, deps.Identity))
+	// NuGuard fixture: single-call JSON chat adapter for test harnesses (see chat_adapter.go).
+	mux.HandleFunc("POST /chat", chatAdapter(deps.Conversations, deps.Identity))
+	// NuGuard fixture: demo login issuing JWT bearer tokens (see auth.go).
+	if deps.Auth != nil {
+		mux.HandleFunc("POST /auth/token", deps.Auth.issueToken)
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, http.StatusNotFound, "NOT_FOUND", "route not found", false)
 	})

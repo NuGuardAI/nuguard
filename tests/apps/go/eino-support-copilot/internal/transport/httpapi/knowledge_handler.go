@@ -11,8 +11,13 @@ import (
 
 const multipartOverheadBytes = 1 << 20
 
-func uploadKnowledgeDocument(service KnowledgeService) http.HandlerFunc {
+// NuGuard fixture: upstream left both knowledge endpoints unauthenticated; they now require the
+// "agent" (support staff) role, like the ticket, run and evaluation handlers.
+func uploadKnowledgeDocument(service KnowledgeService, identity IdentityResolver) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireDemoRole(w, r, identity, "agent"); !ok {
+			return
+		}
 		if service == nil {
 			WriteError(w, r, http.StatusServiceUnavailable, "KNOWLEDGE_UNAVAILABLE", "knowledge service is unavailable", true)
 			return
@@ -50,8 +55,11 @@ func uploadKnowledgeDocument(service KnowledgeService) http.HandlerFunc {
 	}
 }
 
-func listKnowledgeDocuments(service KnowledgeService) http.HandlerFunc {
+func listKnowledgeDocuments(service KnowledgeService, identity IdentityResolver) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireDemoRole(w, r, identity, "agent"); !ok { // NuGuard fixture
+			return
+		}
 		if service == nil {
 			WriteError(w, r, http.StatusServiceUnavailable, "KNOWLEDGE_UNAVAILABLE", "knowledge service is unavailable", true)
 			return

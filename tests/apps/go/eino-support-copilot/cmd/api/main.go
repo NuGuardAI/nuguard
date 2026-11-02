@@ -35,6 +35,15 @@ func main() {
 		cancelStartup()
 		log.Fatal(err)
 	}
+	// NuGuard fixture: NUGUARD_RESET_DB=true drops and recreates the public schema so every start
+	// reseeds from scratch (refunds, conversations and runs from earlier scans are discarded).
+	if os.Getenv("NUGUARD_RESET_DB") == "true" {
+		if _, err := pool.Exec(startupCtx, `drop schema public cascade; create schema public`); err != nil {
+			cancelStartup()
+			pool.Close()
+			log.Fatal(err)
+		}
+	}
 	if err := database.Migrate(startupCtx, pool, "migrations"); err != nil {
 		cancelStartup()
 		pool.Close()
@@ -50,6 +59,20 @@ func main() {
 		cancelStartup()
 		pool.Close()
 		log.Fatal(err)
+	}
+	// NuGuard fixture: optional extra seed (second customer, canary data, injected incident).
+	if fixtureSeedPath := os.Getenv("NUGUARD_FIXTURE_SEED"); fixtureSeedPath != "" {
+		fixtureSeed, err := os.ReadFile(fixtureSeedPath)
+		if err != nil {
+			cancelStartup()
+			pool.Close()
+			log.Fatal(err)
+		}
+		if _, err := pool.Exec(startupCtx, string(fixtureSeed)); err != nil {
+			cancelStartup()
+			pool.Close()
+			log.Fatal(err)
+		}
 	}
 	cancelStartup()
 	defer pool.Close()
@@ -127,6 +150,25 @@ func main() {
 		evaluation.ExpectedExecutor{}, evaluation.RunConfig{CommitSHA: commitSHA, Mode: cfg.AppMode},
 	), evalDataset)
 
+	// NuGuard fixture: JWT bearer auth replaces the upstream X-Demo-User header (see httpapi/auth.go).
+	// Only ada (the identity NuGuard tests as) has a known default password. bob and lin get theirs
+	// from the environment (scripts/serve.sh generates random ones); unset means no login.
+	adaPassword := os.Getenv("DEMO_USER_PASSWORD")
+	if adaPassword == "" {
+		adaPassword = "nuguard-demo-only"
+	}
+	jwtAuth, err := httpapi.NewJWTAuth(pool, os.Getenv("JWT_SIGNING_KEY"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := httpapi.SeedDemoPasswords(context.Background(), pool, map[string]string{
+		"ada": adaPassword,
+		"bob": os.Getenv("DEMO_PASSWORD_BOB"),
+		"lin": os.Getenv("DEMO_PASSWORD_LIN"),
+	}); err != nil {
+		log.Fatal(err)
+	}
+
 	server := &http.Server{
 		Addr: cfg.HTTPAddr,
 		Handler: httpapi.NewServer(httpapi.Dependencies{
@@ -136,7 +178,8 @@ func main() {
 			Tickets:       ticketService,
 			Runs:          runService,
 			Evaluations:   evaluationService,
-			Identity:      httpapi.NewPostgresIdentityResolver(pool),
+			Identity:      jwtAuth, // NuGuard fixture: was httpapi.NewPostgresIdentityResolver(pool)
+			Auth:          jwtAuth,
 		}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

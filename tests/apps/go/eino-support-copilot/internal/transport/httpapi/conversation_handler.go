@@ -115,14 +115,20 @@ func requireDemoRole(w http.ResponseWriter, r *http.Request, identity IdentityRe
 }
 
 func requireDemoIdentity(w http.ResponseWriter, r *http.Request, identity IdentityResolver) (uuid.UUID, string, bool) {
-	raw := strings.TrimSpace(r.Header.Get("X-Demo-User"))
+	// NuGuard fixture: upstream read an unauthenticated X-Demo-User: <uuid> header here. The caller
+	// is now identified only by "Authorization: Bearer <jwt>" from POST /auth/token (see auth.go).
+	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
+	raw := ""
+	if len(authorization) > len("Bearer ") && strings.EqualFold(authorization[:len("Bearer ")], "Bearer ") {
+		raw = strings.TrimSpace(authorization[len("Bearer "):])
+	}
 	if raw == "" || identity == nil {
-		WriteError(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", "X-Demo-User is required", false)
+		WriteError(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", "Authorization: Bearer token is required", false)
 		return uuid.Nil, "", false
 	}
 	id, role, err := identity.Resolve(r.Context(), raw)
 	if err != nil {
-		WriteError(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", "demo identity was not found", false)
+		WriteError(w, r, http.StatusUnauthorized, "UNAUTHENTICATED", "bearer token is invalid or expired", false)
 		return uuid.Nil, "", false
 	}
 	return id, role, true
