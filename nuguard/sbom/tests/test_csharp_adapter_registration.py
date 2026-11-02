@@ -126,14 +126,24 @@ def test_escaped_separator_in_regular_literal_is_not_previewed(tmp_path) -> None
     assert "s3cret" not in doc.model_dump_json().lower()
 
 
-def test_credential_literal_is_never_a_prompt(tmp_path) -> None:
+@pytest.mark.parametrize(
+    "secret_literal",
+    [
+        "mongodb://user:S3CRET@db.example.com:27017/tickets?appName=openai:support"
+        "&retryWrites=true&w=majority&readPreference=primary",
+        # '/' inside the userinfo
+        "https://u:pa/ss@S3CRET@api.example.com/v1 You are a helpful assistant. "
+        "Answer the question and respond in JSON for the user: request.",
+        "You are a helpful assistant. Answer the question. ApiKey=S3CRET; respond in JSON.",
+        "You are a helpful assistant. Answer the question. client_secret=S3CRET summarize",
+        "You are a helpful assistant. Answer the question. SharedAccessSignature=S3CRET ok",
+    ],
+)
+def test_credential_literal_is_never_a_prompt(tmp_path, secret_literal: str) -> None:
     """A long connection string that happens to hold a prompt cue ("ai:") is not
     emitted as PROMPT content."""
     (tmp_path / "Cfg.cs").write_text(
-        "public static class Cfg\n{\n"
-        '    public const string Conn = "mongodb://user:S3CRET@db.example.com:27017/'
-        'tickets?appName=openai:support&retryWrites=true&w=majority&readPreference=primary";\n'
-        "}\n"
+        f'public static class Cfg\n{{\n    public const string Conn = "{secret_literal}";\n}}\n'
     )
 
     doc = AiSbomExtractor().extract_from_path(tmp_path, CS_ONLY)

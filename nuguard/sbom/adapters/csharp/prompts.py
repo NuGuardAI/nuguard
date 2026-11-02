@@ -94,8 +94,10 @@ _PROMPT_FIELD_NAMES = {
 
 
 _CREDENTIAL_SHAPE_RE = re.compile(
-    r"[a-z][a-z0-9+.-]*://[^/\s\"']*@"
-    r"|\b(?:password|pwd|account\s*key|shared\s*access\s*key|access\s*token)\s*=",
+    r"[a-z][a-z0-9+.-]*://[^\s\"']*@"
+    r"|\b(?:password|pwd|psw|user\s*password|account\s*key|shared\s*access\s*key"
+    r"|shared\s*access\s*signature|sig|access\s*token|api[\s_-]?key|client[\s_-]?secret"
+    r"|secret|token)\s*=",
     re.IGNORECASE,
 )
 
