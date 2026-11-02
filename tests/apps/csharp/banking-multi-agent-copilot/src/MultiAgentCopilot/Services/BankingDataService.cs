@@ -40,6 +40,11 @@ namespace MultiAgentCopilot.Services
 
         readonly Kernel _semanticKernel;
 
+        // NuGuard fixture: lets InMemoryBankingDataService replace the Cosmos DB data access.
+        protected BankingDataService(ILoggerFactory loggerFactory)
+        {
+            _logger = loggerFactory.CreateLogger<BankingDataService>();
+        }
 
 
 
@@ -62,24 +67,35 @@ namespace MultiAgentCopilot.Services
 
             //To DO: Add vector search initialization code here
 
-            DefaultAzureCredential credential;
-            if (string.IsNullOrEmpty(skSettings.AzureOpenAISettings.UserAssignedIdentityClientID))
+            // NuGuard fixture: an API key, when configured, replaces the managed identity (local and CI runs).
+            if (!string.IsNullOrEmpty(skSettings.AzureOpenAISettings.Key))
             {
-                credential = new DefaultAzureCredential();
+                _textEmbeddingGenerationService = new(
+                        deploymentName: skSettings.AzureOpenAISettings.EmbeddingsDeployment,
+                        endpoint: skSettings.AzureOpenAISettings.Endpoint,
+                        apiKey: skSettings.AzureOpenAISettings.Key);
             }
             else
             {
-                credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+                DefaultAzureCredential credential;
+                if (string.IsNullOrEmpty(skSettings.AzureOpenAISettings.UserAssignedIdentityClientID))
                 {
-                    ManagedIdentityClientId = skSettings.AzureOpenAISettings.UserAssignedIdentityClientID
-                });
+                    credential = new DefaultAzureCredential();
+                }
+                else
+                {
+                    credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+                    {
+                        ManagedIdentityClientId = skSettings.AzureOpenAISettings.UserAssignedIdentityClientID
+                    });
 
+                }
+
+                _textEmbeddingGenerationService = new(
+                        deploymentName: skSettings.AzureOpenAISettings.EmbeddingsDeployment, // Name of deployment, e.g. "text-embedding-ada-002".
+                        endpoint: skSettings.AzureOpenAISettings.Endpoint,           // Name of Azure OpenAI service endpoint, e.g. https://myaiservice.openai.azure.com.
+                        credential: credential);
             }
-
-            _textEmbeddingGenerationService = new(
-                    deploymentName: skSettings.AzureOpenAISettings.EmbeddingsDeployment, // Name of deployment, e.g. "text-embedding-ada-002".
-                    endpoint: skSettings.AzureOpenAISettings.Endpoint,           // Name of Azure OpenAI service endpoint, e.g. https://myaiservice.openai.azure.com.
-                    credential: credential);
 
             var jsonSerializerOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
             var vectorStoreOptions = new AzureCosmosDBNoSQLVectorStoreRecordCollectionOptions<OfferTerm> { PartitionKeyPropertyName = "TenantId", JsonSerializerOptions = jsonSerializerOptions };
@@ -88,7 +104,7 @@ namespace MultiAgentCopilot.Services
             _logger.LogInformation("Banking service initialized.");
         }
 
-        public async Task<BankUser> GetUserAsync(string tenantId, string userId)
+        public virtual async Task<BankUser> GetUserAsync(string tenantId, string userId)
         {
             try
             {
@@ -106,7 +122,7 @@ namespace MultiAgentCopilot.Services
         }
 
 
-        public async Task<List<BankAccount>> GetUserRegisteredAccountsAsync(string tenantId, string userId)
+        public virtual async Task<List<BankAccount>> GetUserRegisteredAccountsAsync(string tenantId, string userId)
         {
             try
             {
@@ -134,7 +150,7 @@ namespace MultiAgentCopilot.Services
         }
 
 
-        public async Task<BankAccount> GetAccountDetailsAsync(string tenantId, string userId, string accountId)
+        public virtual async Task<BankAccount> GetAccountDetailsAsync(string tenantId, string userId, string accountId)
         {
             try
             {
@@ -151,7 +167,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<List<BankTransaction>> GetTransactionsAsync(string tenantId, string accountId, DateTime startDate, DateTime endDate)
+        public virtual async Task<List<BankTransaction>> GetTransactionsAsync(string tenantId, string accountId, DateTime startDate, DateTime endDate)
         {
             try
             {
@@ -183,30 +199,30 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<ServiceRequest> CreateFundTransferRequestAsync(string tenantId, string accountId, string userId, string requestAnnotation, string recipientEmail, string recipientPhone, decimal debitAmount)
+        public virtual async Task<ServiceRequest> CreateFundTransferRequestAsync(string tenantId, string accountId, string userId, string requestAnnotation, string recipientEmail, string recipientPhone, decimal debitAmount)
         {
             var req = new ServiceRequest(ServiceRequestType.FundTransfer, tenantId, accountId, userId, requestAnnotation, recipientEmail, recipientPhone, debitAmount, DateTime.MinValue, null);
             return await AddServiceRequestAsync(req);
         }
 
-        public async Task<ServiceRequest> CreateTeleBankerRequestAsync(string tenantId, string accountId, string userId, string requestAnnotation, DateTime scheduledDateTime)
+        public virtual async Task<ServiceRequest> CreateTeleBankerRequestAsync(string tenantId, string accountId, string userId, string requestAnnotation, DateTime scheduledDateTime)
         {
             var req = new ServiceRequest(ServiceRequestType.TeleBankerCallBack, tenantId, accountId, userId, requestAnnotation, string.Empty, string.Empty, 0, scheduledDateTime, null);
             return await AddServiceRequestAsync(req);
         }
 
-        public Task<string> GetTeleBankerAvailabilityAsync()
+        public virtual Task<string> GetTeleBankerAvailabilityAsync()
         {
             return Task.FromResult("Monday to Friday, 8 AM to 8 PM Pacific Time");
         }
 
-        public async Task<ServiceRequest> CreateComplaintAsync(string tenantId, string accountId, string userId, string requestAnnotation)
+        public virtual async Task<ServiceRequest> CreateComplaintAsync(string tenantId, string accountId, string userId, string requestAnnotation)
         {
             var req = new ServiceRequest(ServiceRequestType.Complaint, tenantId, accountId, userId, requestAnnotation, string.Empty, string.Empty, 0, DateTime.MinValue, null);
             return await AddServiceRequestAsync(req);
         }
 
-        public async Task<ServiceRequest> CreateFulfilmentRequestAsync(string tenantId, string accountId, string userId, string requestAnnotation, Dictionary<string, string> fulfilmentDetails)
+        public virtual async Task<ServiceRequest> CreateFulfilmentRequestAsync(string tenantId, string accountId, string userId, string requestAnnotation, Dictionary<string, string> fulfilmentDetails)
         {
             var req = new ServiceRequest(ServiceRequestType.Fulfilment, tenantId, accountId, userId, requestAnnotation, string.Empty, string.Empty, 0, DateTime.MinValue, fulfilmentDetails);
             return await AddServiceRequestAsync(req);
@@ -229,7 +245,7 @@ namespace MultiAgentCopilot.Services
         }
 
 
-        public async Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId, string accountId, string? userId = null, ServiceRequestType? SRType = null)
+        public virtual async Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId, string accountId, string? userId = null, ServiceRequestType? SRType = null)
         {
             try
             {
@@ -273,7 +289,7 @@ namespace MultiAgentCopilot.Services
 
 
 
-        public async Task<bool> AddServiceRequestDescriptionAsync(string tenantId, string accountId, string requestId, string annotationToAdd)
+        public virtual async Task<bool> AddServiceRequestDescriptionAsync(string tenantId, string accountId, string requestId, string annotationToAdd)
         {
             try
             {
@@ -299,7 +315,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<List<OfferTerm>> SearchOfferTermsAsync(string tenantId, AccountType accountType, string requirementDescription)
+        public virtual async Task<List<OfferTerm>> SearchOfferTermsAsync(string tenantId, AccountType accountType, string requirementDescription)
         {
             try
             {
@@ -342,7 +358,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<Offer> GetOfferDetailsAsync(string tenantId, string offerId)
+        public virtual async Task<Offer> GetOfferDetailsAsync(string tenantId, string offerId)
         {
             try
             {

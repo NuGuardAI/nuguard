@@ -16,7 +16,7 @@ namespace MultiAgentCopilot
             _cosmosDBService = cosmosDBService;
         }
 
-        public void Map(WebApplication app)
+        public void Map(IEndpointRouteBuilder app)
         {
 
             app.MapGet("/tenant/{tenantId}/user/{userId}/sessions/", async (string tenantId, string userId) =>

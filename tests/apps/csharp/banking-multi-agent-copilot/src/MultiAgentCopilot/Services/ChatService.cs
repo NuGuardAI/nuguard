@@ -5,6 +5,7 @@ using MultiAgentCopilot.Models.Chat;
 using Newtonsoft.Json.Linq;
 using System.Text.Json;
 using Newtonsoft.Json;
+using MultiAgentCopilot.Services.InMemory;
 
 
 namespace MultiAgentCopilot.Services;
@@ -26,7 +27,10 @@ public class ChatService
     {
         _cosmosDBService = cosmosDBService;
         _skService = skService;
-        _bankService = new BankingDataService(cosmosDBService.Database, cosmosDBService.AccountDataContainer, cosmosDBService.UserDataContainer, cosmosDBService.AccountDataContainer, cosmosDBService.OfferDataContainer, skOptions.Value, loggerFactory);
+        // NuGuard fixture: use the in-memory banking data when the in-memory store is configured.
+        _bankService = cosmosDBService is InMemoryCosmosDBService inMemory
+            ? new InMemoryBankingDataService(inMemory.Store, loggerFactory)
+            : new BankingDataService(cosmosDBService.Database, cosmosDBService.AccountDataContainer, cosmosDBService.UserDataContainer, cosmosDBService.AccountDataContainer, cosmosDBService.OfferDataContainer, skOptions.Value, loggerFactory);
         _logger = loggerFactory.CreateLogger<ChatService>();
     }
 

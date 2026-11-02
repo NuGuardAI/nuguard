@@ -50,24 +50,35 @@ public class SemanticKernelService : IDisposable
         //TO DO: Update SemanticKernelService constructor
         builder.Services.AddSingleton<ILoggerFactory>(loggerFactory);
 
-        DefaultAzureCredential credential;
-        if (string.IsNullOrEmpty(_skSettings.AzureOpenAISettings.UserAssignedIdentityClientID))
+        // NuGuard fixture: an API key, when configured, replaces the managed identity (local and CI runs).
+        if (!string.IsNullOrEmpty(_skSettings.AzureOpenAISettings.Key))
         {
-            credential = new DefaultAzureCredential();
+            builder.AddAzureOpenAIChatCompletion(
+               _skSettings.AzureOpenAISettings.CompletionsDeployment,
+               _skSettings.AzureOpenAISettings.Endpoint,
+               _skSettings.AzureOpenAISettings.Key);
         }
         else
         {
-            credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+            DefaultAzureCredential credential;
+            if (string.IsNullOrEmpty(_skSettings.AzureOpenAISettings.UserAssignedIdentityClientID))
             {
-                ManagedIdentityClientId = _skSettings.AzureOpenAISettings.UserAssignedIdentityClientID
-            });
+                credential = new DefaultAzureCredential();
+            }
+            else
+            {
+                credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+                {
+                    ManagedIdentityClientId = _skSettings.AzureOpenAISettings.UserAssignedIdentityClientID
+                });
+            }
+
+
+            builder.AddAzureOpenAIChatCompletion(
+               _skSettings.AzureOpenAISettings.CompletionsDeployment,
+               _skSettings.AzureOpenAISettings.Endpoint,
+               credential);
         }
-
-
-        builder.AddAzureOpenAIChatCompletion(
-           _skSettings.AzureOpenAISettings.CompletionsDeployment,
-           _skSettings.AzureOpenAISettings.Endpoint,
-           credential);
 
         _semanticKernel = builder.Build();
 

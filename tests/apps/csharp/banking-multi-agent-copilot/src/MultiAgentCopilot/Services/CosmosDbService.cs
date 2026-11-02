@@ -38,6 +38,13 @@ namespace MultiAgentCopilot.Services
         private readonly ILogger _logger;
 
 
+        // NuGuard fixture: lets InMemoryCosmosDBService replace the Cosmos DB data access.
+        protected CosmosDBService(ILogger<CosmosDBService> logger)
+        {
+            _settings = null!;
+            _logger = logger;
+        }
+
         public CosmosDBService(
             IOptions<CosmosDBSettings> settings,
             ILogger<CosmosDBService> logger)
@@ -95,7 +102,7 @@ namespace MultiAgentCopilot.Services
             _logger.LogInformation("Cosmos DB service initialized.");
         }
 
-        public async Task<List<Session>> GetUserSessionsAsync(string tenantId, string userId)
+        public virtual async Task<List<Session>> GetUserSessionsAsync(string tenantId, string userId)
         {
             try
             {
@@ -121,7 +128,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<Session> GetSessionAsync(string tenantId, string userId, string sessionId)
+        public virtual async Task<Session> GetSessionAsync(string tenantId, string userId, string sessionId)
         {
             try
             {
@@ -138,7 +145,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<List<Message>> GetSessionMessagesAsync(string tenantId, string userId, string sessionId)
+        public virtual async Task<List<Message>> GetSessionMessagesAsync(string tenantId, string userId, string sessionId)
         {
             try
             {
@@ -166,7 +173,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<Session> InsertSessionAsync(Session session)
+        public virtual async Task<Session> InsertSessionAsync(Session session)
         {
             try
             {
@@ -186,7 +193,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<Message> InsertMessageAsync(Message message)
+        public virtual async Task<Message> InsertMessageAsync(Message message)
         {
             try
             {
@@ -204,7 +211,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<Message> UpdateMessageAsync(Message message)
+        public virtual async Task<Message> UpdateMessageAsync(Message message)
         {
             try
             {
@@ -223,7 +230,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<Message> UpdateMessageRatingAsync(string tenantId, string userId, string sessionId, string messageId, bool? rating)
+        public virtual async Task<Message> UpdateMessageRatingAsync(string tenantId, string userId, string sessionId, string messageId, bool? rating)
         {
             try
             {
@@ -246,7 +253,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<Session> UpdateSessionAsync(Session session)
+        public virtual async Task<Session> UpdateSessionAsync(Session session)
         {
             try
             {
@@ -265,7 +272,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<Session> UpdateSessionNameAsync(string tenantId, string userId, string sessionId, string name)
+        public virtual async Task<Session> UpdateSessionNameAsync(string tenantId, string userId, string sessionId, string name)
         {
             try
             {
@@ -292,7 +299,7 @@ namespace MultiAgentCopilot.Services
 
 
 
-        public async Task UpsertSessionBatchAsync(List<Message> messages, List<DebugLog> debugLogs, Session session)
+        public virtual async Task UpsertSessionBatchAsync(List<Message> messages, List<DebugLog> debugLogs, Session session)
         {
             try
             {
@@ -335,7 +342,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task DeleteSessionAndMessagesAsync(string tenantId, string userId, string sessionId)
+        public virtual async Task DeleteSessionAndMessagesAsync(string tenantId, string userId, string sessionId)
         {
             try
             {
@@ -367,7 +374,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<DebugLog> GetChatCompletionDebugLogAsync(string tenantId, string userId, string sessionId, string debugLogId)
+        public virtual async Task<DebugLog> GetChatCompletionDebugLogAsync(string tenantId, string userId, string sessionId, string debugLogId)
         {
             try
             {
@@ -385,7 +392,7 @@ namespace MultiAgentCopilot.Services
         }
 
 
-        public async Task<bool> AddDocument(string containerName, JsonElement document)
+        public virtual async Task<bool> AddDocument(string containerName, JsonElement document)
         {
             try
             {
@@ -410,7 +417,7 @@ namespace MultiAgentCopilot.Services
         }
 
 
-        public async Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId)
+        public virtual async Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId)
         {
             try
             {
@@ -439,7 +446,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<List<BankAccount>> GetUserRegisteredAccountsAsync(string tenantId, string userId)
+        public virtual async Task<List<BankAccount>> GetUserRegisteredAccountsAsync(string tenantId, string userId)
         {
             try
             {
@@ -466,7 +473,7 @@ namespace MultiAgentCopilot.Services
             }
         }
 
-        public async Task<List<BankTransaction>> GetAccountTransactionsAsync(string tenantId, string userId, string accountId)
+        public virtual async Task<List<BankTransaction>> GetAccountTransactionsAsync(string tenantId, string userId, string accountId)
         {
             try
             {
