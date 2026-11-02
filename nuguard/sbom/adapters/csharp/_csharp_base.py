@@ -182,3 +182,28 @@ class CSharpFrameworkAdapter(
                 variables.append(expression)
 
         return variables
+
+
+# Global usings the .NET SDK adds for ``Microsoft.NET.Sdk.Web`` projects with
+# ``<ImplicitUsings>enable</ImplicitUsings>``, so those files carry no
+# ``using Microsoft.AspNetCore...`` line of their own.
+WEB_SDK_IMPLICIT_USINGS = (
+    "Microsoft.AspNetCore.Builder",
+    "Microsoft.AspNetCore.Hosting",
+    "Microsoft.AspNetCore.Http",
+    "Microsoft.AspNetCore.Routing",
+    "Microsoft.Extensions.Configuration",
+    "Microsoft.Extensions.DependencyInjection",
+    "Microsoft.Extensions.Hosting",
+    "Microsoft.Extensions.Logging",
+)
+_WEB_SDK_RE = re.compile(r"<Project\b[^>]*\bSdk\s*=\s*\"Microsoft\.NET\.Sdk\.Web\"", re.IGNORECASE)
+_IMPLICIT_USINGS_RE = re.compile(
+    r"<ImplicitUsings>\s*(?:enable|true)\s*</ImplicitUsings>",
+    re.IGNORECASE,
+)
+
+
+def web_sdk_implicit_usings(csproj: str) -> bool:
+    """Return whether a ``.csproj`` is a Web SDK project with implicit usings."""
+    return bool(_WEB_SDK_RE.search(csproj) and _IMPLICIT_USINGS_RE.search(csproj))

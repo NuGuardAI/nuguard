@@ -22,6 +22,8 @@ from nuguard.sbom.adapters.csharp._source import (
     find_calls,
     string_constants,
 )
+from nuguard.sbom.adapters.csharp.aspnet_core import collect_route_group_bindings
+from nuguard.sbom.adapters.csharp.semantic_kernel import collect_kernel_plugins
 from nuguard.sbom.core.csharp_parser import (
     parse_csharp,
 )
@@ -436,7 +438,8 @@ app.MapPost(
     assert endpoint.metadata["auth_required"] is True
 
 
-def test_non_ai_aspnet_route_is_not_emitted() -> None:
+def test_non_ai_aspnet_route_is_emitted() -> None:
+    # Every route is attack surface, matching the FastAPI/Flask adapters.
     source = """using Microsoft.AspNetCore.Builder;
 var app = WebApplication.CreateBuilder(args).Build();
 app.MapGet("/health", () => Results.Ok());
@@ -447,14 +450,13 @@ app.MapGet("/health", () => Results.Ok());
         source,
         "Program.cs",
     )
-
-    assert (
-        _by_type(
-            detections,
-            ComponentType.API_ENDPOINT,
-        )
-        == []
+    endpoints = _by_type(
+        detections,
+        ComponentType.API_ENDPOINT,
     )
+
+    assert [endpoint.metadata["endpoint"] for endpoint in endpoints] == ["/health"]
+    assert endpoints[0].metadata["auth_required"] is False
 
 
 @pytest.mark.parametrize(
@@ -1162,3 +1164,235 @@ public class ChatController : ControllerBase
     assert not any(name == "cancellationToken" for name, _ in params)
     assert http_request["content_types"] == ["application/json"]
     assert http_request["has_unresolved_inputs"] is False
+
+
+def _endpoint_auth(detections: list[ComponentDetection]) -> dict[str, bool]:
+    return {
+        detection.display_name: detection.metadata["auth_required"]
+        for detection in _by_type(detections, ComponentType.API_ENDPOINT)
+    }
+
+
+def test_minimal_api_route_groups_combine_prefix_and_authorization() -> None:
+    source = """using Microsoft.AspNetCore.Builder;
+var app = WebApplication.CreateBuilder(args).Build();
+var tenant = app.MapGroup("/tenant/{tenantId}").RequireAuthorization();
+var users = tenant.MapGroup("users");
+var open = app.MapGroup("/public");
+open.AllowAnonymous();
+app.MapGet("/health", () => Results.Ok());
+tenant.MapGet("/accounts", (string tenantId) => Results.Ok());
+users.MapPost("/{userId}", (string tenantId, string userId) => Results.Ok());
+users.MapDelete("/{userId}", (string userId) => Results.Ok()).AllowAnonymous();
+open.MapGet("/offers", () => Results.Ok()).RequireAuthorization();
+app.MapGroup("/v2").RequireAuthorization().MapPut("/data", () => Results.Ok());
+"""
+
+    assert _endpoint_auth(_extract(CSharpAspNetCoreAdapter(), source, "Program.cs")) == {
+        "GET /health": False,
+        "GET /tenant/{tenantId}/accounts": True,
+        "POST /tenant/{tenantId}/users/{userId}": True,
+        "DELETE /tenant/{tenantId}/users/{userId}": False,
+        "GET /public/offers": False,
+        "PUT /v2/data": True,
+    }
+
+
+def test_minimal_api_handler_authorize_attribute() -> None:
+    source = """using Microsoft.AspNetCore.Builder;
+var app = WebApplication.CreateBuilder(args).Build();
+app.MapGet("/me", [Authorize] (ClaimsPrincipal user) => Results.Ok());
+"""
+
+    assert _endpoint_auth(_extract(CSharpAspNetCoreAdapter(), source, "Program.cs")) == {
+        "GET /me": True
+    }
+
+
+def test_route_group_passed_to_endpoint_class_in_another_file() -> None:
+    program = """using Microsoft.AspNetCore.Builder;
+var app = WebApplication.CreateBuilder(args).Build();
+var api = app.MapGroup("/api").RequireAuthorization();
+var service = app.Services.GetService<ChatEndpoints>();
+service?.Map(api);
+api.MapChatAdapter();
+"""
+    endpoints = """using Microsoft.AspNetCore.Mvc;
+public class ChatEndpoints
+{
+    public void Map(IEndpointRouteBuilder app)
+    {
+        app.MapGet("/sessions", () => Results.Ok());
+    }
+}
+public static class ChatAdapterEndpoints
+{
+    public static void MapChatAdapter(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/chat", (ChatRequest request) => Results.Ok());
+    }
+    public static void MapLogin(this WebApplication app)
+    {
+        app.MapPost("/login", () => Results.Ok());
+    }
+}
+"""
+    bindings = collect_route_group_bindings(program, "Program.cs")
+    adapter = CSharpAspNetCoreAdapter()
+    adapter.set_csharp_route_group_bindings(bindings)
+
+    assert bindings["Map"] == ("/api", True, False)
+    assert _endpoint_auth(_extract(adapter, endpoints, "ChatEndpoints.cs")) == {
+        "GET /api/sessions": True,
+        "POST /api/chat": True,
+        "POST /login": False,
+    }
+
+
+def test_semantic_kernel_chat_completion_agents_per_switch_case() -> None:
+    source = """using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Agents;
+public class AgentFactory
+{
+    private string GetAgentName(AgentType agentType)
+    {
+        string name = string.Empty;
+        switch (agentType)
+        {
+            case AgentType.Sales:
+                name = "Sales";
+                break;
+            case AgentType.Coordinator:
+                name = "Coordinator";
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(agentType));
+        }
+        return name;
+    }
+
+    public ChatCompletionAgent BuildAgent(Kernel kernel, AgentType agentType)
+    {
+        ChatCompletionAgent agent = new ChatCompletionAgent
+        {
+            Name = GetAgentName(agentType),
+            Instructions = "You are a banking assistant.",
+            Kernel = GetAgentKernel(kernel, agentType),
+        };
+        return agent;
+    }
+
+    private Kernel GetAgentKernel(Kernel kernel, AgentType agentType)
+    {
+        Kernel agentKernel = kernel.Clone();
+        switch (agentType)
+        {
+            case AgentType.Sales:
+                var salesPlugin = new SalesPlugin(logger);
+                agentKernel.Plugins.AddFromObject(salesPlugin);
+                break;
+            case AgentType.Coordinator:
+                agentKernel.Plugins.AddFromType<CoordinatorPlugin>();
+                break;
+        }
+        return agentKernel;
+    }
+
+    public AgentGroupChat BuildAgentGroupChat(Kernel kernel)
+    {
+        AgentGroupChat chat = new AgentGroupChat();
+        return chat;
+    }
+}
+"""
+    adapter = CSharpSemanticKernelAdapter()
+    adapter.set_csharp_kernel_plugins(
+        {
+            "SalesPlugin": (("BasePlugin",), ("RegisterAccount",)),
+            "BasePlugin": ((), ("GetLoggedInUser",)),
+            "CoordinatorPlugin": (("BasePlugin",), ()),
+        }
+    )
+    detections = _extract(adapter, source, "AgentFactory.cs")
+    agents = {
+        detection.display_name: detection for detection in _by_type(detections, ComponentType.AGENT)
+    }
+
+    assert set(agents) == {"Sales", "Coordinator"}
+    assert agents["Sales"].metadata["orchestration"] == "AgentGroupChat"
+    assert agents["Sales"].metadata["plugins"] == ["SalesPlugin"]
+    assert {
+        hint.target_canonical
+        for hint in agents["Sales"].relationships
+        if hint.relationship_type == "CALLS"
+    } == {
+        "semantic_kernel_plugin_salesplugin",
+        "semantic_kernel_function_registeraccount",
+        "semantic_kernel_function_getloggedinuser",
+    }
+    assert {
+        hint.target_canonical
+        for hint in agents["Coordinator"].relationships
+        if hint.relationship_type == "CALLS"
+    } == {
+        "semantic_kernel_plugin_coordinatorplugin",
+        "semantic_kernel_function_getloggedinuser",
+    }
+    tools = {detection.display_name for detection in _by_type(detections, ComponentType.TOOL)}
+    assert tools == {"SalesPlugin", "CoordinatorPlugin"}
+
+
+def test_semantic_kernel_unresolved_plugin_object_is_not_a_tool() -> None:
+    source = """using Microsoft.SemanticKernel;
+kernel.Plugins.AddFromObject(GetPlugin());
+"""
+
+    assert _by_type(_extract(CSharpSemanticKernelAdapter(), source), ComponentType.TOOL) == []
+
+
+def test_semantic_kernel_write_functions_are_high_privilege() -> None:
+    source = """using Microsoft.SemanticKernel;
+public class BankPlugin
+{
+    [KernelFunction]
+    public Task<Request> AddFunTransferRequest(string account) =>
+        _bank.CreateFundTransferRequestAsync(account);
+
+    [KernelFunction]
+    public Task<bool> ReviseRequest(string id) =>
+        _bank.UpdateRequestAsync(id);
+
+    [KernelFunction]
+    public List<string> GetHistory(string account)
+    {
+        var items = new List<string>();
+        items.Add(account);
+        return items;
+    }
+}
+"""
+    tools = {
+        detection.display_name: detection.metadata
+        for detection in _by_type(
+            _extract(CSharpSemanticKernelAdapter(), source), ComponentType.TOOL
+        )
+    }
+
+    assert tools["AddFunTransferRequest"]["privilege_scope"] == "db_write"
+    assert tools["AddFunTransferRequest"]["high_privilege"] is True
+    assert tools["ReviseRequest"]["high_privilege"] is True
+    assert "high_privilege" not in tools["GetHistory"]
+
+
+def test_collect_kernel_plugins_indexes_bases_and_functions() -> None:
+    source = """using Microsoft.SemanticKernel;
+public class SalesPlugin : BasePlugin
+{
+    [KernelFunction]
+    public string RegisterAccount() => "ok";
+}
+"""
+
+    assert collect_kernel_plugins(source) == {
+        "SalesPlugin": (("BasePlugin",), ("RegisterAccount",))
+    }

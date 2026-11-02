@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
+from ...core.csharp_parser import CSharpParseResult, parse_csharp
 from ...normalization import canonicalize_text
 from ...types import ComponentType
 from ..base import ComponentDetection, RelationshipHint
@@ -12,6 +14,10 @@ from ._csharp_base import CSharpFrameworkAdapter
 from ._source import (
     find_calls,
     first_argument,
+    mask_non_code,
+    method_source,
+    resolve_expression,
+    split_top_level,
     string_constants,
 )
 
@@ -54,6 +60,30 @@ _KERNEL_CALLS = {
     "Build",
     "KernelBuilder",
 }
+_AGENT_INITIALIZER_RE = re.compile(
+    r"(?:\bnew\s+ChatCompletionAgent\s*(?:\(\s*\))?"
+    r"|\bChatCompletionAgent\s+@?[A-Za-z_]\w*\s*=\s*new\s*\(\s*\))\s*\{"
+)
+_CASE_LABEL_RE = re.compile(r"\bcase\s+(?P<label>[\w.]+)\s*:")
+_AGENT_NAME_RE = re.compile(r"[A-Za-z][\w .-]{0,63}")
+# Kernel functions that change state get privilege_scope db_write. Same idea as
+# java_ai.py (camelCase-split write verbs), plus the create/add/register/transfer
+# verbs SK plugins use for write operations.
+_WRITE_VERBS = {
+    "add",
+    "cancel",
+    "create",
+    "delete",
+    "insert",
+    "purge",
+    "refund",
+    "register",
+    "remove",
+    "save",
+    "transfer",
+    "update",
+    "write",
+}
 
 
 class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
@@ -62,6 +92,10 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
     name = "csharp_semantic_kernel"
     priority = 40
     handles_namespaces = ["Microsoft.SemanticKernel"]
+
+    def __init__(self) -> None:
+        # Plugin class -> (base types, [KernelFunction] names), across all files.
+        self._kernel_plugins: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
 
     def extract(
         self,
@@ -249,12 +283,16 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
                 continue
 
             if call.name in _PLUGIN_CALLS:
-                plugin_type = call.generic_arguments[0] if call.generic_arguments else ""
+                plugin_type = _plugin_type(call, content)
                 plugin_name = _plugin_name(
                     call,
                     constants,
                 )
-                display = plugin_name or plugin_type or call.assigned_to or f"plugin_{call.line}"
+                display = plugin_name or plugin_type or call.assigned_to
+
+                if not display:
+                    # An unnamed plugin of unknown type says nothing its functions don't.
+                    continue
                 canonical = canonicalize_text(f"semantic_kernel:plugin:{display}")
                 detections.append(
                     ComponentDetection(
@@ -337,6 +375,17 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
                 continue
 
             canonical = canonicalize_text(f"semantic_kernel:function:{method.name}")
+            metadata: dict[str, Any] = {
+                "framework": ("semantic_kernel"),
+                "registration": ("KernelFunctionAttribute"),
+                "containing_type": (method.containing_type),
+                "language": "csharp",
+            }
+
+            if _writes_state(method.name, method_source(content, method)):
+                metadata["privilege_scope"] = "db_write"
+                metadata["high_privilege"] = True
+
             detections.append(
                 ComponentDetection(
                     component_type=(ComponentType.TOOL),
@@ -345,12 +394,7 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
                     adapter_name=self.name,
                     priority=self.priority,
                     confidence=0.93,
-                    metadata={
-                        "framework": ("semantic_kernel"),
-                        "registration": ("KernelFunctionAttribute"),
-                        "containing_type": (method.containing_type),
-                        "language": "csharp",
-                    },
+                    metadata=metadata,
                     file_path=file_path,
                     line=method.line,
                     snippet=method.signature,
@@ -366,6 +410,16 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
                     ],
                 )
             )
+
+        detections.extend(
+            self._agents(
+                content,
+                file_path,
+                result,
+                constants,
+                root,
+            )
+        )
 
         for literal in result.string_literals:
             assigned = (literal.assigned_to or "").lower()
@@ -420,6 +474,314 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
             )
 
         return _dedupe(detections)
+
+    def set_csharp_kernel_plugins(
+        self,
+        plugins: dict[str, tuple[tuple[str, ...], tuple[str, ...]]],
+    ) -> None:
+        """Receive the cross-file plugin index (type -> base types, kernel functions)."""
+        self._kernel_plugins = dict(plugins)
+
+    def _plugin_functions(self, plugin_type: str) -> list[str]:
+        """Return kernel functions declared on *plugin_type* or inherited from its bases."""
+        plugins = self._kernel_plugins
+        functions: list[str] = []
+        pending = [plugin_type]
+        seen: set[str] = set()
+
+        while pending:
+            current = pending.pop()
+
+            if current in seen or current not in plugins:
+                continue
+
+            seen.add(current)
+            bases, names = plugins[current]
+            functions.extend(name for name in names if name not in functions)
+            pending.extend(bases)
+
+        return functions
+
+    def _agents(
+        self,
+        content: str,
+        file_path: str,
+        result: CSharpParseResult,
+        constants: dict[str, str],
+        root: str,
+    ) -> list[ComponentDetection]:
+        """Emit one AGENT per ``new ChatCompletionAgent { Name = ... }`` agent name.
+
+        A name produced by a helper method that switches over an enum (``Name =
+        GetAgentName(agentType)``) yields one agent per case; the same case labels
+        in the ``Kernel = ...`` helper map each agent to the plugins it registers.
+        """
+        detections: list[ComponentDetection] = []
+        masked = mask_non_code(content)
+        methods = {method.name: method for method in result.method_declarations}
+        group_chat = "AgentGroupChat" if re.search(r"\bnew\s+AgentGroupChat\b", masked) else None
+
+        for match in _AGENT_INITIALIZER_RE.finditer(masked):
+            close = _closing_brace(masked, match.end() - 1)
+
+            if close is None:
+                continue
+
+            properties: dict[str, str] = {}
+
+            for part in split_top_level(content[match.end() : close]):
+                name, _, value = part.partition("=")
+
+                if value and name.strip().isidentifier():
+                    properties[name.strip()] = value.strip()
+
+            names = _switch_values(
+                properties.get("Name", ""),
+                content,
+                methods,
+                constants,
+                _string_cases,
+            )
+            plugins = _switch_values(
+                properties.get("Kernel", ""),
+                content,
+                methods,
+                constants,
+                _plugin_cases,
+            )
+            line = masked.count("\n", 0, match.start()) + 1
+
+            for label, agent_name in names.items():
+                plugin_types = plugins.get(label) or plugins.get("") or []
+                canonical = canonicalize_text(f"semantic_kernel:agent:{agent_name}")
+                relationships = [
+                    RelationshipHint(
+                        source_canonical=root,
+                        source_type=(ComponentType.FRAMEWORK),
+                        target_canonical=(canonical),
+                        target_type=(ComponentType.AGENT),
+                        relationship_type=("USES"),
+                    )
+                ]
+
+                for plugin_type in plugin_types:
+                    targets = [canonicalize_text(f"semantic_kernel:plugin:{plugin_type}")]
+                    targets.extend(
+                        canonicalize_text(f"semantic_kernel:function:{function}")
+                        for function in self._plugin_functions(plugin_type)
+                    )
+                    relationships.extend(
+                        RelationshipHint(
+                            source_canonical=canonical,
+                            source_type=(ComponentType.AGENT),
+                            target_canonical=target,
+                            target_type=(ComponentType.TOOL),
+                            relationship_type="CALLS",
+                        )
+                        for target in targets
+                    )
+
+                metadata: dict[str, Any] = {
+                    "framework": ("semantic_kernel"),
+                    "agent_class": "ChatCompletionAgent",
+                    "plugins": list(plugin_types),
+                    "language": "csharp",
+                }
+
+                if group_chat:
+                    metadata["orchestration"] = group_chat
+
+                detections.append(
+                    ComponentDetection(
+                        component_type=(ComponentType.AGENT),
+                        canonical_name=canonical,
+                        display_name=agent_name,
+                        adapter_name=self.name,
+                        priority=self.priority,
+                        confidence=0.90,
+                        metadata=metadata,
+                        file_path=file_path,
+                        line=line,
+                        snippet=" ".join(content[match.start() : close + 1].split())[:240],
+                        evidence_kind=("ast_instantiation"),
+                        relationships=relationships,
+                    )
+                )
+
+        return detections
+
+
+def _closing_brace(masked: str, opening: int) -> int | None:
+    depth = 0
+
+    for index in range(opening, len(masked)):
+        if masked[index] == "{":
+            depth += 1
+        elif masked[index] == "}":
+            depth -= 1
+
+            if depth == 0:
+                return index
+
+    return None
+
+
+def _switch_sections(body: str) -> dict[str, str]:
+    """Split a method body into ``case`` sections; the whole body when there are none."""
+    masked = mask_non_code(body)
+    labels = list(_CASE_LABEL_RE.finditer(masked))
+
+    if not labels:
+        return {"": body}
+
+    sections: dict[str, str] = {}
+
+    for index, label in enumerate(labels):
+        end = labels[index + 1].start() if index + 1 < len(labels) else len(body)
+        default = re.search(r"\bdefault\s*:", masked[label.end() : end])
+
+        if default is not None:
+            end = label.end() + default.start()
+
+        sections[label.group("label").split(".")[-1]] = body[label.end() : end]
+
+    return sections
+
+
+def _switch_values(
+    expression: str,
+    content: str,
+    methods: dict[str, Any],
+    constants: dict[str, str],
+    extract: Any,
+) -> dict[str, Any]:
+    """Resolve a property value directly, or per case label of a same-file helper method."""
+    direct = extract(expression, content, constants)
+
+    if direct:
+        return {"": direct}
+
+    helper = re.match(r"\s*(?:this\.)?(?P<name>[A-Za-z_]\w*)\s*\(", expression)
+
+    if helper is None or helper.group("name") not in methods:
+        return {}
+
+    body = method_source(content, methods[helper.group("name")])
+    values: dict[str, Any] = {}
+
+    for label, section in _switch_sections(body).items():
+        value = extract(section, content, constants)
+
+        if value:
+            values[label] = value
+
+    return values
+
+
+def _string_cases(text: str, content: str, constants: dict[str, str]) -> str:
+    """Return the agent name a ``case`` section (or a plain expression) assigns."""
+    stripped = text.strip()
+    resolved = resolve_expression(stripped, constants)
+
+    if resolved and resolved != stripped and _AGENT_NAME_RE.fullmatch(resolved):
+        return resolved
+
+    masked = mask_non_code(text)
+
+    for assignment in re.finditer(r"(?:[^=!<>]=(?!=)|\breturn\b)", masked):
+        literal = re.match(r'\s*"(?P<value>[^"\\]*)"', text[assignment.end() :])
+
+        if literal is not None and _AGENT_NAME_RE.fullmatch(literal.group("value")):
+            return literal.group("value")
+
+    return ""
+
+
+def _plugin_cases(text: str, content: str, constants: dict[str, str]) -> list[str]:
+    """Return plugin types registered in a ``case`` section."""
+    return [
+        plugin_type
+        for call in find_calls(text, _PLUGIN_CALLS)
+        if (plugin_type := _plugin_type(call, content))
+    ]
+
+
+def _plugin_type(call: Any, content: str) -> str:
+    """Return the plugin class: the generic argument, or the ``new T(...)`` behind the object."""
+    if call.generic_arguments:
+        return str(call.generic_arguments[0]).split(".")[-1]
+
+    if not call.name.endswith("FromObject") or not call.positional_arguments:
+        return ""
+
+    argument = call.positional_arguments[0].strip()
+    inline = re.match(r"new\s+(?P<type>[A-Za-z_][\w.]*)\s*\(", argument)
+
+    if inline is not None:
+        return inline.group("type").split(".")[-1]
+
+    if not argument.isidentifier():
+        return ""
+
+    declared = re.search(
+        rf"(?:\b{re.escape(argument)}\s*=\s*new\s+(?P<type>[A-Za-z_][\w.]*)\s*\("
+        rf"|\b(?P<declared>[A-Za-z_][\w.]*)\s+{re.escape(argument)}\s*=\s*new\s*\()",
+        mask_non_code(content),
+    )
+
+    if declared is None:
+        return ""
+
+    return (declared.group("type") or declared.group("declared")).split(".")[-1]
+
+
+def _writes_state(name: str, body: str) -> bool:
+    """Return whether a kernel function's name or awaited service calls write state."""
+    words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name).lower().split()
+
+    if words and words[0] in _WRITE_VERBS:
+        return True
+
+    for call in find_calls(body):
+        call_words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", call.name).lower().split()
+
+        # Bare Add/Remove are collection operations, not writes.
+        if len(call_words) > 1 and call_words[0] in _WRITE_VERBS:
+            return True
+
+    return False
+
+
+def collect_kernel_plugins(
+    content: str,
+    file_path: str = "",
+) -> dict[str, tuple[tuple[str, ...], tuple[str, ...]]]:
+    """Return ``type -> (base types, kernel function names)`` for one C# file."""
+    if "class" not in content:
+        return {}
+
+    result = parse_csharp(content, file_path)
+    functions: dict[str, list[str]] = {}
+
+    for method in result.method_declarations:
+        if method.containing_type and any(
+            attribute.split("(", 1)[0].split(".")[-1].removesuffix("Attribute") == "KernelFunction"
+            for attribute in method.attributes
+        ):
+            functions.setdefault(method.containing_type, []).append(method.name)
+
+    index: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
+
+    for declaration in result.type_declarations:
+        bases = tuple(
+            base.split("<", 1)[0].split(".")[-1].strip() for base in declaration.base_types
+        )
+        names = tuple(functions.get(declaration.name, ()))
+
+        if bases or names:
+            index[declaration.name] = (bases, names)
+
+    return index
 
 
 def _plugin_name(
@@ -478,4 +840,4 @@ def _dedupe(
     return result
 
 
-__all__ = ["CSharpSemanticKernelAdapter"]
+__all__ = ["CSharpSemanticKernelAdapter", "collect_kernel_plugins"]

@@ -59,7 +59,7 @@ from ..adapters.base import (
 )
 from ..adapters.cloud_workloads import ServiceDescriptorAdapter
 from ..adapters.compose import ComposeAdapter, is_compose_file
-from ..adapters.csharp._csharp_base import CSharpFrameworkAdapter
+from ..adapters.csharp._csharp_base import WEB_SDK_IMPLICIT_USINGS, CSharpFrameworkAdapter
 from ..adapters.data_classification import DataClassificationSQLAdapter
 from ..adapters.dockerfile import DockerfileAdapter
 from ..adapters.go._go_base import GoFrameworkAdapter
@@ -118,6 +118,7 @@ from ..core.application_summary import (
     _instrumentation_evidence_for_file,
     build_scan_summary,
 )
+from ..core.csharp_parser import CSharpUsingDirective
 from ..core.ts_parser import TSParseResult
 from ..core.ts_parser import parse_typescript as _parse_ts_impl
 from ..deps import DependencyScanner
@@ -1613,8 +1614,56 @@ class AiSbomExtractor:
         finally:
             _python_sources.clear()
 
+        # C# pre-pass: route groups handed to endpoint methods in other files
+        # (``ChatEndpoints.Map(group)``, ``group.MapChatAdapter()``), Semantic
+        # Kernel plugin classes (base types + [KernelFunction] names) so agents
+        # can link to inherited tools, and the source directories of Web SDK
+        # projects that use implicit global usings.
+        _csharp_route_group_bindings: dict[str, Any] = {}
+        _csharp_kernel_plugins: dict[str, Any] = {}
+        _csharp_implicit_dirs: set[str] = set()
+        try:
+            from nuguard.sbom.adapters.csharp._csharp_base import (  # noqa: PLC0415
+                web_sdk_implicit_usings as _web_sdk_implicit_usings,
+            )
+            from nuguard.sbom.adapters.csharp.aspnet_core import (  # noqa: PLC0415
+                collect_route_group_bindings as _collect_cs_route_groups,
+            )
+            from nuguard.sbom.adapters.csharp.semantic_kernel import (  # noqa: PLC0415
+                collect_kernel_plugins as _collect_cs_kernel_plugins,
+            )
+
+            _csproj_dirs: dict[Path, bool] = {}
+            for _cs_path, _ in self._iter_files(root, config):
+                if _cs_path.suffix.lower() not in _CSHARP_EXTENSIONS:
+                    continue
+                for _cs_dir in _cs_path.parents:
+                    if _cs_dir not in _csproj_dirs:
+                        _csproj_dirs[_cs_dir] = any(
+                            _web_sdk_implicit_usings(
+                                _proj.read_text(encoding="utf-8-sig", errors="ignore")
+                            )
+                            for _proj in _cs_dir.glob("*.csproj")
+                        )
+                    if _csproj_dirs[_cs_dir]:
+                        _csharp_implicit_dirs.add(str(_cs_dir.relative_to(root)))
+                        break
+                    if _cs_dir == root:
+                        break
+                try:
+                    _cs_src = _cs_path.read_text(encoding="utf-8-sig", errors="ignore")
+                except Exception:
+                    continue
+                _cs_rel = str(_cs_path.relative_to(root))
+                _csharp_route_group_bindings.update(_collect_cs_route_groups(_cs_src, _cs_rel))
+                _csharp_kernel_plugins.update(_collect_cs_kernel_plugins(_cs_src, _cs_rel))
+        except Exception as _cs_pre_exc:
+            _log.debug("C# route-group/plugin pre-pass failed (non-fatal): %s", _cs_pre_exc)
+
         # Inject the global indices into adapters that support them.
         _global_index_setters = {
+            "set_csharp_route_group_bindings": (_csharp_route_group_bindings,),
+            "set_csharp_kernel_plugins": (_csharp_kernel_plugins,),
             "set_global_model_schemas": (_global_model_schemas,),
             "set_global_router_prefixes": (_global_router_prefixes,),
             "set_global_route_prefix": (
@@ -1890,6 +1939,16 @@ class AiSbomExtractor:
             # Phase 1c-csharp: C# AST-aware framework adapters
             elif is_csharp:
                 csharp_result = self._parse_csharp(content, rel_path)
+                if csharp_result is not None and any(
+                    _dir == "." or rel_path.startswith(_dir.rstrip("/") + "/")
+                    for _dir in _csharp_implicit_dirs
+                ):
+                    _explicit_cs = {d.namespace for d in csharp_result.using_directives}
+                    csharp_result.using_directives.extend(
+                        CSharpUsingDirective(namespace=_ns, is_global=True)
+                        for _ns in WEB_SDK_IMPLICIT_USINGS
+                        if _ns not in _explicit_cs
+                    )
                 if csharp_result is not None:
                     imported_namespaces_cs = {
                         directive.namespace for directive in csharp_result.using_directives

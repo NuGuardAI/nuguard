@@ -19,7 +19,7 @@ from ...normalization import canonicalize_text
 from ...types import ComponentType
 from ..base import ComponentDetection
 from ._csharp_base import CSharpFrameworkAdapter
-from ._source import find_calls, mask_non_code
+from ._source import find_calls, mask_non_code, statement_tail
 
 # ---------------------------------------------------------------------------
 # Namespace → (provider, display_name)
@@ -63,6 +63,15 @@ _CLASS_MAP: dict[str, tuple[str, str]] = {
     "JwtSecurityToken": ("jwt_system", "jwt"),
     "JwtSecurityTokenHandler": ("jwt_system", "jwt"),
 }
+
+# auth_kind -> SBOM auth_type. JWT nodes share the ``auth:jwt`` canonical name of
+# the ``auth_jwt`` regex fallback so both evidence kinds merge into one node.
+_AUTH_TYPES = {"jwt": "jwt", "oauth": "oauth2", "oidc": "oauth2"}
+_SCHEME_CHAIN_RE = re.compile(
+    r"\s*\.\s*(?:"
+    + "|".join(name for name, (_, kind) in _REGISTRATION_CALLS.items() if kind != "middleware")
+    + r")\s*\("
+)
 
 # Attribute patterns for structural authorization detection
 _AUTHORIZE_ATTR_RE = re.compile(
@@ -123,21 +132,21 @@ class CSharpAuthAdapter(CSharpFrameworkAdapter):
                 ):
                     continue
 
-                canonical = canonicalize_text(f"auth:{provider}")
+                # AddAuthentication(...).AddJwtBearer(...) is reported once, as the scheme.
+                if call.name == "AddAuthentication" and _SCHEME_CHAIN_RE.match(
+                    mask_non_code(statement_tail(content, call.end))
+                ):
+                    continue
+
                 detections.append(
                     ComponentDetection(
                         component_type=ComponentType.AUTH,
-                        canonical_name=canonical,
-                        display_name=call.name,
+                        canonical_name=_canonical(provider, auth_kind),
+                        display_name=_provider_display(provider, call.name),
                         adapter_name=self.name,
                         priority=self.priority,
                         confidence=0.90,
-                        metadata={
-                            "auth_kind": auth_kind,
-                            "provider": provider,
-                            "framework": "csharp_auth",
-                            "language": "csharp",
-                        },
+                        metadata=_metadata(provider, auth_kind),
                         file_path=file_path,
                         line=call.line,
                         snippet=call.snippet,
@@ -154,21 +163,15 @@ class CSharpAuthAdapter(CSharpFrameworkAdapter):
                 if provider not in imported_providers:
                     continue
 
-                canonical = canonicalize_text(f"auth:{provider}")
                 detections.append(
                     ComponentDetection(
                         component_type=ComponentType.AUTH,
-                        canonical_name=canonical,
-                        display_name=call.name,
+                        canonical_name=_canonical(provider, auth_kind),
+                        display_name=_provider_display(provider, call.name),
                         adapter_name=self.name,
                         priority=self.priority,
                         confidence=0.85,
-                        metadata={
-                            "auth_kind": auth_kind,
-                            "provider": provider,
-                            "framework": "csharp_auth",
-                            "language": "csharp",
-                        },
+                        metadata=_metadata(provider, auth_kind),
                         file_path=file_path,
                         line=call.line,
                         snippet=call.snippet,
@@ -206,12 +209,11 @@ class CSharpAuthAdapter(CSharpFrameworkAdapter):
 
         # ---- Import-only fallback (low confidence) ----
         for provider in imported_providers:
-            if provider in seen_providers:
+            # MSAL acquires tokens for outbound calls; an import alone says nothing
+            # about how the app authenticates its own callers.
+            if provider in seen_providers or provider == "msal":
                 continue
-            display = next(
-                (d for _, (p, d) in _NAMESPACE_MAP.items() if p == provider),
-                provider,
-            )
+            display = _provider_display(provider, provider)
             canonical = canonicalize_text(f"auth:{provider}")
             detections.append(
                 ComponentDetection(
@@ -235,6 +237,28 @@ class CSharpAuthAdapter(CSharpFrameworkAdapter):
             )
 
         return _dedupe(detections)
+
+
+def _provider_display(provider: str, default: str) -> str:
+    return next((d for _, (p, d) in _NAMESPACE_MAP.items() if p == provider), default)
+
+
+def _canonical(provider: str, auth_kind: str) -> str:
+    return "auth:jwt" if auth_kind == "jwt" else canonicalize_text(f"auth:{provider}")
+
+
+def _metadata(provider: str, auth_kind: str) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "auth_kind": auth_kind,
+        "provider": provider,
+        "framework": "csharp_auth",
+        "language": "csharp",
+    }
+
+    if auth_kind in _AUTH_TYPES:
+        metadata["auth_type"] = _AUTH_TYPES[auth_kind]
+
+    return metadata
 
 
 def _provider_namespace(provider: str) -> str:

@@ -90,3 +90,35 @@ class TestToolDetection:
         tools = nodes(doc, ComponentType.TOOL)
         names = {n.name for n in tools}
         assert "GetWeather" in names or "Weather" in names, f"tools found: {names}"
+
+
+def test_web_sdk_implicit_usings_and_cross_file_route_groups(tmp_path) -> None:
+    """Program.cs in a Web SDK project needs no ``using Microsoft.AspNetCore``; the
+    route group it hands to an endpoint class in another file sets that class's
+    prefix and authorization."""
+    project = tmp_path / "src" / "Api"
+    project.mkdir(parents=True)
+    (project / "Api.csproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup>'
+        "<ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>"
+    )
+    (project / "Program.cs").write_text(
+        "var app = WebApplication.CreateBuilder(args).Build();\n"
+        'app.MapPost("/auth/token", () => Results.Ok()).AllowAnonymous();\n'
+        'var api = app.MapGroup("/v1").RequireAuthorization();\n'
+        "api.MapChat();\n"
+    )
+    (project / "ChatEndpoints.cs").write_text(
+        "public static class ChatEndpoints\n{\n"
+        "    public static void MapChat(this IEndpointRouteBuilder app)\n    {\n"
+        '        app.MapPost("/chat", (ChatRequest request) => Results.Ok());\n'
+        "    }\n}\n"
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, CS_ONLY)
+    endpoints = {
+        n.metadata.extras.get("endpoint"): n.metadata.auth_required
+        for n in nodes(doc, ComponentType.API_ENDPOINT)
+    }
+
+    assert endpoints == {"/auth/token": False, "/v1/chat": True}

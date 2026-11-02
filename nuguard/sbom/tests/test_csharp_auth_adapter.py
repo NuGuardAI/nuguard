@@ -197,3 +197,39 @@ def test_import_only_produces_lower_confidence_node() -> None:
     assert len(auth) == 1
     assert auth[0].confidence < 0.85
     assert auth[0].metadata["auth_kind"] == "import"
+
+
+def test_add_authentication_chained_jwt_bearer_is_one_jwt_node() -> None:
+    source = """using Microsoft.AspNetCore.Authentication.JwtBearer;
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.MapInboundClaims = false;
+    });
+"""
+    auth = _by_type(_extract(CSharpAuthAdapter(), source), ComponentType.AUTH)
+
+    assert [d.canonical_name for d in auth] == ["auth:jwt"]
+    assert auth[0].metadata["auth_type"] == "jwt"
+    assert auth[0].display_name == "JWT Bearer Auth"
+
+
+def test_msal_import_alone_is_not_inbound_auth() -> None:
+    source = """using Microsoft.Identity.Client;
+public class CosmosDbService { }
+"""
+
+    assert _by_type(_extract(CSharpAuthAdapter(), source), ComponentType.AUTH) == []
+
+
+def test_generic_auth_regex_ignores_namespace_segments() -> None:
+    from nuguard.sbom.adapters.registry import default_registry
+
+    generic = next(a for a in default_registry() if a.name == "auth_generic")
+
+    assert (
+        generic.detect("resource r 'Microsoft.Authorization/roleAssignments@2022-04-01' = {")
+        is None
+    )
+    assert generic.detect("using Microsoft.AspNetCore.Authentication.JwtBearer;") is None
+    assert generic.detect("// requires authentication for every route") is not None
