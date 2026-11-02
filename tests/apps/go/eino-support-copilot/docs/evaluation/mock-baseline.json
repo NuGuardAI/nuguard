@@ -1,0 +1,905 @@
+{
+  "status": "completed",
+  "dataset_name": "support-golden",
+  "version": "1.0.0",
+  "dataset_hash": "58ec6972717f00a2a7a0975973f038928b4022fe10572ff63c77178083e102e4",
+  "config": {
+    "commit_sha": "c3d496c",
+    "mode": "mock",
+    "timestamp": "2026-08-13T10:15:33.180721Z"
+  },
+  "metrics": {
+    "citation_precision": {
+      "numerator": 24,
+      "denominator": 24,
+      "value": 1,
+      "unit": "ratio"
+    },
+    "evidence_grounded_answer_rate": {
+      "numerator": 20,
+      "denominator": 20,
+      "value": 1,
+      "unit": "ratio"
+    },
+    "intent_accuracy": {
+      "numerator": 24,
+      "denominator": 24,
+      "value": 1,
+      "unit": "ratio"
+    },
+    "schema_pass_rate": {
+      "numerator": 24,
+      "denominator": 24,
+      "value": 1,
+      "unit": "ratio"
+    },
+    "tool_accuracy": {
+      "numerator": 24,
+      "denominator": 24,
+      "value": 1,
+      "unit": "ratio"
+    },
+    "total_latency_ms": {
+      "numerator": 288,
+      "denominator": 24,
+      "value": 12,
+      "unit": "ms"
+    },
+    "ttft_ms": {
+      "numerator": 192,
+      "denominator": 24,
+      "value": 8,
+      "unit": "ms"
+    },
+    "unsupported_refusal_rate": {
+      "numerator": 4,
+      "denominator": 4,
+      "value": 1,
+      "unit": "ratio"
+    }
+  },
+  "results": [
+    {
+      "case_id": "subscription-01",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.subscription_activation",
+        "priority": "P1",
+        "tools": [
+          {
+            "name": "get_payment_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          },
+          {
+            "name": "get_account_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          },
+          {
+            "name": "get_service_status",
+            "arguments": {
+              "service": "subscription-sync"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Subscription activation guide",
+            "locator": "Activation timing"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": true,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "subscription-02",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.subscription_activation",
+        "priority": "P1",
+        "tools": [
+          {
+            "name": "get_payment_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          },
+          {
+            "name": "get_account_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Subscription activation guide",
+            "locator": "Activation timing"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": true,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "subscription-03",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.subscription_activation",
+        "priority": "P1",
+        "tools": [
+          {
+            "name": "get_account_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          },
+          {
+            "name": "get_service_status",
+            "arguments": {
+              "service": "subscription-sync"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Subscription activation guide",
+            "locator": "Synchronization delays"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": true,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "subscription-04",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.subscription_activation",
+        "priority": "P2",
+        "tools": [
+          {
+            "name": "get_account_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Subscription activation guide",
+            "locator": "Status meanings"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "payment-01",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.payment_status",
+        "priority": "P2",
+        "tools": [
+          {
+            "name": "get_payment_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Payment status guide",
+            "locator": "Paid status"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "payment-02",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.payment_status",
+        "priority": "P2",
+        "tools": [
+          {
+            "name": "get_payment_status",
+            "arguments": {
+              "account_id": "acct_demo_past_due"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Payment status guide",
+            "locator": "Failed payments"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "payment-03",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.payment_status",
+        "priority": "P3",
+        "tools": [
+          {
+            "name": "get_payment_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Payment status guide",
+            "locator": "Payment details"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "payment-04",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.payment_status",
+        "priority": "P2",
+        "tools": [
+          {
+            "name": "get_payment_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Payment status guide",
+            "locator": "Subscription links"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "members-01",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "account.member_access",
+        "priority": "P2",
+        "tools": [
+          {
+            "name": "get_account_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Member access guide",
+            "locator": "Active accounts"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "members-02",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "account.member_access",
+        "priority": "P2",
+        "tools": [
+          {
+            "name": "get_account_status",
+            "arguments": {
+              "account_id": "acct_demo_past_due"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Member access guide",
+            "locator": "Past-due restrictions"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "members-03",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "account.member_access",
+        "priority": "P2",
+        "tools": [
+          {
+            "name": "get_account_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Member access guide",
+            "locator": "Subscription processing"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "members-04",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "account.member_access",
+        "priority": "P3",
+        "tools": [
+          {
+            "name": "get_account_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Member access guide",
+            "locator": "Pre-invite checks"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "invoice-01",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.invoice",
+        "priority": "P3",
+        "tools": [
+          {
+            "name": "get_payment_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Invoice guide",
+            "locator": "Paid transactions"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "invoice-02",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.invoice",
+        "priority": "P3",
+        "tools": [
+          {
+            "name": "get_payment_status",
+            "arguments": {
+              "account_id": "acct_demo_past_due"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Invoice guide",
+            "locator": "Failed payments"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "invoice-03",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.invoice",
+        "priority": "P3",
+        "tools": [
+          {
+            "name": "get_payment_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Invoice guide",
+            "locator": "Currency"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "invoice-04",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "billing.invoice",
+        "priority": "P2",
+        "tools": [
+          {
+            "name": "get_payment_status",
+            "arguments": {
+              "account_id": "acct_demo_pro"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Invoice guide",
+            "locator": "Verification"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "service-01",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "system.service_status",
+        "priority": "P1",
+        "tools": [
+          {
+            "name": "get_service_status",
+            "arguments": {
+              "service": "subscription-sync"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Service status guide",
+            "locator": "Degraded services"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": true,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "service-02",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "system.service_status",
+        "priority": "P2",
+        "tools": [
+          {
+            "name": "get_service_status",
+            "arguments": {
+              "service": "checkout"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Service status guide",
+            "locator": "Operational services"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "service-03",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "system.service_status",
+        "priority": "P1",
+        "tools": [
+          {
+            "name": "get_service_status",
+            "arguments": {
+              "service": "subscription-sync"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Service status guide",
+            "locator": "Customer impact"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": true,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "service-04",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "system.service_status",
+        "priority": "P2",
+        "tools": [
+          {
+            "name": "get_service_status",
+            "arguments": {
+              "service": "subscription-sync"
+            }
+          }
+        ],
+        "citations": [
+          {
+            "title": "Service status guide",
+            "locator": "Incident summaries"
+          }
+        ],
+        "answer": "Generated fixture answer grounded in the required evidence.",
+        "requires_review": false,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "unsupported-01",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "support.unsupported",
+        "priority": "P0",
+        "tools": [],
+        "citations": [],
+        "answer": "The generated evidence is insufficient; a human review is required.",
+        "requires_review": true,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "unsupported-02",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "support.unsupported",
+        "priority": "P0",
+        "tools": [],
+        "citations": [],
+        "answer": "The generated evidence is insufficient; a human review is required.",
+        "requires_review": true,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "unsupported-03",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "support.unsupported",
+        "priority": "P1",
+        "tools": [],
+        "citations": [],
+        "answer": "The generated evidence is insufficient; a human review is required.",
+        "requires_review": true,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    },
+    {
+      "case_id": "unsupported-04",
+      "passed": true,
+      "scores": {
+        "citations": 1,
+        "intent": 1,
+        "priority": 1,
+        "review_gate": 1,
+        "schema": 1,
+        "tools": 1
+      },
+      "actual": {
+        "intent": "support.unsupported",
+        "priority": "P2",
+        "tools": [],
+        "citations": [],
+        "answer": "The generated evidence is insufficient; a human review is required.",
+        "requires_review": true,
+        "schema_pass": true,
+        "ttft_ms": 8,
+        "total_latency_ms": 12
+      },
+      "latency_ms": 12
+    }
+  ],
+  "completed": 24,
+  "total": 24
+}

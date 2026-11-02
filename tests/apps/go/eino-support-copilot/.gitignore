@@ -1,0 +1,14 @@
+.worktrees/
+.superpowers/
+work/
+outputs/
+.env
+.env.local
+node_modules/
+.next/
+coverage/
+playwright-report/
+test-results/
+.data/
+.volumes/
+.cache/
