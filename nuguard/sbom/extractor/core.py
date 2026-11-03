@@ -1620,6 +1620,7 @@ class AiSbomExtractor:
         # can link to inherited tools, and the source directories of Web SDK
         # projects that use implicit global usings.
         _csharp_route_group_bindings: dict[str, Any] = {}
+        _csharp_ambiguous_bindings: set[str] = set()
         _csharp_kernel_plugins: dict[str, Any] = {}
         _csharp_implicit_dirs: set[str] = set()
         try:
@@ -1665,7 +1666,13 @@ class AiSbomExtractor:
                 except Exception:
                     continue
                 _cs_rel = str(_cs_path.relative_to(root))
-                _csharp_route_group_bindings.update(_collect_cs_route_groups(_cs_src, _cs_rel))
+                for _rg_key, _rg_scope in _collect_cs_route_groups(_cs_src, _cs_rel).items():
+                    if _rg_key in _csharp_ambiguous_bindings:
+                        continue
+                    _rg_prev = _csharp_route_group_bindings.setdefault(_rg_key, _rg_scope)
+                    if _rg_prev != _rg_scope and "." not in _rg_key:
+                        _csharp_ambiguous_bindings.add(_rg_key)
+                        del _csharp_route_group_bindings[_rg_key]
                 for _kp_type, (_kp_bases, _kp_funcs) in _collect_cs_kernel_plugins(
                     _cs_src, _cs_rel
                 ).items():

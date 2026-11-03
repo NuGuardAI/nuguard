@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from nuguard.sbom import AiSbomConfig, AiSbomExtractor
 from nuguard.sbom.adapters.csharp.aspnet_core import (
     CSharpAspNetCoreAdapter,
     collect_route_group_bindings,
@@ -86,4 +89,73 @@ app.MapGet("/y", [ProducesResponseType(200), AllowAnonymous] () => Results.Ok())
     assert _endpoint_auth(CSharpAspNetCoreAdapter(), source, "Program.cs") == {
         "GET /x": True,
         "GET /y": False,
+    }
+
+
+def test_cross_file_bindings_keep_qualified_and_drop_ambiguous_bare(tmp_path: Path) -> None:
+    project = tmp_path / "api"
+    project.mkdir()
+    (project / "Api.csproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk.Web"></Project>\n', encoding="utf-8"
+    )
+    (project / "Program.cs").write_text(
+        """using Microsoft.AspNetCore.Builder;
+var app = WebApplication.CreateBuilder(args).Build();
+AdminRegistration.Register(app);
+OrdersRegistration.Register(app);
+app.Run();
+""",
+        encoding="utf-8",
+    )
+    for name, prefix, auth in (
+        ("Admin", "/admin", ".RequireAuthorization()"),
+        ("Orders", "/orders", ""),
+    ):
+        (project / f"{name}Registration.cs").write_text(
+            f"""using Microsoft.AspNetCore.Builder;
+public static class {name}Registration
+{{
+    public static void Register(WebApplication app)
+    {{
+        var group = app.MapGroup("{prefix}"){auth};
+        {name}Endpoints.Map(group);
+        group.MapExtras();
+    }}
+}}
+""",
+            encoding="utf-8",
+        )
+        (project / f"{name}.cs").write_text(
+            f"""using Microsoft.AspNetCore.Builder;
+public static class {name}Endpoints
+{{
+    public static void Map(IEndpointRouteBuilder app)
+    {{
+        app.MapGet("/{name.lower()}-list", () => Results.Ok());
+    }}
+}}
+public static class {name}Extensions
+{{
+    public static void MapExtras(this RouteGroupBuilder group)
+    {{
+        group.MapGet("/{name.lower()}-extra", () => Results.Ok());
+    }}
+}}
+""",
+            encoding="utf-8",
+        )
+
+    doc = AiSbomExtractor().extract_from_path(project, AiSbomConfig(enable_llm=False))
+    endpoints = {
+        node.metadata.extras["endpoint"]: node.metadata.extras["auth_required"]
+        for node in doc.nodes
+        if node.component_type == ComponentType.API_ENDPOINT
+        and node.metadata.extras.get("framework") == "aspnet_core"
+    }
+
+    assert endpoints == {
+        "/orders/orders-list": False,
+        "/admin/admin-list": True,
+        "/orders-extra": False,
+        "/admin-extra": False,
     }
