@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from nuguard.sbom.adapters.base import ComponentDetection
 from nuguard.sbom.adapters.csharp import CSharpPromptAdapter
 from nuguard.sbom.core.csharp_parser import parse_csharp
@@ -255,6 +257,20 @@ def test_kv_secret_with_spaces_fully_redacted() -> None:
     assert "S3CRET" not in content
     assert "pass phrase" not in content
     assert "Database=bank" in content
+
+
+@pytest.mark.parametrize(
+    "secret",
+    ['Password=pa\\"S3CRET pass;', "Password='pa'S3CRET;", 'token=\\"pa\\"S3CRET&x=1'],
+)
+def test_kv_secret_with_stray_quotes_fully_redacted(secret: str) -> None:
+    source = (
+        "class Agent\n{\n    const string SystemPrompt =\n"
+        f'        "You are a helpful assistant. Connect with {secret} Database=bank for lookups.";\n}}\n'
+    )
+    for p in _extract(CSharpPromptAdapter(), source):
+        assert "S3CRET" not in str(p.metadata)
+        assert "S3CRET" not in (p.snippet or "")
 
 
 def test_url_userinfo_missed_by_redaction_drops_literal() -> None:

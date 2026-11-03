@@ -101,7 +101,8 @@ _URL_USERINFO_RE = re.compile(
 _CREDENTIAL_KV_RE = re.compile(
     r"(?P<prefix>\b(?:password|pwd|psw|user\s*password|account\s*key|shared\s*access\s*key"
     r"|shared\s*access\s*signature|sig|access\s*token|api[\s_-]?key|client[\s_-]?secret"
-    r"|secret|token)\s*=\s*)(?:\"[^\"]*\"|'[^']*'|[^;&\r\n\"']+)?",
+    r"|secret|token)\s*=\s*)"
+    r"(?:(?:\"[^\"]*\"|'[^']*')(?=[ \t]*(?:[;&\r\n]|$))|[^;&\r\n]+)?",
     re.IGNORECASE,
 )
 
@@ -111,8 +112,9 @@ _REDACTED = "<redacted>"
 def _redact_credentials(value: str) -> str:
     """Replace credential values (URL userinfo, key=value secrets) with a marker.
 
-    A key=value secret runs to the next ``;``, ``&``, line end or quote, as a
-    driver splits it, so a value containing spaces is not partly kept.
+    A key=value secret runs to the next ``;``, ``&`` or line end, as a driver
+    splits it, so a value containing spaces or stray quotes is not partly
+    kept. A quoted value counts only when the closing quote ends the value.
     """
     if "://" in value:
         value = _URL_USERINFO_RE.sub(lambda m: f"{m.group('prefix')}{_REDACTED}@", value)
