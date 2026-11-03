@@ -1314,6 +1314,7 @@ class BehaviorRunner:
             "scores": tr.scores,
             "violations": tr.violations,
             "canary_hits": tr.canary_hits,
+            "tool_calls": tr.tool_calls,
             "gaps": tr.gaps,
             "deviations": tr.deviations,
             "agents_mentioned": tr.agents_mentioned,
@@ -2161,6 +2162,7 @@ class BehaviorRunner:
             v_dict = verdict.to_dict()
             v_dict["user_message"] = message or ""
             v_dict["agent_response"] = response or ""
+            v_dict["tool_calls"] = turn_record.tool_calls
             v_dict["effective_endpoint"] = scenario_endpoint
             v_dict["request_url"] = target_url + scenario_endpoint
             v_dict["target_component"] = getattr(scenario, "target_component", "") or ""
