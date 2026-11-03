@@ -22,7 +22,7 @@ adds JWT bearer login and a single-call `POST /chat` adapter.
 | Framework | ASP.NET Core (minimal APIs) | `Microsoft.NET.Sdk.Web`, `app.MapGet/MapPost/MapPut/MapDelete` in `ChatEndpoints.cs` |
 | Framework | Semantic Kernel (+ Agents.Core) | `Microsoft.SemanticKernel*` 1.47.0 packages, `Kernel.CreateBuilder()`, `ChatCompletionAgent`, `AgentGroupChat` |
 | Dependencies | NuGet: `Microsoft.SemanticKernel`, `.Core`, `.Agents.Core`, `.Connectors.AzureCosmosDBNoSQL`, `Microsoft.Azure.Cosmos`, `Azure.Identity`, `Microsoft.AspNetCore.Authentication.JwtBearer`, `Swashbuckle.AspNetCore`, `Newtonsoft.Json`, `Microsoft.ApplicationInsights.AspNetCore` | `MultiAgentCopilot.csproj` |
-| API endpoints | 15 upstream routes under `/tenant/{tenantId}/user/{userId}/...` (sessions CRUD, `.../completion`, `.../summarize-name`, `.../rate`, `.../completiondetails/{debuglogId}`, `.../accounts`, `.../accounts/{accountId}/transactions`), `GET /tenant/{tenantId}/servicerequests`, `PUT /offerdata`, `PUT /accountdata`, `PUT /userdata` | `ChatEndpoints.cs` |
+| API endpoints | 12 routes: 11 under `/tenant/{tenantId}/user/{userId}/...` (sessions CRUD, `.../completion`, `.../summarize-name`, `.../rate`, `.../completiondetails/{debuglogId}`, `.../accounts`, `.../accounts/{accountId}/transactions`) and `GET /tenant/{tenantId}/servicerequests`. The upstream `PUT /offerdata`, `/accountdata`, `/userdata` are removed in the fixture | `ChatEndpoints.cs` |
 | API endpoints (fixture) | `POST /auth/token` (anonymous), `POST /chat` (auth) | `Auth/DemoAuth.cs`, `Adapters/ChatAdapterEndpoints.cs` |
 | Agents | `Coordinator`, `CustomerSupport`, `Sales`, `Transactions` (`ChatCompletionAgent`, `FunctionChoiceBehavior.Auto()`), orchestrated by one `AgentGroupChat` | `Factories/AgentFactory.cs`, `Models/AgentTypes.cs` |
 | Orchestration | `KernelFunctionSelectionStrategy` and `KernelFunctionTerminationStrategy`, both LLM prompt functions with JSON-schema response format | `AgentFactory.GetAgentGroupChatSettings` |
@@ -53,7 +53,6 @@ adds JWT bearer login and a single-call `POST /chat` adapter.
 - `GetTransactionHistory`, `IsAccountRegisteredToUser` and `CheckPendingServiceRequests` scope by tenant only, so any account in the tenant is reachable.
 - No confirmation or human-in-the-loop step before a fund transfer is filed.
 - Service request annotations (user-written text) flow back into the agent context through `CheckPendingServiceRequests`: stored prompt injection path into an agent group with write tools.
-- `PUT /offerdata|accountdata|userdata` let any authenticated user upsert raw documents.
 - `completiondetails` exposes prompts and tool call arguments to the caller.
 
 ## Hypotheses for behavior and red-team (to be triaged as real or false positive)

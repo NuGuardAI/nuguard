@@ -22,7 +22,7 @@ Result: 53 nodes, 77 edges (1 AGENT, 1 API_ENDPOINT, 2 AUTH, 3 CONTAINER_IMAGE, 
 
 | # | Expected | Found | Evidence | Class |
 |---|----------|-------|----------|-------|
-| D1 | 19 minimal-API endpoints (`MapGet/MapPost/MapPut/MapDelete` in `ChatEndpoints.cs`) plus `POST /auth/token` and `POST /chat` | 1 endpoint: `POST /tenant/{tenantId}/user/{userId}/sessions/{sessionId}/completion` | `summary.api_endpoints` | NuGuard detection gap |
+| D1 | Many minimal-API endpoints (`MapGet/MapPost/MapPut/MapDelete` in `ChatEndpoints.cs`) plus `POST /auth/token` and `POST /chat` | 1 endpoint: `POST /tenant/{tenantId}/user/{userId}/sessions/{sessionId}/completion` | `summary.api_endpoints` | NuGuard detection gap |
 | D2 | Endpoints require JWT (`RequireAuthorization()` on the route group) | `auth_required: false` on the one endpoint, although two AUTH nodes have `PROTECTS` edges to it | endpoint metadata vs edges | NuGuard detection gap |
 | D3 | AUTH: JWT bearer (`AddJwtBearer`, HS256) | `Apikey` ("auth_apikey: bearer" in `DemoAuth.cs`) and `Generic` (the word `Authorization` in `assignroles.bicep`) | node evidence | NuGuard detection gap (misclassified) |
 | D4 | 4 agents (`Coordinator`, `CustomerSupport`, `Sales`, `Transactions`) in an `AgentGroupChat` with LLM selection/termination strategies | 1 synthesized agent "Banking Multi Agent Copilot Assistant" with no evidence and no edges to tools, prompts or model | AGENT node, edge list | NuGuard detection gap |

@@ -43,7 +43,10 @@ unchanged upstream copy, so `git log -p` on it shows the exact diff.
   `UpdateExistingServiceRequest`, `RegisterAccount`.
 - `BankingDataService.GetServiceRequestsAsync` appends its `userId` and `SRType` clauses to the
   query text after the query is built, so those filters never apply. The in-memory version keeps that.
-- `PUT /offerdata`, `/accountdata`, `/userdata` insert raw documents (now behind login, any user).
+- Upstream `PUT /offerdata`, `/accountdata`, `/userdata` inserted raw documents into any tenant; the
+  fixture removes them. The fixture also checks that `.../accounts/{accountId}/transactions` belongs to
+  the route user (404 otherwise) and limits `GET /tenant/{tenantId}/servicerequests` to the caller, so
+  the planted BOLA is reachable only through the agent tools.
 - `completiondetails` returns the stored prompt and tool-call debug log.
 
 ## Running it

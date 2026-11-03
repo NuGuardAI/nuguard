@@ -27,18 +27,30 @@ namespace MultiAgentCopilot.Adapters
                 var clientSession = string.IsNullOrEmpty(request.Session_Id) ? Guid.NewGuid().ToString() : request.Session_Id;
 
                 var key = (tenantId, userId, clientSession);
-                if (!Sessions.TryGetValue(key, out var sessionId))
+                List<Models.Chat.Message> messages;
+                try
                 {
-                    var session = await chatService.CreateNewChatSessionAsync(tenantId, userId);
-                    sessionId = Sessions.GetOrAdd(key, session.SessionId);
+                    if (!Sessions.TryGetValue(key, out var sessionId))
+                    {
+                        var session = await chatService.CreateNewChatSessionAsync(tenantId, userId);
+                        sessionId = Sessions.GetOrAdd(key, session.SessionId);
+                    }
+
+                    messages = await chatService.GetChatCompletionAsync(tenantId, userId, sessionId, request.Message);
+                }
+                catch (Exception)
+                {
+                    return Results.Problem("chat backend failed", statusCode: StatusCodes.Status502BadGateway);
                 }
 
-                var messages = await chatService.GetChatCompletionAsync(tenantId, userId, sessionId, request.Message);
                 var replies = messages.Where(m => m.SenderRole != "User").ToList();
+                var replyText = string.Join("\n\n", replies.Select(m => m.Text).Where(t => !string.IsNullOrWhiteSpace(t)));
+                if (replies.Any(m => m.SenderRole == "Error") || string.IsNullOrWhiteSpace(replyText))
+                    return Results.Problem("chat backend returned no assistant reply", statusCode: StatusCodes.Status502BadGateway);
 
                 return Results.Ok(new
                 {
-                    response = string.Join("\n\n", replies.Select(m => m.Text).Where(t => !string.IsNullOrWhiteSpace(t))),
+                    response = replyText,
                     session_id = clientSession,
                     agents = replies.Select(m => new { sender = m.Sender, text = m.Text })
                 });

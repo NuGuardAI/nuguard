@@ -41,7 +41,8 @@ echo "[serve] building"
 dotnet build "$PROJECT_DIR/MultiAgentCopilot.csproj" -nologo -v q -c Release >"$LOG_DIR/build.log" 2>&1 \
   || { echo "[serve] build failed; last log lines:" >&2; tail -n 30 "$LOG_DIR/build.log" >&2; exit 1; }
 
-echo "[serve] LLM: Azure OpenAI, deployment ${APP_MODEL_NAME:-gpt-5.4-mini}"
+if [[ "$AZURE_OPENAI_KEY" == "nuguard-e2e-stub" ]]; then LLM_LABEL="local stub at $AZURE_OPENAI_ENDPOINT"; else LLM_LABEL="Azure OpenAI"; fi
+echo "[serve] LLM: $LLM_LABEL, deployment ${APP_MODEL_NAME:-gpt-5.4-mini}"
 echo "[serve] starting app on 127.0.0.1:$APP_PORT"
 # Prompts are read from the relative Prompts/ directory, so run from the project directory.
 cd "$PROJECT_DIR"

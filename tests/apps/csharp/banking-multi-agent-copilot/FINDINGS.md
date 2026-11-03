@@ -53,3 +53,5 @@ run:
 
 `GET /tenant/{tenantId}/servicerequests` declares a `userId` parameter that is not in the route, so a
 request without `?userId=` fails with `BadHttpRequestException` and the exception handler returns 500.
+In this fixture the `userId` query value must equal the token's user (403 otherwise) and the result is
+limited to that user's requests, so the REST route no longer lists the whole tenant.

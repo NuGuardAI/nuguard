@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using System.Text.Json;
 using MultiAgentCopilot.Services;
 
 
@@ -65,25 +64,18 @@ namespace MultiAgentCopilot
 
             app.MapGet("/tenant/{tenantId}/user/{userId}/accounts/{accountId}/transactions",
                     async (string tenantId, string userId, string accountId) =>
-                    await _cosmosDBService.GetAccountTransactionsAsync(tenantId, userId, accountId))
+                    {
+                        var accounts = await _cosmosDBService.GetUserRegisteredAccountsAsync(tenantId, userId);
+                        if (!accounts.Any(a => a.Id == accountId))
+                            return Results.NotFound();
+                        return Results.Ok(await _cosmosDBService.GetAccountTransactionsAsync(tenantId, userId, accountId));
+                    })
                 .WithName("GetAccountTransactions");
 
             app.MapGet("/tenant/{tenantId}/servicerequests",
                     async (string tenantId, string userId) =>
-                    await _cosmosDBService.GetServiceRequestsAsync(tenantId))
+                    (await _cosmosDBService.GetServiceRequestsAsync(tenantId)).Where(r => r.UserId == userId).ToList())
                 .WithName("GetServiceRequests");
-
-            app.MapPut("/offerdata", async ([FromBody] JsonElement document) =>
-                    await _cosmosDBService.AddDocument("OfferData", document))
-                .WithName("AddOfferData");
-
-            app.MapPut("/accountdata", async ([FromBody] JsonElement document) =>
-                    await _cosmosDBService.AddDocument("AccountData", document))
-                .WithName("AddAccountData");
-
-            app.MapPut("/userdata", async ([FromBody] JsonElement document) =>
-                    await _cosmosDBService.AddDocument("UserData", document))
-                .WithName("AddUserData");
 
 
         }

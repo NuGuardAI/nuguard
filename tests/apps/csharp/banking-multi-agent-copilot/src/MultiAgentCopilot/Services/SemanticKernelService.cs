@@ -30,8 +30,6 @@ public class SemanticKernelService : IDisposable
     string _prompt = string.Empty;
     string _contextSelectorPrompt = string.Empty;
 
-    List<LogProperty> _promptDebugProperties;
-
     public bool IsInitialized => _serviceInitialized;
 
     public SemanticKernelService(
@@ -41,7 +39,6 @@ public class SemanticKernelService : IDisposable
         _skSettings = skOptions.Value;
         _loggerFactory = loggerFactory;
         _logger = _loggerFactory.CreateLogger<SemanticKernelService>();
-        _promptDebugProperties = new List<LogProperty>();
 
         _logger.LogInformation("Initializing the Semantic Kernel service...");
 
@@ -87,11 +84,6 @@ public class SemanticKernelService : IDisposable
     }
 
 
-    private void LogMessage(string key, string value)
-    {
-        _promptDebugProperties.Add(new LogProperty(key, value));
-    }
-
     //TO DO: Add GetResponse function
 
     public async Task<Tuple<List<Message>, List<DebugLog>>> GetResponse(Message userMessage, List<Message> messageHistory, BankingDataService bankService, string tenantId, string userId)
@@ -100,7 +92,8 @@ public class SemanticKernelService : IDisposable
         {
             AgentFactory agentFactory = new AgentFactory();
 
-            var agentGroupChat = agentFactory.BuildAgentGroupChat(_semanticKernel, _loggerFactory, LogMessage, bankService, tenantId, userId);
+            var promptDebugProperties = new List<LogProperty>();
+            var agentGroupChat = agentFactory.BuildAgentGroupChat(_semanticKernel, _loggerFactory, (key, value) => promptDebugProperties.Add(new LogProperty(key, value)), bankService, tenantId, userId);
 
             // Load history
             foreach (var chatMessage in messageHistory)
@@ -114,7 +107,7 @@ public class SemanticKernelService : IDisposable
                 agentGroupChat.AddChatMessage(chatMessageContent);
             }
 
-            _promptDebugProperties = new List<LogProperty>();
+            promptDebugProperties.Clear();
 
             List<Message> completionMessages = new();
             List<DebugLog> completionMessagesLogs = new();
@@ -134,10 +127,10 @@ public class SemanticKernelService : IDisposable
                     // TO DO : Add DebugLog code here
 
 
-                    if (_promptDebugProperties.Count > 0)
+                    if (promptDebugProperties.Count > 0)
                     {
                         var completionMessagesLog = new DebugLog(userMessage.TenantId, userMessage.UserId, userMessage.SessionId, messageId, debugLogId);
-                        completionMessagesLog.PropertyBag = _promptDebugProperties;
+                        completionMessagesLog.PropertyBag = promptDebugProperties;
                         completionMessagesLogs.Add(completionMessagesLog);
                     }
 

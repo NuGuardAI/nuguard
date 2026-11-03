@@ -92,13 +92,15 @@ namespace MultiAgentCopilot.Auth
         public static (string TenantId, string UserId) Caller(ClaimsPrincipal user) =>
             (user.FindFirstValue(TenantClaim) ?? string.Empty, user.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? string.Empty);
 
-        /// <summary>Rejects a request whose {tenantId} or {userId} route value differs from the caller's token.</summary>
+        /// <summary>Rejects a request whose {tenantId} or {userId} route value, or userId query value, differs from the caller's token.</summary>
         public static async ValueTask<object?> RouteIdentityFilter(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
         {
             var (tenantId, userId) = Caller(context.HttpContext.User);
             var routeValues = context.HttpContext.Request.RouteValues;
+            var query = context.HttpContext.Request.Query;
             if ((routeValues.TryGetValue("tenantId", out var t) && !string.Equals(t?.ToString(), tenantId, StringComparison.Ordinal)) ||
-                (routeValues.TryGetValue("userId", out var u) && !string.Equals(u?.ToString(), userId, StringComparison.Ordinal)))
+                (routeValues.TryGetValue("userId", out var u) && !string.Equals(u?.ToString(), userId, StringComparison.Ordinal)) ||
+                (query.TryGetValue("userId", out var q) && (q.Count != 1 || !string.Equals(q[0], userId, StringComparison.Ordinal))))
             {
                 return Results.Forbid();
             }
