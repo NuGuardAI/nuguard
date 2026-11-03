@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from nuguard.sbom.adapters.base import ComponentDetection
 from nuguard.sbom.adapters.go import (
     ChiAdapter,
@@ -624,10 +622,6 @@ func NewServer(deps Dependencies) http.Handler {
     assert "auth_inference" not in endpoint.metadata
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="_wraps_auth skips any callee starting with 'func', not only func literals",
-)
 def test_net_http_func_prefixed_wrapper_name_is_searched() -> None:
     source = """package api
 

@@ -320,7 +320,7 @@ def _inferred_handler_auth(
     if _wraps_auth(expression, depth=4):
         return "handler_wrapper"
 
-    if expression.find("(") <= 0 or expression.startswith("func"):
+    if expression.find("(") <= 0 or re.match(r"func\s*\(", expression):
         return ""
 
     for argument in _call_arguments(expression):
@@ -341,7 +341,7 @@ def _wraps_auth(
     expression = expression.strip()
     open_paren = expression.find("(")
 
-    if depth <= 0 or open_paren <= 0 or expression.startswith("func"):
+    if depth <= 0 or open_paren <= 0 or re.match(r"func\s*\(", expression):
         return False
 
     callee = expression[:open_paren].strip().split(".")
@@ -404,7 +404,7 @@ def _handler_body(
     if not expression:
         return ""
 
-    if expression.startswith("func"):
+    if re.match(r"func\s*\(", expression):
         masked = _mask_non_code(expression)
         open_brace = masked.find("{")
 
