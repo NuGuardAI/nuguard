@@ -18,7 +18,9 @@ surrounding prose are kept so the prompt stays readable):
 3. **URL userinfo** - ``scheme://user:pass@host`` becomes
    ``scheme://<redacted>@host``. The user part may contain spaces when a
    ``:password`` follows it; a password may contain ``@`` (the last ``@``
-   before the host ends it).
+   before the host ends it). A password may also contain ``/``, ``?`` or
+   ``#`` when an ``@`` follows before any whitespace or later ``://``
+   (``postgres://u:pa/ss@h/db``); a ``host:port/...`` is never userinfo.
 4. **Bearer / Basic credentials** - ``Bearer <token>`` / ``Basic <b64>``
    (8+ characters). A plain lowercase or capitalised word is kept, so prose
    such as "Bearer authentication" stays readable.
@@ -26,10 +28,28 @@ surrounding prose are kept so the prompt stays readable):
    JSON ``"key": "value"`` where the key is a credential name (password,
    passwd, pass, pwd, psw, secret, token, api key, access token, client
    secret, private key, account key, shared access key/signature, sig, ...).
-   The key may carry a prefix (``DB_PASSWORD=``). An unquoted value runs to
-   ``;``, ``&``, ``,``, a quote or whitespace (a trailing ``.`` is treated as
-   the end of the sentence) - or, for ``key=`` only, when a run of
-   space-separated words ends at ``;`` (a connection string), to that ``;``.
+   The key may carry an identifier prefix (``DB_PASSWORD=``,
+   ``stripe_api_key=``) and a version suffix (``apikey2=``,
+   ``DB_PASSWORD_2=``, ``github_token_v2=``); other suffixes
+   (``token_count``, ``max_tokens``, ``tokenizer``) are not credential keys.
+   An unquoted ``key: value`` runs to ``;``, ``&``, ``,``, a quote or
+   whitespace (a trailing ``.`` is treated as the end of the sentence). An
+   unquoted ``key=value`` runs over up to 8 further space-separated words to
+   ``;``, ``&``, ``,``, a quote, the end of the line or the next ``key=``, so
+   ``password=my pass word`` is redacted whole. This fails closed:
+   ``password=abc then do x`` redacts the rest of the line.
+6. **Prose credentials** - a credential word (password, passcode, passwd,
+   pwd, secret, token, api key, access key, private key) followed by
+   ``is``/``was``/``are``/``equals``/``set to`` and a value: "the password
+   is hunter2". The value is kept when trivial under the prose rule below
+   ("the password is required").
+7. **Bare high-entropy tokens** - a standalone token of 24-200 characters
+   from ``[A-Za-z0-9_+/=-]`` with a letter, a digit and Shannon entropy of at
+   least 4.0 bits per character. Kept: UUIDs, paths, dotted names,
+   identifier-like names made of words (``MyVeryLongClassNameForTesting123``)
+   and pure hex of 32+ characters (commit SHAs, hashes) unless a credential
+   word directly precedes it. A generic ``key=`` value is redacted only
+   through this rule.
 
 To avoid wrecking ordinary prompt text, a key/value value is kept when it is
 *trivial*:
@@ -40,18 +60,21 @@ To avoid wrecking ordinary prompt text, a key/value value is kept when it is
   ``string``, ``hidden``, ...) or a run of one repeated mask character
   (``***``, ``xxxx``);
 - purely numeric and shorter than 8 digits (``max_token: 4096``);
-- for the prose ``key: value`` form with an unquoted value only: letters
-  alone and shorter than 16 characters (``password: required``,
-  ``token: the user's session``). A real credential in that form usually
-  carries a digit or symbol, or is long.
+- for the prose ``key: value`` and "key is value" forms with an unquoted
+  value only: letters alone and shorter than 16 characters
+  (``password: required``, ``token: the user's session``), unless 6+
+  characters in mixed case (``HunterTwo``). A real credential in that form
+  usually carries a digit or symbol, or is long.
+- for a multi-word ``key=value``: the whole run is kept when its first word
+  is trivial (``token={token} and ...``).
 
-Not handled: credentials stated in prose without a ``:``/``=`` separator
-("the password is hunter2") and unknown key formats with no credential key
-in front of them.
+Not handled: low-entropy or short credentials with no credential word in
+front of them, and bare tokens longer than 200 characters.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -90,6 +113,8 @@ _URL_USERINFO_RE = re.compile(
     rf"|[^{_URL_STOP}@:]+"
     # user with spaces, then a ":password" without spaces
     rf"|[^/?#\"'<>`@:\r\n]+:[^{_URL_STOP}]*"
+    # password with "/", "?" or "#" up to the first "@" (never host:port/...)
+    rf"|[^{_URL_STOP}@:]*:(?!\d+(?:[/?#]|$))(?:(?!://)[^\s\"'<>`]){{0,256}}?"
     r")@",
     re.IGNORECASE,
 )
@@ -108,15 +133,38 @@ _CREDENTIAL_KEY = (
 )
 
 _CREDENTIAL_KV_RE = re.compile(
-    r"(?P<prefix>(?<![a-z0-9])" + _CREDENTIAL_KEY + r"(?![a-z0-9])"
+    r"(?P<prefix>(?<![a-z0-9])" + _CREDENTIAL_KEY + r"(?:[_-]?v?\d{1,4})?(?![a-z0-9])"
     r"[\"']?\s*(?P<sep>[:=])(?![=>])[^\S\r\n]*)"
     r"(?P<value>"
     r"\"[^\"\r\n]*\"|'[^'\r\n]*'"  # quoted (JSON or code)
-    r"|(?<==)[^\s;&,\"'<>=]+(?:[^\S\r\n]+[^\s;&,\"'<>=]+){0,8}(?=;)"  # key=spaced value;
+    # key=spaced value: up to 8 more words, never into the next "key="
+    r"|(?<==)[^\s;&,\"'<>]++(?:[^\S\r\n]+[^\s;&,\"'<>=]++(?!=)){0,8}"
     r"|[^\s;&,\"'<>]*[^\s;&,\"'<>.]"  # single token (a trailing "." ends the sentence)
     r")",
     re.IGNORECASE,
 )
+
+_PROSE_CREDENTIAL_RE = re.compile(
+    r"(?P<prefix>(?<![a-z0-9])"
+    r"(?:password|passcode|passwd|pwd|secret|token|api[\s_-]?key"
+    r"|access[\s_-]?key|private[\s_-]?key)s?"
+    r"[^\S\r\n]+(?:is|was|are|equals|set[^\S\r\n]+to)[^\S\r\n]+)"
+    r"(?P<value>\"[^\"\r\n]{1,200}\"|'[^'\r\n]{1,200}'"
+    r"|[^\s;&,\"'<>]{0,199}[^\s;&,\"'<>.])",
+    re.IGNORECASE,
+)
+
+_BARE_TOKEN_RE = re.compile(
+    r"(?<![^\s\"'`(\[{<,;:=&?])"
+    r"[A-Za-z0-9_+/-]{24,200}={0,2}"
+    r"(?![^\s\"'`)\]}>,;:&.])(?!\.\S)"
+)
+_UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+_HEX_RE = re.compile(r"[0-9a-f]{32,}", re.I)
+_HEX_CONTEXT_RE = re.compile(
+    r"(?<![a-z0-9])" + _CREDENTIAL_KEY + r"s?[\s:=\"']{1,4}\Z", re.IGNORECASE
+)
+_IDENT_SEGMENT_RE = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+")
 
 _PLACEHOLDER_RE = re.compile(
     r"^(?:\{.*\}|\$\{.*\}|<.*>|%[-0-9.]*[sdrif]|\$[A-Za-z_][A-Za-z0-9_]*|\[.*\])$",
@@ -163,17 +211,67 @@ def _is_trivial_value(raw: str, *, prose: bool) -> bool:
     if value.isdigit() and len(value) < 8:
         return True
     if prose and not quoted and value.isalpha() and len(value) < 16:
-        return True
+        mixed_case = any(c.isupper() for c in value[1:]) and any(c.islower() for c in value)
+        return not (mixed_case and len(value) >= 6)
     return False
 
 
 def _redact_kv(match: re.Match[str]) -> str:
     raw = match.group("value")
-    if _is_trivial_value(raw, prose=match.group("sep") == ":"):
+    quoted = len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'"
+    if _is_trivial_value(raw.split(None, 1)[0] if not quoted else raw, prose=match.group("sep") == ":"):
+        return match.group(0)
+    if quoted:
+        return f"{match.group('prefix')}{raw[0]}{REDACTED}{raw[0]}"
+    after = match.string[match.end() : match.end() + 1]
+    tail = raw[len(raw.rstrip(".")) :] if after in ("", " ", "\t", "\r", "\n") else ""
+    return f"{match.group('prefix')}{REDACTED}{tail}"
+
+
+def _redact_prose(match: re.Match[str]) -> str:
+    raw = match.group("value")
+    if _is_trivial_value(raw, prose=True):
         return match.group(0)
     if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
         return f"{match.group('prefix')}{raw[0]}{REDACTED}{raw[0]}"
     return f"{match.group('prefix')}{REDACTED}"
+
+
+def _entropy(value: str) -> float:
+    counts = [value.count(c) for c in set(value)]
+    return -sum(n / len(value) * math.log2(n / len(value)) for n in counts)
+
+
+def _looks_like_identifier(token: str) -> bool:
+    """True for names built from words: ``MyVeryLongClassName123``, ``snake_case_name``."""
+    if any(c in "+/=" for c in token):
+        return False
+    segments = _IDENT_SEGMENT_RE.findall(token)
+    if sum(s.isdigit() for s in segments) > 2:
+        return False
+    for seg in segments:
+        if seg.isdigit():
+            continue
+        if seg.isupper():
+            if len(seg) < 2:
+                return False
+        elif len(seg) < 2 or not any(c in "aeiouyAEIOUY" for c in seg):
+            return False
+    return True
+
+
+def _redact_bare_token(match: re.Match[str]) -> str:
+    token = match.group(0)
+    if not any(c.isdigit() for c in token) or not any(c.isalpha() for c in token):
+        return token
+    if token.startswith(("/", "./")) or _UUID_RE.fullmatch(token):
+        return token
+    if _HEX_RE.fullmatch(token):
+        before = match.string[max(0, match.start() - 48) : match.start()]
+        return REDACTED if _HEX_CONTEXT_RE.search(before) else token
+    if _entropy(token) < 4.0 or _looks_like_identifier(token):
+        return token
+    return REDACTED
 
 
 def _redact_auth_scheme(match: re.Match[str]) -> str:
@@ -196,7 +294,9 @@ def redact_secrets(text: str) -> str:
     if "://" in text:
         text = _URL_USERINFO_RE.sub(lambda m: f"{m.group('prefix')}{REDACTED}@", text)
     text = _AUTH_SCHEME_RE.sub(_redact_auth_scheme, text)
-    return _CREDENTIAL_KV_RE.sub(_redact_kv, text)
+    text = _CREDENTIAL_KV_RE.sub(_redact_kv, text)
+    text = _PROSE_CREDENTIAL_RE.sub(_redact_prose, text)
+    return _BARE_TOKEN_RE.sub(_redact_bare_token, text)
 
 
 def _redact_value(value: Any) -> Any:

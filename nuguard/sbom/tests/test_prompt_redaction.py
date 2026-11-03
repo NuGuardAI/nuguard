@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,12 @@ from nuguard.sbom.types import ComponentType
         ("redis://:pa55word@cache:6379", f"redis://{REDACTED}@cache:6379"),
         ("amqp://guest:p@ss@rabbit/vhost", f"amqp://{REDACTED}@rabbit/vhost"),
         ("https://deploytoken@git.example.com/r", f"https://{REDACTED}@git.example.com/r"),
+        ("postgres://u:pa/ss@h/db", f"postgres://{REDACTED}@h/db"),
+        ("redis://:p?w#d@h:6379", f"redis://{REDACTED}@h:6379"),
+        (
+            "see https://a.com and mongodb://u:S3CRET@db",
+            f"see https://a.com and mongodb://{REDACTED}@db",
+        ),
         # key=value
         ("Password=S3CRET2;", f"Password={REDACTED};"),
         ("DB_PASSWORD=hunter2!", f"DB_PASSWORD={REDACTED}"),
@@ -34,6 +41,33 @@ from nuguard.sbom.types import ComponentType
         ("https://x.com/a?api_key=abc123&b=1", f"https://x.com/a?api_key={REDACTED}&b=1"),
         ("AccountKey=bXlrZXk=;EndpointSuffix=core", f"AccountKey={REDACTED};EndpointSuffix=core"),
         ("token='tok_9f8e7d'", f"token='{REDACTED}'"),
+        # key=spaced value without ";": to end of line or next stop character
+        ("password=my pass word", f"password={REDACTED}"),
+        ("password=abc then do x\nnext line", f"password={REDACTED}\nnext line"),
+        ("pwd=my pass word, then go", f"pwd={REDACTED}, then go"),
+        ("password=my pass user=bob", f"password={REDACTED} user=bob"),
+        ("token=abc123.", f"token={REDACTED}."),
+        # keys with an identifier prefix or a version suffix
+        ("apikey2=abc123", f"apikey2={REDACTED}"),
+        ("stripe_api_key=abc123", f"stripe_api_key={REDACTED}"),
+        ("DB_PASSWORD_2=abc123", f"DB_PASSWORD_2={REDACTED}"),
+        ("github_token_v2=abc123", f"github_token_v2={REDACTED}"),
+        ("MY_SECRET=abc123", f"MY_SECRET={REDACTED}"),
+        # prose without a separator
+        ("the password is hunter2", f"the password is {REDACTED}"),
+        ("my api key is sk-proj-ABCDEFGHIJKLMNOP1234", f"my api key is {REDACTED}"),
+        ("the token was abc123XYZ", f"the token was {REDACTED}"),
+        ("the password is HunterTwo.", f"the password is {REDACTED}."),
+        ("access key set to Zm9vYmFy99", f"access key set to {REDACTED}"),
+        # bare high-entropy tokens, and generic key= values that are one
+        ("use Zx9Qp2Lm7Vb4Nc8Rt1Yw6Ks3Hd5Gf0 now", f"use {REDACTED} now"),
+        ('"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"', f'"{REDACTED}"'),
+        ("b64 YXBwbGUgYmFuYW5hIGNoZXJyeSBkYXRlIDEyMw==", f"b64 {REDACTED}"),
+        ("config=Q2xhdWRlIGlzIGEgc2VjcmV0IGtleSAxMjM0NTY3OA==", f"config={REDACTED}"),
+        (
+            "token 3f2a9c1b7d4e5f60718293a4b5c6d7e8f9012345",
+            f"token {REDACTED}",
+        ),
         # prose key: value
         ("Your API key: abc123xyz.", f"Your API key: {REDACTED}."),
         ("client secret: Zm9vYmFy99", f"client secret: {REDACTED}"),
@@ -98,6 +132,29 @@ def test_redact_secrets_shapes(text: str, expected: str) -> None:
         # ordinary words that contain a credential key
         "passport: required, bypass: never, tokenizer: tiktoken",
         "sk-learn is a library",
+        # prose "key is value" with an ordinary word
+        "the password is required",
+        "the token is valid",
+        "the password is the one you chose",
+        "the secret is Hidden",
+        # URLs where an "@" is not userinfo
+        "https://x.com/@handle",
+        "https://host:8080/path/@user",
+        "http://localhost:3000?next=@me",
+        # credential words inside other identifiers
+        "max_tokens=4096 tokenizer=gpt2 token_count=12 passport=abc",
+        "num_tokens: 5, secretary: Alice",
+        "token_count=123456789",
+        "Use token={token} and then continue",
+        # long tokens that are not secrets
+        "id 123e4567-e89b-12d3-a456-426614174000",
+        "fixed in commit 3f2a9c1b7d4e5f60718293a4b5c6d7e8f9012345",
+        "sha256 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "model gpt-4o-mini-2024-07-18 and text-embedding-3-large",
+        "/usr/local/lib/python3.12/site-packages",
+        "class MyVeryLongClassNameForTesting123 here",
+        "very_long_snake_case_name_2024 here",
+        "nuguard.sbom.extractor.config.AiSbomConfigLoader2",
         "",
     ],
 )
@@ -136,6 +193,28 @@ def test_bracket_marker_inside_value_is_not_treated_as_redacted() -> None:
 def test_many_assignments_without_semicolon_stay_linear() -> None:
     text = "password=a " * 20000
     assert redact_secrets(text).count(REDACTED) == 20000
+
+
+def test_key_equals_value_is_capped_at_eight_extra_words() -> None:
+    assert redact_secrets("password=a b c d e f g h i j k") == f"password={REDACTED} j k"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "the password is " * 20000,
+        "the token was abc123XYZ " * 20000,
+        "a1" * 100000 + ".x",
+        ("Zx9Qp2Lm7Vb4Nc8Rt1Yw6Ks3Hd5Gf0" * 10 + " ") * 2000,
+        "postgres://u:" + "p/" * 50000,
+        "x://:a/" * 20000,
+        "password=a b" + " c" * 100000,
+    ],
+)
+def test_new_patterns_stay_linear(text: str) -> None:
+    start = time.perf_counter()
+    redact_secrets(text)
+    assert time.perf_counter() - start < 2.0
 
 
 def test_redact_prompt_nodes_covers_content_extras_evidence_and_agents() -> None:
