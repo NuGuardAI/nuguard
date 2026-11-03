@@ -170,10 +170,7 @@ namespace MultiAgentCopilot.Services.InMemory
             return Task.FromResult(true);
         }
 
-        public override Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId)
-            => GetServiceRequestsAsync(tenantId, null);
-
-        public Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId, string? userId)
+        public override Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId, string? userId = null)
         {
             lock (Store.Gate)
             {

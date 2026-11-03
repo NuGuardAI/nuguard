@@ -417,16 +417,20 @@ namespace MultiAgentCopilot.Services
         }
 
 
-        public virtual async Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId)
+        public virtual async Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId, string? userId = null)
         {
             try
             {
                 var partitionKey = PartitionManager.GetAccountsPartialPK(tenantId);
 
-                var queryBuilder = new StringBuilder("SELECT TOP 10 * FROM c WHERE c.type = @type AND c.tenantId = @tenantId ORDER BY c.RequestedOn DESC");
+                var queryBuilder = new StringBuilder("SELECT TOP 10 * FROM c WHERE c.type = @type AND c.tenantId = @tenantId");
+                if (userId != null)
+                    queryBuilder.Append(" AND c.userId = @userId");
+                queryBuilder.Append(" ORDER BY c.requestedOn DESC");
                 var queryDefinition = new QueryDefinition(queryBuilder.ToString())
                       .WithParameter("@type", nameof(ServiceRequest))
-                      .WithParameter("@tenantId", tenantId);
+                      .WithParameter("@tenantId", tenantId)
+                      .WithParameter("@userId", userId);
 
                 List<ServiceRequest> reqs = new List<ServiceRequest>();
                 using (FeedIterator<ServiceRequest> feedIterator = AccountDataContainer.GetItemQueryIterator<ServiceRequest>(queryDefinition, requestOptions: new QueryRequestOptions { PartitionKey = partitionKey }))

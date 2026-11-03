@@ -75,9 +75,7 @@ namespace MultiAgentCopilot
 
             app.MapGet("/tenant/{tenantId}/servicerequests",
                     async (string tenantId, string userId) =>
-                    _cosmosDBService is InMemoryCosmosDBService inMemory
-                        ? await inMemory.GetServiceRequestsAsync(tenantId, userId)
-                        : (await _cosmosDBService.GetServiceRequestsAsync(tenantId)).Where(r => r.UserId == userId).ToList())
+                    await _cosmosDBService.GetServiceRequestsAsync(tenantId, userId))
                 .WithName("GetServiceRequests");
 
 
