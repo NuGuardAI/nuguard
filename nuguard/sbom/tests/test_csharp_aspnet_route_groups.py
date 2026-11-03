@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from nuguard.sbom import AiSbomConfig, AiSbomExtractor
 from nuguard.sbom.adapters.csharp.aspnet_core import (
     CSharpAspNetCoreAdapter,
@@ -108,10 +106,6 @@ api.MapGet("/y", [Tags("t"), AllowAnonymous] () => Results.Ok());
     }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="find_calls drops the receiver of `Endpoints?.Map(...)` (receiver=None)",
-)
 def test_null_conditional_receiver_binding_keyed_by_declaring_type() -> None:
     program = """using Microsoft.AspNetCore.Builder;
 var app = WebApplication.CreateBuilder(args).Build();
