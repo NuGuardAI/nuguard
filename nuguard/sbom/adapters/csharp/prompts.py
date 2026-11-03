@@ -101,7 +101,7 @@ _URL_USERINFO_RE = re.compile(
 _CREDENTIAL_KV_RE = re.compile(
     r"(?P<prefix>\b(?:password|pwd|psw|user\s*password|account\s*key|shared\s*access\s*key"
     r"|shared\s*access\s*signature|sig|access\s*token|api[\s_-]?key|client[\s_-]?secret"
-    r"|secret|token)\s*=\s*)(?:\"[^\"]*\"|'[^']*'|[^\s;&,\"']+)?",
+    r"|secret|token)\s*=\s*)(?:\"[^\"]*\"|'[^']*'|[^;&\r\n\"']+)?",
     re.IGNORECASE,
 )
 
@@ -109,10 +109,30 @@ _REDACTED = "<redacted>"
 
 
 def _redact_credentials(value: str) -> str:
-    """Replace credential values (URL userinfo, key=value secrets) with a marker."""
+    """Replace credential values (URL userinfo, key=value secrets) with a marker.
+
+    A key=value secret runs to the next ``;``, ``&``, line end or quote, as a
+    driver splits it, so a value containing spaces is not partly kept.
+    """
     if "://" in value:
         value = _URL_USERINFO_RE.sub(lambda m: f"{m.group('prefix')}{_REDACTED}@", value)
     return _CREDENTIAL_KV_RE.sub(lambda m: f"{m.group('prefix')}{_REDACTED}", value)
+
+
+def _has_unredacted_url_userinfo(value: str) -> bool:
+    """True if any ``://`` authority still carries userinfo after redaction.
+
+    Fail-closed check for shapes the redaction regex misses (e.g. a scheme
+    glued to a preceding digit). Linear: one pass per ``://`` occurrence.
+    """
+    start = value.find("://")
+    while start != -1:
+        rest = value[start + 3 :]
+        authority = re.split(r"[\s\"'/]", rest, maxsplit=1)[0]
+        if "@" in authority and not authority.startswith(f"{_REDACTED}@"):
+            return True
+        start = value.find("://", start + 3)
+    return False
 
 
 def _is_prompt_constant(
@@ -247,6 +267,8 @@ class CSharpPromptAdapter(CSharpFrameworkAdapter):
             line_src = lines[lit.line - 1] if 0 < lit.line <= len(lines) else ""
 
             value = _redact_credentials(lit.value)
+            if _has_unredacted_url_userinfo(value):
+                continue
             if not _is_prompt_constant(value, lit.assigned_to, line_src):
                 continue
 

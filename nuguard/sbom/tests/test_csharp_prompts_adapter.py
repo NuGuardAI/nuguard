@@ -242,6 +242,33 @@ def test_url_token_as_username_redacted() -> None:
     assert "github.com/org/repo" in prompts[0].metadata["content"]
 
 
+def test_kv_secret_with_spaces_fully_redacted() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Use Password=my S3CRET pass phrase; Database=bank for lookups.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    content = prompts[0].metadata["content"]
+    assert "S3CRET" not in content
+    assert "pass phrase" not in content
+    assert "Database=bank" in content
+
+
+def test_url_userinfo_missed_by_redaction_drops_literal() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Backup target is 1mongodb://admin:S3CRET@db.example.com now.";
+}
+'''
+    for p in _extract(CSharpPromptAdapter(), source):
+        assert "S3CRET" not in str(p.metadata)
+        assert "S3CRET" not in (p.snippet or "")
+
+
 def test_handle_url_prompt_kept() -> None:
     source = '''class Agent
 {
