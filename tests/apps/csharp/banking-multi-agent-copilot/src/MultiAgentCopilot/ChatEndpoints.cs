@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using MultiAgentCopilot.Services;
+using MultiAgentCopilot.Services.InMemory;
 
 
 namespace MultiAgentCopilot
@@ -74,7 +75,9 @@ namespace MultiAgentCopilot
 
             app.MapGet("/tenant/{tenantId}/servicerequests",
                     async (string tenantId, string userId) =>
-                    (await _cosmosDBService.GetServiceRequestsAsync(tenantId)).Where(r => r.UserId == userId).ToList())
+                    _cosmosDBService is InMemoryCosmosDBService inMemory
+                        ? await inMemory.GetServiceRequestsAsync(tenantId, userId)
+                        : (await _cosmosDBService.GetServiceRequestsAsync(tenantId)).Where(r => r.UserId == userId).ToList())
                 .WithName("GetServiceRequests");
 
 

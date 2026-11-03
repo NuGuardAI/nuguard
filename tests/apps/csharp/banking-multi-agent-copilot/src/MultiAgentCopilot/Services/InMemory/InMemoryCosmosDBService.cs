@@ -171,11 +171,15 @@ namespace MultiAgentCopilot.Services.InMemory
         }
 
         public override Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId)
+            => GetServiceRequestsAsync(tenantId, null);
+
+        public Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId, string? userId)
         {
             lock (Store.Gate)
             {
                 return Task.FromResult(Store.AccountData
-                    .Where(d => InMemoryStore.Str(d, "type") == nameof(ServiceRequest) && InMemoryStore.Str(d, "tenantId") == tenantId)
+                    .Where(d => InMemoryStore.Str(d, "type") == nameof(ServiceRequest) && InMemoryStore.Str(d, "tenantId") == tenantId
+                        && (userId == null || InMemoryStore.Str(d, "userId") == userId))
                     .Select(InMemoryStore.To<ServiceRequest>)
                     .OrderByDescending(r => r.RequestedOn).Take(10).ToList());
             }
