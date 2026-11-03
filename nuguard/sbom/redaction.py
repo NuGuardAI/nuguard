@@ -219,7 +219,11 @@ def _is_trivial_value(raw: str, *, prose: bool) -> bool:
 def _redact_kv(match: re.Match[str]) -> str:
     raw = match.group("value")
     quoted = len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'"
-    if _is_trivial_value(raw.split(None, 1)[0] if not quoted else raw, prose=match.group("sep") == ":"):
+    words = [raw] if quoted else raw.split()
+    # A placeholder or sentinel first word keeps the run only when the rest is plain prose.
+    if _is_trivial_value(words[0], prose=match.group("sep") == ":") and all(
+        w.rstrip(".").isalpha() for w in words[1:]
+    ):
         return match.group(0)
     if quoted:
         return f"{match.group('prefix')}{raw[0]}{REDACTED}{raw[0]}"
