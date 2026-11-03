@@ -98,7 +98,7 @@ describe the original `X-Demo-User` header and three read-only tools.
 ## Running it
 
 - Needs Go 1.25+ (`scripts/serve.sh` falls back to `~/.local/go/bin`) and Docker, or an existing Postgres with
-  pgvector in `DATABASE_URL`.
+  pgvector in `EINO_DATABASE_URL`.
 - Without `AZURE_OPENAI_KEY` and `AZURE_OPENAI_ENDPOINT` (fork PRs get no secrets) `serve.sh` starts
   `scripts/openai_chat_stub.py`, a deterministic loopback stub that answers every request with a valid
   Draft and never calls tools. That keeps the pipeline live in CI; the findings in `FINDINGS.md` come
@@ -106,12 +106,13 @@ describe the original `X-Demo-User` header and three read-only tools.
 - Uses `AZURE_OPENAI_KEY` and `AZURE_OPENAI_ENDPOINT`. The app's OpenAI-compatible client is pointed at
   `${AZURE_OPENAI_ENDPOINT%/}/openai/v1/` with model `${APP_MODEL_NAME:-gpt-5.4-mini}`
   (env `APP_MODE=openai-compatible`, `MODEL_BASE_URL`, `MODEL_API_KEY`, `MODEL_NAME`).
-- `scripts/serve.sh` builds `bin/api` and `bin/mcp-server`. Without `DATABASE_URL`, it starts the container
+- `scripts/serve.sh` builds `bin/api` and `bin/mcp-server`. Without `EINO_DATABASE_URL`, it starts the container
   `nuguard-eino-pg` (`pgvector/pgvector:pg17`, random password) on `127.0.0.1:${PG_PORT:-55432}`. It then starts the
   MCP server on `127.0.0.1:8093` and the API on `127.0.0.1:8092`. Every start resets and reseeds the database. Logs go
-  to `reports/logs/`.
-- `scripts/stop.sh` stops both processes and removes the container if serve.sh started it. A `DATABASE_URL` database
-  is left running.
+  to `reports/logs/`. Because of that reset, serve.sh refuses an external `EINO_DATABASE_URL` unless
+  `EINO_ALLOW_DB_RESET=1` is also set, and it ignores a `DATABASE_URL` already in the shell.
+- `scripts/stop.sh` stops both processes and removes the container if serve.sh started it. An `EINO_DATABASE_URL`
+  database is left running.
 - NuGuard target: `http://127.0.0.1:8092/chat`. Auth is `login_flow` against `/auth/token` as `ada`, with
   `token_response_key: access_token` and `token_header: "Authorization: Bearer"`.
 - Never expose this app publicly. It has a known default password, a refund tool with no checks, and seeded

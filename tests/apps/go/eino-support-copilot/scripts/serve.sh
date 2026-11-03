@@ -5,8 +5,10 @@
 # (seed/business.sql + fixture/nuguard_seed.sql), so refunds and conversations from earlier runs are gone.
 #
 # Database:
-#   DATABASE_URL set   use it (e.g. a CI service container); the schema is reset on start
-#   else               start Docker container nuguard-eino-pg (pgvector/pgvector:pg17) on 127.0.0.1:${PG_PORT:-55432}
+#   EINO_DATABASE_URL set   use it (e.g. a CI service container); its schema is reset only when
+#                           EINO_ALLOW_DB_RESET=1, otherwise serve.sh refuses to start
+#   else                    start Docker container nuguard-eino-pg (pgvector/pgvector:pg17) on 127.0.0.1:${PG_PORT:-55432}
+#   DATABASE_URL from the shell is ignored; the chosen URL is passed only to the child processes.
 # LLM wiring (OpenAI-compatible client pointed at the Azure OpenAI v1 endpoint):
 #   AZURE_OPENAI_KEY + AZURE_OPENAI_ENDPOINT   (when unset: local stub, scripts/openai_chat_stub.py)
 #   APP_MODEL_NAME     deployment name (default gpt-5.4-mini)
@@ -19,6 +21,10 @@ APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_DIR="$APP_DIR/.run"; LOG_DIR="$APP_DIR/reports/logs"; BIN_DIR="$APP_DIR/bin"
 API_PORT=8092; MCP_PORT=8093; STUB_PORT=8095; PG_PORT="${PG_PORT:-55432}"
 PG_CONTAINER=nuguard-eino-pg
+if [[ -n "${EINO_DATABASE_URL:-}" && "${EINO_ALLOW_DB_RESET:-}" != "1" ]]; then
+  echo "[serve] EINO_DATABASE_URL is set but every start drops schema public; set EINO_ALLOW_DB_RESET=1 to allow" >&2
+  exit 1
+fi
 mkdir -p "$RUN_DIR" "$LOG_DIR" "$BIN_DIR"
 "$APP_DIR/scripts/stop.sh" >/dev/null 2>&1 || true
 
@@ -29,7 +35,9 @@ go_ok || { echo "[serve] Go 1.25+ is required" >&2; exit 1; }
 
 # Fork PRs get no secrets: use a deterministic loopback stub of the OpenAI chat API instead
 # (fork-safe E2E, as the Java fixture does). It answers with a valid Draft and never calls tools.
+llm_stub=""
 if [[ -z "${AZURE_OPENAI_KEY:-}" || -z "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
+  llm_stub=1
   echo "[serve] LLM: deterministic local OpenAI-compatible stub"
   python3 "$APP_DIR/scripts/openai_chat_stub.py" --port "$STUB_PORT" >"$LOG_DIR/openai-stub.log" 2>&1 &
   echo $! >"$RUN_DIR/openai-stub.pid"
@@ -46,7 +54,7 @@ echo "[serve] building"
 (cd "$APP_DIR" && go build -o "$BIN_DIR/api" ./cmd/api && go build -o "$BIN_DIR/mcp-server" ./cmd/mcp-server) >"$LOG_DIR/build.log" 2>&1 \
   || { echo "[serve] build failed; last log lines:" >&2; tail -n 30 "$LOG_DIR/build.log" >&2; exit 1; }
 
-if [[ -z "${DATABASE_URL:-}" ]]; then
+if [[ -z "${EINO_DATABASE_URL:-}" ]]; then
   pg_password="$(openssl rand -hex 16)"
   echo "[serve] starting Postgres container $PG_CONTAINER on 127.0.0.1:$PG_PORT"
   docker rm -f "$PG_CONTAINER" >/dev/null 2>&1 || true
@@ -62,9 +70,10 @@ if [[ -z "${DATABASE_URL:-}" ]]; then
     sleep 1
   done
   [[ -n "$ready" ]] || { echo "[serve] Postgres did not become ready" >&2; docker logs "$PG_CONTAINER" 2>&1 | tail -n 20 >&2; exit 1; }
-  export DATABASE_URL="postgres://copilot:$pg_password@127.0.0.1:$PG_PORT/copilot?sslmode=disable"
+  db_url="postgres://copilot:$pg_password@127.0.0.1:$PG_PORT/copilot?sslmode=disable"
 else
-  echo "[serve] using DATABASE_URL from the environment"
+  echo "[serve] using EINO_DATABASE_URL from the environment (schema reset allowed)"
+  db_url="$EINO_DATABASE_URL"
 fi
 
 wait_http() { # name pidfile url log
@@ -81,12 +90,17 @@ wait_http() { # name pidfile url log
 # Both binaries read migrations/, seed/ and fixture/ relative to the app directory.
 cd "$APP_DIR"
 echo "[serve] starting MCP server on 127.0.0.1:$MCP_PORT"
-APP_MODE=mock MCP_ADDR="127.0.0.1:$MCP_PORT" "$BIN_DIR/mcp-server" >"$LOG_DIR/mcp.log" 2>&1 &
+DATABASE_URL="$db_url" APP_MODE=mock MCP_ADDR="127.0.0.1:$MCP_PORT" "$BIN_DIR/mcp-server" >"$LOG_DIR/mcp.log" 2>&1 &
 echo $! >"$RUN_DIR/mcp.pid"
 wait_http "MCP server" "$RUN_DIR/mcp.pid" "http://127.0.0.1:$MCP_PORT/healthz" "$LOG_DIR/mcp.log"
 
-echo "[serve] LLM: Azure OpenAI v1 endpoint, deployment ${APP_MODEL_NAME:-gpt-5.4-mini}"
+if [[ -n "$llm_stub" ]]; then
+  echo "[serve] LLM: local OpenAI-compatible stub on 127.0.0.1:$STUB_PORT"
+else
+  echo "[serve] LLM: Azure OpenAI v1 endpoint, deployment ${APP_MODEL_NAME:-gpt-5.4-mini}"
+fi
 echo "[serve] starting API on 127.0.0.1:$API_PORT (schema reset + reseed)"
+DATABASE_URL="$db_url" \
 APP_MODE=openai-compatible \
 HTTP_ADDR="127.0.0.1:$API_PORT" \
 MCP_URL="http://127.0.0.1:$MCP_PORT/mcp" \

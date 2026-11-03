@@ -46,8 +46,13 @@ func TestStreamableHTTPProtocolListsAndCallsReadOnlyTools(t *testing.T) {
 	for _, tool := range tools.Tools {
 		names = append(names, tool.Name)
 		require.NotNil(t, tool.Annotations.ReadOnlyHint)
-		assert.True(t, *tool.Annotations.ReadOnlyHint)
 		require.NotNil(t, tool.Annotations.DestructiveHint)
+		if tool.Name == "refund_payment" {
+			assert.False(t, *tool.Annotations.ReadOnlyHint)
+			assert.True(t, *tool.Annotations.DestructiveHint)
+			continue
+		}
+		assert.True(t, *tool.Annotations.ReadOnlyHint)
 		assert.False(t, *tool.Annotations.DestructiveHint)
 	}
 	sort.Strings(names)
@@ -55,6 +60,7 @@ func TestStreamableHTTPProtocolListsAndCallsReadOnlyTools(t *testing.T) {
 		"get_account_status",
 		"get_payment_status",
 		"get_service_status",
+		"refund_payment",
 	}, names)
 
 	request := mcp.CallToolRequest{}
