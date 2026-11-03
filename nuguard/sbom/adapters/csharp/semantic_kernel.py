@@ -75,14 +75,27 @@ _WRITE_VERBS = {
     "create",
     "delete",
     "insert",
+    "patch",
     "purge",
     "refund",
     "register",
     "remove",
+    "replace",
     "save",
     "transfer",
     "update",
+    "upsert",
     "write",
+}
+_NAME_WRITE_VERBS = _WRITE_VERBS | {"approve", "close", "send"}
+_NON_WRITE_CALLS = {
+    "AddRange",
+    "AddWithValue",
+    "CreateCommand",
+    "CreateParameter",
+    "RemoveAll",
+    "RemoveAt",
+    "RemoveRange",
 }
 
 
@@ -283,7 +296,21 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
                 continue
 
             if call.name in _PLUGIN_CALLS:
-                plugin_type = _plugin_type(call, content)
+                scope = max(
+                    (
+                        method
+                        for method in result.method_declarations
+                        if method.line <= call.line <= method.line_end
+                    ),
+                    key=lambda method: method.line,
+                    default=None,
+                )
+                floor = (
+                    sum(len(line) for line in content.splitlines(keepends=True)[: scope.line - 1])
+                    if scope
+                    else 0
+                )
+                plugin_type = _plugin_type(call, content, floor)
                 plugin_name = _plugin_name(
                     call,
                     constants,
@@ -552,7 +579,8 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
             line = masked.count("\n", 0, match.start()) + 1
 
             for label, agent_name in names.items():
-                plugin_types = plugins.get(label) or plugins.get("") or []
+                registered = plugins.get(label) or plugins.get("") or []
+                plugin_types = list(dict.fromkeys(plugin_type for plugin_type, _ in registered))
                 canonical = canonicalize_text(f"semantic_kernel:agent:{agent_name}")
                 relationships = [
                     RelationshipHint(
@@ -564,8 +592,8 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
                     )
                 ]
 
-                for plugin_type in plugin_types:
-                    targets = [canonicalize_text(f"semantic_kernel:plugin:{plugin_type}")]
+                for plugin_type, plugin_name in registered:
+                    targets = [canonicalize_text(f"semantic_kernel:plugin:{plugin_name}")]
                     targets.extend(
                         canonicalize_text(f"semantic_kernel:function:{function}")
                         for function in self._plugin_functions(plugin_type)
@@ -697,17 +725,47 @@ def _string_cases(text: str, content: str, constants: dict[str, str]) -> str:
     return ""
 
 
-def _plugin_cases(text: str, content: str, constants: dict[str, str]) -> list[str]:
-    """Return plugin types registered in a ``case`` section."""
+def _plugin_cases(text: str, content: str, constants: dict[str, str]) -> list[tuple[str, str]]:
+    """Return ``(plugin type, plugin node name)`` pairs registered in a ``case`` section.
+
+    A bare kernel identifier resolves to the plugins registered on it, or on the builder
+    it was built from, anywhere in the file.
+    """
+    identifier = text.strip()
+
+    if identifier.isidentifier():
+        masked = mask_non_code(content)
+        roots = {identifier}
+        roots.update(
+            built.group("builder")
+            for built in re.finditer(
+                rf"\b{re.escape(identifier)}\s*=\s*(?P<builder>[A-Za-z_]\w*)\s*\.\s*Build\s*\(",
+                masked,
+            )
+        )
+        calls = [
+            call
+            for call in find_calls(content, _PLUGIN_CALLS)
+            if (call.receiver or "").split(".")[0] in roots or call.assigned_to in roots
+        ]
+        source = content
+    else:
+        calls = find_calls(text, _PLUGIN_CALLS)
+        source = text
+
     return [
-        plugin_type
-        for call in find_calls(text, _PLUGIN_CALLS)
-        if (plugin_type := _plugin_type(call, content))
+        (plugin_type, _plugin_name(call, constants) or plugin_type)
+        for call in calls
+        if (plugin_type := _plugin_type(call, source, content=content))
     ]
 
 
-def _plugin_type(call: Any, content: str) -> str:
-    """Return the plugin class: the generic argument, or the ``new T(...)`` behind the object."""
+def _plugin_type(call: Any, source: str, floor: int = 0, content: str | None = None) -> str:
+    """Return the plugin class: the generic argument, or the ``new T(...)`` behind the object.
+
+    *source* is the text *call* was found in; an object variable resolves to its nearest
+    declaration between *floor* and the call, falling back to the first one in *content*.
+    """
     if call.generic_arguments:
         return str(call.generic_arguments[0]).split(".")[-1]
 
@@ -723,11 +781,12 @@ def _plugin_type(call: Any, content: str) -> str:
     if not argument.isidentifier():
         return ""
 
-    declared = re.search(
+    pattern = re.compile(
         rf"(?:\b{re.escape(argument)}\s*=\s*new\s+(?P<type>[A-Za-z_][\w.]*)\s*\("
-        rf"|\b(?P<declared>[A-Za-z_][\w.]*)\s+{re.escape(argument)}\s*=\s*new\s*\()",
-        mask_non_code(content),
+        rf"|\b(?P<declared>[A-Za-z_][\w.]*)\s+{re.escape(argument)}\s*=\s*new\s*\()"
     )
+    scoped = list(pattern.finditer(mask_non_code(source), floor, call.start))
+    declared = scoped[-1] if scoped else pattern.search(mask_non_code(content or source))
 
     if declared is None:
         return ""
@@ -739,11 +798,17 @@ def _writes_state(name: str, body: str) -> bool:
     """Return whether a kernel function's name or awaited service calls write state."""
     words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name).lower().split()
 
-    if words and words[0] in _WRITE_VERBS:
+    if words and words[0] in _NAME_WRITE_VERBS:
         return True
 
     for call in find_calls(body):
+        if call.name in _NON_WRITE_CALLS:
+            continue
+
         call_words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", call.name).lower().split()
+
+        if call_words[:3] == ["execute", "non", "query"]:
+            return True
 
         # Bare Add/Remove are collection operations, not writes.
         if len(call_words) > 1 and call_words[0] in _WRITE_VERBS:

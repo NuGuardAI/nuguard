@@ -19,7 +19,7 @@ from ...normalization import canonicalize_text
 from ...types import ComponentType
 from ..base import ComponentDetection
 from ._csharp_base import CSharpFrameworkAdapter
-from ._source import find_calls, mask_non_code, statement_tail
+from ._source import _TOKEN_RE, CSharpCall, find_calls, mask_non_code, statement_tail
 
 # ---------------------------------------------------------------------------
 # Namespace → (provider, display_name)
@@ -68,9 +68,26 @@ _CLASS_MAP: dict[str, tuple[str, str]] = {
 # the ``auth_jwt`` regex fallback so both evidence kinds merge into one node.
 _AUTH_TYPES = {"jwt": "jwt", "oauth": "oauth2", "oidc": "oauth2"}
 _SCHEME_CHAIN_RE = re.compile(
-    r"\s*\.\s*(?:"
+    r"\s*\.\s*(?P<name>"
     + "|".join(name for name, (_, kind) in _REGISTRATION_CALLS.items() if kind != "middleware")
     + r")\s*\("
+)
+# The Add* auth extension methods live in Microsoft.Extensions.DependencyInjection,
+# which Web SDK implicit usings supply; a provider-namespace import is not required.
+_HOST_NAMESPACES = ("Microsoft.Extensions.DependencyInjection", "Microsoft.AspNetCore.Builder")
+_SAFE_LITERALS = frozenset(
+    f'"{scheme}"'
+    for scheme in (
+        "Bearer",
+        "Cookies",
+        "OpenIdConnect",
+        "oidc",
+        "Google",
+        "Facebook",
+        "MicrosoftAccount",
+        "Twitter",
+        "Identity.Application",
+    )
 )
 
 # Attribute patterns for structural authorization detection
@@ -84,7 +101,7 @@ class CSharpAuthAdapter(CSharpFrameworkAdapter):
 
     name = "csharp_auth"
     priority = 42  # After framework adapters, before generic regex
-    handles_namespaces = list(_NAMESPACE_MAP)
+    handles_namespaces = [*_NAMESPACE_MAP, *_HOST_NAMESPACES]
 
     def extract(
         self,
@@ -109,6 +126,18 @@ class CSharpAuthAdapter(CSharpFrameworkAdapter):
                     provider_lines.setdefault(provider, directive.line)
                     break
 
+        host_imported = bool(imported_providers & {"aspnet_auth", "aspnet_authz"}) or any(
+            directive.namespace.removeprefix("global::") in _HOST_NAMESPACES
+            for directive in result.using_directives
+        )
+
+        def registration_allowed(provider: str) -> bool:
+            return (
+                host_imported
+                or provider in imported_providers
+                or provider in ("aspnet_auth", "aspnet_authz", "oauth", "oidc")
+            )
+
         detections: list[ComponentDetection] = []
         seen_providers: set[str] = set()
 
@@ -120,22 +149,17 @@ class CSharpAuthAdapter(CSharpFrameworkAdapter):
             reg_mapping = _REGISTRATION_CALLS.get(call.name)
             if reg_mapping:
                 provider, auth_kind = reg_mapping
-                # Validate the provider's namespace is imported.
-                # aspnet_auth/aspnet_authz are always available when
-                # Microsoft.AspNetCore.Builder is imported (AddAuthentication,
-                # AddAuthorization are core middleware, not auth-specific).
-                if provider not in imported_providers and provider not in (
-                    "aspnet_auth",
-                    "aspnet_authz",
-                    "oauth",
-                    "oidc",
-                ):
+                if not registration_allowed(provider):
                     continue
 
                 # AddAuthentication(...).AddJwtBearer(...) is reported once, as the scheme.
-                if call.name == "AddAuthentication" and _SCHEME_CHAIN_RE.match(
-                    mask_non_code(statement_tail(content, call.end))
-                ):
+                chained = (
+                    _SCHEME_CHAIN_RE.match(mask_non_code(statement_tail(content, call.end)))
+                    if call.name == "AddAuthentication"
+                    else None
+                )
+                if chained and registration_allowed(_REGISTRATION_CALLS[chained["name"]][0]):
+                    seen_providers.add(provider)
                     continue
 
                 detections.append(
@@ -149,7 +173,7 @@ class CSharpAuthAdapter(CSharpFrameworkAdapter):
                         metadata=_metadata(provider, auth_kind),
                         file_path=file_path,
                         line=call.line,
-                        snippet=call.snippet,
+                        snippet=_redacted_snippet(content, call),
                         evidence_kind="ast_call",
                     )
                 )
@@ -174,7 +198,7 @@ class CSharpAuthAdapter(CSharpFrameworkAdapter):
                         metadata=_metadata(provider, auth_kind),
                         file_path=file_path,
                         line=call.line,
-                        snippet=call.snippet,
+                        snippet=_redacted_snippet(content, call),
                         evidence_kind="ast_call",
                     )
                 )
@@ -237,6 +261,21 @@ class CSharpAuthAdapter(CSharpFrameworkAdapter):
             )
 
         return _dedupe(detections)
+
+
+def _redacted_snippet(content: str, call: CSharpCall) -> str:
+    """Return the call snippet with string literals and comments redacted."""
+
+    def redact(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if match["line_comment"] or match["block_comment"]:
+            return " "
+        if match["char"] or token in _SAFE_LITERALS:
+            return token
+        return '"<redacted>"'
+
+    text = _TOKEN_RE.sub(redact, content[call.start : call.end])
+    return " ".join(text.split())[:240]
 
 
 def _provider_display(provider: str, default: str) -> str:

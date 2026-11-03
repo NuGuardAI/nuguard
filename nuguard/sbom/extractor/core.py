@@ -1666,7 +1666,14 @@ class AiSbomExtractor:
                     continue
                 _cs_rel = str(_cs_path.relative_to(root))
                 _csharp_route_group_bindings.update(_collect_cs_route_groups(_cs_src, _cs_rel))
-                _csharp_kernel_plugins.update(_collect_cs_kernel_plugins(_cs_src, _cs_rel))
+                for _kp_type, (_kp_bases, _kp_funcs) in _collect_cs_kernel_plugins(
+                    _cs_src, _cs_rel
+                ).items():
+                    _prev_bases, _prev_funcs = _csharp_kernel_plugins.get(_kp_type, ((), ()))
+                    _csharp_kernel_plugins[_kp_type] = (
+                        tuple(dict.fromkeys((*_prev_bases, *_kp_bases))),
+                        tuple(dict.fromkeys((*_prev_funcs, *_kp_funcs))),
+                    )
         except Exception as _cs_pre_exc:
             _log.debug("C# route-group/plugin pre-pass failed (non-fatal): %s", _cs_pre_exc)
 

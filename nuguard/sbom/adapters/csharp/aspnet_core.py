@@ -437,15 +437,14 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                 constants,
                 include_groups=False,
             )
-            attribute = re.match(
-                r"\s*\[\s*(?:Microsoft\.AspNetCore\.Authorization\.)?"
-                r"(?P<name>Authorize|AllowAnonymous)\b",
-                mask_non_code(handler),
+            attributes = re.match(r"\s*(?:\[[^\]]*\]\s*)*", mask_non_code(handler))
+            names = re.findall(
+                r"[\[,]\s*(?:Microsoft\.AspNetCore\.Authorization\.)?"
+                r"(Authorize|AllowAnonymous)(?:Attribute)?\b",
+                attributes.group(0) if attributes else "",
             )
-
-            if attribute is not None:
-                requires = requires or attribute.group("name") == "Authorize"
-                anonymous = anonymous or attribute.group("name") == "AllowAnonymous"
+            requires = requires or "Authorize" in names
+            anonymous = anonymous or "AllowAnonymous" in names
 
             # AllowAnonymous metadata wins over RequireAuthorization at any level.
             auth_required = requires and not anonymous
@@ -805,7 +804,10 @@ def _parameter_scope(
             match = _ROUTE_BUILDER_PARAM_RE.match(parameter)
 
             if match is not None and match.group("name") == name:
-                return bindings.get(method.name, _EMPTY_SCOPE)
+                qualified = bindings.get(f"{method.containing_type}.{method.name}")
+                return (
+                    qualified if qualified is not None else bindings.get(method.name, _EMPTY_SCOPE)
+                )
 
     return None
 
@@ -837,10 +839,19 @@ def _route_groups(
     bindings: dict[str, _RouteScope],
 ) -> dict[str, _RouteScope]:
     """Return route-group variables (``var g = app.MapGroup(...)``) and their scopes."""
-    groups: dict[str, _RouteScope] = {}
+    definitions: dict[str, tuple[str | None, _RouteScope, _RouteScope]] = {}
 
     if "MapGroup" not in content:
-        return groups
+        return {}
+
+    def resolve(name: str, seen: frozenset[str] = frozenset()) -> _RouteScope:
+        parent, base, own = definitions[name]
+
+        if parent is not None and parent not in seen:
+            base = resolve(parent, seen | {name})
+
+        prefix = _join_route(base[0], own[0]) if own[0].strip("/") else base[0]
+        return prefix, base[1] or own[1], base[2] or own[2]
 
     for call in sorted(find_calls(content, _GROUP_CALLS), key=lambda item: item.start):
         if call.name == "MapGroup" and call.assigned_to:
@@ -851,26 +862,47 @@ def _route_groups(
                 continue
 
             root = match.group("name")
-            base = (
-                groups.get(root)
-                or _parameter_scope(root, call.line, result, bindings)
-                or _EMPTY_SCOPE
-            )
-            groups[call.assigned_to] = _fold_chain(base, chain[match.end() :], constants)
-        elif call.name != "MapGroup" and (call.receiver or "") in groups:
-            # A later standalone ``g.RequireAuthorization();`` statement.
-            groups[call.receiver or ""] = _fold_chain(
-                groups[call.receiver or ""], call.snippet, constants
+            parent: str | None = None
+
+            if root == call.assigned_to and root in definitions:
+                base = resolve(root)
+            elif root in definitions:
+                parent, base = root, _EMPTY_SCOPE
+            else:
+                base = _parameter_scope(root, call.line, result, bindings) or _EMPTY_SCOPE
+
+            own = _fold_chain(_EMPTY_SCOPE, chain[match.end() :], constants)
+            definitions[call.assigned_to] = (parent, base, own)
+        elif call.name != "MapGroup":
+            # A later standalone ``g.RequireAuthorization().AllowAnonymous();`` statement.
+            match = _ROOT_IDENTIFIER_RE.match(call.receiver or "")
+
+            if match is None or match.group("name") not in definitions:
+                continue
+
+            rest = (call.receiver or "")[match.end() :]
+
+            if rest.strip() and (
+                not rest.lstrip().startswith(".")
+                or any(item.name.startswith("Map") for item in find_calls(rest))
+            ):
+                continue
+
+            parent, base, own = definitions[match.group("name")]
+            definitions[match.group("name")] = (
+                parent,
+                base,
+                _fold_chain(own, f".{call.name}()", constants),
             )
 
-    return groups
+    return {name: resolve(name) for name in definitions}
 
 
 def collect_route_group_bindings(
     content: str,
     file_path: str = "",
 ) -> dict[str, _RouteScope]:
-    """Return route-group scopes passed to other methods, keyed by callee name.
+    """Return route-group scopes passed to other methods, keyed by callee name and ``Type.Method``.
 
     Covers ``ChatEndpoints.Map(group)`` and extension methods such as
     ``group.MapChatAdapter()``, so endpoints registered in another file inherit
@@ -883,17 +915,31 @@ def collect_route_group_bindings(
     constants = string_constants(result)
     groups = _route_groups(content, result, constants, {})
     bindings: dict[str, _RouteScope] = {}
+    ambiguous: set[str] = set()
+
+    def bind(key: str, scope: _RouteScope) -> None:
+        if key in ambiguous:
+            return
+
+        if bindings.setdefault(key, scope) != scope:
+            ambiguous.add(key)
+            del bindings[key]
 
     for call in find_calls(content):
         if call.name in _GROUP_CALLS or call.name in _MAP_METHODS:
             continue
 
         if (call.receiver or "") in groups:
-            bindings[call.name] = groups[call.receiver or ""]
+            bind(call.name, groups[call.receiver or ""])
+
+        declaring_type = (call.receiver or "").rstrip("?").split(".")[-1]
 
         for argument in call.positional_arguments:
             if argument.strip() in groups:
-                bindings[call.name] = groups[argument.strip()]
+                bind(call.name, groups[argument.strip()])
+
+                if declaring_type:
+                    bind(f"{declaring_type}.{call.name}", groups[argument.strip()])
 
     return bindings
 

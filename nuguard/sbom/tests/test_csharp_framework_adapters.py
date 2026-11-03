@@ -1384,6 +1384,136 @@ public class BankPlugin
     assert "high_privilege" not in tools["GetHistory"]
 
 
+def _agent_calls(detections: list[ComponentDetection], name: str) -> set[str]:
+    agent = next(
+        detection
+        for detection in _by_type(detections, ComponentType.AGENT)
+        if detection.display_name == name
+    )
+    return {
+        hint.target_canonical for hint in agent.relationships if hint.relationship_type == "CALLS"
+    }
+
+
+def test_semantic_kernel_agent_kernel_identifier_resolves_builder_plugins() -> None:
+    source = """using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Agents;
+var builder = Kernel.CreateBuilder();
+builder.Plugins.AddFromType<SalesPlugin>();
+var kernel = builder.Build();
+kernel.ImportPluginFromType<AccountPlugin>();
+var agent = new ChatCompletionAgent { Name = "Sales", Kernel = kernel };
+"""
+    detections = _extract(CSharpSemanticKernelAdapter(), source)
+    agent = _by_type(detections, ComponentType.AGENT)[0]
+
+    assert agent.metadata["plugins"] == ["SalesPlugin", "AccountPlugin"]
+    assert _agent_calls(detections, "Sales") == {
+        "semantic_kernel_plugin_salesplugin",
+        "semantic_kernel_plugin_accountplugin",
+    }
+
+
+def test_semantic_kernel_agent_edge_targets_registered_plugin_name() -> None:
+    source = """using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Agents;
+var builder = Kernel.CreateBuilder();
+builder.Plugins.AddFromType<WeatherPlugin>("Weather");
+var kernel = builder.Build();
+var agent = new ChatCompletionAgent { Name = "Forecaster", Kernel = kernel };
+"""
+    adapter = CSharpSemanticKernelAdapter()
+    adapter.set_csharp_kernel_plugins({"WeatherPlugin": ((), ("GetForecast",))})
+    detections = _extract(adapter, source)
+    tools = {detection.canonical_name for detection in _by_type(detections, ComponentType.TOOL)}
+
+    assert "semantic_kernel_plugin_weather" in tools
+    assert _agent_calls(detections, "Forecaster") == {
+        "semantic_kernel_plugin_weather",
+        "semantic_kernel_function_getforecast",
+    }
+
+
+def test_semantic_kernel_plugin_object_resolves_nearest_declaration() -> None:
+    source = """using Microsoft.SemanticKernel;
+public class Setup
+{
+    public void AddSales(Kernel kernel)
+    {
+        var plugin = new SalesPlugin();
+        kernel.Plugins.AddFromObject(plugin);
+    }
+
+    public void AddSupport(Kernel kernel)
+    {
+        var plugin = new SupportPlugin();
+        kernel.Plugins.AddFromObject(plugin);
+    }
+}
+"""
+    tools = {
+        detection.display_name
+        for detection in _by_type(
+            _extract(CSharpSemanticKernelAdapter(), source), ComponentType.TOOL
+        )
+    }
+
+    assert tools == {"SalesPlugin", "SupportPlugin"}
+
+
+def test_semantic_kernel_write_heuristic_verbs_and_collection_calls() -> None:
+    source = """using Microsoft.SemanticKernel;
+public class OpsPlugin
+{
+    [KernelFunction]
+    public async Task<List<string>> GetOrders(string id)
+    {
+        var results = new List<string>();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT * FROM orders";
+        results.AddRange(await command.ExecuteReaderAsync());
+        results.RemoveAt(0);
+        return results;
+    }
+
+    [KernelFunction]
+    public Task StoreItem(Item item) => _container.UpsertItemAsync(item);
+
+    [KernelFunction]
+    public Task ModifyItem(Item item) => _container.ReplaceItemAsync(item, item.Id);
+
+    [KernelFunction]
+    public Task<int> RunStatement() => _command.ExecuteNonQueryAsync();
+
+    [KernelFunction]
+    public string ApproveLoan(string id) => id;
+
+    [KernelFunction]
+    public string SendEmail(string to) => to;
+
+    [KernelFunction]
+    public string CloseTicket(string id) => id;
+}
+"""
+    tools = {
+        detection.display_name: detection.metadata
+        for detection in _by_type(
+            _extract(CSharpSemanticKernelAdapter(), source), ComponentType.TOOL
+        )
+    }
+
+    assert "high_privilege" not in tools["GetOrders"]
+    for name in (
+        "StoreItem",
+        "ModifyItem",
+        "RunStatement",
+        "ApproveLoan",
+        "SendEmail",
+        "CloseTicket",
+    ):
+        assert tools[name].get("privilege_scope") == "db_write", name
+
+
 def test_collect_kernel_plugins_indexes_bases_and_functions() -> None:
     source = """using Microsoft.SemanticKernel;
 public class SalesPlugin : BasePlugin

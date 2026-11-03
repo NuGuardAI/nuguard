@@ -214,6 +214,78 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     assert auth[0].display_name == "JWT Bearer Auth"
 
 
+def test_snippet_redacts_string_literals() -> None:
+    source = """using Microsoft.AspNetCore.Authentication;
+services.AddAuthentication("Bearer")
+    .AddOAuth("GitHub", o => {
+        o.ClientSecret = "S3CRETclient"; // old: hunter2
+        o.ClientId = @"verbatimSecret";
+        o.Scope.Add($"tok{x}en");
+        o.Backchannel = \"\"\"rawSecret\"\"\";
+    });
+var h = new JwtSecurityTokenHandler("Server=db;Password=pw123");
+"""
+    auth = _by_type(_extract(CSharpAuthAdapter(), source), ComponentType.AUTH)
+    snippets = " ".join(d.snippet for d in auth)
+
+    for secret in ("S3CRETclient", "hunter2", "verbatimSecret", "tok", "rawSecret", "pw123"):
+        assert secret not in snippets
+    assert '"<redacted>"' in snippets
+    assert 'AddAuthentication("Bearer")' in snippets
+
+
+def test_snippet_secret_absent_from_extracted_sbom(tmp_path) -> None:
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.tests.conftest import CS_ONLY
+
+    (tmp_path / "Program.cs").write_text(
+        "using Microsoft.AspNetCore.Authentication;\n"
+        "using Microsoft.IdentityModel.Tokens;\n"
+        "builder.Services.AddAuthentication()\n"
+        '    .AddOAuth("GitHub", o => { o.ClientSecret = "S3CRETclient"; });\n'
+        "builder.Services.AddAuthentication().AddJwtBearer(o => {\n"
+        "    o.TokenValidationParameters = new TokenValidationParameters {\n"
+        '        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(@"K3YsigningSecret")),\n'
+        "    };\n"
+        "});\n"
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, CS_ONLY)
+    serialized = doc.model_dump_json()
+
+    assert any(n.name == "auth:jwt" or "jwt" in n.name.lower() for n in doc.nodes)
+    assert "S3CRETclient" not in serialized
+    assert "K3YsigningSecret" not in serialized
+
+
+def test_jwt_chain_with_aspnet_authentication_import_only() -> None:
+    source = """using Microsoft.AspNetCore.Authentication;
+builder.Services.AddAuthentication("Bearer").AddJwtBearer();
+"""
+    auth = _by_type(_extract(CSharpAuthAdapter(), source), ComponentType.AUTH)
+
+    assert [d.canonical_name for d in auth] == ["auth:jwt"]
+
+
+def test_jwt_chain_with_web_sdk_implicit_usings(tmp_path) -> None:
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.tests.conftest import CS_ONLY
+
+    (tmp_path / "Api.csproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk.Web"><PropertyGroup>'
+        "<ImplicitUsings>enable</ImplicitUsings></PropertyGroup></Project>"
+    )
+    (tmp_path / "Program.cs").write_text(
+        "var builder = WebApplication.CreateBuilder(args);\n"
+        'builder.Services.AddAuthentication("Bearer").AddJwtBearer();\n'
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, CS_ONLY)
+    auth = [n for n in doc.nodes if n.component_type == ComponentType.AUTH]
+
+    assert any(n.metadata.extras.get("auth_kind") == "jwt" for n in auth), auth
+
+
 def test_msal_import_alone_is_not_inbound_auth() -> None:
     source = """using Microsoft.Identity.Client;
 public class CosmosDbService { }
