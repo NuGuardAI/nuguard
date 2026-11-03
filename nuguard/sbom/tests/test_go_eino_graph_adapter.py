@@ -11,6 +11,8 @@ from nuguard.sbom.adapters.go import EinoAdapter
 from nuguard.sbom.core.go_parser import (
     parse_go,
 )
+from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.tests.conftest import GO_ONLY, nodes
 from nuguard.sbom.types import ComponentType
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "apps"
@@ -663,4 +665,92 @@ func New(ctx context.Context, deps Deps, tools []tool.BaseTool) {
     assert all(
         relationship.source_canonical != agent.canonical_name
         for relationship in agent.relationships
+    )
+
+
+_ADK_SAME_FILE_PROMPT = """package agent
+
+import (
+    "context"
+
+    "github.com/cloudwego/eino-ext/components/model/openai"
+    "github.com/cloudwego/eino/adk"
+)
+
+const supportPrompt = "You are a careful support agent."
+
+func Build(ctx context.Context) {
+    cm, _ := openai.NewChatModel(ctx, &openai.ChatModelConfig{Model: "support_prod"})
+    agent, _ := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+        Name:        "support",
+        Instruction: supportPrompt,
+        Model:       cm,
+    })
+    _ = agent
+}
+"""
+
+
+def test_adk_same_file_prompt_const_still_emits_prompt_hint() -> None:
+    (agent,) = _by_type(_extract(_ADK_SAME_FILE_PROMPT), ComponentType.AGENT)
+    targets = {
+        (relationship.relationship_type, relationship.target_type, relationship.target_canonical)
+        for relationship in agent.relationships
+        if relationship.source_canonical == agent.canonical_name
+    }
+
+    assert agent.metadata["system_prompt"] == "You are a careful support agent."
+    assert agent.metadata["instruction_variable"] == "supportPrompt"
+    assert ("USES", ComponentType.PROMPT, "supportprompt") in targets
+
+
+def test_adk_agent_emits_model_node_and_preview() -> None:
+    detections = _extract(_ADK_SAME_FILE_PROMPT)
+    (agent,) = _by_type(detections, ComponentType.AGENT)
+    (model,) = _by_type(detections, ComponentType.MODEL)
+
+    assert model.canonical_name == "support_prod"
+    assert model.display_name == "support_prod"
+    assert model.metadata["provider"] == "openai"
+    assert any(
+        relationship.source_canonical == agent.canonical_name
+        and relationship.target_canonical == model.canonical_name
+        and relationship.relationship_type == "USES"
+        for relationship in agent.relationships
+    )
+
+
+def test_adk_literal_instruction_sets_system_prompt_preview() -> None:
+    long_instruction = "x" * 600
+    source = _ADK_SAME_FILE_PROMPT.replace(
+        "Instruction: supportPrompt,",
+        f'Instruction: "{long_instruction}",',
+    )
+    (agent,) = _by_type(_extract(source), ComponentType.AGENT)
+
+    assert agent.metadata["system_prompt"] == long_instruction
+    assert agent.metadata["system_prompt_preview"] == long_instruction[:500]
+    assert "instruction_variable" not in agent.metadata
+
+
+def test_adk_agent_extractor_sets_excerpt_and_model_edge(tmp_path: Path) -> None:
+    (tmp_path / "agent.go").write_text(
+        _ADK_SAME_FILE_PROMPT.replace(
+            "Instruction: supportPrompt,",
+            'Instruction: "Answer support questions politely.",',
+        ),
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, GO_ONLY)
+    by_id = {node.id: node for node in doc.nodes}
+    (agent,) = nodes(doc, ComponentType.AGENT)
+    (model,) = [node for node in nodes(doc, ComponentType.MODEL) if node.name == "support_prod"]
+
+    assert agent.metadata.system_prompt_excerpt == "Answer support questions politely."
+    assert any(
+        by_id[edge.source] is agent
+        and by_id[edge.target] is model
+        and edge.relationship_type == "USES"
+        for edge in doc.edges
     )

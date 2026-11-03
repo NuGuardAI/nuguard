@@ -483,3 +483,59 @@ func NewServer(deps Dependencies) http.Handler {
         )
         == []
     )
+
+
+def test_net_http_login_routes_ignore_auth_named_wrappers() -> None:
+    source = """package api
+
+import "net/http"
+
+func NewServer(deps Dependencies) http.Handler {
+    mux := http.NewServeMux()
+    mux.Handle("POST /login", authHandler(loginHandler))
+    mux.Handle("POST /auth/token", jwtHandler(tokenHandler))
+    return mux
+}
+"""
+
+    endpoints = {
+        endpoint.display_name: endpoint.metadata
+        for endpoint in _by_type(
+            _extract(NetHTTPAdapter(), source),
+            ComponentType.API_ENDPOINT,
+        )
+    }
+
+    for route in ("POST /login", "POST /auth/token"):
+        assert endpoints[route]["auth_required"] is False
+        assert "auth_inference" not in endpoints[route]
+
+
+def test_net_http_nested_auth_wrapper_marks_route_protected() -> None:
+    source = """package api
+
+import "net/http"
+
+func NewServer(deps Dependencies) http.Handler {
+    mux := http.NewServeMux()
+    mux.Handle("GET /admin", withLogging(requireAuth(adminHandler)))
+    mux.Handle("GET /me", withLogging(withMetrics(jwtMiddleware.Handler(meHandler))))
+    mux.Handle("GET /public", withLogging(withMetrics(publicHandler)))
+    return mux
+}
+"""
+
+    endpoints = {
+        endpoint.display_name: endpoint.metadata
+        for endpoint in _by_type(
+            _extract(NetHTTPAdapter(), source),
+            ComponentType.API_ENDPOINT,
+        )
+    }
+
+    for route in ("GET /admin", "GET /me"):
+        assert endpoints[route]["auth_required"] is True
+        assert endpoints[route]["auth_inference"] == "handler_wrapper"
+
+    assert endpoints["GET /public"]["auth_required"] is False
+    assert "auth_inference" not in endpoints["GET /public"]

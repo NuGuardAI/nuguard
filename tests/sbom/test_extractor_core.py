@@ -1357,6 +1357,25 @@ def test_auth_protects_fallback_follows_explicit_endpoint_auth_required() -> Non
     assert targets == {endpoint.id for endpoint in protected}
 
 
+def test_auth_protects_fallback_kept_when_no_endpoint_marked_protected() -> None:
+    """Group/global middleware (e.g. chi r.Group + r.Use(jwtVerify)) is not
+    visible per-route, so adapters mark every endpoint auth_required=False.
+    With no endpoint marked protected, keep the broad fallback."""
+    auth = _node("JWT", ComponentType.AUTH, extras={})
+    endpoints = [
+        _node(name, ComponentType.API_ENDPOINT)
+        for name in ("GET /admin", "GET /orders", "POST /login")
+    ]
+    for endpoint in endpoints:
+        endpoint.metadata.auth_required = False
+
+    doc = AiSbomDocument(target=".", nodes=[auth, *endpoints], summary=ScanSummary())
+    AiSbomExtractor()._resolve_edges(doc, {})
+
+    targets = {e.target for e in doc.edges if e.relationship_type == RelationshipType.PROTECTS}
+    assert targets == {endpoint.id for endpoint in endpoints}
+
+
 def test_guardrail_protects_agent_fallback_when_file_related() -> None:
     """GUARDRAIL nodes with no explicit PROTECTS edge (e.g. guardrails_ai.py's
     Guard()/register_validator/hub-import detections, which emit no

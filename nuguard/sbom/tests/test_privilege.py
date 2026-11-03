@@ -464,10 +464,26 @@ class TestCodeExecution:
             "command, err := r.db.Exec(ctx, `update agent_runs set error_code = $2`, id, code)",
             "_, err := pool.Exec(ctx, query, source)",
             "db.exec(`insert into runs (output) values (?)`)",
+            "_, err := db.Exec(query, source)",
+            "_, err := tx.ExecContext(ctx, query, code)",
+            "_, err := stmt.Exec(source)",
+            "res, err := insertStmt.Exec(llmOutput)",
         ],
     )
     def test_sql_exec_method_is_not_code_execution(self, code: str) -> None:
         assert _detect("privilege:code_execution", code) is None
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "child_process.exec(generatedScript)",
+            "cp.exec(llmOutput, cb)",
+            "await sandbox.exec(code)",
+            "exec(source_code)",
+        ],
+    )
+    def test_code_exec_method_is_code_execution(self, code: str) -> None:
+        assert _detect("privilege:code_execution", code) is not None
 
 
 # ---------------------------------------------------------------------------

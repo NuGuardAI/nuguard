@@ -157,9 +157,54 @@ def test_net_http_go122_patterns_carry_method_host_and_wildcards() -> None:
         "ANY /",
     }
     assert endpoints["GET /api/v1/tickets/{id}"]["endpoint"] == "/api/v1/tickets/{id}"
-    assert endpoints["GET example.com/status"]["host"] == "example.com"
+    assert endpoints["GET example.com/status"]["route_host"] == "example.com"
+    assert "host" not in endpoints["GET example.com/status"]
     assert endpoints["GET example.com/status"]["endpoint"] == "/status"
-    assert "host" not in endpoints["ANY /"]
+    assert "route_host" not in endpoints["ANY /"]
+
+
+def test_net_http_host_pattern_endpoint_stays_path_through_extractor(tmp_path) -> None:
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.tests.conftest import GO_ONLY
+
+    (tmp_path / "main.go").write_text(_NET_HTTP_PATTERN_SRC)
+    doc = AiSbomExtractor().extract_from_path(tmp_path, GO_ONLY)
+    endpoints = {
+        node.name: node.metadata
+        for node in doc.nodes
+        if node.component_type == ComponentType.API_ENDPOINT
+    }
+    status = next(meta for name, meta in endpoints.items() if "example.com/status" in name)
+    assert status.endpoint != "example.com"
+    assert status.endpoint in (None, "/status")
+
+
+_NET_HTTP_MULTI_HOST_SRC = """
+package main
+
+import "net/http"
+
+func main() {
+	mux := http.NewServeMux()
+	mux.Handle("GET admin.example.com/x", requireAuth(adminHandler))
+	mux.HandleFunc("GET public.example.com/x", publicHandler)
+}
+"""
+
+
+def test_net_http_same_path_on_different_hosts_keeps_separate_auth() -> None:
+    detections = _extract(NetHTTPAdapter(), _NET_HTTP_MULTI_HOST_SRC)
+    endpoints = {
+        endpoint.display_name: endpoint.metadata
+        for endpoint in _by_type(detections, ComponentType.API_ENDPOINT)
+    }
+    admin = endpoints["GET admin.example.com/x"]
+    public = endpoints["GET public.example.com/x"]
+    assert admin["endpoint"] == public["endpoint"] == "/x"
+    assert admin["auth_required"] is True
+    assert admin["auth_inference"] == "handler_wrapper"
+    assert public["auth_required"] is False
+    assert "auth_inference" not in public
 
 
 _MUX_SRC = """

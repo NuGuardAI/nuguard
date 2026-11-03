@@ -335,6 +335,7 @@ class EinoAdapter(GoFrameworkAdapter):
                 calls_by_variable=calls_by_variable,
                 imports_by_alias=imports_by_alias,
                 tools_by_variable=tools_by_variable,
+                components=components,
             )
 
             if adk_agent is None:
@@ -519,6 +520,10 @@ class EinoAdapter(GoFrameworkAdapter):
             tuple[tuple[int, int], str],
             ComponentDetection,
         ],
+        components: dict[
+            tuple[ComponentType, str],
+            ComponentDetection,
+        ],
     ) -> ComponentDetection | None:
         """Build an AGENT from ``adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{...})``.
 
@@ -563,16 +568,32 @@ class EinoAdapter(GoFrameworkAdapter):
 
         if instruction_text:
             metadata["system_prompt"] = instruction_text
+            metadata["system_prompt_preview"] = instruction_text[:500]
 
-        elif isinstance(instruction, str) and _IDENTIFIER_RE.fullmatch(instruction[1:]):
-            metadata["instruction_variable"] = instruction[1:]
+        instruction_variable = (
+            instruction[1:]
+            if isinstance(instruction, str)
+            and instruction.startswith("$")
+            and _IDENTIFIER_RE.fullmatch(instruction[1:])
+            else ""
+        )
 
-            if instruction[1:].lower().endswith("prompt"):
+        if not instruction_variable:
+            match = re.search(
+                r"\bInstruction\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\s*[,}\n]",
+                call.source_snippet or "",
+            )
+            instruction_variable = match.group(1) if match else ""
+
+        if instruction_variable:
+            metadata["instruction_variable"] = instruction_variable
+
+            if instruction_variable.lower().endswith("prompt"):
                 agent.relationships.append(
                     RelationshipHint(
                         source_canonical=agent.canonical_name,
                         source_type=ComponentType.AGENT,
-                        target_canonical=canonicalize_text(instruction[1:].lower()),
+                        target_canonical=canonicalize_text(instruction_variable.lower()),
                         target_type=ComponentType.PROMPT,
                         relationship_type="USES",
                     )
@@ -586,7 +607,7 @@ class EinoAdapter(GoFrameworkAdapter):
         )
         model_name = _model_name(constructor)
 
-        if model_name:
+        if model_name and constructor is not None:
             metadata["model_name"] = model_name
             provider = _provider_name(
                 _call_module(
@@ -598,14 +619,33 @@ class EinoAdapter(GoFrameworkAdapter):
             if provider:
                 metadata["provider"] = provider
 
-            agent.relationships.append(
-                RelationshipHint(
-                    source_canonical=agent.canonical_name,
-                    source_type=ComponentType.AGENT,
-                    target_canonical=canonicalize_text(model_name.lower()),
-                    target_type=ComponentType.MODEL,
-                    relationship_type="USES",
-                )
+            module = _call_module(constructor, imports_by_alias)
+            model = components.setdefault(
+                (ComponentType.MODEL, canonicalize_text(model_name.lower())),
+                _component(
+                    component_type=ComponentType.MODEL,
+                    canonical_name=canonicalize_text(model_name.lower()),
+                    display_name=model_name,
+                    adapter=self,
+                    file_path=file_path,
+                    call=constructor,
+                    confidence=0.94,
+                    metadata={
+                        "framework": "eino",
+                        "language": "golang",
+                        "model_name": model_name,
+                        **({"module": module} if module else {}),
+                        **({"provider": provider} if provider else {}),
+                        "creation_method": constructor.full_name,
+                        "constructor_line": constructor.line,
+                    },
+                ),
+            )
+            _relate(
+                agent,
+                agent,
+                model,
+                "USES",
             )
 
         # Only a literal ``Tools: []tool.BaseTool{...}`` names its members.

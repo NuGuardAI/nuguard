@@ -3828,15 +3828,12 @@ class AiSbomExtractor:
 
         endpoints = by_type.get(ComponentType.API_ENDPOINT, [])
         endpoints_with_auth_type = [ep for ep in endpoints if _auth_type(ep)]
-        # An adapter's explicit auth_required verdict wins over the broad
-        # fallback, so edges never contradict endpoint metadata: endpoints it
-        # marked unprotected get no fallback edge, and when it marked some
-        # protected (without naming a mechanism) those are the targets.
-        endpoints_without_auth_type = [
-            ep
-            for ep in endpoints
-            if not _auth_type(ep) and ep.metadata.auth_required is not False
-        ]
+        # When an adapter marked some endpoints protected (without naming a
+        # mechanism) those are the targets, so unprotected ones get no edge.
+        # auth_required=False alone is not evidence of a public endpoint:
+        # group/global middleware is invisible per-route, so with no endpoint
+        # marked protected keep the broad fallback.
+        endpoints_without_auth_type = [ep for ep in endpoints if not _auth_type(ep)]
         endpoints_marked_protected = [
             ep for ep in endpoints_without_auth_type if ep.metadata.auth_required
         ]

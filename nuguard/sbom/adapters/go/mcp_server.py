@@ -37,10 +37,21 @@ _CALLEE_RE = re.compile(r"^(?P<callee>[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-
 _HINT_RE = re.compile(
     r"\bWith(?P<hint>Destructive|ReadOnly)HintAnnotation\s*\(\s*(?P<value>true|false)\s*\)"
 )
+_STRUCT_HINT_RE = re.compile(
+    r"\b(?P<hint>Destructive|ReadOnly)Hint\s*:\s*"
+    r"(?:[A-Za-z_][A-Za-z0-9_.]*\s*\(\s*(?P<call_value>true|false)\s*\)"
+    r"|&\s*(?P<ref_value>true|false)\b)"
+)
+_GO_COMMENT_OR_STRING_RE = re.compile(
+    r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|`[^`]*`|\'(?:\\.|[^\'\\\n])*\'',
+    re.DOTALL,
+)
 _NAME_WORD_RE = re.compile(r"[_\-\s]+|(?<=[a-z0-9])(?=[A-Z])")
 _WRITE_VERBS = frozenset(
     {
+        "add",
         "approve",
+        "archive",
         "cancel",
         "charge",
         "create",
@@ -50,11 +61,17 @@ _WRITE_VERBS = frozenset(
         "grant",
         "insert",
         "modify",
+        "patch",
         "pay",
+        "purge",
+        "put",
         "refund",
         "remove",
+        "reset",
         "revoke",
         "send",
+        "set",
+        "submit",
         "transfer",
         "update",
         "write",
@@ -362,7 +379,12 @@ class MCPGoServerAdapter(GoFrameworkAdapter):
 
 def _privilege_metadata(tool_name: str, source_snippet: str) -> dict[str, Any]:
     """Tool annotation hints, plus ``high_privilege`` when they or the name imply writes."""
-    hints = {match["hint"]: match["value"] == "true" for match in _HINT_RE.finditer(source_snippet)}
+    code = _GO_COMMENT_OR_STRING_RE.sub(
+        lambda match: re.sub(r"[^\n]", " ", match.group(0)), source_snippet
+    )
+    hints = {match["hint"]: match["value"] == "true" for match in _HINT_RE.finditer(code)}
+    for match in _STRUCT_HINT_RE.finditer(code):
+        hints[match["hint"]] = (match["call_value"] or match["ref_value"]) == "true"
     metadata: dict[str, Any] = {}
     if "Destructive" in hints:
         metadata["destructive_hint"] = hints["Destructive"]

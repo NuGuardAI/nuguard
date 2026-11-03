@@ -311,23 +311,16 @@ def _inferred_handler_auth(
 ) -> str:
     """Name the handler-side auth signal for a net/http-style route, if any."""
     expression = expression.strip()
-    open_paren = expression.find("(")
-
-    if open_paren <= 0 or expression.startswith("func"):
-        return ""
-
-    callee = expression[:open_paren].strip().split(".")
-
-    if _AUTH_WRAPPER_NAME_RE.fullmatch(callee[-1]) or (
-        len(callee) > 1
-        and callee[-1] in _HANDLER_METHOD_NAMES
-        and _AUTH_WRAPPER_NAME_RE.fullmatch(callee[-2])
-    ):
-        return "handler_wrapper"
 
     # A login/token route takes the authenticator to issue credentials, not
     # to check them.
     if _LOGIN_PATH_RE.search(route):
+        return ""
+
+    if _wraps_auth(expression, depth=4):
+        return "handler_wrapper"
+
+    if expression.find("(") <= 0 or expression.startswith("func"):
         return ""
 
     for argument in _call_arguments(expression):
@@ -337,6 +330,32 @@ def _inferred_handler_auth(
             return "handler_dependency"
 
     return ""
+
+
+def _wraps_auth(
+    expression: str,
+    *,
+    depth: int,
+) -> bool:
+    """Return whether ``expression`` or a nested call argument is an auth wrapper."""
+    expression = expression.strip()
+    open_paren = expression.find("(")
+
+    if depth <= 0 or open_paren <= 0 or expression.startswith("func"):
+        return False
+
+    callee = expression[:open_paren].strip().split(".")
+
+    if _AUTH_WRAPPER_NAME_RE.fullmatch(callee[-1]) or (
+        len(callee) > 1
+        and callee[-1] in _HANDLER_METHOD_NAMES
+        and _AUTH_WRAPPER_NAME_RE.fullmatch(callee[-2])
+    ):
+        return True
+
+    return any(
+        _wraps_auth(argument, depth=depth - 1) for argument in _call_arguments(expression)
+    )
 
 
 def _resolved_string_argument(

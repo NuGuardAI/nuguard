@@ -78,11 +78,11 @@ class NetHTTPAdapter(GoFrameworkAdapter):
             metadata = {
                 "framework": self.name,
                 "method": method,
-                "endpoint": path,
+                "endpoint": f"{host}{path}",
                 "language": "golang",
             }
             if host:
-                metadata["host"] = host
+                metadata["route_host"] = host
             endpoint = ComponentDetection(
                 component_type=ComponentType.API_ENDPOINT,
                 canonical_name=canon,
@@ -107,7 +107,7 @@ class NetHTTPAdapter(GoFrameworkAdapter):
             )
             detections.append(endpoint)
 
-        return enrich_http_endpoint_detections(
+        enriched = enrich_http_endpoint_detections(
             content,
             result,
             detections,
@@ -118,11 +118,16 @@ class NetHTTPAdapter(GoFrameworkAdapter):
             },
             route_key=_route_key,
         )
+        for detection in detections:
+            host = detection.metadata.get("route_host")
+            if detection.component_type == ComponentType.API_ENDPOINT and host:
+                detection.metadata["endpoint"] = detection.metadata["endpoint"][len(host):]
+        return enriched
 
 
 def _route_key(_method: str, pattern: str) -> tuple[str, str] | None:
     split = _split_pattern(pattern)
-    return (split[0], split[2]) if split else None
+    return (split[0], f"{split[1]}{split[2]}") if split else None
 
 
 __all__ = ["NetHTTPAdapter"]

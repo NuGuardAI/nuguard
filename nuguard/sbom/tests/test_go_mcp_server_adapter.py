@@ -278,3 +278,108 @@ func main() {
     assert tools["deleteInvoice"]["high_privilege"] is True
     assert "high_privilege" not in tools["update_cache"]
     assert "high_privilege" not in tools["get_payment_status"]
+
+
+def _tool_metadata(source: str) -> dict[str, dict[str, object]]:
+    return {
+        tool.display_name: tool.metadata for tool in _by_type(_extract(source), ComponentType.TOOL)
+    }
+
+
+def test_hints_in_comments_and_string_literals_are_ignored() -> None:
+    source = """package main
+
+import (
+    "github.com/mark3labs/mcp-go/mcp"
+    "github.com/mark3labs/mcp-go/server"
+)
+
+func main() {
+    s := server.NewMCPServer("billing", "1.0.0")
+    s.AddTool(mcp.NewTool("delete_invoice",
+        // mcp.WithReadOnlyHintAnnotation(true),
+        /* mcp.WithReadOnlyHintAnnotation(true) */
+    ), deleteInvoice)
+    s.AddTool(mcp.NewTool("payment_lookup",
+        mcp.WithDescription("Never mcp.WithDestructiveHintAnnotation(true) here"),
+        mcp.WithTitle(`mcp.WithDestructiveHintAnnotation(true)`),
+    ), lookup)
+}
+"""
+
+    tools = _tool_metadata(source)
+
+    assert tools["delete_invoice"]["high_privilege"] is True
+    assert "read_only_hint" not in tools["delete_invoice"]
+    assert "high_privilege" not in tools["payment_lookup"]
+    assert "destructive_hint" not in tools["payment_lookup"]
+
+
+def test_struct_tool_annotation_hints_are_parsed() -> None:
+    source = """package main
+
+import (
+    "github.com/mark3labs/mcp-go/mcp"
+    "github.com/mark3labs/mcp-go/server"
+)
+
+func main() {
+    s := server.NewMCPServer("billing", "1.0.0")
+    s.AddTool(mcp.NewTool("payment_lookup",
+        mcp.WithToolAnnotation(mcp.ToolAnnotation{
+            DestructiveHint: mcp.ToolBoolPtr(true),
+            ReadOnlyHint:    mcp.ToolBoolPtr(false),
+        }),
+    ), lookup)
+    s.AddTool(mcp.NewTool("delete_cache",
+        mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: &true, DestructiveHint: &false}),
+    ), deleteCache)
+}
+"""
+
+    tools = _tool_metadata(source)
+
+    assert tools["payment_lookup"]["destructive_hint"] is True
+    assert tools["payment_lookup"]["read_only_hint"] is False
+    assert tools["payment_lookup"]["high_privilege"] is True
+    assert tools["delete_cache"]["read_only_hint"] is True
+    assert tools["delete_cache"]["destructive_hint"] is False
+    assert "high_privilege" not in tools["delete_cache"]
+
+
+def test_widened_write_verbs_match_first_word_only() -> None:
+    names = [
+        "set_limit",
+        "addUser",
+        "reset_password",
+        "patch_record",
+        "put_object",
+        "submit_order",
+        "purge_queue",
+        "archive_ticket",
+        "settings_lookup",
+        "addresses_list",
+        "resettable_flags",
+        "putting_green",
+        "get_settings",
+    ]
+    tools_src = "\n".join(f'    s.AddTool(mcp.NewTool("{name}"), h)' for name in names)
+    source = f"""package main
+
+import (
+    "github.com/mark3labs/mcp-go/mcp"
+    "github.com/mark3labs/mcp-go/server"
+)
+
+func main() {{
+    s := server.NewMCPServer("svc", "1.0.0")
+{tools_src}
+}}
+"""
+
+    tools = _tool_metadata(source)
+
+    for name in names[:8]:
+        assert tools[name].get("high_privilege") is True, name
+    for name in names[8:]:
+        assert "high_privilege" not in tools[name], name
