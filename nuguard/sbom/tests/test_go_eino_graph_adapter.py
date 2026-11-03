@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from nuguard.sbom.adapters.base import (
     ComponentDetection,
 )
@@ -712,12 +714,53 @@ def test_adk_agent_emits_model_node_and_preview() -> None:
     assert model.canonical_name == "support_prod"
     assert model.display_name == "support_prod"
     assert model.metadata["provider"] == "openai"
+    assert model.metadata["module"] == "github.com/cloudwego/eino-ext/components/model/openai"
+    assert model.metadata["constructor_line"] == _line_of(
+        _ADK_SAME_FILE_PROMPT, "openai.NewChatModel"
+    )
     assert any(
         relationship.source_canonical == agent.canonical_name
         and relationship.target_canonical == model.canonical_name
         and relationship.relationship_type == "USES"
         for relationship in agent.relationships
     )
+
+
+def _prompt_targets(agent: ComponentDetection) -> set[str]:
+    return {
+        relationship.target_canonical
+        for relationship in agent.relationships
+        if relationship.source_canonical == agent.canonical_name
+        and relationship.target_type == ComponentType.PROMPT
+    }
+
+
+@pytest.mark.parametrize(
+    "instruction",
+    ['fmt.Sprintf("Help %s", user)', "cfg.Prompt"],
+)
+def test_adk_non_identifier_instruction_emits_no_instruction_variable(
+    instruction: str,
+) -> None:
+    source = _ADK_SAME_FILE_PROMPT.replace(
+        "Instruction: supportPrompt,",
+        f"Instruction: {instruction},",
+    )
+    (agent,) = _by_type(_extract(source), ComponentType.AGENT)
+
+    assert "instruction_variable" not in agent.metadata
+    assert _prompt_targets(agent) == set()
+
+
+def test_adk_instruction_identifier_without_prompt_suffix_emits_no_prompt_hint() -> None:
+    source = _ADK_SAME_FILE_PROMPT.replace(
+        "Instruction: supportPrompt,",
+        "Instruction: instructions,",
+    )
+    (agent,) = _by_type(_extract(source), ComponentType.AGENT)
+
+    assert agent.metadata["instruction_variable"] == "instructions"
+    assert _prompt_targets(agent) == set()
 
 
 def test_adk_literal_instruction_sets_system_prompt_preview() -> None:

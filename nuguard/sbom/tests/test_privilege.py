@@ -473,6 +473,20 @@ class TestCodeExecution:
             "_, err := r.db.Exec(source)",
             "sql_conn.exec(source)",
             "_, err := dbConn.Exec(source)",
+            "_, err := tx.Exec(query, code)",
+            "_, err := conn.Exec(query, source)",
+            "_, err := pool.Exec(query, source)",
+            "cursor.exec(source)",
+            "_, err := repo.Exec(ctx, query, code)",
+            "myexec(code)",
+            "runexec(source)",
+            "obj.eval(expr)",
+            "app_db.exec(source)",
+            "_, err := sql_tx.Exec(code)",
+            "my_cursor.exec(source)",
+            "appCursor.exec(source)",
+            "_, err := userDb.Exec(source)",
+            "_, err := pgPool.Exec(query, source)",
         ],
     )
     def test_sql_exec_method_is_not_code_execution(self, code: str) -> None:
@@ -488,6 +502,7 @@ class TestCodeExecution:
             "threadpool.exec(code)",
             "workerpool.exec(script)",
             "httpconn.exec(script)",
+            "sandbox.Exec(generatedCode)",
         ],
     )
     def test_code_exec_method_is_code_execution(self, code: str) -> None:

@@ -1376,6 +1376,26 @@ def test_auth_protects_fallback_kept_when_no_endpoint_marked_protected() -> None
     assert targets == {endpoint.id for endpoint in endpoints}
 
 
+def test_auth_protects_fallback_skips_unknown_auth_required_endpoints() -> None:
+    """Only endpoints explicitly marked auth_required=True are fallback targets
+    once any endpoint is marked protected; unknown (None) and False get no edge."""
+    auth = _node("JWT", ComponentType.AUTH, extras={})
+    protected = _node("POST /api/orders", ComponentType.API_ENDPOINT)
+    protected.metadata.auth_required = True
+    unknown = _node("GET /api/items", ComponentType.API_ENDPOINT)
+    unknown.metadata.auth_required = None
+    public = _node("GET /health", ComponentType.API_ENDPOINT)
+    public.metadata.auth_required = False
+
+    doc = AiSbomDocument(
+        target=".", nodes=[auth, protected, unknown, public], summary=ScanSummary()
+    )
+    AiSbomExtractor()._resolve_edges(doc, {})
+
+    targets = {e.target for e in doc.edges if e.relationship_type == RelationshipType.PROTECTS}
+    assert targets == {protected.id}
+
+
 def test_guardrail_protects_agent_fallback_when_file_related() -> None:
     """GUARDRAIL nodes with no explicit PROTECTS edge (e.g. guardrails_ai.py's
     Guard()/register_validator/hub-import detections, which emit no

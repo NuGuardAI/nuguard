@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from nuguard.sbom.adapters.base import ComponentDetection
 from nuguard.sbom.adapters.go import (
     ChiAdapter,
@@ -539,3 +541,106 @@ func NewServer(deps Dependencies) http.Handler {
 
     assert endpoints["GET /public"]["auth_required"] is False
     assert "auth_inference" not in endpoints["GET /public"]
+
+
+def test_net_http_auth_wrapper_search_stops_after_four_levels() -> None:
+    source = """package api
+
+import "net/http"
+
+func NewServer(deps Dependencies) http.Handler {
+    mux := http.NewServeMux()
+    mux.Handle("GET /four", withLogging(withMetrics(withTracing(requireAuth(fourHandler)))))
+    mux.Handle("GET /five", withLogging(withMetrics(withTracing(withRecovery(requireAuth(fiveHandler))))))
+    return mux
+}
+"""
+
+    endpoints = {
+        endpoint.display_name: endpoint.metadata
+        for endpoint in _by_type(
+            _extract(NetHTTPAdapter(), source),
+            ComponentType.API_ENDPOINT,
+        )
+    }
+
+    assert endpoints["GET /four"]["auth_required"] is True
+    assert endpoints["GET /four"]["auth_inference"] == "handler_wrapper"
+
+    # The wrapper search is capped at four call levels.
+    assert endpoints["GET /five"]["auth_required"] is False
+    assert "auth_inference" not in endpoints["GET /five"]
+
+
+def test_net_http_func_literal_and_bare_handlers_skip_dependency_scan() -> None:
+    source = """package api
+
+import "net/http"
+
+func NewServer(deps Dependencies) http.Handler {
+    mux := http.NewServeMux()
+    mux.HandleFunc("POST /inline", func(w http.ResponseWriter, r *http.Request) {
+        authToken := r.Header.Get("Authorization")
+        _ = authToken
+    })
+    mux.Handle("GET /factory", func(v *jwt.Verifier) http.Handler {
+        return publicHandler
+    }(deps.Verifier))
+    mux.Handle("GET /bare", auth)
+    return mux
+}
+"""
+
+    endpoints = {
+        endpoint.display_name: endpoint.metadata
+        for endpoint in _by_type(
+            _extract(NetHTTPAdapter(), source),
+            ComponentType.API_ENDPOINT,
+        )
+    }
+
+    for route in ("POST /inline", "GET /factory", "GET /bare"):
+        assert endpoints[route]["auth_required"] is False
+        assert "auth_inference" not in endpoints[route]
+
+
+def test_net_http_func_literal_inside_wrapper_is_not_searched() -> None:
+    source = """package api
+
+import "net/http"
+
+func NewServer(deps Dependencies) http.Handler {
+    mux := http.NewServeMux()
+    mux.Handle("GET /inline", withLogging(func(w http.ResponseWriter, r *http.Request) {
+        requireAuth(adminHandler).ServeHTTP(w, r)
+    }))
+    return mux
+}
+"""
+
+    endpoint = _endpoint(_extract(NetHTTPAdapter(), source))
+
+    assert endpoint.metadata["auth_required"] is False
+    assert "auth_inference" not in endpoint.metadata
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="_wraps_auth skips any callee starting with 'func', not only func literals",
+)
+def test_net_http_func_prefixed_wrapper_name_is_searched() -> None:
+    source = """package api
+
+import "net/http"
+
+func NewServer(deps Dependencies) http.Handler {
+    mux := http.NewServeMux()
+    mux.Handle("GET /admin", funcs.Chain(requireAuth(adminHandler)))
+    return mux
+}
+"""
+
+    endpoint = _endpoint(_extract(NetHTTPAdapter(), source))
+
+    assert endpoint.metadata["auth_required"] is True
+    assert endpoint.metadata["auth_inference"] == "handler_wrapper"

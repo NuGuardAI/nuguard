@@ -383,3 +383,79 @@ func main() {{
         assert tools[name].get("high_privilege") is True, name
     for name in names[8:]:
         assert "high_privilege" not in tools[name], name
+
+
+def test_struct_hints_in_comments_and_string_literals_are_ignored() -> None:
+    source = """package main
+
+import (
+    "github.com/mark3labs/mcp-go/mcp"
+    "github.com/mark3labs/mcp-go/server"
+)
+
+func main() {
+    s := server.NewMCPServer("billing", "1.0.0")
+    s.AddTool(mcp.NewTool("delete_invoice",
+        // ReadOnlyHint: &true
+    ), deleteInvoice)
+    s.AddTool(mcp.NewTool("payment_lookup",
+        mcp.WithDescription("DestructiveHint: mcp.ToolBoolPtr(true)"),
+    ), lookup)
+}
+"""
+
+    tools = _tool_metadata(source)
+
+    assert "read_only_hint" not in tools["delete_invoice"]
+    assert tools["delete_invoice"]["high_privilege"] is True
+    assert "destructive_hint" not in tools["payment_lookup"]
+    assert "high_privilege" not in tools["payment_lookup"]
+
+
+def test_struct_hint_overrides_conflicting_with_hint_annotation() -> None:
+    """Current behaviour: struct-form hints are applied after WithXHintAnnotation
+    hints, so the struct form wins regardless of source order."""
+    source = """package main
+
+import (
+    "github.com/mark3labs/mcp-go/mcp"
+    "github.com/mark3labs/mcp-go/server"
+)
+
+func main() {
+    s := server.NewMCPServer("billing", "1.0.0")
+    s.AddTool(mcp.NewTool("delete_rows",
+        mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: &true, DestructiveHint: &false}),
+        mcp.WithReadOnlyHintAnnotation(false),
+        mcp.WithDestructiveHintAnnotation(true),
+    ), deleteRows)
+}
+"""
+
+    tools = _tool_metadata(source)
+
+    assert tools["delete_rows"]["read_only_hint"] is True
+    assert tools["delete_rows"]["destructive_hint"] is False
+    assert "high_privilege" not in tools["delete_rows"]
+
+
+def test_struct_hint_requires_word_boundary_before_hint_name() -> None:
+    source = """package main
+
+import (
+    "github.com/mark3labs/mcp-go/mcp"
+    "github.com/mark3labs/mcp-go/server"
+)
+
+func main() {
+    s := server.NewMCPServer("billing", "1.0.0")
+    s.AddTool(mcp.NewTool("payment_lookup",
+        mcp.WithToolAnnotation(custom.Annotation{NotDestructiveHint: &true}),
+    ), lookup)
+}
+"""
+
+    tools = _tool_metadata(source)
+
+    assert "destructive_hint" not in tools["payment_lookup"]
+    assert "high_privilege" not in tools["payment_lookup"]
