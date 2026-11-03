@@ -79,6 +79,7 @@ def _completion(payload: dict) -> dict:
 
 def make_handler():
     class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"  # keep-alive: HTTP/1.0 closes per request and parallel clients see resets
         def _send_json(self, status: int, payload: dict) -> None:
             body = json.dumps(payload).encode("utf-8")
             self.send_response(status)
