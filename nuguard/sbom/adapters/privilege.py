@@ -330,8 +330,11 @@ def privilege_adapters() -> list[RegexAdapter]:
                 # SQL receivers (Go's ``db.Exec(ctx, sql)``, SQLite's
                 # ``db.exec(sql)``) are excluded; ``cp.exec(script)`` is kept.
                 re.compile(
-                    r"(?<!\w)(?<!(?i:db)\.)(?<!(?i:\btx)\.)(?<!(?i:conn)\.)"
-                    r"(?<!(?i:pool)\.)(?<!(?i:stmt)\.)(?<!(?i:cursor)\.)"
+                    r"(?<!\w)"
+                    r"(?<!\b(?i:db|tx)\.)(?<!\b(?i:conn|pool|stmt)\.)(?<!\b(?i:cursor)\.)"
+                    r"(?<!_(?i:db|tx)\.)(?<!_(?i:conn|pool|stmt)\.)(?<!_(?i:cursor)\.)"
+                    r"(?<![a-z0-9](?:DB|Db)\.)(?<![a-z0-9](?:Conn|Pool|Stmt)\.)"
+                    r"(?<![a-z0-9]Cursor\.)"
                     r"((?i:exec)\s*\((?!\s*ctx\b)[^)]*"
                     r"(?i:code|script|source|generated|llm|response|output)"
                     r"|(?<!\.)eval\s*\([^)]*(?i:code|expr|generated|llm|response))\b",

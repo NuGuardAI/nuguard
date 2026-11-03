@@ -259,3 +259,135 @@ func main() {
 """
     for adapter in (GinAdapter(), EchoAdapter(), ChiAdapter(), NetHTTPAdapter(), GorillaMuxAdapter(), GqlgenAdapter()):
         assert _extract(adapter, src) == []
+
+
+_CHI_MIXED_AUTH_SRC = """
+package main
+
+import (
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
+)
+
+func jwtVerify(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		jwt.Parse(req.Header.Get("Authorization"), nil)
+		next.ServeHTTP(w, req)
+	})
+}
+
+func main() {
+	r := chi.NewRouter()
+	r.Get("/health", health)
+	r.With(jwtVerify).Get("/me", me)
+	r.Group(func(r chi.Router) {
+		r.Use(jwtVerify)
+		r.Get("/admin", admin)
+	})
+	r.Route("/api", func(r chi.Router) {
+		r.Group(func(r chi.Router) {
+			r.Use(jwtVerify)
+		})
+		r.Get("/status", status)
+		r.Route("/v1", func(r chi.Router) {
+			r.Use(jwtVerify)
+			r.Post("/items", createItem)
+		})
+	})
+	http.ListenAndServe(":8080", r)
+}
+"""
+
+
+def test_chi_group_and_with_auth_mark_routes_protected() -> None:
+    endpoints = {
+        e.display_name: e.metadata
+        for e in _by_type(_extract(ChiAdapter(), _CHI_MIXED_AUTH_SRC), ComponentType.API_ENDPOINT)
+    }
+    assert endpoints["GET /me"]["auth_inference"] == "route_middleware"
+    assert endpoints["GET /admin"]["auth_inference"] == "group_middleware"
+    assert endpoints["POST /items"]["auth_inference"] == "group_middleware"
+    assert all(
+        endpoints[name]["auth_required"] for name in ("GET /me", "GET /admin", "POST /items")
+    )
+    for public in ("GET /health", "GET /status"):
+        assert endpoints[public]["auth_required"] is False
+        assert "auth_inference" not in endpoints[public]
+
+
+def test_chi_group_auth_routes_get_protects_edges_through_extractor(tmp_path) -> None:
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.tests.conftest import GO_ONLY
+    from nuguard.sbom.types import RelationshipType
+
+    (tmp_path / "main.go").write_text(_CHI_MIXED_AUTH_SRC)
+    doc = AiSbomExtractor().extract_from_path(tmp_path, GO_ONLY)
+    names = {node.id: node.name for node in doc.nodes}
+    jwt_ids = {
+        node.id
+        for node in doc.nodes
+        if node.component_type == ComponentType.AUTH
+        and node.metadata.extras.get("auth_type") == "jwt"
+    }
+    assert jwt_ids
+    protected = {
+        names[edge.target]
+        for edge in doc.edges
+        if edge.relationship_type == RelationshipType.PROTECTS and edge.source in jwt_ids
+    }
+    assert len([n for n in protected if n.endswith(("/me", "/admin", "/items"))]) == 3
+    assert not [n for n in protected if n.endswith(("/health", "/status"))]
+
+
+_GIN_GROUP_AUTH_SRC = """
+package main
+
+import "github.com/gin-gonic/gin"
+
+func main() {
+	r := gin.Default()
+	r.GET("/health", health)
+	v1 := r.Group("/v1")
+	v1.Use(authMiddleware())
+	v1.GET("/profile", profile)
+	admin := r.Group("/admin", requireAuth())
+	admin.POST("/users", createUser)
+}
+"""
+
+
+def test_gin_group_use_custom_auth_marks_routes_protected() -> None:
+    endpoints = {
+        e.display_name: e.metadata
+        for e in _by_type(_extract(GinAdapter(), _GIN_GROUP_AUTH_SRC), ComponentType.API_ENDPOINT)
+    }
+    assert endpoints["GET /profile"]["auth_inference"] == "group_middleware"
+    assert endpoints["POST /users"]["auth_inference"] == "group_middleware"
+    assert endpoints["GET /health"]["auth_required"] is False
+
+
+_ECHO_GROUP_AUTH_SRC = """
+package main
+
+import "github.com/labstack/echo/v4"
+
+func main() {
+	e := echo.New()
+	e.GET("/health", health)
+	g := e.Group("/api")
+	g.Use(jwtAuth)
+	g.GET("/chat", chat)
+}
+"""
+
+
+def test_echo_group_use_custom_auth_marks_routes_protected() -> None:
+    endpoints = {
+        e.display_name: e.metadata
+        for e in _by_type(_extract(EchoAdapter(), _ECHO_GROUP_AUTH_SRC), ComponentType.API_ENDPOINT)
+    }
+    assert endpoints["GET /chat"]["auth_required"] is True
+    assert endpoints["GET /chat"]["auth_inference"] == "group_middleware"
+    assert endpoints["GET /health"]["auth_required"] is False

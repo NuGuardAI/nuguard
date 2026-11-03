@@ -468,6 +468,11 @@ class TestCodeExecution:
             "_, err := tx.ExecContext(ctx, query, code)",
             "_, err := stmt.Exec(source)",
             "res, err := insertStmt.Exec(llmOutput)",
+            "_, err := userDB.Exec(query, source)",
+            "_, err := pgPool.Exec(ctx, query, source)",
+            "_, err := r.db.Exec(source)",
+            "sql_conn.exec(source)",
+            "_, err := dbConn.Exec(source)",
         ],
     )
     def test_sql_exec_method_is_not_code_execution(self, code: str) -> None:
@@ -480,6 +485,9 @@ class TestCodeExecution:
             "cp.exec(llmOutput, cb)",
             "await sandbox.exec(code)",
             "exec(source_code)",
+            "threadpool.exec(code)",
+            "workerpool.exec(script)",
+            "httpconn.exec(script)",
         ],
     )
     def test_code_exec_method_is_code_execution(self, code: str) -> None:
