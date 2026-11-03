@@ -320,7 +320,12 @@ def test_pipeline_prompt_secrets_absent_from_sbom_json(language: str, tmp_path: 
 
 @pytest.mark.parametrize(
     ("text", "secret"),
-    [("password=required hunter2", "hunter2"), ("password={pw} S3cr3t!x", "S3cr3t!x")],
+    [
+        ("password=required hunter2", "hunter2"),
+        ("password={pw} S3cr3t!x", "S3cr3t!x"),
+        ("password={pw} CorrectHorseBatteryStaple", "CorrectHorseBatteryStaple"),
+        ("password={pw} correcthorsebatterystaple", "correcthorsebatterystaple"),
+    ],
 )
 def test_trivial_first_word_does_not_keep_a_secret_after_it(text: str, secret: str) -> None:
     assert secret not in redact_secrets(text)
