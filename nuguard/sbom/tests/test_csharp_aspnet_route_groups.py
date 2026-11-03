@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from nuguard.sbom import AiSbomConfig, AiSbomExtractor
 from nuguard.sbom.adapters.csharp.aspnet_core import (
     CSharpAspNetCoreAdapter,
@@ -90,6 +92,51 @@ app.MapGet("/y", [ProducesResponseType(200), AllowAnonymous] () => Results.Ok())
         "GET /x": True,
         "GET /y": False,
     }
+
+
+def test_auth_attribute_after_first_in_section() -> None:
+    source = """using Microsoft.AspNetCore.Builder;
+var app = WebApplication.CreateBuilder(args).Build();
+var api = app.MapGroup("/api").RequireAuthorization();
+app.MapGet("/x", [EndpointName("x"), Authorize] () => Results.Ok());
+api.MapGet("/y", [Tags("t"), AllowAnonymous] () => Results.Ok());
+"""
+
+    assert _endpoint_auth(CSharpAspNetCoreAdapter(), source, "Program.cs") == {
+        "GET /x": True,
+        "GET /api/y": False,
+    }
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="find_calls drops the receiver of `Endpoints?.Map(...)` (receiver=None)",
+)
+def test_null_conditional_receiver_binding_keyed_by_declaring_type() -> None:
+    program = """using Microsoft.AspNetCore.Builder;
+var app = WebApplication.CreateBuilder(args).Build();
+var orders = app.MapGroup("/orders");
+var admin = app.MapGroup("/admin").RequireAuthorization();
+Endpoints?.Map(admin);
+OrdersEndpoints.Map(orders);
+"""
+    endpoints = """using Microsoft.AspNetCore.Builder;
+public static class Endpoints
+{
+    public static void Map(IEndpointRouteBuilder app)
+    {
+        app.MapGet("/users", () => Results.Ok());
+    }
+}
+"""
+    bindings = collect_route_group_bindings(program, "Program.cs")
+    assert "Endpoints.Map" in bindings
+    assert "Map" not in bindings
+
+    adapter = CSharpAspNetCoreAdapter()
+    adapter.set_csharp_route_group_bindings(bindings)
+
+    assert _endpoint_auth(adapter, endpoints, "Endpoints.cs") == {"GET /admin/users": True}
 
 
 def test_cross_file_bindings_keep_qualified_and_drop_ambiguous_bare(tmp_path: Path) -> None:

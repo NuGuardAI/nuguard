@@ -89,6 +89,9 @@ _SAFE_LITERALS = frozenset(
         "Identity.Application",
     )
 )
+_SNIPPET_TOKEN_RE = re.compile(
+    "|".join(re.escape(t) for t in ('"<redacted>"', "'?'", *sorted(_SAFE_LITERALS)))
+)
 
 # Attribute patterns for structural authorization detection
 _AUTHORIZE_ATTR_RE = re.compile(
@@ -264,17 +267,33 @@ class CSharpAuthAdapter(CSharpFrameworkAdapter):
 
 
 def _redacted_snippet(content: str, call: CSharpCall) -> str:
-    """Return the call snippet with string literals and comments redacted."""
+    """Return the call snippet with literals and comments redacted.
+
+    Falls back to a shape-only ``Name(…)`` snippet when the tokenizer may have
+    lost sync (raw/interpolated literals it cannot model), so no literal text leaks.
+    """
+    desync = False
 
     def redact(match: re.Match[str]) -> str:
+        nonlocal desync
         token = match.group(0)
         if match["line_comment"] or match["block_comment"]:
             return " "
-        if match["char"] or token in _SAFE_LITERALS:
-            return token
-        return '"<redacted>"'
+        if match["char"]:
+            return "'?'"
+        if match["raw"]:
+            body = token.lstrip("$")
+            nxt = match.string[match.end() : match.end() + 1]
+            desync |= len(body) - len(body.lstrip('"')) != 3 or nxt == '"'
+        if token.startswith("$"):
+            holes = token.replace("{{", "").replace("}}", "")
+            desync |= holes.count("{") != holes.count("}")
+        return token if token in _SAFE_LITERALS else '"<redacted>"'
 
     text = _TOKEN_RE.sub(redact, content[call.start : call.end])
+    residue = _SNIPPET_TOKEN_RE.sub("\0", text)
+    if desync or "'" in residue or '"' in residue or re.search(r"\w\0|\0[\w\0]", residue):
+        return f"{call.name}(…)"
     return " ".join(text.split())[:240]
 
 

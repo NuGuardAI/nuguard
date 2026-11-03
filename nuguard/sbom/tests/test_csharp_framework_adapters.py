@@ -1461,6 +1461,68 @@ public class Setup
     assert tools == {"SalesPlugin", "SupportPlugin"}
 
 
+def test_semantic_kernel_plugin_object_ignores_other_methods_locals() -> None:
+    source = """using Microsoft.SemanticKernel;
+public class Setup
+{
+    private BPlugin p = new();
+
+    public void Prepare()
+    {
+        var p = new APlugin();
+        Use(p);
+    }
+
+    public void Register(Kernel kernel)
+    {
+        kernel.Plugins.AddFromObject(p);
+    }
+}
+"""
+    tools = {
+        detection.display_name
+        for detection in _by_type(
+            _extract(CSharpSemanticKernelAdapter(), source), ComponentType.TOOL
+        )
+    }
+
+    assert tools == {"BPlugin"}
+
+
+def test_semantic_kernel_plugin_object_follows_reassignment() -> None:
+    source = """using Microsoft.SemanticKernel;
+public class Setup
+{
+    public void Register(Kernel kernel)
+    {
+        var p = new APlugin();
+        p = new BPlugin();
+        kernel.Plugins.AddFromObject(p);
+    }
+}
+"""
+    tools = {
+        detection.display_name
+        for detection in _by_type(
+            _extract(CSharpSemanticKernelAdapter(), source), ComponentType.TOOL
+        )
+    }
+
+    assert tools == {"BPlugin"}
+
+
+def test_semantic_kernel_agent_kernel_assigned_from_plugin_registration() -> None:
+    source = """using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Agents;
+var kernel = Kernel.CreateBuilder().Plugins.AddFromType<SalesPlugin>();
+var agent = new ChatCompletionAgent { Name = "Sales", Kernel = kernel };
+"""
+    detections = _extract(CSharpSemanticKernelAdapter(), source)
+    agent = _by_type(detections, ComponentType.AGENT)[0]
+
+    assert agent.metadata["plugins"] == ["SalesPlugin"]
+
+
 def test_semantic_kernel_write_heuristic_verbs_and_collection_calls() -> None:
     source = """using Microsoft.SemanticKernel;
 public class OpsPlugin
@@ -1493,6 +1555,12 @@ public class OpsPlugin
 
     [KernelFunction]
     public string CloseTicket(string id) => id;
+
+    [KernelFunction]
+    public string PatchOrder(string id) => id;
+
+    [KernelFunction]
+    public Task ApplyChanges(Item item) => _client.PatchAsync(item);
 }
 """
     tools = {
@@ -1510,6 +1578,8 @@ public class OpsPlugin
         "ApproveLoan",
         "SendEmail",
         "CloseTicket",
+        "PatchOrder",
+        "ApplyChanges",
     ):
         assert tools[name].get("privilege_scope") == "db_write", name
 

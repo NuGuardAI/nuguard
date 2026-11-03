@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+import pytest
 
 from nuguard.sbom.adapters.base import ComponentDetection
 from nuguard.sbom.adapters.csharp import CSharpAuthAdapter
@@ -305,3 +308,58 @@ def test_generic_auth_regex_ignores_namespace_segments() -> None:
     )
     assert generic.detect("using Microsoft.AspNetCore.Authentication.JwtBearer;") is None
     assert generic.detect("// requires authentication for every route") is not None
+
+
+_LEAK_SHAPES = {
+    "raw_four_quotes": 'AddAuthentication(""""prefix"""S3CRET"""")',
+    "string_in_hole": 'AddAuthentication($"Bearer {Encode("S3CRET")}")',
+    "quote_char_in_hole": 'AddAuthentication($"{\'"\'}S3CRET")',
+    "char_literals": "AddAuthentication(new string(new[] { 'S','3','C','R','E','T' }))",
+}
+
+
+@pytest.mark.parametrize("call", _LEAK_SHAPES.values(), ids=_LEAK_SHAPES.keys())
+def test_snippet_tokenizer_desync_does_not_leak(tmp_path, call: str) -> None:
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.tests.conftest import CS_ONLY
+
+    project = tmp_path / "src" / "Api"
+    project.mkdir(parents=True)
+    (project / "Program.cs").write_text(
+        f"using Microsoft.AspNetCore.Authentication;\nbuilder.Services.{call};\n"
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, CS_ONLY)
+
+    assert any(n.component_type == ComponentType.AUTH for n in doc.nodes)
+    assert "S3CRET" not in re.sub(r"[',\s]", "", doc.model_dump_json())
+
+
+def test_snippet_keeps_safe_scheme_in_extracted_sbom(tmp_path) -> None:
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.tests.conftest import CS_ONLY
+
+    project = tmp_path / "src" / "Api"
+    project.mkdir(parents=True)
+    (project / "Program.cs").write_text(
+        "using Microsoft.AspNetCore.Authentication;\n"
+        'builder.Services.AddAuthentication("Bearer");\n'
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, CS_ONLY)
+
+    assert 'AddAuthentication(\\"Bearer\\")' in doc.model_dump_json()
+
+
+def test_add_authentication_kept_when_chained_scheme_not_allowed() -> None:
+    source = "builder.Services.AddAuthentication().AddJwtBearer();\n"
+    auth = _by_type(_extract(CSharpAuthAdapter(), source), ComponentType.AUTH)
+
+    assert [d.canonical_name for d in auth] == ["auth_aspnet_auth"]
+
+
+def test_add_authentication_kept_before_identity_web_api() -> None:
+    source = "builder.Services.AddAuthentication().AddMicrosoftIdentityWebApi(config);\n"
+    auth = _by_type(_extract(CSharpAuthAdapter(), source), ComponentType.AUTH)
+
+    assert [d.canonical_name for d in auth] == ["auth_aspnet_auth"]

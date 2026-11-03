@@ -112,6 +112,53 @@ def test_partial_plugin_class_across_files_keeps_all_kernel_functions(tmp_path: 
     assert "transferfunds" in called, called
 
 
+def test_partial_plugin_base_declared_in_one_file_links_inherited_functions(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "bank"
+    _write(
+        root,
+        {
+            "Bank.csproj": _CSPROJ,
+            "Plugins/BankBase.cs": """using Microsoft.SemanticKernel;
+
+namespace Bank;
+
+public abstract class BankBase
+{
+    [KernelFunction]
+    public string FreezeAccount(string account) => "ok";
+}
+""",
+            "Plugins/BankPlugin.A.cs": """using Microsoft.SemanticKernel;
+
+namespace Bank;
+
+public partial class BankPlugin : BankBase
+{
+    [KernelFunction]
+    public string GetBalance(string account) => "0";
+}
+""",
+            "Plugins/BankPlugin.B.cs": _PLUGIN_PART_B,
+            "AgentFactory.cs": _AGENT,
+        },
+    )
+    doc = AiSbomExtractor().extract_from_path(root, CS_ONLY)
+
+    agent_ids = {n.id for n in nodes(doc, ComponentType.AGENT) if n.name.lower() == "teller"}
+    assert agent_ids
+    by_id = {n.id: n for n in doc.nodes}
+    called = {
+        by_id[e.target].name.lower()
+        for e in doc.edges
+        if e.source in agent_ids
+        and e.relationship_type == RelationshipType.CALLS
+        and e.target in by_id
+    }
+    assert {"getbalance", "transferfunds", "freezeaccount"} <= called, called
+
+
 def test_csharp_auth_adapter_is_registered() -> None:
     assert any(isinstance(a, CSharpAuthAdapter) for a in default_framework_adapters())
 
