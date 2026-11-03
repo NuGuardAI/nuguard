@@ -94,9 +94,11 @@ _PROMPT_FIELD_NAMES = {
 
 
 _URL_USERINFO_RE = re.compile(
-    r"(?P<prefix>(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://)(?:[^\s\"/@:]*:\S*|[^\s\"/@:]+)@",
+    r"(?P<prefix>(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://)(?:[^\r\n\"/@:]*:(?!//)\S*|[^\s\"/@:]+)@",
     re.IGNORECASE,
 )
+
+_URL_SPACED_USERINFO_RE = re.compile(r"[^\r\n\"/@:]*:(?!//)\S*@")
 
 _CREDENTIAL_KV_RE = re.compile(
     r"(?P<prefix>(?<![a-z0-9])(?:password|passwd|pass|pwd|psw|user\s*password|account\s*key"
@@ -132,7 +134,9 @@ def _has_unredacted_url_userinfo(value: str) -> bool:
     while start != -1:
         rest = value[start + 3 :]
         authority = re.split(r"[\s/]", rest, maxsplit=1)[0]
-        if "@" in authority and not authority.startswith(f"{_REDACTED}@"):
+        if not rest.startswith(f"{_REDACTED}@") and (
+            "@" in authority or _URL_SPACED_USERINFO_RE.match(rest)
+        ):
             return True
         start = value.find("://", start + 3)
     return False

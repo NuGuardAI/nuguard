@@ -292,6 +292,35 @@ def test_url_userinfo_missed_by_redaction_drops_literal() -> None:
         assert "S3CRET" not in (p.snippet or "")
 
 
+def test_url_userinfo_with_space_in_user_redacted() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Connect to mongodb://user name:pw@host/db now.";
+}
+'''
+    for p in _extract(CSharpPromptAdapter(), source):
+        assert "pw" not in str(p.metadata)
+        assert "pw" not in (p.snippet or "")
+
+
+def test_url_before_spaced_userinfo_url_kept() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. See https://a.com and mongodb://u:S3CRET@db now.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    content = prompts[0].metadata["content"]
+    assert "https://a.com" in content
+    assert "S3CRET" not in content
+    for p in _extract(CSharpPromptAdapter(), source):
+        assert "S3CRET" not in str(p.metadata)
+        assert "S3CRET" not in (p.snippet or "")
+
+
 def test_handle_url_prompt_kept() -> None:
     source = '''class Agent
 {
