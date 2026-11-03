@@ -222,7 +222,7 @@ def _redact_kv(match: re.Match[str]) -> str:
     words = [raw] if quoted else raw.split()
     # A placeholder or sentinel first word keeps the run only when the rest is plain prose.
     if _is_trivial_value(words[0], prose=match.group("sep") == ":") and all(
-        _is_trivial_value(w.rstrip("."), prose=True) for w in words[1:]
+        w.rstrip(".").isalpha() and _is_trivial_value(w.rstrip("."), prose=True) for w in words[1:]
     ):
         return match.group(0)
     if quoted:
