@@ -1,4 +1,4 @@
-package database
+package database_test
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/guiyangyuan/eino-support-copilot/internal/platform/database"
+	"github.com/guiyangyuan/eino-support-copilot/internal/testsupport"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
@@ -21,8 +23,8 @@ func TestMigrateCreatesCompleteSchema(t *testing.T) {
 	ctx := context.Background()
 	pool := startPostgres(t, ctx)
 
-	require.NoError(t, Migrate(ctx, pool, filepath.Join("..", "..", "..", "migrations")))
-	require.NoError(t, Migrate(ctx, pool, filepath.Join("..", "..", "..", "migrations")), "migration must be idempotent")
+	require.NoError(t, database.Migrate(ctx, pool, filepath.Join("..", "..", "..", "migrations")))
+	require.NoError(t, database.Migrate(ctx, pool, filepath.Join("..", "..", "..", "migrations")), "migration must be idempotent")
 	assert.Equal(t, int32(10), pool.Config().MaxConns)
 	assert.Equal(t, int32(1), pool.Config().MinConns)
 	assert.Equal(t, 30*time.Minute, pool.Config().MaxConnLifetime)
@@ -51,7 +53,7 @@ func TestMigrateCreatesCompleteSchema(t *testing.T) {
 func TestMigrateEnforcesRunStatus(t *testing.T) {
 	ctx := context.Background()
 	pool := startPostgres(t, ctx)
-	require.NoError(t, Migrate(ctx, pool, filepath.Join("..", "..", "..", "migrations")))
+	require.NoError(t, database.Migrate(ctx, pool, filepath.Join("..", "..", "..", "migrations")))
 
 	var customerID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx,
@@ -75,6 +77,12 @@ func TestMigrateEnforcesRunStatus(t *testing.T) {
 
 func startPostgres(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	t.Helper()
+	if databaseURL, ok := testsupport.ExternalDatabaseURL(t); ok {
+		pool, err := database.Open(ctx, databaseURL)
+		require.NoError(t, err)
+		t.Cleanup(pool.Close)
+		return pool
+	}
 
 	container, err := postgres.Run(ctx,
 		"pgvector/pgvector:pg17",
@@ -94,7 +102,7 @@ func startPostgres(t *testing.T, ctx context.Context) *pgxpool.Pool {
 
 	connectionString, err := container.ConnectionString(ctx, "sslmode=disable")
 	require.NoError(t, err)
-	pool, err := Open(ctx, connectionString)
+	pool, err := database.Open(ctx, connectionString)
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 	return pool

@@ -2,13 +2,17 @@ package testsupport
 
 import (
 	"context"
+	"net/url"
+	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/guiyangyuan/eino-support-copilot/internal/platform/database"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -16,9 +20,44 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+func ExternalDatabaseURL(t *testing.T) (string, bool) {
+	t.Helper()
+	serverURL := os.Getenv("TEST_DATABASE_URL")
+	if serverURL == "" {
+		return "", false
+	}
+	ctx := context.Background()
+	name := "test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	adminExec(t, ctx, serverURL, "create database "+name)
+	t.Cleanup(func() {
+		adminExec(t, ctx, serverURL, "drop database if exists "+name+" with (force)")
+	})
+
+	databaseURL, err := url.Parse(serverURL)
+	require.NoError(t, err)
+	databaseURL.Path = "/" + name
+	return databaseURL.String(), true
+}
+
+func adminExec(t *testing.T, ctx context.Context, serverURL, statement string) {
+	t.Helper()
+	conn, err := pgx.Connect(ctx, serverURL)
+	require.NoError(t, err)
+	defer conn.Close(ctx)
+	_, err = conn.Exec(ctx, statement)
+	require.NoError(t, err)
+}
+
 func StartPostgres(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	ctx := context.Background()
+	if databaseURL, ok := ExternalDatabaseURL(t); ok {
+		pool, err := database.Open(ctx, databaseURL)
+		require.NoError(t, err)
+		t.Cleanup(pool.Close)
+		require.NoError(t, database.Migrate(ctx, pool, migrationsDirectory(t)))
+		return pool
+	}
 	container, err := postgres.Run(ctx,
 		"pgvector/pgvector:pg17",
 		postgres.WithDatabase("copilot"),
