@@ -26,6 +26,32 @@ class TestToolCallMatch:
         )
         assert any(v["severity"] == "CRITICAL" for v in violations)
 
+    def test_function_name_match_is_critical(self) -> None:
+        violations = detect_restricted_action_violations(
+            _policy(),
+            response="Done.",
+            tool_calls=[{"function": {"name": "delete all customer data"}}],
+        )
+        assert any(v["severity"] == "CRITICAL" for v in violations)
+
+    def test_tool_key_match_is_critical(self) -> None:
+        violations = detect_restricted_action_violations(
+            _policy(), response="Done.", tool_calls=[{"tool": "delete all customer data"}]
+        )
+        assert any(v["severity"] == "CRITICAL" for v in violations)
+
+    def test_tool_name_key_match_is_critical(self) -> None:
+        violations = detect_restricted_action_violations(
+            _policy(), response="Done.", tool_calls=[{"tool_name": "delete all customer data"}]
+        )
+        assert any(v["severity"] == "CRITICAL" for v in violations)
+
+    def test_unrelated_tool_key_not_flagged(self) -> None:
+        violations = detect_restricted_action_violations(
+            _policy(), response="Done.", tool_calls=[{"tool": "lookup_order"}]
+        )
+        assert not any(v["severity"] == "CRITICAL" for v in violations)
+
 
 class TestRefusalEchoSuppression:
     def test_negation_immediately_before_match_not_flagged(self) -> None:

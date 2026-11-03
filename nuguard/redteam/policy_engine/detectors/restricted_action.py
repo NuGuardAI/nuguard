@@ -48,7 +48,9 @@ def detect_restricted_action_violations(
     def _tool_name(tc: dict) -> str:
         # Support both OpenAI-style {function: {name: ...}} and flat {name: ...}
         fn = tc.get("function") or {}
-        return str(tc.get("name") or fn.get("name") or "").strip()
+        return str(
+            tc.get("name") or fn.get("name") or tc.get("tool") or tc.get("tool_name") or ""
+        ).strip()
 
     for action in policy.restricted_actions:
         action_lower = action.strip().lower()
