@@ -199,3 +199,70 @@ def test_empty_or_short_string_in_const_not_detected() -> None:
 '''
     detections = _extract(CSharpPromptAdapter(), source)
     assert _by_type(detections, ComponentType.PROMPT) == []
+
+
+# ---------------------------------------------------------------------------
+# Credential redaction and performance
+# ---------------------------------------------------------------------------
+
+
+def test_long_letters_only_literal_is_linear_time() -> None:
+    import time
+
+    source = 'class C\n{\n    const string Blob = "' + ("abcdef" * 17_000) + '";\n}\n'
+    start = time.perf_counter()
+    _extract(CSharpPromptAdapter(), source)
+    assert time.perf_counter() - start < 2.0
+
+
+def test_url_password_with_apostrophe_redacted() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Connect to mongodb://user:pa'S3CRET@db.example.com now.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert prompts
+    for p in prompts:
+        assert "S3CRET" not in p.metadata["content"]
+        assert "S3CRET" not in (p.snippet or "")
+
+
+def test_url_token_as_username_redacted() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Clone https://ghp_S3CRETtoken@github.com/org/repo first.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    assert "S3CRET" not in prompts[0].metadata["content"]
+    assert "github.com/org/repo" in prompts[0].metadata["content"]
+
+
+def test_handle_url_prompt_kept() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Refer users to https://x.com/@handle for updates.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    assert "https://x.com/@handle" in prompts[0].metadata["content"]
+
+
+def test_api_key_value_redacted_prompt_kept() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Call the tool with api_key=abc123 and summarize.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    content = prompts[0].metadata["content"]
+    assert "abc123" not in content
+    assert "api_key=<redacted>" in content

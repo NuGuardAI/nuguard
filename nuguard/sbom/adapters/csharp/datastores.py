@@ -126,6 +126,7 @@ def _safe_connection_preview(text: str) -> str:
     # from this parser but not from the compiler; don't guess.
     if "\\" in text:
         return ""
+    text = text.strip()
     if _URL_SCHEME_RE.match(text):
         try:
             parsed = urlsplit(text)
@@ -145,7 +146,7 @@ def _safe_connection_preview(text: str) -> str:
         return f"{parsed.scheme}://{host}{port}" if host else ""
     # Quotes and braces let ADO.NET values contain ';' or '=', which a plain
     # split would misread; don't guess.
-    if any(ch in text for ch in "\"'{}"):
+    if "://" in text or any(ch in text for ch in "\"'{}"):
         return ""
     kept = []
     for part in text.split(";"):

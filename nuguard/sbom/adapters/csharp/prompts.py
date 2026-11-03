@@ -93,13 +93,26 @@ _PROMPT_FIELD_NAMES = {
 }
 
 
-_CREDENTIAL_SHAPE_RE = re.compile(
-    r"[a-z][a-z0-9+.-]*://[^\s\"']*@"
-    r"|\b(?:password|pwd|psw|user\s*password|account\s*key|shared\s*access\s*key"
-    r"|shared\s*access\s*signature|sig|access\s*token|api[\s_-]?key|client[\s_-]?secret"
-    r"|secret|token)\s*=",
+_URL_USERINFO_RE = re.compile(
+    r"(?P<prefix>(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://)(?:[^\s\"/@:]*:[^\s\"]*|[^\s\"/@:]+)@",
     re.IGNORECASE,
 )
+
+_CREDENTIAL_KV_RE = re.compile(
+    r"(?P<prefix>\b(?:password|pwd|psw|user\s*password|account\s*key|shared\s*access\s*key"
+    r"|shared\s*access\s*signature|sig|access\s*token|api[\s_-]?key|client[\s_-]?secret"
+    r"|secret|token)\s*=\s*)(?:\"[^\"]*\"|'[^']*'|[^\s;&,\"']+)?",
+    re.IGNORECASE,
+)
+
+_REDACTED = "<redacted>"
+
+
+def _redact_credentials(value: str) -> str:
+    """Replace credential values (URL userinfo, key=value secrets) with a marker."""
+    if "://" in value:
+        value = _URL_USERINFO_RE.sub(lambda m: f"{m.group('prefix')}{_REDACTED}@", value)
+    return _CREDENTIAL_KV_RE.sub(lambda m: f"{m.group('prefix')}{_REDACTED}", value)
 
 
 def _is_prompt_constant(
@@ -109,10 +122,6 @@ def _is_prompt_constant(
 ) -> bool:
     """Return True if the string looks like an AI prompt constant."""
     if not value or len(value) < 30:
-        return False
-    # Never emit credential-shaped literals (connection strings, URL userinfo)
-    # as prompt content, even when they happen to contain a prompt cue.
-    if _CREDENTIAL_SHAPE_RE.search(value):
         return False
 
     lowered = value.lower()
@@ -237,12 +246,13 @@ class CSharpPromptAdapter(CSharpFrameworkAdapter):
             lines = code.splitlines()
             line_src = lines[lit.line - 1] if 0 < lit.line <= len(lines) else ""
 
-            if not _is_prompt_constant(lit.value, lit.assigned_to, line_src):
+            value = _redact_credentials(lit.value)
+            if not _is_prompt_constant(value, lit.assigned_to, line_src):
                 continue
 
-            template_vars = _extract_vars(lit.value)
-            risk = _injection_risk(lit.value, template_vars, code)
-            name = _prompt_name(lit.assigned_to, lit.value, lit.line)
+            template_vars = _extract_vars(value)
+            risk = _injection_risk(value, template_vars, code)
+            name = _prompt_name(lit.assigned_to, value, lit.line)
             canon = canonicalize_text(name.lower())
 
             detected.append(
@@ -255,20 +265,20 @@ class CSharpPromptAdapter(CSharpFrameworkAdapter):
                     confidence=0.88 if template_vars else 0.82,
                     metadata={
                         "framework": "csharp_prompts",
-                        "role": _detect_role(lit.value),
+                        "role": _detect_role(value),
                         "is_template": len(template_vars) > 0,
                         "is_interpolated": lit.is_interpolated,
                         "template_variables": template_vars,
                         "injection_risk_score": risk,
                         "assigned_to": lit.assigned_to,
                         "enclosing_method": lit.enclosing_method,
-                        "content": lit.value[:500],
-                        "char_count": len(lit.value),
+                        "content": value[:500],
+                        "char_count": len(value),
                         "language": "csharp",
                     },
                     file_path=file_path,
                     line=lit.line,
-                    snippet=lit.value[:80],
+                    snippet=value[:80],
                     evidence_kind="ast_string_literal",
                 )
             )
