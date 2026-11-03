@@ -94,14 +94,14 @@ _PROMPT_FIELD_NAMES = {
 
 
 _URL_USERINFO_RE = re.compile(
-    r"(?P<prefix>(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://)(?:[^\s\"/@:]*:[^\s\"]*|[^\s\"/@:]+)@",
+    r"(?P<prefix>(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://)(?:[^\s\"/@:]*:\S*|[^\s\"/@:]+)@",
     re.IGNORECASE,
 )
 
 _CREDENTIAL_KV_RE = re.compile(
-    r"(?P<prefix>\b(?:password|pwd|psw|user\s*password|account\s*key|shared\s*access\s*key"
-    r"|shared\s*access\s*signature|sig|access\s*token|api[\s_-]?key|client[\s_-]?secret"
-    r"|secret|token)\s*=\s*)"
+    r"(?P<prefix>(?<![a-z0-9])(?:password|passwd|pass|pwd|psw|user\s*password|account\s*key"
+    r"|shared\s*access\s*key|shared\s*access\s*signature|sig|access\s*token|api[\s_-]?key"
+    r"|client[\s_-]?secret|secret[\s_-]?key|private[\s_-]?key|secret|token)\s*=\s*)"
     r"(?:(?:\"[^\"]*\"|'[^']*')[^;&\r\n]*|[\"'][^\r\n]*|[^;&\r\n]+)?",
     re.IGNORECASE,
 )
@@ -131,7 +131,7 @@ def _has_unredacted_url_userinfo(value: str) -> bool:
     start = value.find("://")
     while start != -1:
         rest = value[start + 3 :]
-        authority = re.split(r"[\s\"'/]", rest, maxsplit=1)[0]
+        authority = re.split(r"[\s/]", rest, maxsplit=1)[0]
         if "@" in authority and not authority.startswith(f"{_REDACTED}@"):
             return True
         start = value.find("://", start + 3)

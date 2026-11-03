@@ -316,3 +316,61 @@ def test_api_key_value_redacted_prompt_kept() -> None:
     content = prompts[0].metadata["content"]
     assert "abc123" not in content
     assert "api_key=<redacted>" in content
+
+
+def test_long_literal_with_scheme_is_linear_time() -> None:
+    import time
+
+    source = 'class C\n{\n    const string Blob = "' + ("abcdef" * 17_000) + ' see x://y";\n}\n'
+    start = time.perf_counter()
+    _extract(CSharpPromptAdapter(), source)
+    assert time.perf_counter() - start < 2.0
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        '@"You are a helpful assistant. Connect to mongodb://user:S3""CRET@db.example.com now."',
+        '"You are a helpful assistant. Connect to mongodb://user:S3\\"CRET@db.example.com now."',
+        '"""\n        You are a helpful assistant. Connect to mongodb://user:S3"CRET@db.example.com now.\n        """',
+    ],
+)
+def test_url_password_with_double_quote_redacted(literal: str) -> None:
+    source = f"class Agent\n{{\n    const string SystemPrompt =\n        {literal};\n}}\n"
+    detections = _extract(CSharpPromptAdapter(), source)
+    for p in detections:
+        assert "CRET" not in str(p.metadata)
+        assert "CRET" not in (p.snippet or "")
+    prompts = _by_type(detections, ComponentType.PROMPT)
+    assert len(prompts) == 1
+    assert "mongodb://<redacted>@db.example.com" in prompts[0].metadata["content"]
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["See https://a.com and 1mongodb://u:S3CRET@db", '1mongodb://u:S3\\"CRET@db'],
+)
+def test_url_userinfo_missed_by_redaction_variants_drop_literal(url: str) -> None:
+    source = (
+        "class Agent\n{\n    const string SystemPrompt =\n"
+        f'        "You are a helpful assistant. {url} now.";\n}}\n'
+    )
+    for p in _extract(CSharpPromptAdapter(), source):
+        assert "CRET" not in str(p.metadata)
+        assert "CRET" not in (p.snippet or "")
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["pwd", "passwd", "pass", "DB_PASSWORD", "secret_key", "private_key"],
+)
+def test_kv_secret_key_variants_redacted(key: str) -> None:
+    source = (
+        "class Agent\n{\n    const string SystemPrompt =\n"
+        f'        "You are a helpful assistant. Use server=db;{key}=S3CRET;database=x for lookups.";\n}}\n'
+    )
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    content = prompts[0].metadata["content"]
+    assert "S3CRET" not in content
+    assert f"{key}=<redacted>" in content
