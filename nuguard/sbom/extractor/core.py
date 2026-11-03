@@ -139,6 +139,7 @@ from ..models import (
     SourceLocation,
 )
 from ..normalization import canonicalize_text
+from ..redaction import redact_prompt_nodes
 from ..types import ComponentType, RelationshipType
 from ..workload import promote_image_fields, promote_workload_fields
 from .endpoint_names import disambiguate_endpoint_names
@@ -2965,6 +2966,10 @@ class AiSbomExtractor:
         disambiguate_endpoint_names(doc.nodes)
         # Keep summary counts consistent with the final retained node set.
         _refresh_summary_node_counts(doc)
+        # Single choke point for every language: strip credentials that prompt
+        # literals carried into PROMPT/AGENT nodes (content, extras, evidence).
+        # Runs last so nodes added by later passes (LLM enrichment) are covered.
+        redact_prompt_nodes(doc)
         return doc
 
     def extract_from_repo(
