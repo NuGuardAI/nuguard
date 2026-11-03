@@ -417,6 +417,7 @@ namespace MultiAgentCopilot.Services
         }
 
 
+        // NuGuard fixture: filters on userId before TOP 10 and sorts on the stored camelCase requestedOn.
         public virtual async Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId, string? userId = null)
         {
             try

@@ -245,6 +245,7 @@ namespace MultiAgentCopilot.Services
         }
 
 
+        // NuGuard fixture: the userId and SRType clauses are appended before the query is built, so they apply.
         public virtual async Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId, string accountId, string? userId = null, ServiceRequestType? SRType = null)
         {
             try
@@ -252,20 +253,17 @@ namespace MultiAgentCopilot.Services
                 var partitionKey = PartitionManager.GetAccountsDataFullPK(tenantId, accountId);
 
                 var queryBuilder = new StringBuilder("SELECT * FROM c WHERE c.type = @type");
+                if (!string.IsNullOrEmpty(userId))
+                    queryBuilder.Append(" AND c.userId = @userId");
+                if (SRType.HasValue)
+                    queryBuilder.Append(" AND c.srType = @SRType");
+
                 var queryDefinition = new QueryDefinition(queryBuilder.ToString())
                       .WithParameter("@type", nameof(ServiceRequest));
-
                 if (!string.IsNullOrEmpty(userId))
-                {
-                    queryBuilder.Append(" AND c.userId = @userId");
                     queryDefinition = queryDefinition.WithParameter("@userId", userId);
-                }
-
                 if (SRType.HasValue)
-                {
-                    queryBuilder.Append(" AND c.SRType = @SRType");
                     queryDefinition = queryDefinition.WithParameter("@SRType", SRType);
-                }
 
 
                 List<ServiceRequest> reqs = new List<ServiceRequest>();

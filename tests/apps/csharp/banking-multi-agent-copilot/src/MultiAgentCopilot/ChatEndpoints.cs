@@ -73,6 +73,7 @@ namespace MultiAgentCopilot
                     })
                 .WithName("GetAccountTransactions");
 
+            // NuGuard fixture: only the caller's requests (filtered in the query, before TOP 10).
             app.MapGet("/tenant/{tenantId}/servicerequests",
                     async (string tenantId, string userId) =>
                     await _cosmosDBService.GetServiceRequestsAsync(tenantId, userId))

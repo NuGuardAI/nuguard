@@ -85,15 +85,15 @@ namespace MultiAgentCopilot.Services.InMemory
             return Task.FromResult(req);
         }
 
-        // Upstream appends the userId and SRType clauses after building the query, so they are never applied.
-        // Kept as is: requests are filtered by tenant and account only.
         public override Task<List<ServiceRequest>> GetServiceRequestsAsync(string tenantId, string accountId, string? userId = null, ServiceRequestType? SRType = null)
         {
             lock (_store.Gate)
             {
                 return Task.FromResult(_store.AccountData
                     .Where(d => OfType(d, nameof(ServiceRequest)) && InPartition(d, tenantId, accountId))
-                    .Select(InMemoryStore.To<ServiceRequest>).ToList());
+                    .Select(InMemoryStore.To<ServiceRequest>)
+                    .Where(r => (string.IsNullOrEmpty(userId) || r.UserId == userId) && (!SRType.HasValue || r.SRType == SRType))
+                    .ToList());
             }
         }
 
