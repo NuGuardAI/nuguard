@@ -86,15 +86,15 @@ class SemanticKernelAdapter(FrameworkAdapter):
             elif inst.class_name in _SERVICE_CLASSES:
                 provider = _SERVICE_CLASSES[inst.class_name]
                 args = inst.args or {}
-                model_name = (
-                    _clean(
-                        args.get("ai_model_id")
-                        or args.get("model_id")
-                        or args.get("deployment_name")
-                        or args.get("model")
-                    )
-                    or inst.class_name
+                model_argument = next(
+                    (
+                        key
+                        for key in ("ai_model_id", "model_id", "deployment_name", "model")
+                        if args.get(key)
+                    ),
+                    None,
                 )
+                model_name = _clean(args.get(model_argument)) if model_argument else inst.class_name
                 details = get_model_details(model_name, provider, args)
                 model_canon = canonicalize_text(model_name.lower())
 
@@ -128,6 +128,8 @@ class SemanticKernelAdapter(FrameworkAdapter):
                         snippet=f"{inst.class_name}(ai_model_id={model_name!r})",
                         evidence_kind="ast_instantiation",
                         relationships=rels,
+                        source_call=inst,
+                        source_model_argument=model_argument,
                     )
                 )
 

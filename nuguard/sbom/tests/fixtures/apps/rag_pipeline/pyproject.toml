@@ -3,7 +3,7 @@ name = "rag-pipeline"
 version = "0.3.0"
 requires-python = ">=3.11"
 dependencies = [
-    "llama-index-core>=0.11.0",
+    "llama-index-core>=0.13.0",
     "llama-index-llms-anthropic>=0.3.0",
     "llama-index-embeddings-openai>=0.2.0",
     "llama-index-vector-stores-chroma>=0.2.0",

@@ -947,6 +947,8 @@ class BehaviorRunner:
                 request_timeout=float(getattr(self._config, "request_timeout", 60.0)),
                 browser_discovery=getattr(self._config, "browser_discovery", None),
                 payload_format=getattr(self._config, "chat_payload_format", "json") or "json",
+                chat_method=getattr(self._config, "chat_method", "POST") or "POST",
+                chat_payload_in=getattr(self._config, "chat_payload_in", None),
                 endpoint_explicit=self._endpoint_is_explicit() or keep_resolved,
                 payload_key_explicit=keep_resolved or "chat_payload_key" in user_fields,
                 response_key_explicit=(
@@ -1087,6 +1089,8 @@ class BehaviorRunner:
                 extra_headers=self._config.headers,
                 run_id=str(_uuid.uuid4()),
                 probe_payload_extras=getattr(self._config, "chat_payload_extras", None) or None,
+                chat_method=getattr(self._config, "chat_method", "POST") or "POST",
+                chat_payload_in=getattr(self._config, "chat_payload_in", None),
                 is_websocket=_is_websocket,
                 config_path=self._config_path,
             )
@@ -1182,6 +1186,8 @@ class BehaviorRunner:
             payload_key=payload_key,
             payload_list=bool(getattr(self._config, "chat_payload_list", False)),
             payload_format=getattr(self._config, "chat_payload_format", "json") or "json",
+            chat_method=getattr(self._config, "chat_method", "POST") or "POST",
+            chat_payload_in=getattr(self._config, "chat_payload_in", None),
             response_key=getattr(self._config, "chat_response_key", None) or None,
             timeout=float(getattr(self._config, "request_timeout", 60.0)),
             auth_headers=bootstrap_headers or None,

@@ -28,6 +28,29 @@ def positive_timeout(value: Any) -> float:
     return timeout
 
 
+def collect_sbom_source_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:
+    """Collect existing source directories recorded in SBOM node metadata.
+
+    Reads ``source_path``, ``root_path`` or ``repo_path`` from each node's
+    ``metadata`` or ``metadata.extras``, then falls back to
+    ``config["source_path"]`` when it names an existing directory.
+    """
+    paths: set[str] = set()
+    for node in sbom.get("nodes") or []:
+        meta = node.get("metadata") or {}
+        extras = meta.get("extras") or {}
+        for key in ("source_path", "root_path", "repo_path"):
+            p = meta.get(key) or extras.get(key)
+            if p and Path(str(p)).exists():
+                paths.add(str(p))
+
+    sp = config.get("source_path")
+    if sp and Path(str(sp)).is_dir():
+        paths.add(str(sp))
+
+    return paths
+
+
 def scan_paths(paths: Iterable[str]) -> list[str]:
     """Resolve and deduplicate paths already covered by a directory scan."""
     candidates = sorted({Path(p).resolve() for p in paths}, key=lambda p: (len(p.parts), str(p)))
