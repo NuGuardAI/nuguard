@@ -45,7 +45,9 @@ _DECL_RE = re.compile(
 _VAR_NEW_RE = re.compile(
     r"\bvar\s+(?P<name>@?[A-Za-z_]\w*)\s*=\s*(?:await\s+)?new\s+(?P<type>[A-Za-z_][\w.]*)"
 )
-_PARAM_RE = re.compile(r"(?P<type>[A-Za-z_][\w.<>,?\[\] ]*?)\s+(?P<name>@?[A-Za-z_]\w*)$")
+_PARAM_TYPE_RE = re.compile(r"[A-Za-z_][\w.<>,?\[\] ]*")
+_PARAM_NAME_RE = re.compile(r"@?[A-Za-z_]\w*")
+_MAX_PARAM_CHARS = 512
 
 # Endpoint metadata key carrying the files of agent-building types the handler reaches.
 AGENT_HOST_FILES_KEY = "agent_host_files"
@@ -65,12 +67,21 @@ def _simple_type(name: str) -> str:
 def _parameter(value: str) -> tuple[str, str] | None:
     clean = re.sub(r"\[[^\]]*\]\s*", "", value).split("=", 1)[0].strip()
     clean = re.sub(r"\b(?:in|out|params|ref|scoped|this)\s+", "", clean)
-    match = _PARAM_RE.search(clean)
 
-    if not match:
+    if len(clean) > _MAX_PARAM_CHARS:
         return None
 
-    return match.group("name").removeprefix("@"), _simple_type(match.group("type"))
+    parts = clean.rsplit(None, 1)
+
+    if len(parts) != 2:
+        return None
+
+    type_text, name = parts[0].strip(), parts[1]
+
+    if not _PARAM_TYPE_RE.fullmatch(type_text) or not _PARAM_NAME_RE.fullmatch(name):
+        return None
+
+    return name.removeprefix("@"), _simple_type(type_text)
 
 
 def _innermost(spans: list[Any], line: int) -> Any | None:
