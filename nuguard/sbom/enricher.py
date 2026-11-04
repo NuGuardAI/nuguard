@@ -168,11 +168,19 @@ def enrich(doc: AiSbomDocument) -> None:
             for tgt_id in targets(n.id, RelationshipType.PROTECTS):
                 framework_auth.setdefault(tgt_id, set()).add(n.id)
 
+    agent_ids = {n.id for n in doc.nodes if n.component_type == ComponentType.AGENT}
+    agent_tools = {a: targets(a, RelationshipType.CALLS) for a in agent_ids}
+
     # Map: framework node ID → set of tool node IDs it CALLS
     framework_tools: dict[UUID, set[UUID]] = {}
     for n in doc.nodes:
         if n.component_type == ComponentType.FRAMEWORK:
-            framework_tools[n.id] = targets(n.id, RelationshipType.CALLS)
+            called = targets(n.id, RelationshipType.CALLS)
+            framework_tools[n.id] = set(called)
+            # Tools an agent owns are reached through that agent, not by a direct
+            # FRAMEWORK -> TOOL edge (C# Semantic Kernel keeps only USES).
+            for called_id in called:
+                framework_tools[n.id] |= agent_tools.get(called_id, set())
 
     # Reverse: tool node ID → framework node IDs
     tool_frameworks: dict[UUID, set[UUID]] = {}
