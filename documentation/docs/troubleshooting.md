@@ -124,9 +124,20 @@ Some analysis steps require external tools:
 - `grype`
 - `checkov`
 - `trivy`
-- `semgrep`
+- `opengrep` (preferred; `semgrep` is a fallback)
+- `pip-audit`
+- `gitleaks`
 
-If they are missing, NuGuard may skip those checks and continue.
+If they are missing, NuGuard skips those checks and continues. Install Checkov and pip-audit
+with `pip install checkov pip-audit`, and follow the official installation instructions for
+[Opengrep](https://github.com/opengrep/opengrep#installation) and
+[Gitleaks](https://github.com/gitleaks/gitleaks#installing). Ensure the binaries are on `PATH`
+in the environment running NuGuard.
+
+Check the report's Tool Coverage table: `skipped` means coverage is missing, while `error`
+means a scanner failed or was incomplete. Partial findings are retained. `nuguard analyze`
+exits with code `2` for incomplete Checkov, Opengrep (Semgrep fallback), or Gitleaks scans.
+Opengrep still uses the compatible `--semgrep` flags and `semgrep_*` settings.
 
 ## `make lint` fails before typechecking
 

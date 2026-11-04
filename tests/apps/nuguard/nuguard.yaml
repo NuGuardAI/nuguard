@@ -1,0 +1,37 @@
+# nuguard.yaml
+# Self-scan config: runs NuGuard against its own `nuguard/` package source.
+# Paths are resolved relative to this file. No live target is needed, so
+# behavior runs in static mode and redteam is not configured.
+# Secrets are never stored here — use ${ENV_VAR} interpolation instead.
+#
+# Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
+
+# ─── Project file paths ───────────────────────────────────────────────────────
+source: ../../../nuguard            # the nuguard package under test
+sbom: ./nuguard.sbom.json           # AI-SBOM produced from `source` by nuguard-test.sh
+policy:
+  path: ./cognitive-policy.md       # drafted from the SBOM, then linted and checked
+
+# ─── LLM settings ─────────────────────────────────────────────────────────────
+# Default model: Azure OpenAI GPT-6.1-sol. Credentials come from ./.env
+# (copied from tests/apps/owasp-finbot/.env, gitignored). To run without LLM
+# enrichment, pass --no-llm on the CLI or set the flags below to false.
+llm:
+  model: azure/gpt-6.1-sol
+  api_key: ${AZURE_OPENAI_KEY}
+  api_base: ${AZURE_API_BASE}
+
+# ─── SBOM generation ──────────────────────────────────────────────────────────
+sbom_generation:
+  llm: true
+
+# ─── Static analysis ──────────────────────────────────────────────────────────
+analyze:
+  min_severity: medium              # critical | high | medium | low | info
+  nga_only: false                   # true → run only NGA-001–018, skip external scanners
+  llm: true
+
+# ─── Output ───────────────────────────────────────────────────────────────────
+output:
+  format: text                      # text | json | markdown | sarif
+  fail_on: high                     # exit non-zero when any finding meets this severity

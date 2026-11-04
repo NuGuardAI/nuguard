@@ -38,7 +38,10 @@ Omit `LITELLM_API_KEY=...` and `--llm` if no API key is available in the config.
 Flag mapping:
 - `--min-severity LEVEL` (default `medium`)
 - `--llm` — enable LLM-enriched descriptions (add when `llm_api_key` is set)
-- `--nga` if `--nga` flag passed (skips OSV/Grype/Checkov/Trivy/Semgrep)
+- `--nga` if `--nga` flag passed (skips supply-chain, OSV, pip-audit, Gitleaks, Grype, Checkov, Trivy, Opengrep, and ATLAS checks)
+- `--no-semgrep` — skip Opengrep source rules (including Semgrep fallback)
+- `--no-pip-audit` — skip the resolved Python dependency audit
+- `--no-gitleaks` — skip the redacted secret scan
 - `--no-atlas` if `--no-atlas` flag passed
 - `--config PATH` if `--config` supplied
 - `--format markdown` (default; use `--format json` for machine-readable output)

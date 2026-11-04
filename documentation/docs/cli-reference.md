@@ -205,17 +205,21 @@ nuguard sbom plugin run markdown_export --sbom app.sbom.json
 
 Static risk analysis from an AI-SBOM — **no running application required.**
 
-Runs up to seven scanners in sequence. External scanners are silently skipped when their binary is absent or there's nothing for them to scan:
+Runs built-in graph and supply-chain checks alongside seven optional scanners. External scanners run concurrently and report `skipped` when their binary or scan inputs are missing; review Tool Coverage for gaps:
 
 | Scanner | Checks | Requires |
 |---|---|:---:|
 | **NGA** structural rules | AI-specific structural risks (NGA-001–030) | *(built in)* |
 | **Supply-chain** threat pack | Lifecycle scripts, CI/CD publish paths, AI-agent config poisoning (NGA-SC-001–027; also mapped to the OWASP Top 10 CI/CD Security Risks) | *(built in)* |
 | **OSV** | Dependency CVE lookup | *(built in)* |
+| **pip-audit** | Resolved Python dependency CVEs, including transitive packages, via OSV | `pip-audit` on PATH |
+| **Gitleaks** | Hardcoded secrets in source, with secret values redacted | `gitleaks` on PATH |
 | **Grype** | Package / container CVEs | `grype` on PATH |
 | **Checkov** | Infrastructure-as-code misconfigurations | `checkov` on PATH |
 | **Trivy** | Container / filesystem vulnerabilities | `trivy` on PATH |
-| **Semgrep** | AI-security source-code patterns | `semgrep` on PATH |
+| **Opengrep** (Semgrep fallback) | AI-security source-code patterns | `opengrep` on PATH, or `semgrep` if Opengrep is absent |
+
+Opengrep is preferred over Semgrep. The `--semgrep` flags, `semgrep_*` settings, `enable_semgrep` API parameter, and `semgrep` finding-source and tool-status keys remain compatible. See [scanner setup and coverage](static-analysis-guide.md#2-the-rest-of-the-software-infrastructure).
 
 NGA rules always run. Use `--nga` to run **only** NGA rules and skip everything else, including the MITRE ATLAS annotation pass.
 
@@ -237,15 +241,21 @@ nuguard analyze --sbom app.sbom.json --format json --format markdown --output re
 | `--nga` | off | NGA structural rules only (NGA-001–030); disables every other scanner |
 | `--format`, `-f` | `markdown` | `markdown` \| `sarif` \| `json` (repeat flag or use comma-separated values for multiple outputs) |
 | `--min-severity` | `medium` | Minimum severity to include: `critical` \| `high` \| `medium` \| `low` \| `info` |
-| `--source`, `-s` | — | Source directory for supply-chain, Checkov, Trivy, and Semgrep scans |
+| `--source`, `-s` | — | Source directory for supply-chain, dependency, IaC, container, Opengrep, and secret scans |
 | `--atlas` / `--no-atlas` | on | MITRE ATLAS native graph checks |
 | `--osv` / `--no-osv` | on | OSV dependency CVE scan |
+| `--pip-audit` / `--no-pip-audit` | on | Deep scan of resolved Python dependencies (including transitive) via pip-audit with OSV (requires `pip-audit` on PATH; skipped otherwise) |
+| `--pip-audit-timeout` | `300` (sec) | Per-process timeout for pip-audit |
+| `--pip-audit-total-timeout` | `600` (sec) | Total pip-audit budget across all Python manifests |
+| `--gitleaks` / `--no-gitleaks` | on | Hardcoded-secret scan via gitleaks (requires `gitleaks` on PATH; skipped otherwise). Secret values are redacted |
+| `--gitleaks-timeout` | `120` (sec) | Per-process timeout for gitleaks |
+| `--gitleaks-total-timeout` | `300` (sec) | Total gitleaks budget across all source paths |
 | `--grype` / `--no-grype` | on | Grype CVE scan (requires `grype` on PATH) |
 | `--grype-timeout` | `180` (sec) | Per-invocation timeout for Grype |
 | `--grype-retries` | `3` | Retry attempts when Grype times out |
 | `--checkov` / `--no-checkov` | on | Checkov IaC scan (requires `checkov` on PATH) |
 | `--trivy` / `--no-trivy` | on | Trivy container/fs scan (requires `trivy` on PATH) |
-| `--semgrep` / `--no-semgrep` | on | Semgrep AI-security rules (requires `semgrep` on PATH) |
+| `--semgrep` / `--no-semgrep` | on | AI-security source rules via Opengrep (falls back to `semgrep` on PATH) |
 | `--supply-chain` / `--no-supply-chain` | on | Supply-chain threat pack (NGA-SC-001–027) |
 | `--supply-chain-profile` | `standard` | `ci` \| `standard` \| `full` — `full` adds git-history checks |
 | `--supply-chain-verify` | `off` | Artifact registry verification: `off` \| `warn` \| `fail` |
@@ -256,13 +266,15 @@ nuguard analyze --sbom app.sbom.json --format json --format markdown --output re
 
 **Source path resolution for Checkov:** When `--source` is provided, IaC file paths found in SBOM nodes are resolved relative to that directory. If no IaC nodes exist, Checkov scans the entire source directory. The SBOM `target` field is used as a fallback when `--source` is not set.
 
+**Recommended Actions:** The markdown report opens with one bullet per vulnerable component, after the Summary. Each bullet gives the highest severity, the number of advisories, the fix version, and the scanners that reported it. Advisories that several scanners report under different IDs are merged before this section is built, so each advisory is counted once.
+
 **Exit codes**
 
 | Code | Meaning |
 |:---:|---|
-| `0` | No findings at or above `--min-severity` |
-| `1` | One or more findings |
-| `2` | Analysis error (SBOM missing, unreadable, or fails schema validation) |
+| `0` | No reported findings at or above `--fail-on` (default `high`) |
+| `1` | One or more reported findings at or above `--fail-on` |
+| `2` | Analysis/SBOM error or incomplete Checkov, Opengrep (Semgrep fallback), or Gitleaks scan; partial findings are retained |
 
 </details>
 
@@ -293,10 +305,12 @@ nuguard scan --source . --supply-chain-profile full
 | `--llm` | off | LLM enrichment in the ATLAS annotation pass |
 | `--no-atlas` | — | Skip ATLAS pass |
 | `--no-osv` | — | Skip OSV scan |
+| `--no-pip-audit` | — | Skip the pip-audit deep scan |
+| `--no-gitleaks` | — | Skip the gitleaks secret scan |
 | `--no-grype` | — | Skip Grype scan |
 | `--no-checkov` | — | Skip Checkov scan |
 | `--no-trivy` | — | Skip Trivy scan |
-| `--no-semgrep` | — | Skip Semgrep scan |
+| `--no-semgrep` | — | Skip Opengrep source scan (including Semgrep fallback) |
 | `--no-supply-chain` | — | Skip the supply-chain threat pack |
 | `--supply-chain-profile` | `standard` | `ci` \| `standard` \| `full` |
 | `--supply-chain-verify` | `off` | `off` \| `warn` \| `fail` |

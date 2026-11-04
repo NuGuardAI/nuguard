@@ -258,6 +258,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_chat_payload_list"] = bool(shared_target["chat_payload_list"])
         if "chat_response_key" in shared_target:
             flat["redteam_chat_response_key"] = shared_target["chat_response_key"]
+        if "chat_method" in shared_target:
+            flat["redteam_chat_method"] = shared_target["chat_method"]
+        if "chat_payload_in" in shared_target:
+            flat["redteam_chat_payload_in"] = shared_target["chat_payload_in"]
         if "chat_payload_extras" in shared_target and isinstance(shared_target["chat_payload_extras"], dict):
             flat["redteam_chat_payload_extras"] = shared_target["chat_payload_extras"]
         if "probe_llm" in shared_target:
@@ -334,6 +338,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_chat_payload_list"] = bool(redteam["chat_payload_list"])
     if "chat_response_key" in redteam:
         flat["redteam_chat_response_key"] = redteam["chat_response_key"]
+    if "chat_method" in redteam:
+        flat["redteam_chat_method"] = redteam["chat_method"]
+    if "chat_payload_in" in redteam:
+        flat["redteam_chat_payload_in"] = redteam["chat_payload_in"]
     if "chat_payload_extras" in redteam and isinstance(redteam["chat_payload_extras"], dict):
         flat["redteam_chat_payload_extras"] = redteam["chat_payload_extras"]
     if "auth_header" in redteam:
@@ -556,6 +564,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                     )
                 if "chat_response_key" in shared_target:
                     _shared_for_behavior["chat_response_key"] = shared_target["chat_response_key"]
+                if "chat_method" in shared_target:
+                    _shared_for_behavior["chat_method"] = shared_target["chat_method"]
+                if "chat_payload_in" in shared_target:
+                    _shared_for_behavior["chat_payload_in"] = shared_target["chat_payload_in"]
                 if "chat_payload_extras" in shared_target and isinstance(shared_target["chat_payload_extras"], dict):
                     _shared_for_behavior.setdefault("chat_payload_extras", shared_target["chat_payload_extras"])
                 if "headers" in shared_target and isinstance(shared_target["headers"], dict):
@@ -650,7 +662,11 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
-    for key in ("checkov_timeout", "checkov_total_timeout", "semgrep_timeout", "semgrep_total_timeout"):
+    for key in (
+        "checkov_timeout", "checkov_total_timeout", "semgrep_timeout", "semgrep_total_timeout",
+        "pip_audit_timeout", "pip_audit_total_timeout",
+        "gitleaks_timeout", "gitleaks_total_timeout",
+    ):
         if key in analyze:
             flat[f"analyze_{key}"] = analyze[key]
     if "min_severity" in analyze:
@@ -911,6 +927,21 @@ class BehaviorConfig(BaseModel):
     chat_payload_list: bool = False
     chat_payload_format: Literal["json", "form"] = "json"
     chat_response_key: str = ""
+    chat_method: Literal["GET", "POST", "PUT", "PATCH"] = Field(
+        default="POST",
+        description=(
+            "HTTP method for chat turns (yaml: behavior.chat_method or target.chat_method). "
+            "Use GET for endpoints such as GET /agent?sessionId=..&userMessage=..; pair it "
+            "with chat_payload_extras templates using {{message}} and {{session_id}}."
+        ),
+    )
+    chat_payload_in: Literal["body", "query"] | None = Field(
+        default=None,
+        description=(
+            "Where the chat payload is sent: 'body' or 'query' (query string). Default: "
+            "'query' for GET, 'body' for every other method."
+        ),
+    )
     chat_payload_extras: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -1364,6 +1395,22 @@ class NuGuardConfig(BaseSettings):
         description=(
             "JSON key to extract response text from the target's reply body "
             "(yaml: redteam.chat_response_key). Empty string = auto-detect."
+        ),
+    )
+    redteam_chat_method: Literal["GET", "POST", "PUT", "PATCH"] = Field(
+        default="POST",
+        description=(
+            "HTTP method for redteam chat turns (yaml: redteam.chat_method or "
+            "target.chat_method). Use GET for endpoints such as "
+            "GET /agent?sessionId=..&userMessage=.."
+        ),
+    )
+    redteam_chat_payload_in: Literal["body", "query"] | None = Field(
+        default=None,
+        description=(
+            "Where the redteam chat payload is sent: 'body' or 'query' (yaml: "
+            "redteam.chat_payload_in or target.chat_payload_in). Default: 'query' for GET, "
+            "'body' for every other method."
         ),
     )
     redteam_chat_payload_extras: dict[str, Any] = Field(
@@ -1982,6 +2029,10 @@ class NuGuardConfig(BaseSettings):
     analyze_checkov_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.checkov_total_timeout).")
     analyze_semgrep_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock scanner deadline in seconds (yaml: analyze.semgrep_timeout).")
     analyze_semgrep_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock scanner budget across all paths in seconds (yaml: analyze.semgrep_total_timeout).")
+    analyze_pip_audit_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock pip-audit deadline in seconds (yaml: analyze.pip_audit_timeout).")
+    analyze_pip_audit_total_timeout: float = Field(default=600.0, gt=0, allow_inf_nan=False, description="Total wall-clock pip-audit budget across all manifests in seconds (yaml: analyze.pip_audit_total_timeout).")
+    analyze_gitleaks_timeout: float = Field(default=120.0, gt=0, allow_inf_nan=False, description="Per-process wall-clock gitleaks deadline in seconds (yaml: analyze.gitleaks_timeout).")
+    analyze_gitleaks_total_timeout: float = Field(default=300.0, gt=0, allow_inf_nan=False, description="Total wall-clock gitleaks budget across all paths in seconds (yaml: analyze.gitleaks_total_timeout).")
     analyze_min_severity: str = Field(
         default="medium",
         description=(

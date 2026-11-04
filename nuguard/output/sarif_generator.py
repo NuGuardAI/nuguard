@@ -37,6 +37,7 @@ _SOURCE_DRIVER: dict[str, str] = {
     "trivy":        "trivy",
     "trivy-misconfig": "trivy",
     "semgrep":      "semgrep",
+    "gitleaks":     "gitleaks",
 }
 
 # nuguard severity → SARIF level
@@ -91,6 +92,12 @@ _TOOL_INFO: dict[str, dict[str, str]] = {
         "fullName": "Semgrep Static Analysis",
         "informationUri": "https://semgrep.dev",
         "version": "1.x",
+    },
+    "gitleaks": {
+        "name": "gitleaks",
+        "fullName": "Gitleaks Secret Scanner",
+        "informationUri": "https://github.com/gitleaks/gitleaks",
+        "version": "8.x",
     },
 }
 

@@ -24,7 +24,7 @@ Source code / remote repo
 nuguard sbom generate          AI-SBOM: structured graph of every AI component
         │
         ▼
-nuguard analyze                Static risk analysis (NGA rules + OSV + Grype + Checkov + Trivy + Semgrep + ATLAS)
+nuguard analyze                Static risk analysis (NGA rules + supply-chain + OSV + pip-audit + Gitleaks + Grype + Checkov + Trivy + Opengrep + ATLAS)
         │
         ▼
 nuguard policy check           Cognitive Policy linting and compliance assessment
@@ -66,7 +66,7 @@ secret patterns, and IaC signals across SQL, YAML, Dockerfiles, Nginx, and promp
 ### 3. Cross-component risk reasoning — not single-file pattern matching
 
 Because the AI-SBOM is a graph (nodes + typed edges), NuGuard can reason across component
-boundaries that single-file scanners (Semgrep, CodeQL) cannot: "this agent has write
+boundaries that single-file scanners (Opengrep, CodeQL) cannot: "this agent has write
 access to a HIPAA-classified datastore via a tool that has no auth boundary and no
 guardrail node in the graph." The NGA structural rules fire on combinations of SBOM
 signals, not on individual file patterns.
@@ -151,19 +151,26 @@ descriptions, generates a use-case summary and IaC security briefing. Default mo
 
 ## 2. Static Analysis (`nuguard analyze`)
 
-Works from an existing AI-SBOM — no running application required. Runs up to seven
-scanners in sequence; each is silently skipped when its binary is absent or has nothing
-to scan.
+Works from an existing AI-SBOM — no running application required. Runs built-in graph and supply-chain checks with seven optional scanners. External scanners
+run concurrently and report skipped coverage when their binary or scan inputs are missing.
 
 | Scanner | Built-in | What it covers |
 |---|---|---|
 | NGA structural rules | Yes | Missing guardrails, unsafe tool access, privilege paths, injection surfaces, data-handling gaps, audit-trail absence |
+| Supply-chain threat pack | Yes | CI/CD, dependency integrity, AI-agent config risks (NGA-SC-001–027) |
+| pip-audit | Optional binary | Resolved Python dependency CVEs, including transitive packages, via OSV |
+| Gitleaks | Optional binary | Hardcoded secrets in source; secret values redacted |
 | OSV | Yes | Python/JS/Go CVEs via https://api.osv.dev |
 | MITRE ATLAS | Yes | Native graph checks with ATLAS v2 technique mapping (AML.T0051–AML.T0054, etc.) |
 | Grype | Optional binary | Package + container CVEs (NVD, GHSA, distro advisories) |
 | Checkov | Optional binary | IaC misconfigurations (Terraform, CloudFormation, Bicep, K8s) |
 | Trivy | Optional binary | Container image + filesystem secrets, CVEs |
-| Semgrep | Optional binary | AI-security source patterns, code smells |
+| Opengrep | Optional binary | AI-security source patterns, code smells; falls back to Semgrep |
+
+Opengrep replaces Semgrep as the preferred engine. Existing --semgrep/--no-semgrep flags,
+semgrep_* settings, enable_semgrep API parameter, and semgrep finding-source/tool-status keys remain compatible.
+pip-audit and Gitleaks are enabled when installed; disable with --no-pip-audit / --no-gitleaks.
+Review Tool Coverage for skipped or failed checks; partial findings survive scanner errors.
 
 All findings are normalized into a shared `Finding` model with `rule_id`, `severity`,
 `title`, `description`, `affected_nodes`, `mitre_atlas`, and `remediation` fields.
@@ -329,7 +336,10 @@ nuguard --help
 
 Optional tools for full static-analysis coverage:
 ```bash
-pip install checkov semgrep
+pip install checkov pip-audit
+# Install Opengrep and Gitleaks binaries on PATH using their official instructions:
+# https://github.com/opengrep/opengrep#installation
+# https://github.com/gitleaks/gitleaks#installing
 curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
 ```

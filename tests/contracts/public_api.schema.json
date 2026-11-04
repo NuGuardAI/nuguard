@@ -50,6 +50,11 @@
         "title": "Enable Supply Chain",
         "type": "boolean"
       },
+      "enable_pip_audit": {
+        "default": true,
+        "title": "Enable Pip Audit",
+        "type": "boolean"
+      },
       "source_path": {
         "anyOf": [
           {
@@ -120,6 +125,39 @@
         "description": "Total wall-clock scanner budget across all paths in seconds.",
         "exclusiveMinimum": 0,
         "title": "Semgrep Total Timeout",
+        "type": "number"
+      },
+      "pip_audit_timeout": {
+        "default": 300.0,
+        "description": "Per-process wall-clock pip-audit deadline in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Pip Audit Timeout",
+        "type": "number"
+      },
+      "pip_audit_total_timeout": {
+        "default": 600.0,
+        "description": "Total wall-clock pip-audit budget across all manifests in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Pip Audit Total Timeout",
+        "type": "number"
+      },
+      "enable_gitleaks": {
+        "default": true,
+        "title": "Enable Gitleaks",
+        "type": "boolean"
+      },
+      "gitleaks_timeout": {
+        "default": 120.0,
+        "description": "Per-process wall-clock gitleaks deadline in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Gitleaks Timeout",
+        "type": "number"
+      },
+      "gitleaks_total_timeout": {
+        "default": 300.0,
+        "description": "Total wall-clock gitleaks budget across all paths in seconds.",
+        "exclusiveMinimum": 0,
+        "title": "Gitleaks Total Timeout",
         "type": "number"
       },
       "supply_chain_profile": {
@@ -566,6 +604,18 @@
             ],
             "default": null,
             "title": "Regression Paraphrase Kind"
+          },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Expect"
           },
           "dual_path_verdict": {
             "anyOf": [
@@ -1317,6 +1367,35 @@
             "default": "",
             "title": "Chat Response Key",
             "type": "string"
+          },
+          "chat_method": {
+            "default": "POST",
+            "description": "HTTP method for chat turns (yaml: behavior.chat_method or target.chat_method). Use GET for endpoints such as GET /agent?sessionId=..&userMessage=..; pair it with chat_payload_extras templates using {{message}} and {{session_id}}.",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH"
+            ],
+            "title": "Chat Method",
+            "type": "string"
+          },
+          "chat_payload_in": {
+            "anyOf": [
+              {
+                "enum": [
+                  "body",
+                  "query"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Where the chat payload is sent: 'body' or 'query' (query string). Default: 'query' for GET, 'body' for every other method.",
+            "title": "Chat Payload In"
           },
           "chat_payload_extras": {
             "additionalProperties": true,
@@ -3005,6 +3084,35 @@
             "default": "",
             "title": "Chat Response Key",
             "type": "string"
+          },
+          "chat_method": {
+            "default": "POST",
+            "description": "HTTP method for chat turns (yaml: behavior.chat_method or target.chat_method). Use GET for endpoints such as GET /agent?sessionId=..&userMessage=..; pair it with chat_payload_extras templates using {{message}} and {{session_id}}.",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH"
+            ],
+            "title": "Chat Method",
+            "type": "string"
+          },
+          "chat_payload_in": {
+            "anyOf": [
+              {
+                "enum": [
+                  "body",
+                  "query"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Where the chat payload is sent: 'body' or 'query' (query string). Default: 'query' for GET, 'body' for every other method.",
+            "title": "Chat Payload In"
           },
           "chat_payload_extras": {
             "additionalProperties": true,
@@ -5591,6 +5699,33 @@
         "default": null,
         "title": "Chat Payload Extras"
       },
+      "chat_method": {
+        "default": "POST",
+        "enum": [
+          "GET",
+          "POST",
+          "PUT",
+          "PATCH"
+        ],
+        "title": "Chat Method",
+        "type": "string"
+      },
+      "chat_payload_in": {
+        "anyOf": [
+          {
+            "enum": [
+              "body",
+              "query"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Payload In"
+      },
       "request_timeout": {
         "default": 30.0,
         "title": "Request Timeout",
@@ -6007,6 +6142,33 @@
         ],
         "default": null,
         "title": "Chat Payload Extras"
+      },
+      "chat_method": {
+        "default": "POST",
+        "enum": [
+          "GET",
+          "POST",
+          "PUT",
+          "PATCH"
+        ],
+        "title": "Chat Method",
+        "type": "string"
+      },
+      "chat_payload_in": {
+        "anyOf": [
+          {
+            "enum": [
+              "body",
+              "query"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Payload In"
       },
       "request_timeout": {
         "default": 30.0,
@@ -9845,6 +10007,18 @@
             "default": null,
             "title": "Regression Paraphrase Kind"
           },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Expect"
+          },
           "dual_path_verdict": {
             "anyOf": [
               {
@@ -11781,6 +11955,33 @@
         "default": null,
         "title": "Chat Payload Extras"
       },
+      "chat_method": {
+        "default": "POST",
+        "enum": [
+          "GET",
+          "POST",
+          "PUT",
+          "PATCH"
+        ],
+        "title": "Chat Method",
+        "type": "string"
+      },
+      "chat_payload_in": {
+        "anyOf": [
+          {
+            "enum": [
+              "body",
+              "query"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Payload In"
+      },
       "pre_run_warmup": {
         "default": 0,
         "title": "Pre Run Warmup",
@@ -12818,6 +13019,18 @@
             ],
             "default": null,
             "title": "Regression Paraphrase Kind"
+          },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Expect"
           },
           "dual_path_verdict": {
             "anyOf": [
@@ -18393,6 +18606,45 @@
             "default": null,
             "description": "1-based line number, if known",
             "title": "Line"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based start column, if known",
+            "title": "Column"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based inclusive end line, if known",
+            "title": "End Line"
+          },
+          "end_column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based exclusive end column, if known",
+            "title": "End Column"
           }
         },
         "required": [
@@ -22748,6 +23000,45 @@
             "default": null,
             "description": "1-based line number, if known",
             "title": "Line"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based start column, if known",
+            "title": "Column"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based inclusive end line, if known",
+            "title": "End Line"
+          },
+          "end_column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based exclusive end column, if known",
+            "title": "End Column"
           }
         },
         "required": [
@@ -23254,6 +23545,12 @@
             },
             "title": "Exclude Patterns",
             "type": "array"
+          },
+          "include_test_sources": {
+            "default": false,
+            "description": "Also scan JVM test sources (src/test, src/testFixtures, src/integrationTest). Off by default so test helpers are not reported as application agents/prompts.",
+            "title": "Include Test Sources",
+            "type": "boolean"
           },
           "scan_images": {
             "default": false,
@@ -27409,6 +27706,45 @@
             "default": null,
             "description": "1-based line number, if known",
             "title": "Line"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based start column, if known",
+            "title": "Column"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based inclusive end line, if known",
+            "title": "End Line"
+          },
+          "end_column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based exclusive end column, if known",
+            "title": "End Column"
           }
         },
         "required": [
@@ -31743,6 +32079,45 @@
             "default": null,
             "description": "1-based line number, if known",
             "title": "Line"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based start column, if known",
+            "title": "Column"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based inclusive end line, if known",
+            "title": "End Line"
+          },
+          "end_column": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "1-based exclusive end column, if known",
+            "title": "End Column"
           }
         },
         "required": [

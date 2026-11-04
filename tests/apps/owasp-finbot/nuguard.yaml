@@ -73,6 +73,10 @@ behavior:
   # Per-request timeout in seconds (default: 60)
   request_timeout: 60
 
+  # Per-scenario wall-clock timeout in seconds (default: 180). Raised because
+  # Azure LLM judge calls are slow and 21 of 49 scenarios hit 180s in the last run.
+  scenario_timeout: 600
+
   # Verbose output: include full per-turn traces in behavior report
   verbose: true
 

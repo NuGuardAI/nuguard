@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 
@@ -30,7 +31,7 @@ _GO_RULE_IDS = frozenset(
 
 
 def _semgrep_binary() -> str | None:
-    return shutil.which("semgrep")
+    return shutil.which("opengrep") or shutil.which("semgrep")
 
 
 def _run_semgrep_on_fixtures() -> dict[str, list[dict[str, object]]]:
@@ -48,15 +49,18 @@ def _run_semgrep_on_fixtures() -> dict[str, list[dict[str, object]]]:
     if not files:
         pytest.fail(f"no Go fixtures found in {_FIXTURES}")
 
-    cmd = [
-        binary,
-        "--quiet",
-        "--json",
-        "--config",
-        str(_RULES),
-        *[str(f) for f in files],
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    # Scan copies outside the tests/ tree: Opengrep skips explicit targets under tests/.
+    with tempfile.TemporaryDirectory(prefix="nuguard-go-rules-") as scan_dir:
+        scanned = [Path(shutil.copy2(f, Path(scan_dir) / f.name)) for f in files]
+        cmd = [
+            binary,
+            "--quiet",
+            "--json",
+            "--config",
+            str(_RULES),
+            *[str(f) for f in scanned],
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode not in (0, 1):
         pytest.fail(f"semgrep exited {result.returncode}: {result.stderr.strip()}")
 
