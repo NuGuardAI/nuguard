@@ -163,10 +163,10 @@ def collect_call_graph(content: str, file_path: str = "") -> CallGraph:
     masked = mask_non_code(content)
 
     for match in _AGENT_NEW_RE.finditer(masked):
-        declaration = _innermost(result.type_declarations, masked.count("\n", 0, match.start()) + 1)
+        agent_owner = _innermost(result.type_declarations, masked.count("\n", 0, match.start()) + 1)
 
-        if declaration is not None:
-            graph["agent_types"][declaration.name] = file_path
+        if agent_owner is not None:
+            graph["agent_types"][agent_owner.name] = file_path
 
     members = member_types(content, result)
     methods = [method for method in result.method_declarations if method.containing_type]
