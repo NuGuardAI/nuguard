@@ -1,0 +1,91 @@
+﻿using MultiAgentCopilot.Adapters;
+using MultiAgentCopilot.Auth;
+
+namespace MultiAgentCopilot
+{
+    public class Program
+    {
+        public static void Main(string[] args)
+        {
+            var builder = WebApplication.CreateBuilder(args);
+
+            // Load configuration from appsettings.json and environment variables
+            builder.Configuration.SetBasePath(Directory.GetCurrentDirectory())
+                                 .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+                                 .AddJsonFile("appsettings.development.json", optional: true, reloadOnChange: true)
+                                 .AddEnvironmentVariables();
+
+            // Add CORS policy
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAllOrigins",
+                    policy =>
+                    {
+                        policy.AllowAnyOrigin()
+                              .AllowAnyMethod()
+                              .AllowAnyHeader();
+                    });
+            });
+
+
+            builder.Logging.ClearProviders();
+            builder.Logging.AddConsole();
+
+            if (!builder.Environment.IsDevelopment())                
+                builder.Services.AddApplicationInsightsTelemetry();
+
+            builder.Logging.SetMinimumLevel(LogLevel.Trace);
+            builder.Services.Configure<LoggerFilterOptions>(options =>
+            {
+                options.MinLevel = LogLevel.Trace;
+            });
+
+            //builder.AddApplicationInsightsTelemetry();
+
+            builder.AddCosmosDBService();
+            builder.AddSemanticKernelService();
+
+            builder.AddChatService();
+            builder.Services.AddScoped<ChatEndpoints>();
+
+            // Add services to the container.
+            // NuGuard fixture: JWT bearer auth for the demo users (see Auth/DemoAuth.cs).
+            builder.AddDemoJwtAuth();
+            builder.Services.AddAuthorization();
+
+            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+            builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddSwaggerGen();
+
+            var app = builder.Build();
+            app.UseCors("AllowAllOrigins");
+
+            app.UseExceptionHandler(exceptionHandlerApp
+                    => exceptionHandlerApp.Run(async context
+                        => await Results.Problem().ExecuteAsync(context)));
+
+            // Configure the HTTP request pipeline.
+            app.UseSwagger();
+            app.UseSwaggerUI();
+
+            app.UseAuthentication();
+            app.UseAuthorization();
+
+            app.MapDemoAuth();
+
+            // Map the chat REST endpoints:
+            // NuGuard fixture: all of them require a token whose tenant and user match the route.
+            var api = app.MapGroup("").RequireAuthorization().AddEndpointFilter(DemoAuth.RouteIdentityFilter);
+            using (var scope = app.Services.CreateScope())
+            {
+                var service = scope.ServiceProvider.GetService<ChatEndpoints>();
+                service?.Map(api);
+            }
+            api.MapChatAdapter();
+
+            app.Run();
+
+
+        }
+    }
+}
