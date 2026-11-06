@@ -34,6 +34,8 @@ jobs:
             report_dir: tests/apps/pinnacle-bank-app/reports
           - app: customer-support
             report_dir: tests/apps/java/customer-support-agent-example/reports
+          - app: csharp-banking
+            report_dir: tests/apps/csharp/banking-multi-agent-copilot/reports
 
     env:
       AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
@@ -74,11 +76,22 @@ jobs:
         if: matrix.app == 'customer-support'
         run: tests/apps/java/customer-support-agent-example/scripts/serve.sh
 
+      # --- csharp-banking only: the target is a local ASP.NET Core app started inside the job ---
+      - name: Set up .NET (csharp-banking)
+        if: matrix.app == 'csharp-banking'
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Start the C# target app (csharp-banking)
+        if: matrix.app == 'csharp-banking'
+        run: tests/apps/csharp/banking-multi-agent-copilot/scripts/serve.sh
+
       - name: Run prepublish sanity suite (${{ matrix.app }})
         run: bash tests/apps/prepublish-sanity.sh ${{ matrix.app }}
 
-      - name: Install Semgrep (customer-support)
-        if: matrix.app == 'customer-support'
+      - name: Install Semgrep (customer-support, csharp-banking)
+        if: matrix.app == 'customer-support' || matrix.app == 'csharp-banking'
         run: |
           uv tool install semgrep
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -93,6 +106,21 @@ jobs:
           rc=$?
           echo "analyze exit code: $rc (0 = no findings, 1 = findings reported, 2 = analysis error)"
           [ "$rc" -le 1 ]
+
+      - name: Run analyze on the generated SBOM (csharp-banking)
+        if: matrix.app == 'csharp-banking'
+        run: |
+          set +e
+          APP=tests/apps/csharp/banking-multi-agent-copilot
+          uv run nuguard analyze --sbom $APP/banking-multi-agent-copilot.sbom.json --source $APP \
+            --no-grype --no-trivy --no-checkov --format markdown --output $APP/reports/analyze.md
+          rc=$?
+          echo "analyze exit code: $rc (0 = no findings, 1 = findings reported, 2 = analysis error)"
+          [ "$rc" -le 1 ]
+
+      - name: Stop the C# target app (csharp-banking)
+        if: always() && matrix.app == 'csharp-banking'
+        run: tests/apps/csharp/banking-multi-agent-copilot/scripts/stop.sh
 
       - name: Stop the Java target app and shim (customer-support)
         if: always() && matrix.app == 'customer-support'
