@@ -151,3 +151,22 @@ class TestEmptyPolicy:
             tool_calls=[_make_tool_call("some_tool")],
         )
         assert violations == []
+
+
+@pytest.mark.parametrize("key", ["tool", "tool_name"])
+def test_tool_scoped_condition_matches_tool_key_shape(key: str) -> None:
+    """Targets that return calls as {"tool": ...} (behavior clients, the Go and
+    C# fixtures) must still match tool-scoped HITL conditions."""
+    policy = CognitivePolicy(
+        hitl_triggers=[],
+        hitl_tool_conditions=[
+            HitlToolCondition(tool_name="payment_tool", condition="amount exceeds $500")
+        ],
+    )
+    violations = detect_hitl_bypass_violations(
+        policy,
+        prompt="please process payment of $1000",
+        response="I will process the payment now.",
+        tool_calls=[{key: "payment_tool_execute", "arguments": {}}],
+    )
+    assert len(violations) == 1
