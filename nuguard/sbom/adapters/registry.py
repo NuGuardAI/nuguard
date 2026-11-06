@@ -133,6 +133,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
     """
     from .csharp import (
         CSharpAspNetCoreAdapter,
+        CSharpAuthAdapter,
         CSharpLLMClientsAdapter,
         CSharpMLNetAdapter,
         CSharpSemanticKernelAdapter,
@@ -282,6 +283,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         GenkitGoAdapter(),
         # C# adapters
         CSharpAspNetCoreAdapter(),
+        CSharpAuthAdapter(),
         CSharpLLMClientsAdapter(),
         CSharpMLNetAdapter(),
         CSharpSemanticKernelAdapter(),
@@ -484,7 +486,13 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 priority=140,
                 patterns=(
                     # Full authentication/authorization words — avoids gcloud auth, auth@v2, etc.
-                    re.compile(r"\bauth(?:entication|orization|enticate|orize)\b", re.IGNORECASE),
+                    # Not namespace segments: ARM's Microsoft.Authorization/roleAssignments
+                    # and Microsoft.AspNetCore.Authentication (C# auth adapter covers those).
+                    re.compile(
+                        r"(?<!Microsoft\.)(?<!AspNetCore\.)"
+                        r"\bauth(?:entication|orization|enticate|orize)\b",
+                        re.IGNORECASE,
+                    ),
                     # Compound token forms — avoids bare CI token vars like token=$TOKEN
                     re.compile(r"\bauth_token\b", re.IGNORECASE),
                     # Password hashing and session-based auth patterns

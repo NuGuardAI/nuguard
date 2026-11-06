@@ -1,10 +1,11 @@
-"""C# adapter for AI-facing ASP.NET Core routes."""
+"""C# adapter for ASP.NET Core controller and Minimal API routes."""
 
 from __future__ import annotations
 
 import re
 from typing import Any
 
+from ...core.csharp_parser import parse_csharp
 from ...http_semantics import HANDLER_SIGNALS_KEY
 from ...models import HttpParameterLocation, HttpParameterMetadata, HttpRequestMetadata
 from ...normalization import canonicalize_text
@@ -107,30 +108,6 @@ _BINDING_SOURCES = {
     "FromRoute": "route",
     "FromServices": "services",
 }
-_AI_ROUTE_RE = re.compile(
-    r"(?:^|[/_-])"
-    r"(?:ai|ask|assistant|chat|complete|"
-    r"completion|generate|inference|model|"
-    r"predict|prompt)"
-    r"(?:$|[/_-])",
-    re.IGNORECASE,
-)
-_AI_CODE_RE = re.compile(
-    r"\b(?:AnthropicClient|AzureOpenAIClient|"
-    r"ChatClient|CompleteChat(?:Async)?|"
-    r"GetChatClient|Kernel\.(?:CreateBuilder|Invoke)|"
-    r"InvokePrompt(?:Async)?|"
-    r"Messages\.(?:Create|CreateAsync)|"
-    r"MLContext|PredictionEngine|"
-    r"OpenAIClient|ResponsesClient)\b"
-)
-_AI_NAMESPACE_PREFIXES = (
-    "Anthropic",
-    "Azure.AI.OpenAI",
-    "Microsoft.ML",
-    "Microsoft.SemanticKernel",
-    "OpenAI",
-)
 _PROPERTY_RE = re.compile(
     r"(?m)^\s*public\s+"
     r"(?P<type>[A-Za-z_][\w.<>,?\[\]]*)\s+"
@@ -140,11 +117,22 @@ _PROPERTY_RE = re.compile(
 
 
 class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
-    """Detect AI-facing controllers and Minimal API endpoints."""
+    """Detect controller and Minimal API endpoints."""
 
     name = "csharp_aspnet_core"
     priority = 50
     handles_namespaces = ["Microsoft.AspNetCore"]
+
+    def __init__(self) -> None:
+        # Route-group scopes handed to methods in other files, keyed by method name.
+        self._route_group_bindings: dict[str, _RouteScope] = {}
+
+    def set_csharp_route_group_bindings(
+        self,
+        bindings: dict[str, _RouteScope],
+    ) -> None:
+        """Receive cross-file route-group scopes from the extractor pre-pass."""
+        self._route_group_bindings = dict(bindings)
 
     def extract(
         self,
@@ -202,21 +190,12 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
             )
         ]
 
-        ai_imported = any(
-            any(
-                (item.namespace == prefix or item.namespace.startswith(prefix + "."))
-                for prefix in _AI_NAMESPACE_PREFIXES
-            )
-            for item in result.using_directives
-        )
-
         detections.extend(
             self._controller_endpoints(
                 content,
                 file_path,
                 result,
                 constants,
-                ai_imported,
                 root,
             )
         )
@@ -226,10 +205,13 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                 file_path,
                 result,
                 constants,
-                ai_imported,
                 root,
             )
         )
+
+        if len(detections) == 1 and import_line == 0 and builder_call is None:
+            # Only implicit Web SDK usings: not evidence of ASP.NET Core on their own.
+            return []
 
         return _dedupe(detections)
 
@@ -239,7 +221,6 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
         file_path: str,
         result: Any,
         constants: dict[str, str],
-        ai_imported: bool,
         root: str,
     ) -> list[ComponentDetection]:
         detections: list[ComponentDetection] = []
@@ -308,14 +289,6 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                 content,
                 method,
             )
-
-            if not _is_ai_endpoint(
-                route,
-                method.name,
-                body,
-                ai_imported,
-            ):
-                continue
 
             auth_required = (
                 _has_attribute(
@@ -396,10 +369,15 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
         file_path: str,
         result: Any,
         constants: dict[str, str],
-        ai_imported: bool,
         root: str,
     ) -> list[ComponentDetection]:
         detections: list[ComponentDetection] = []
+        groups = _route_groups(
+            content,
+            result,
+            constants,
+            self._route_group_bindings,
+        )
 
         for call in find_calls(
             content,
@@ -416,15 +394,16 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
             if not route:
                 continue
 
-            handler = call.positional_arguments[-1] if len(call.positional_arguments) > 1 else ""
+            group_prefix, group_requires, group_anonymous = _receiver_scope(
+                call.receiver or "",
+                call.line,
+                groups,
+                result,
+                constants,
+                self._route_group_bindings,
+            )
 
-            if not _is_ai_endpoint(
-                route,
-                call.name,
-                handler,
-                ai_imported,
-            ):
-                continue
+            handler = call.positional_arguments[-1] if len(call.positional_arguments) > 1 else ""
 
             params = [
                 parsed
@@ -452,7 +431,23 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                     call.end,
                 )
             )
-            auth_required = "RequireAuthorization" in tail and "AllowAnonymous" not in tail
+            _, requires, anonymous = _fold_chain(
+                ("", group_requires, group_anonymous),
+                tail,
+                constants,
+                include_groups=False,
+            )
+            attributes = re.match(r"\s*(?:\[[^\]]*\]\s*)*", mask_non_code(handler))
+            names = re.findall(
+                r"[\[,]\s*(?:Microsoft\.AspNetCore\.Authorization\.)?"
+                r"(Authorize|AllowAnonymous)(?:Attribute)?\b",
+                attributes.group(0) if attributes else "",
+            )
+            requires = requires or "Authorize" in names
+            anonymous = anonymous or "AllowAnonymous" in names
+
+            # AllowAnonymous metadata wins over RequireAuthorization at any level.
+            auth_required = requires and not anonymous
             response_type = _minimal_response_type(handler)
             response_schema = _schema_for_type(
                 content,
@@ -460,7 +455,7 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                 response_type,
             )
             response_key = _response_key(response_schema)
-            normalized_route = _normalize_route(route)
+            normalized_route = _join_route(group_prefix, route)
             method = _MAP_METHODS[call.name]
 
             detections.append(
@@ -753,30 +748,200 @@ def _normalize_route(route: str) -> str:
     return clean if clean else "/"
 
 
-def _is_ai_endpoint(
-    route: str,
+# (prefix, RequireAuthorization seen, AllowAnonymous seen) for a route builder.
+_RouteScope = tuple[str, bool, bool]
+_EMPTY_SCOPE: _RouteScope = ("", False, False)
+_GROUP_CALLS = {"MapGroup", "RequireAuthorization", "AllowAnonymous"}
+_ROUTE_BUILDER_PARAM_RE = re.compile(
+    r"^\s*(?:this\s+)?(?:[\w.]+\.)?"
+    r"(?:IEndpointRouteBuilder|RouteGroupBuilder|WebApplication)\??\s+"
+    r"@?(?P<name>[A-Za-z_]\w*)\s*$"
+)
+_ROOT_IDENTIFIER_RE = re.compile(r"\s*@?(?P<name>[A-Za-z_]\w*)")
+
+
+def _join_route(prefix: str, route: str) -> str:
+    if not prefix.strip("/"):
+        return _normalize_route(route)
+
+    return _normalize_route(f"{prefix.rstrip('/')}/{route.lstrip('/')}")
+
+
+def _fold_chain(
+    scope: _RouteScope,
+    chain: str,
+    constants: dict[str, str],
+    include_groups: bool = True,
+) -> _RouteScope:
+    """Apply MapGroup / RequireAuthorization / AllowAnonymous calls in *chain*."""
+    prefix, requires, anonymous = scope
+
+    for call in sorted(find_calls(chain, _GROUP_CALLS), key=lambda item: item.start):
+        if call.name == "MapGroup":
+            if include_groups and call.positional_arguments:
+                group = resolve_expression(call.positional_arguments[0], constants)
+                prefix = _join_route(prefix, group or "")
+        elif call.name == "RequireAuthorization":
+            requires = True
+        else:
+            anonymous = True
+
+    return prefix, requires, anonymous
+
+
+def _parameter_scope(
     name: str,
-    body: str,
-    ai_imported: bool,
-) -> bool:
-    route_and_name = f"{route}/{name}"
+    line: int,
+    result: Any,
+    bindings: dict[str, _RouteScope],
+) -> _RouteScope | None:
+    """Return the scope bound to a route-builder parameter of the enclosing method."""
+    for method in result.method_declarations:
+        if not method.line <= line <= max(method.line_end, method.line):
+            continue
 
-    if _AI_ROUTE_RE.search(route_and_name):
-        return True
+        for parameter in method.parameters:
+            match = _ROUTE_BUILDER_PARAM_RE.match(parameter)
 
-    code = mask_non_code(body)
+            if match is not None and match.group("name") == name:
+                qualified = bindings.get(f"{method.containing_type}.{method.name}")
+                return (
+                    qualified if qualified is not None else bindings.get(method.name, _EMPTY_SCOPE)
+                )
 
-    if _AI_CODE_RE.search(code):
-        return True
+    return None
 
-    return ai_imported and bool(
-        re.search(
-            r"\b(?:client|kernel|"
-            r"model|prompt)\b",
-            code,
-            re.IGNORECASE,
-        )
-    )
+
+def _receiver_scope(
+    receiver: str,
+    line: int,
+    groups: dict[str, _RouteScope],
+    result: Any,
+    constants: dict[str, str],
+    bindings: dict[str, _RouteScope],
+) -> _RouteScope:
+    """Resolve the route scope of a builder expression such as ``g`` or ``app.MapGroup("/x")``."""
+    match = _ROOT_IDENTIFIER_RE.match(receiver)
+
+    if match is None:
+        return _EMPTY_SCOPE
+
+    root = match.group("name")
+    scope = groups.get(root) or _parameter_scope(root, line, result, bindings) or _EMPTY_SCOPE
+
+    return _fold_chain(scope, receiver[match.end() :], constants)
+
+
+def _route_groups(
+    content: str,
+    result: Any,
+    constants: dict[str, str],
+    bindings: dict[str, _RouteScope],
+) -> dict[str, _RouteScope]:
+    """Return route-group variables (``var g = app.MapGroup(...)``) and their scopes."""
+    definitions: dict[str, tuple[str | None, _RouteScope, _RouteScope]] = {}
+
+    if "MapGroup" not in content:
+        return {}
+
+    def resolve(name: str, seen: frozenset[str] = frozenset()) -> _RouteScope:
+        parent, base, own = definitions[name]
+
+        if parent is not None and parent not in seen:
+            base = resolve(parent, seen | {name})
+
+        prefix = _join_route(base[0], own[0]) if own[0].strip("/") else base[0]
+        return prefix, base[1] or own[1], base[2] or own[2]
+
+    for call in sorted(find_calls(content, _GROUP_CALLS), key=lambda item: item.start):
+        if call.name == "MapGroup" and call.assigned_to:
+            chain = content[call.start : call.end] + statement_tail(content, call.end)
+            match = _ROOT_IDENTIFIER_RE.match(chain)
+
+            if match is None:
+                continue
+
+            root = match.group("name")
+            parent: str | None = None
+
+            if root == call.assigned_to and root in definitions:
+                base = resolve(root)
+            elif root in definitions:
+                parent, base = root, _EMPTY_SCOPE
+            else:
+                base = _parameter_scope(root, call.line, result, bindings) or _EMPTY_SCOPE
+
+            own = _fold_chain(_EMPTY_SCOPE, chain[match.end() :], constants)
+            definitions[call.assigned_to] = (parent, base, own)
+        elif call.name != "MapGroup":
+            # A later standalone ``g.RequireAuthorization().AllowAnonymous();`` statement.
+            match = _ROOT_IDENTIFIER_RE.match(call.receiver or "")
+
+            if match is None or match.group("name") not in definitions:
+                continue
+
+            rest = (call.receiver or "")[match.end() :]
+
+            if rest.strip() and (
+                not rest.lstrip().startswith(".")
+                or any(item.name.startswith("Map") for item in find_calls(rest))
+            ):
+                continue
+
+            parent, base, own = definitions[match.group("name")]
+            definitions[match.group("name")] = (
+                parent,
+                base,
+                _fold_chain(own, f".{call.name}()", constants),
+            )
+
+    return {name: resolve(name) for name in definitions}
+
+
+def collect_route_group_bindings(
+    content: str,
+    file_path: str = "",
+) -> dict[str, _RouteScope]:
+    """Return route-group scopes passed to other methods, keyed by callee name and ``Type.Method``.
+
+    Covers ``ChatEndpoints.Map(group)`` and extension methods such as
+    ``group.MapChatAdapter()``, so endpoints registered in another file inherit
+    the group's prefix and authorization.
+    """
+    if "MapGroup" not in content:
+        return {}
+
+    result = parse_csharp(content, file_path)
+    constants = string_constants(result)
+    groups = _route_groups(content, result, constants, {})
+    bindings: dict[str, _RouteScope] = {}
+    ambiguous: set[str] = set()
+
+    def bind(key: str, scope: _RouteScope) -> None:
+        if key in ambiguous:
+            return
+
+        if bindings.setdefault(key, scope) != scope:
+            ambiguous.add(key)
+            del bindings[key]
+
+    for call in find_calls(content):
+        if call.name in _GROUP_CALLS or call.name in _MAP_METHODS:
+            continue
+
+        if (call.receiver or "") in groups:
+            bind(call.name, groups[call.receiver or ""])
+
+        declaring_type = (call.receiver or "").rstrip("?").split(".")[-1]
+
+        for argument in call.positional_arguments:
+            if argument.strip() in groups:
+                bind(call.name, groups[argument.strip()])
+
+                if declaring_type:
+                    bind(f"{declaring_type}.{call.name}", groups[argument.strip()])
+
+    return bindings
 
 
 def _minimal_response_type(
@@ -1282,4 +1447,4 @@ def _dedupe(
     return result
 
 
-__all__ = ["CSharpAspNetCoreAdapter"]
+__all__ = ["CSharpAspNetCoreAdapter", "collect_route_group_bindings"]
