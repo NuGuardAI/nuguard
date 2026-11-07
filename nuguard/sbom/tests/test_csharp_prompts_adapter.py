@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from nuguard.sbom.adapters.base import ComponentDetection
 from nuguard.sbom.adapters.csharp import CSharpPromptAdapter
 from nuguard.sbom.core.csharp_parser import parse_csharp
@@ -199,3 +201,205 @@ def test_empty_or_short_string_in_const_not_detected() -> None:
 '''
     detections = _extract(CSharpPromptAdapter(), source)
     assert _by_type(detections, ComponentType.PROMPT) == []
+
+
+# ---------------------------------------------------------------------------
+# Credential redaction and performance
+# ---------------------------------------------------------------------------
+
+
+def test_long_letters_only_literal_is_linear_time() -> None:
+    import time
+
+    source = 'class C\n{\n    const string Blob = "' + ("abcdef" * 17_000) + '";\n}\n'
+    start = time.perf_counter()
+    _extract(CSharpPromptAdapter(), source)
+    assert time.perf_counter() - start < 2.0
+
+
+def test_url_password_with_apostrophe_redacted() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Connect to mongodb://user:pa'S3CRET@db.example.com now.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert prompts
+    for p in prompts:
+        assert "S3CRET" not in p.metadata["content"]
+        assert "S3CRET" not in (p.snippet or "")
+
+
+def test_url_token_as_username_redacted() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Clone https://ghp_S3CRETtoken@github.com/org/repo first.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    assert "S3CRET" not in prompts[0].metadata["content"]
+    assert "github.com/org/repo" in prompts[0].metadata["content"]
+
+
+def test_kv_secret_with_spaces_fully_redacted() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Use Password=my S3CRET pass phrase; Database=bank for lookups.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    content = prompts[0].metadata["content"]
+    assert "S3CRET" not in content
+    assert "pass phrase" not in content
+    assert "Database=bank" in content
+
+
+@pytest.mark.parametrize(
+    "secret",
+    [
+        'Password=pa\\"S3CRET pass;',
+        "Password='pa'S3CRET;",
+        'token=\\"pa\\"S3CRET&x=1',
+        'Password=\\"S3;CRET\\"',
+        "Password='S3&CRET'",
+        'Password=\\"S3 pass; CRET',
+    ],
+)
+def test_kv_secret_with_stray_quotes_fully_redacted(secret: str) -> None:
+    source = (
+        "class Agent\n{\n    const string SystemPrompt =\n"
+        f'        "You are a helpful assistant. Connect with {secret} Database=bank for lookups.";\n}}\n'
+    )
+    for p in _extract(CSharpPromptAdapter(), source):
+        assert "CRET" not in str(p.metadata)
+        assert "CRET" not in (p.snippet or "")
+
+
+def test_url_userinfo_missed_by_redaction_drops_literal() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Backup target is 1mongodb://admin:S3CRET@db.example.com now.";
+}
+'''
+    for p in _extract(CSharpPromptAdapter(), source):
+        assert "S3CRET" not in str(p.metadata)
+        assert "S3CRET" not in (p.snippet or "")
+
+
+def test_url_userinfo_with_space_in_user_redacted() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Connect to mongodb://user name:pw@host/db now.";
+}
+'''
+    for p in _extract(CSharpPromptAdapter(), source):
+        assert "pw" not in str(p.metadata)
+        assert "pw" not in (p.snippet or "")
+
+
+def test_url_before_spaced_userinfo_url_kept() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. See https://a.com and mongodb://u:S3CRET@db now.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    content = prompts[0].metadata["content"]
+    assert "https://a.com" in content
+    assert "S3CRET" not in content
+    for p in _extract(CSharpPromptAdapter(), source):
+        assert "S3CRET" not in str(p.metadata)
+        assert "S3CRET" not in (p.snippet or "")
+
+
+def test_handle_url_prompt_kept() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Refer users to https://x.com/@handle for updates.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    assert "https://x.com/@handle" in prompts[0].metadata["content"]
+
+
+def test_api_key_value_redacted_prompt_kept() -> None:
+    source = '''class Agent
+{
+    const string SystemPrompt =
+        "You are a helpful assistant. Call the tool with api_key=abc123 and summarize.";
+}
+'''
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    content = prompts[0].metadata["content"]
+    assert "abc123" not in content
+    assert "api_key=<redacted>" in content
+
+
+def test_long_literal_with_scheme_is_linear_time() -> None:
+    import time
+
+    source = 'class C\n{\n    const string Blob = "' + ("abcdef" * 17_000) + ' see x://y";\n}\n'
+    start = time.perf_counter()
+    _extract(CSharpPromptAdapter(), source)
+    assert time.perf_counter() - start < 2.0
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        '@"You are a helpful assistant. Connect to mongodb://user:S3""CRET@db.example.com now."',
+        '"You are a helpful assistant. Connect to mongodb://user:S3\\"CRET@db.example.com now."',
+        '"""\n        You are a helpful assistant. Connect to mongodb://user:S3"CRET@db.example.com now.\n        """',
+    ],
+)
+def test_url_password_with_double_quote_redacted(literal: str) -> None:
+    source = f"class Agent\n{{\n    const string SystemPrompt =\n        {literal};\n}}\n"
+    detections = _extract(CSharpPromptAdapter(), source)
+    for p in detections:
+        assert "CRET" not in str(p.metadata)
+        assert "CRET" not in (p.snippet or "")
+    prompts = _by_type(detections, ComponentType.PROMPT)
+    assert len(prompts) == 1
+    assert "mongodb://<redacted>@db.example.com" in prompts[0].metadata["content"]
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["See https://a.com and 1mongodb://u:S3CRET@db", '1mongodb://u:S3\\"CRET@db'],
+)
+def test_url_userinfo_missed_by_redaction_variants_drop_literal(url: str) -> None:
+    source = (
+        "class Agent\n{\n    const string SystemPrompt =\n"
+        f'        "You are a helpful assistant. {url} now.";\n}}\n'
+    )
+    for p in _extract(CSharpPromptAdapter(), source):
+        assert "CRET" not in str(p.metadata)
+        assert "CRET" not in (p.snippet or "")
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["pwd", "passwd", "pass", "DB_PASSWORD", "secret_key", "private_key"],
+)
+def test_kv_secret_key_variants_redacted(key: str) -> None:
+    source = (
+        "class Agent\n{\n    const string SystemPrompt =\n"
+        f'        "You are a helpful assistant. Use server=db;{key}=S3CRET;database=x for lookups.";\n}}\n'
+    )
+    prompts = _by_type(_extract(CSharpPromptAdapter(), source), ComponentType.PROMPT)
+    assert len(prompts) == 1
+    content = prompts[0].metadata["content"]
+    assert "S3CRET" not in content
+    assert f"{key}=<redacted>" in content

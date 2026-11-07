@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from nuguard.sbom.adapters.base import ComponentDetection
 from nuguard.sbom.adapters.csharp import CSharpDatastoreAdapter
 from nuguard.sbom.core.csharp_parser import parse_csharp
+from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.tests.conftest import CS_ONLY, nodes
 from nuguard.sbom.types import ComponentType
 
 
@@ -202,6 +206,56 @@ def test_string_marker_not_detected() -> None:
 # ---------------------------------------------------------------------------
 # Multiple providers in one file
 # ---------------------------------------------------------------------------
+
+
+_LEADING_WS_CASES = [
+    ("MongoDB.Driver", "MongoClient", '" mongodb://u:S3CRET@db/x"', "mongodb", "mongodb://db"),
+    ("MongoDB.Driver", "MongoClient", '"\tmongodb://u:S3CRET@db/x"', "mongodb", "mongodb://db"),
+    (
+        "MongoDB.Driver",
+        "MongoClient",
+        '"""\n        mongodb://u:S3CRET@db/x\n        """',
+        "mongodb",
+        "mongodb://db",
+    ),
+    ("Npgsql", "NpgsqlConnection", '"\tpostgres://u:S3CRET@db/x"', "npgsql", "postgres://db"),
+]
+
+
+@pytest.mark.parametrize(("using", "ctor", "literal", "provider", "preview"), _LEADING_WS_CASES)
+def test_leading_whitespace_url_password_not_previewed(
+    using: str, ctor: str, literal: str, provider: str, preview: str
+) -> None:
+    source = f"using {using};\nvar c = new {ctor}({literal});\n"
+    detections = _extract(CSharpDatastoreAdapter(), source)
+    ds = [d for d in _by_type(detections, ComponentType.DATASTORE) if d.metadata["provider"] == provider]
+    assert len(ds) == 1
+    assert ds[0].metadata.get("connection_string_preview") == preview
+    assert "s3cret" not in repr(ds[0]).lower()
+
+
+@pytest.mark.parametrize(("using", "ctor", "literal", "provider", "preview"), _LEADING_WS_CASES)
+def test_leading_whitespace_url_password_absent_from_sbom(
+    tmp_path, using: str, ctor: str, literal: str, provider: str, preview: str
+) -> None:
+    (tmp_path / "Db.cs").write_text(
+        f"using {using};\n\npublic class Db\n{{\n    {ctor} c = new {ctor}({literal});\n}}\n"
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, CS_ONLY)
+    assert "s3cret" not in doc.model_dump_json().lower()
+    ds = [n for n in nodes(doc, ComponentType.DATASTORE) if n.metadata.extras.get("provider") == provider]
+    assert ds, [n.name for n in nodes(doc, ComponentType.DATASTORE)]
+    assert any(n.metadata.extras.get("connection_string_preview") == preview for n in ds)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Host=x;Database= mongodb://u:S3CRET@db/x", " \n postgres://u:S3CRET@db/x;Host=db"],
+)
+def test_key_value_preview_rejects_embedded_url(text: str) -> None:
+    from nuguard.sbom.adapters.csharp.datastores import _safe_connection_preview
+
+    assert "s3cret" not in _safe_connection_preview(text).lower()
 
 
 def test_multiple_providers_detected_in_one_file() -> None:
