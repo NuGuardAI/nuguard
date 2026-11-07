@@ -287,7 +287,7 @@ class TestLoginTokenKeyEnrichment:
         assert enriched.metadata.login_token_response_key == "already.set"
 
 
-def _sk_graph(*, framework_edge: str) -> tuple[AiSbomDocument, Node]:
+def _sk_graph(*, framework_edge: RelationshipType) -> tuple[AiSbomDocument, Node]:
     """FRAMEWORK -> AGENT -> TOOL, as C# Semantic Kernel emits it (no FRAMEWORK->TOOL edge)."""
     framework = Node(name="sk", component_type=ComponentType.FRAMEWORK, confidence=1.0)
     agent = Node(name="agent", component_type=ComponentType.AGENT, confidence=1.0)
