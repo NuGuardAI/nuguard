@@ -454,6 +454,60 @@ class TestCodeExecution:
         assert det is not None
         assert det.canonical_name == "privilege:code_execution"
 
+    def test_builtin_exec_on_generated_code(self) -> None:
+        assert _detect("privilege:code_execution", "exec(generated_code)") is not None
+        assert _detect("privilege:code_execution", "result = eval(llm_response)") is not None
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "command, err := r.db.Exec(ctx, `update agent_runs set error_code = $2`, id, code)",
+            "_, err := pool.Exec(ctx, query, source)",
+            "db.exec(`insert into runs (output) values (?)`)",
+            "_, err := db.Exec(query, source)",
+            "_, err := tx.ExecContext(ctx, query, code)",
+            "_, err := stmt.Exec(source)",
+            "res, err := insertStmt.Exec(llmOutput)",
+            "_, err := userDB.Exec(query, source)",
+            "_, err := pgPool.Exec(ctx, query, source)",
+            "_, err := r.db.Exec(source)",
+            "sql_conn.exec(source)",
+            "_, err := dbConn.Exec(source)",
+            "_, err := tx.Exec(query, code)",
+            "_, err := conn.Exec(query, source)",
+            "_, err := pool.Exec(query, source)",
+            "cursor.exec(source)",
+            "_, err := repo.Exec(ctx, query, code)",
+            "myexec(code)",
+            "runexec(source)",
+            "obj.eval(expr)",
+            "app_db.exec(source)",
+            "_, err := sql_tx.Exec(code)",
+            "my_cursor.exec(source)",
+            "appCursor.exec(source)",
+            "_, err := userDb.Exec(source)",
+            "_, err := pgPool.Exec(query, source)",
+        ],
+    )
+    def test_sql_exec_method_is_not_code_execution(self, code: str) -> None:
+        assert _detect("privilege:code_execution", code) is None
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "child_process.exec(generatedScript)",
+            "cp.exec(llmOutput, cb)",
+            "await sandbox.exec(code)",
+            "exec(source_code)",
+            "threadpool.exec(code)",
+            "workerpool.exec(script)",
+            "httpconn.exec(script)",
+            "sandbox.Exec(generatedCode)",
+        ],
+    )
+    def test_code_exec_method_is_code_execution(self, code: str) -> None:
+        assert _detect("privilege:code_execution", code) is not None
+
 
 # ---------------------------------------------------------------------------
 # privilege:network_out

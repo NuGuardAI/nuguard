@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from nuguard.sbom.adapters.base import (
     ComponentDetection,
 )
@@ -11,6 +13,8 @@ from nuguard.sbom.adapters.go import EinoAdapter
 from nuguard.sbom.core.go_parser import (
     parse_go,
 )
+from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.tests.conftest import GO_ONLY, nodes
 from nuguard.sbom.types import ComponentType
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "apps"
@@ -584,3 +588,212 @@ func main() {
             ComponentType.AGENT,
         )
     ] == ["graph"]
+
+
+def test_adk_chat_model_agent_links_model_prompt_tools_and_runner() -> None:
+    source = """package agent
+
+import (
+    "github.com/cloudwego/eino-ext/components/model/openai"
+    "github.com/cloudwego/eino/adk"
+    "github.com/cloudwego/eino/components/tool/utils"
+    "github.com/cloudwego/eino/compose"
+)
+
+func build(ctx context.Context) {
+    cm, _ := openai.NewChatModel(ctx, &openai.ChatModelConfig{Model: "gpt-4o-mini"})
+    lookup := utils.NewTool(&schema.ToolInfo{Name: "lookup_order", Desc: "Look up"}, fn)
+    agent, _ := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+        Name:        "support",
+        Description: "Answer support questions",
+        Instruction: systemPrompt,
+        Model:       cm,
+        ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{
+            Tools: []tool.BaseTool{lookup},
+        }},
+    })
+    runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent})
+    _ = runner
+}
+"""
+
+    detections = _extract(source)
+    (framework,) = _by_type(detections, ComponentType.FRAMEWORK)
+    (agent,) = _by_type(detections, ComponentType.AGENT)
+    (tool,) = _by_type(detections, ComponentType.TOOL)
+    targets = {
+        (relationship.relationship_type, relationship.target_canonical)
+        for relationship in agent.relationships
+        if relationship.source_canonical == agent.canonical_name
+    }
+
+    assert agent.display_name == "support"
+    assert agent.line == _line_of(source, "adk.NewChatModelAgent")
+    assert agent.metadata["orchestration_kind"] == "adk_chat_model_agent"
+    assert agent.metadata["description"] == "Answer support questions"
+    assert agent.metadata["model_name"] == "gpt-4o-mini"
+    assert agent.metadata["provider"] == "openai"
+    assert agent.metadata["instruction_variable"] == "systemPrompt"
+    assert agent.metadata["runner"]["line"] == _line_of(source, "adk.NewRunner")
+    assert ("USES", "systemprompt") in targets
+    assert ("USES", "gpt_4o_mini") in targets
+    assert ("CALLS", tool.canonical_name) in targets
+    assert _has_relationship(agent, source=framework, relationship_type="USES")
+
+
+def test_adk_agent_with_unresolvable_fields_emits_no_guessed_edges() -> None:
+    source = """package agent
+
+import "github.com/cloudwego/eino/adk"
+
+func New(ctx context.Context, deps Deps, tools []tool.BaseTool) {
+    agentInstance, _ := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+        Name:        "support-copilot",
+        Instruction: "Answer briefly.",
+        Model:       deps.Model,
+        ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{
+            Tools: tools,
+        }},
+    })
+    _ = agentInstance
+}
+"""
+
+    (agent,) = _by_type(_extract(source), ComponentType.AGENT)
+
+    assert agent.display_name == "support-copilot"
+    assert agent.metadata["system_prompt"] == "Answer briefly."
+    assert "model_name" not in agent.metadata
+    assert all(
+        relationship.source_canonical != agent.canonical_name
+        for relationship in agent.relationships
+    )
+
+
+_ADK_SAME_FILE_PROMPT = """package agent
+
+import (
+    "context"
+
+    "github.com/cloudwego/eino-ext/components/model/openai"
+    "github.com/cloudwego/eino/adk"
+)
+
+const supportPrompt = "You are a careful support agent."
+
+func Build(ctx context.Context) {
+    cm, _ := openai.NewChatModel(ctx, &openai.ChatModelConfig{Model: "support_prod"})
+    agent, _ := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+        Name:        "support",
+        Instruction: supportPrompt,
+        Model:       cm,
+    })
+    _ = agent
+}
+"""
+
+
+def test_adk_same_file_prompt_const_still_emits_prompt_hint() -> None:
+    (agent,) = _by_type(_extract(_ADK_SAME_FILE_PROMPT), ComponentType.AGENT)
+    targets = {
+        (relationship.relationship_type, relationship.target_type, relationship.target_canonical)
+        for relationship in agent.relationships
+        if relationship.source_canonical == agent.canonical_name
+    }
+
+    assert agent.metadata["system_prompt"] == "You are a careful support agent."
+    assert agent.metadata["instruction_variable"] == "supportPrompt"
+    assert ("USES", ComponentType.PROMPT, "supportprompt") in targets
+
+
+def test_adk_agent_emits_model_node_and_preview() -> None:
+    detections = _extract(_ADK_SAME_FILE_PROMPT)
+    (agent,) = _by_type(detections, ComponentType.AGENT)
+    (model,) = _by_type(detections, ComponentType.MODEL)
+
+    assert model.canonical_name == "support_prod"
+    assert model.display_name == "support_prod"
+    assert model.metadata["provider"] == "openai"
+    assert model.metadata["module"] == "github.com/cloudwego/eino-ext/components/model/openai"
+    assert model.metadata["constructor_line"] == _line_of(
+        _ADK_SAME_FILE_PROMPT, "openai.NewChatModel"
+    )
+    assert any(
+        relationship.source_canonical == agent.canonical_name
+        and relationship.target_canonical == model.canonical_name
+        and relationship.relationship_type == "USES"
+        for relationship in agent.relationships
+    )
+
+
+def _prompt_targets(agent: ComponentDetection) -> set[str]:
+    return {
+        relationship.target_canonical
+        for relationship in agent.relationships
+        if relationship.source_canonical == agent.canonical_name
+        and relationship.target_type == ComponentType.PROMPT
+    }
+
+
+@pytest.mark.parametrize(
+    "instruction",
+    ['fmt.Sprintf("Help %s", user)', "cfg.Prompt"],
+)
+def test_adk_non_identifier_instruction_emits_no_instruction_variable(
+    instruction: str,
+) -> None:
+    source = _ADK_SAME_FILE_PROMPT.replace(
+        "Instruction: supportPrompt,",
+        f"Instruction: {instruction},",
+    )
+    (agent,) = _by_type(_extract(source), ComponentType.AGENT)
+
+    assert "instruction_variable" not in agent.metadata
+    assert _prompt_targets(agent) == set()
+
+
+def test_adk_instruction_identifier_without_prompt_suffix_emits_no_prompt_hint() -> None:
+    source = _ADK_SAME_FILE_PROMPT.replace(
+        "Instruction: supportPrompt,",
+        "Instruction: instructions,",
+    )
+    (agent,) = _by_type(_extract(source), ComponentType.AGENT)
+
+    assert agent.metadata["instruction_variable"] == "instructions"
+    assert _prompt_targets(agent) == set()
+
+
+def test_adk_literal_instruction_sets_system_prompt_preview() -> None:
+    long_instruction = "x" * 600
+    source = _ADK_SAME_FILE_PROMPT.replace(
+        "Instruction: supportPrompt,",
+        f'Instruction: "{long_instruction}",',
+    )
+    (agent,) = _by_type(_extract(source), ComponentType.AGENT)
+
+    assert agent.metadata["system_prompt"] == long_instruction
+    assert agent.metadata["system_prompt_preview"] == long_instruction[:500]
+    assert "instruction_variable" not in agent.metadata
+
+
+def test_adk_agent_extractor_sets_excerpt_and_model_edge(tmp_path: Path) -> None:
+    (tmp_path / "agent.go").write_text(
+        _ADK_SAME_FILE_PROMPT.replace(
+            "Instruction: supportPrompt,",
+            'Instruction: "Answer support questions politely.",',
+        ),
+        encoding="utf-8",
+    )
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, GO_ONLY)
+    by_id = {node.id: node for node in doc.nodes}
+    (agent,) = nodes(doc, ComponentType.AGENT)
+    (model,) = [node for node in nodes(doc, ComponentType.MODEL) if node.name == "support_prod"]
+
+    assert agent.metadata.system_prompt_excerpt == "Answer support questions politely."
+    assert any(
+        by_id[edge.source] is agent
+        and by_id[edge.target] is model
+        and edge.relationship_type == "USES"
+        for edge in doc.edges
+    )

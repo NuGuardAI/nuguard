@@ -24,6 +24,12 @@ def test_pytest_filename_detected_at_repository_root():
     assert looks_like_test_path("conftest.py")
 
 
+def test_go_test_filename_detected():
+    assert looks_like_test_path("internal/mcpserver/server_test.go")
+    assert not looks_like_test_path("internal/mcpserver/server.go")
+    assert not looks_like_test_path("internal/latest.go")
+
+
 def test_normal_source_path_not_flagged():
     assert not looks_like_test_path("src/routes/chat.ts")
     assert not looks_like_test_path("packages/app/lib/testimonials.ts")

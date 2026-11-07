@@ -1,8 +1,9 @@
 """``cloudwego/eino`` component-graph framework adapter.
 
-Detects Eino graph/chain construction, standalone tools, and model, prompt,
-and tool components registered through graph ``Add*`` and chain ``Append*``
-methods. Package receivers are derived from parsed imports, including aliases.
+Detects Eino graph/chain construction, ADK ``ChatModelAgent`` agents,
+standalone tools, and model, prompt, and tool components registered through
+graph ``Add*`` and chain ``Append*`` methods. Package receivers are derived
+from parsed imports, including aliases.
 """
 
 from __future__ import annotations
@@ -27,6 +28,9 @@ _MODULE = "github.com/cloudwego/eino"
 _COMPOSE_MODULE = f"{_MODULE}/compose"
 _PROMPT_MODULE = f"{_MODULE}/components/prompt"
 _TOOL_MODULE = f"{_MODULE}/components/tool"
+_ADK_MODULE = f"{_MODULE}/adk"
+_ADK_AGENT_CONSTRUCTOR = "NewChatModelAgent"
+_ADK_RUNNER_CONSTRUCTOR = "NewRunner"
 
 _GRAPH_CONSTRUCTORS = {
     "NewGraph": "graph",
@@ -199,6 +203,10 @@ class EinoAdapter(GoFrameworkAdapter):
             result,
             prefix=_TOOL_MODULE,
         )
+        adk_aliases = _aliases(
+            result,
+            exact=_ADK_MODULE,
+        )
         imports_by_alias = _all_import_aliases(result)
         calls_by_variable = _calls_by_variable(result)
 
@@ -305,6 +313,65 @@ class EinoAdapter(GoFrameworkAdapter):
                         call.assigned_to,
                     )
                 ] = stored
+
+        adk_agents_by_line: dict[int, ComponentDetection] = {}
+
+        for call in result.function_calls:
+            receiver = call.receiver or ""
+
+            if receiver not in adk_aliases or call.function_name != _ADK_AGENT_CONSTRUCTOR:
+                continue
+
+            scope = _scope_for_line(
+                result,
+                call.line,
+            )
+            adk_agent = self._adk_agent(
+                call,
+                file_path,
+                adk_aliases[receiver],
+                result=result,
+                scope=scope,
+                calls_by_variable=calls_by_variable,
+                imports_by_alias=imports_by_alias,
+                tools_by_variable=tools_by_variable,
+                components=components,
+            )
+
+            if adk_agent is None:
+                continue
+
+            _relate(
+                adk_agent,
+                framework,
+                adk_agent,
+                "USES",
+            )
+            agents.append(adk_agent)
+            adk_agents_by_line[call.line] = adk_agent
+
+        for call in result.function_calls:
+            if (
+                call.receiver or ""
+            ) not in adk_aliases or call.function_name != _ADK_RUNNER_CONSTRUCTOR:
+                continue
+
+            referenced = _referenced_call(
+                (_struct_argument(call) or {}).get("Agent"),
+                result,
+                _scope_for_line(
+                    result,
+                    call.line,
+                ),
+                calls_by_variable,
+            )
+            run_agent = adk_agents_by_line.get(referenced.line) if referenced else None
+
+            if run_agent is not None:
+                run_agent.metadata["runner"] = {
+                    "creation_method": call.full_name,
+                    "line": call.line,
+                }
 
         for call in result.function_calls:
             receiver = call.receiver or ""
@@ -435,6 +502,176 @@ class EinoAdapter(GoFrameworkAdapter):
             confidence=0.85,
             metadata=metadata,
         )
+
+    def _adk_agent(
+        self,
+        call: GoFunctionCall,
+        file_path: str,
+        module_path: str,
+        *,
+        result: GoParseResult,
+        scope: tuple[int, int],
+        calls_by_variable: dict[
+            tuple[tuple[int, int], str],
+            GoFunctionCall,
+        ],
+        imports_by_alias: dict[str, str],
+        tools_by_variable: dict[
+            tuple[tuple[int, int], str],
+            ComponentDetection,
+        ],
+        components: dict[
+            tuple[ComponentType, str],
+            ComponentDetection,
+        ],
+    ) -> ComponentDetection | None:
+        """Build an AGENT from ``adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{...})``.
+
+        Model, instruction, and tools link to other nodes only when the field
+        names something resolvable: a same-scope model constructor, a
+        ``...Prompt`` constant (the Go prompt-constant canonical), or
+        same-scope Eino tools listed in ``ToolsConfig``.
+        """
+        config = _struct_argument(call)
+
+        if config is None:
+            return None
+
+        name = self._clean(config.get("Name"))
+        identity = name or call.assigned_to or _ADK_AGENT_CONSTRUCTOR
+        metadata: dict[str, Any] = {
+            "framework": "eino",
+            "language": "golang",
+            "module": module_path,
+            "orchestration_kind": "adk_chat_model_agent",
+            "creation_method": call.full_name,
+            **({"assigned_to": call.assigned_to} if call.assigned_to else {}),
+        }
+        description = self._clean(config.get("Description"))
+
+        if description:
+            metadata["description"] = description
+
+        agent = _component(
+            component_type=ComponentType.AGENT,
+            canonical_name=canonicalize_text(f"eino:adk-agent:{file_path}:{identity}"),
+            display_name=identity,
+            adapter=self,
+            file_path=file_path,
+            call=call,
+            confidence=0.9 if name else 0.8,
+            metadata=metadata,
+        )
+
+        instruction = config.get("Instruction")
+        instruction_text = self._clean(instruction)
+
+        if instruction_text:
+            metadata["system_prompt"] = instruction_text
+            metadata["system_prompt_preview"] = instruction_text[:500]
+
+        instruction_variable = (
+            instruction[1:]
+            if isinstance(instruction, str)
+            and instruction.startswith("$")
+            and _IDENTIFIER_RE.fullmatch(instruction[1:])
+            else ""
+        )
+
+        if not instruction_variable:
+            match = re.search(
+                r"\bInstruction\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\s*[,}\n]",
+                call.source_snippet or "",
+            )
+            instruction_variable = match.group(1) if match else ""
+
+        if instruction_variable:
+            metadata["instruction_variable"] = instruction_variable
+
+            if instruction_variable.lower().endswith("prompt"):
+                agent.relationships.append(
+                    RelationshipHint(
+                        source_canonical=agent.canonical_name,
+                        source_type=ComponentType.AGENT,
+                        target_canonical=canonicalize_text(instruction_variable.lower()),
+                        target_type=ComponentType.PROMPT,
+                        relationship_type="USES",
+                    )
+                )
+
+        constructor = _referenced_call(
+            config.get("Model"),
+            result,
+            scope,
+            calls_by_variable,
+        )
+        model_name = _model_name(constructor)
+
+        if model_name and constructor is not None:
+            metadata["model_name"] = model_name
+            provider = _provider_name(
+                _call_module(
+                    constructor,
+                    imports_by_alias,
+                )
+            )
+
+            if provider:
+                metadata["provider"] = provider
+
+            module = _call_module(constructor, imports_by_alias)
+            model = components.setdefault(
+                (ComponentType.MODEL, canonicalize_text(model_name.lower())),
+                _component(
+                    component_type=ComponentType.MODEL,
+                    canonical_name=canonicalize_text(model_name.lower()),
+                    display_name=model_name,
+                    adapter=self,
+                    file_path=file_path,
+                    call=constructor,
+                    confidence=0.94,
+                    metadata={
+                        "framework": "eino",
+                        "language": "golang",
+                        "model_name": model_name,
+                        **({"module": module} if module else {}),
+                        **({"provider": provider} if provider else {}),
+                        "creation_method": constructor.full_name,
+                        "constructor_line": constructor.line,
+                    },
+                ),
+            )
+            _relate(
+                agent,
+                agent,
+                model,
+                "USES",
+            )
+
+        # Only a literal ``Tools: []tool.BaseTool{...}`` names its members.
+        literal_tools = re.search(
+            r"\bTools\s*:\s*\[\]",
+            call.source_snippet or "",
+        )
+
+        for variable in _tool_member_variables(call) if literal_tools else []:
+            tool = tools_by_variable.get(
+                (
+                    scope,
+                    variable,
+                )
+            )
+
+            if tool is not None:
+                tool.metadata["registered"] = True
+                _relate(
+                    agent,
+                    agent,
+                    tool,
+                    "CALLS",
+                )
+
+        return agent
 
     def _registered_component(
         self,
@@ -629,6 +866,58 @@ def _component(
         line=call.line,
         snippet=(call.source_snippet or f"{call.full_name}(...)"),
         evidence_kind="ast_call",
+    )
+
+
+def _struct_argument(
+    call: GoFunctionCall,
+) -> dict[str, Any] | None:
+    return next(
+        (value for value in call.positional_args if isinstance(value, dict)),
+        None,
+    )
+
+
+def _referenced_call(
+    value: Any,
+    result: GoParseResult,
+    scope: tuple[int, int],
+    calls_by_variable: dict[
+        tuple[tuple[int, int], str],
+        GoFunctionCall,
+    ],
+) -> GoFunctionCall | None:
+    """Resolve a ``$name`` field value to the call that produced it.
+
+    The parser inlines a same-scope variable's assigned expression, so the
+    value is either ``$variable`` or ``$<call source>``.
+    """
+    if not isinstance(value, str) or not value.startswith("$"):
+        return None
+
+    reference = value[1:].strip()
+
+    if _IDENTIFIER_RE.fullmatch(reference):
+        return calls_by_variable.get(
+            (
+                scope,
+                reference,
+            )
+        )
+
+    return next(
+        (
+            call
+            for call in result.function_calls
+            if call.source_snippet
+            and call.source_snippet.strip() == reference
+            and _scope_for_line(
+                result,
+                call.line,
+            )
+            == scope
+        ),
+        None,
     )
 
 

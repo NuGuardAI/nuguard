@@ -121,3 +121,28 @@ def test_scanning_fixture_root_directly_preserves_runtime_nodes(tmp_path: Path) 
         if node.component_type in _RUNTIME_TYPES
         for evidence in node.evidence
     )
+
+
+def test_go_test_file_contributes_no_tool_or_privilege(tmp_path: Path) -> None:
+    source = """package server
+
+import "github.com/mark3labs/mcp-go/client"
+
+func TestServer(t *testing.T) {
+    c, _ := client.NewStreamableHttpClient("http://127.0.0.1/mcp")
+    require.NoError(t, writer.Close())
+    _ = c
+}
+"""
+    (tmp_path / "server_test.go").write_text(source, encoding="utf-8")
+
+    doc = AiSbomExtractor().extract_from_path(
+        tmp_path,
+        AiSbomConfig(include_extensions={".go"}, enable_llm=False),
+    )
+
+    assert not [
+        node
+        for node in doc.nodes
+        if node.component_type in {ComponentType.TOOL, ComponentType.PRIVILEGE}
+    ]
