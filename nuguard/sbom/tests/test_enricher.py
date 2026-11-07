@@ -285,3 +285,58 @@ class TestLoginTokenKeyEnrichment:
 
         enriched = next(n for n in doc.nodes if n.id == login.id)
         assert enriched.metadata.login_token_response_key == "already.set"
+
+
+def _sk_graph(*, framework_edge: str) -> tuple[AiSbomDocument, Node]:
+    """FRAMEWORK -> AGENT -> TOOL, as C# Semantic Kernel emits it (no FRAMEWORK->TOOL edge)."""
+    framework = Node(name="sk", component_type=ComponentType.FRAMEWORK, confidence=1.0)
+    agent = Node(name="agent", component_type=ComponentType.AGENT, confidence=1.0)
+    tool = Node(
+        name="refund",
+        component_type=ComponentType.TOOL,
+        confidence=1.0,
+        metadata={"no_auth_required": True},  # type: ignore[arg-type]
+    )
+    auth = _auth()
+    privilege = Node(name="payments", component_type=ComponentType.PRIVILEGE, confidence=1.0)
+    edges = [
+        Edge(source=framework.id, target=agent.id, relationship_type=framework_edge),
+        Edge(source=agent.id, target=tool.id, relationship_type=RelationshipType.CALLS),
+        Edge(source=auth.id, target=framework.id, relationship_type=RelationshipType.PROTECTS),
+        Edge(source=framework.id, target=privilege.id, relationship_type=RelationshipType.CALLS),
+    ]
+    doc = AiSbomDocument(
+        target="t", nodes=[framework, agent, tool, auth, privilege], edges=edges
+    )
+    return doc, tool
+
+
+class TestToolReachedOnlyThroughAgent:
+    """A tool the framework reaches only via an agent keeps its framework-level classification."""
+
+    def test_high_privilege_and_auth_survive_via_uses_edge(self) -> None:
+        doc, tool = _sk_graph(framework_edge=RelationshipType.USES)
+
+        enrich(doc)
+
+        enriched = next(n for n in doc.nodes if n.id == tool.id)
+        assert enriched.metadata.high_privilege is True
+        assert enriched.metadata.no_auth_required is False
+
+    def test_high_privilege_and_auth_survive_via_calls_edge(self) -> None:
+        doc, tool = _sk_graph(framework_edge=RelationshipType.CALLS)
+
+        enrich(doc)
+
+        enriched = next(n for n in doc.nodes if n.id == tool.id)
+        assert enriched.metadata.high_privilege is True
+        assert enriched.metadata.no_auth_required is False
+
+    def test_unlinked_tool_gets_no_framework_classification(self) -> None:
+        doc, tool = _sk_graph(framework_edge=RelationshipType.CONTAINS)
+
+        enrich(doc)
+
+        enriched = next(n for n in doc.nodes if n.id == tool.id)
+        assert enriched.metadata.high_privilege is False
+        assert enriched.metadata.no_auth_required is True
