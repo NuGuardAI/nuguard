@@ -403,3 +403,73 @@ def test_kv_secret_key_variants_redacted(key: str) -> None:
     content = prompts[0].metadata["content"]
     assert "S3CRET" not in content
     assert f"{key}=<redacted>" in content
+
+
+_SPACED_PASSWORD_URLS = [
+    "mongodb://user:pa' S3CRET@db/",
+    "mongodb://user:pa S3CRET@db/",
+    "mongodb://user:pa  S3CRET@db/",
+    "mongodb://user:a b c S3CRET@db/",
+    "mongodb://us er:pa S3CRET@db/",
+    "mongodb://user:pa' S3CRET@db:27017/x?retryWrites=true",
+]
+
+
+@pytest.mark.parametrize("url", _SPACED_PASSWORD_URLS)
+def test_url_password_with_space_redacted(url: str) -> None:
+    from nuguard.sbom.adapters.csharp.prompts import (
+        _has_unredacted_url_userinfo,
+        _redact_credentials,
+    )
+
+    assert "S3CRET" not in _redact_credentials(url)
+    assert "://<redacted>@db" in _redact_credentials(url)
+    # Safety net must flag the raw shape on its own.
+    assert _has_unredacted_url_userinfo(url)
+    assert not _has_unredacted_url_userinfo(_redact_credentials(url))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "see https://example.com/docs for details",
+        "contact a@b.com",
+        "see http://host:8080 or mail a@b.com",
+        "see https://example.com/docs for details, mail a@b.com",
+        "mongodb://<redacted>@db:27017/x and mail a@b.com",
+    ],
+)
+def test_ordinary_prose_not_overredacted(text: str) -> None:
+    from nuguard.sbom.adapters.csharp.prompts import (
+        _has_unredacted_url_userinfo,
+        _redact_credentials,
+    )
+
+    assert _redact_credentials(text) == text
+    assert not _has_unredacted_url_userinfo(text)
+
+
+@pytest.mark.parametrize("url", _SPACED_PASSWORD_URLS)
+def test_url_password_with_space_never_emitted(url: str) -> None:
+    source = (
+        "class Agent\n{\n    const string SystemPrompt =\n"
+        f'        "You are a helpful assistant. Connect with {url} now and answer.";\n}}\n'
+    )
+    for p in _extract(CSharpPromptAdapter(), source):
+        assert "S3CRET" not in str(p.metadata)
+        assert "S3CRET" not in (p.snippet or "")
+
+
+def test_spaced_password_regex_is_linear() -> None:
+    import time
+
+    from nuguard.sbom.adapters.csharp.prompts import (
+        _has_unredacted_url_userinfo,
+        _redact_credentials,
+    )
+
+    text = "mongodb://u:" + "a " * 100_000
+    start = time.perf_counter()
+    _redact_credentials(text)
+    _has_unredacted_url_userinfo(text)
+    assert time.perf_counter() - start < 2.0

@@ -93,12 +93,19 @@ _PROMPT_FIELD_NAMES = {
 }
 
 
+# Userinfo whose password holds spaces ("user:pa' S3CRET@db"): used only when
+# the first whitespace-delimited token has no '@'. Bounded (<= 5 words, no
+# newline) so it stays linear; a port-like value ("host:8080 mail a@b.com") is
+# not treated as a password. Ambiguous prose is redacted conservatively.
+_SPACED_PASSWORD = r"(?!\d+(?:[\s/?#]|$))\S{0,256}(?:[ \t]+\S{0,256}){1,4}?@"
+
 _URL_USERINFO_RE = re.compile(
-    r"(?P<prefix>(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://)(?:[^\r\n\"/@:]*:(?!//)\S*|[^\s\"/@:]+)@",
+    r"(?P<prefix>(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://)"
+    r"(?:[^\r\n\"/@:]*:(?!//)(?:\S*@|" + _SPACED_PASSWORD + r")|[^\s\"/@:]+@)",
     re.IGNORECASE,
 )
 
-_URL_SPACED_USERINFO_RE = re.compile(r"[^\r\n\"/@:]*:(?!//)\S*@")
+_URL_SPACED_USERINFO_RE = re.compile(r"[^\r\n\"/@:]*:(?!//)(?:\S*@|" + _SPACED_PASSWORD + r")")
 
 _CREDENTIAL_KV_RE = re.compile(
     r"(?P<prefix>(?<![a-z0-9])(?:password|passwd|pass|pwd|psw|user\s*password|account\s*key"
