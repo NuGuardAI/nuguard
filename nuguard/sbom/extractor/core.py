@@ -2591,7 +2591,10 @@ class AiSbomExtractor:
                 host = acc.metadata.get("host", "")
                 port = acc.metadata.get("port", "")
                 transport = acc.metadata.get("transport", "")
-                if host or port:
+                # host/port only describe the endpoint when the adapter gave no
+                # route path; otherwise they must not clobber the real path
+                # (host stays available in metadata.extras).
+                if (host or port) and not acc.metadata.get("endpoint"):
                     node.metadata.endpoint = (
                         f"{host}:{port}" if (host and port) else str(host or port)
                     )

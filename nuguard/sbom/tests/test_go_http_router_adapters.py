@@ -11,6 +11,7 @@ from nuguard.sbom.adapters.go import (
     GqlgenAdapter,
     NetHTTPAdapter,
 )
+from nuguard.sbom.adapters.go._go_base import GoFrameworkAdapter
 from nuguard.sbom.core.go_parser import parse_go
 from nuguard.sbom.types import ComponentType
 
@@ -157,10 +158,9 @@ def test_net_http_go122_patterns_carry_method_host_and_wildcards() -> None:
         "ANY /",
     }
     assert endpoints["GET /api/v1/tickets/{id}"]["endpoint"] == "/api/v1/tickets/{id}"
-    assert endpoints["GET example.com/status"]["route_host"] == "example.com"
-    assert "host" not in endpoints["GET example.com/status"]
+    assert endpoints["GET example.com/status"]["host"] == "example.com"
     assert endpoints["GET example.com/status"]["endpoint"] == "/status"
-    assert "route_host" not in endpoints["ANY /"]
+    assert "host" not in endpoints["ANY /"]
 
 
 def test_net_http_host_pattern_endpoint_stays_path_through_extractor(tmp_path) -> None:
@@ -391,3 +391,57 @@ def test_echo_group_use_custom_auth_marks_routes_protected() -> None:
     assert endpoints["GET /chat"]["auth_required"] is True
     assert endpoints["GET /chat"]["auth_inference"] == "group_middleware"
     assert endpoints["GET /health"]["auth_required"] is False
+
+
+class _StubEndpointAdapter(GoFrameworkAdapter):
+    """Adapter-agnostic stub emitting one API_ENDPOINT with arbitrary metadata."""
+
+    name = "stub_endpoint"
+    priority = 10
+    handles_imports = ["example.com/stub"]
+
+    def __init__(self, metadata: dict[str, object]) -> None:
+        self._metadata = metadata
+
+    def extract(self, content, file_path, parse_result):  # type: ignore[no-untyped-def]
+        return [
+            ComponentDetection(
+                component_type=ComponentType.API_ENDPOINT,
+                canonical_name="endpoint:stub",
+                display_name="stub endpoint",
+                adapter_name=self.name,
+                priority=self.priority,
+                confidence=0.9,
+                metadata={"framework": "stub", **self._metadata},
+                file_path=file_path,
+                line=3,
+                snippet="stub",
+                evidence_kind="ast_call",
+            )
+        ]
+
+
+def _stub_endpoint_metadata(tmp_path, metadata: dict[str, object]):  # type: ignore[no-untyped-def]
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.tests.conftest import GO_ONLY
+
+    (tmp_path / "main.go").write_text('package main\n\nimport _ "example.com/stub"\n')
+    extractor = AiSbomExtractor(framework_adapters=(_StubEndpointAdapter(metadata),))
+    doc = extractor.extract_from_path(tmp_path, GO_ONLY)
+    return next(n for n in doc.nodes if n.component_type == ComponentType.API_ENDPOINT).metadata
+
+
+def test_extractor_host_does_not_clobber_adapter_route_path(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    meta = _stub_endpoint_metadata(tmp_path, {"endpoint": "/status", "host": "example.com"})
+    assert meta.endpoint == "/status"
+    assert meta.extras["host"] == "example.com"
+
+
+def test_extractor_host_port_fill_endpoint_when_no_path(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    both = _stub_endpoint_metadata(tmp_path, {"host": "0.0.0.0", "port": "8080"})
+    assert both.endpoint == "0.0.0.0:8080"
+
+
+def test_extractor_port_only_fills_endpoint_when_no_path(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    meta = _stub_endpoint_metadata(tmp_path, {"port": "9000"})
+    assert meta.endpoint == "9000"

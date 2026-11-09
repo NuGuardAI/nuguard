@@ -82,7 +82,7 @@ class NetHTTPAdapter(GoFrameworkAdapter):
                 "language": "golang",
             }
             if host:
-                metadata["route_host"] = host
+                metadata["host"] = host
             endpoint = ComponentDetection(
                 component_type=ComponentType.API_ENDPOINT,
                 canonical_name=canon,
@@ -119,7 +119,7 @@ class NetHTTPAdapter(GoFrameworkAdapter):
             route_key=_route_key,
         )
         for detection in detections:
-            route_host = detection.metadata.get("route_host")
+            route_host = detection.metadata.get("host")
             if detection.component_type == ComponentType.API_ENDPOINT and route_host:
                 detection.metadata["endpoint"] = detection.metadata["endpoint"][len(route_host):]
         return enriched
