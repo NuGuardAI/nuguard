@@ -97,7 +97,7 @@ _PROMPT_FIELD_NAMES = {
 # the first whitespace-delimited token has no '@'. Bounded (<= 5 words, no
 # newline) so it stays linear; a port-like value ("host:8080 mail a@b.com") is
 # not treated as a password. Ambiguous prose is redacted conservatively.
-_SPACED_PASSWORD = r"(?!\d+(?:[\s/?#]|$))\S{0,256}(?:[ \t]+\S{0,256}){1,4}?@"
+_SPACED_PASSWORD = r"(?!\d+(?:[\s/?#]|$))\S{0,256}(?:[ \t]+\S{1,256}){1,4}?@"
 
 _URL_USERINFO_RE = re.compile(
     r"(?P<prefix>(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://)"

@@ -468,8 +468,16 @@ def test_spaced_password_regex_is_linear() -> None:
         _redact_credentials,
     )
 
-    text = "mongodb://u:" + "a " * 100_000
-    start = time.perf_counter()
-    _redact_credentials(text)
-    _has_unredacted_url_userinfo(text)
-    assert time.perf_counter() - start < 2.0
+    # Long runs of spaces/tabs once let the password words split the run in
+    # many ways (polynomial backtracking); each case must stay fast.
+    cases = [
+        "mongodb://u:" + "a " * 100_000,
+        "mongodb://u:a" + " " * 4_000 + "x",
+        "mongodb://u:" + " \t" * 4_000,
+        "mongodb://u:a" + (" " * 50 + "b") * 80,
+    ]
+    for text in cases:
+        start = time.perf_counter()
+        _redact_credentials(text)
+        _has_unredacted_url_userinfo(text)
+        assert time.perf_counter() - start < 2.0
