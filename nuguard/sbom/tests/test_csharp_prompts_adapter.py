@@ -481,3 +481,21 @@ def test_spaced_password_regex_is_linear() -> None:
         _redact_credentials(text)
         _has_unredacted_url_userinfo(text)
         assert time.perf_counter() - start < 2.0
+
+
+def test_url_password_trailing_blank_before_at_redacted() -> None:
+    from nuguard.sbom.adapters.csharp.prompts import (
+        _has_unredacted_url_userinfo,
+        _redact_credentials,
+    )
+
+    for raw in (
+        "mongodb://u:pass @host/",
+        "mongodb://u:pass\t@host/",
+        "mongodb://u:pa S3CRET @db/",
+        "mongodb://u:pa S3CRET \t @db/",
+    ):
+        assert _has_unredacted_url_userinfo(raw), raw
+        redacted = _redact_credentials(raw)
+        assert "pass" not in redacted and "S3CRET" not in redacted, redacted
+        assert not _has_unredacted_url_userinfo(redacted), redacted
