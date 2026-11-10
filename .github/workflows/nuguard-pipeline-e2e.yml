@@ -92,7 +92,7 @@ jobs:
       # --- csharp-banking only: the target is a local ASP.NET Core app started inside the job ---
       - name: Set up .NET (csharp-banking)
         if: matrix.app == 'csharp-banking'
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: "9.0.x"
 
