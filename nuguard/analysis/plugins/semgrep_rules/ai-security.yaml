@@ -6,11 +6,23 @@ rules:
 
   - id: nuguard-llm-prompt-injection-fstring
     patterns:
-      - pattern: |
-          $LLM.chat(..., messages=[..., {"role": "user", "content": f"...{$INPUT}..."}], ...)
-      - pattern-not: |
-          $LLM.chat(..., messages=[..., {"role": "user", "content": f"...{$INPUT}..."}], ...)
-          # allow if input is validated above — but we flag the raw pattern
+      - pattern-either:
+          - pattern: |
+              $LLM.chat(..., messages=[..., {"role": "user", "content": f"...{$INPUT}..."}, ...], ...)
+          # OpenAI
+          - pattern: |
+              $CLIENT.chat.completions.create(..., messages=[..., {"role": "user", "content": f"...{$INPUT}..."}, ...], ...)
+          # Anthropic
+          - pattern: |
+              $CLIENT.messages.create(..., messages=[..., {"role": "user", "content": f"...{$INPUT}..."}, ...], ...)
+          # LangChain runnables
+          - pattern: $CHAIN.invoke(f"...{$INPUT}...", ...)
+          - pattern: $CHAIN.ainvoke(f"...{$INPUT}...", ...)
+      # Exclusion: the interpolated value is passed through an explicit
+      # sanitiser/validator/escaper call (e.g. f"{sanitize(user_text)}").
+      - metavariable-regex:
+          metavariable: $INPUT
+          regex: ^(?!\s*[\w.]*(?i:saniti[sz]|escape|validat|clean|redact)\w*\s*\()
     message: >
       Potential prompt injection: user-controlled input ($INPUT) is interpolated
       directly into an LLM prompt via an f-string. Validate and sanitize $INPUT
@@ -40,10 +52,14 @@ rules:
 
   - id: nuguard-hardcoded-api-key
     patterns:
-      - pattern: $KEY = "sk-..."
-      - pattern: $KEY = "AIza..."
-      - pattern: $KEY = "ghp_..."
-      - pattern: openai.api_key = "sk-..."
+      - pattern-either:
+          - pattern: $KEY = "$VALUE"
+          - pattern: $FN(..., api_key="$VALUE", ...)
+      # openai.api_key = "…" is reported by nuguard-openai-key-in-code.
+      - pattern-not: openai.api_key = "..."
+      - metavariable-regex:
+          metavariable: $VALUE
+          regex: ^(sk-(proj-|ant-)?[A-Za-z0-9_-]{16,}|AIza[0-9A-Za-z_-]{30,}|gh[pousr]_[A-Za-z0-9]{30,})$
     message: >
       Hardcoded API key detected. Store secrets in environment variables or a
       secrets manager (e.g. AWS Secrets Manager, HashiCorp Vault). Never commit
@@ -77,8 +93,12 @@ rules:
 
   - id: nuguard-eval-on-llm-output
     patterns:
-      - pattern: eval($LLM_OUTPUT)
-      - pattern: exec($LLM_OUTPUT)
+      - pattern-either:
+          - pattern: eval($LLM_OUTPUT, ...)
+          - pattern: exec($LLM_OUTPUT, ...)
+      # A constant string is not attacker-controlled.
+      - pattern-not: eval("...", ...)
+      - pattern-not: exec("...", ...)
     message: >
       Executing LLM output directly via eval/exec is extremely dangerous. An
       attacker who controls the prompt can inject arbitrary Python code.
@@ -108,10 +128,21 @@ rules:
       nuguard_rule: NGA-002
 
   - id: nuguard-llm-ssrf-requests
-    patterns:
-      - pattern: requests.get($LLM_URL)
-      - pattern: requests.post($LLM_URL)
-      - pattern: httpx.get($LLM_URL)
+    mode: taint
+    pattern-sources:
+      # Common LLM response shapes: OpenAI, Anthropic, OpenAI Responses, LangChain.
+      - pattern: $RESP.choices[$I].message.content
+      - pattern: $RESP.content[$I].text
+      - pattern: $RESP.output_text
+      - pattern: $CHAIN.invoke(...)
+      - pattern: $CHAIN.ainvoke(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: requests.$METHOD($LLM_URL, ...)
+              - pattern: httpx.$METHOD($LLM_URL, ...)
+              - pattern: urllib.request.urlopen($LLM_URL, ...)
+          - focus-metavariable: $LLM_URL
     message: >
       URL derived from LLM output is used directly in an HTTP request. This
       enables SSRF attacks — an attacker can make the server fetch internal
@@ -157,9 +188,13 @@ rules:
 
   - id: nuguard-pickle-model-load
     patterns:
-      - pattern: pickle.load($FILE)
-      - pattern: torch.load($FILE)
-      - pattern: joblib.load($FILE)
+      - pattern-either:
+          - pattern: pickle.load(...)
+          - pattern: pickle.loads(...)
+          - pattern: torch.load(...)
+          - pattern: joblib.load(...)
+      # torch.load(..., weights_only=True) refuses arbitrary pickled objects.
+      - pattern-not: torch.load(..., weights_only=True, ...)
     message: >
       Loading a model with pickle/torch.load/joblib.load from an untrusted
       source can execute arbitrary code. Verify model integrity (e.g. checksum
