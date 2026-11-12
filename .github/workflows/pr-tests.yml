@@ -35,6 +35,16 @@ jobs:
           npm run version:check
           uv run pytest tests/test_release_metadata.py -q
 
+      # A base `pip install nuguard` (no extras) must start: optional
+      # dependencies such as cryptography have to be imported lazily.
+      - name: Clean-venv install smoke test
+        run: |
+          uv build --wheel -o "$RUNNER_TEMP/dist"
+          uv venv "$RUNNER_TEMP/clean" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/clean/bin/python" "$RUNNER_TEMP"/dist/*.whl
+          "$RUNNER_TEMP/clean/bin/nuguard" --help
+          "$RUNNER_TEMP/clean/bin/python" -c "import nuguard.sbom.public_api, nuguard.analysis.public_api"
+
   lint:
     name: Lint and type check
     runs-on: ubuntu-latest
