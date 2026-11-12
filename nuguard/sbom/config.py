@@ -280,6 +280,25 @@ class AiSbomConfig(BaseModel):
         description="Representative nodes kept per bulk-catalog file once bulk_catalog_threshold is exceeded.",
     )
 
+    # Clone policy for repo_url / --from-repo sources.
+    allowed_git_hosts: list[str] | None = Field(
+        default=None,
+        description=(
+            "When set, clones are restricted to https:// URLs on exactly these hosts (no "
+            "userinfo, IP literals or localhost) and git runs with an isolated environment "
+            "(GIT_ALLOW_PROTOCOL=https, no system/global config, no LFS smudge, symlinks "
+            "checked out as plain files). None keeps the unrestricted library behaviour."
+        ),
+    )
+    clone_timeout_s: float = Field(
+        default=120.0, gt=0, description="Wall-clock limit for one git clone, in seconds."
+    )
+    max_repo_bytes: int = Field(
+        default=500 * 1024 * 1024,
+        ge=1,
+        description="Abort when the checked-out working tree exceeds this many bytes.",
+    )
+
     @model_validator(mode="before")
     @classmethod
     def _migrate_legacy(cls, data: object) -> object:
