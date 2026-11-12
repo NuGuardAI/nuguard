@@ -289,6 +289,16 @@ cloud-pentesting.md for scope, authentication, engine, timeout, and remediation 
 
 ---
 
+## Remote Scan API (`nuguard serve`)
+
+`pip install "nuguard[service]"` then `nuguard serve --config nuguard.yaml` runs an HTTP job API:
+`POST /v1/scans` with a GitHub `repo_url`, optional `ref` and read-only `github_token`; poll
+`GET /v1/scans/{id}`; fetch `GET /v1/scans/{id}/result` (JSON or `?format=sarif`) and
+`/sbom`. Results report per-tool coverage (`succeeded` vs `partial`), stable `nf1_` fingerprints
+and a reproducible `result_sha256`. See remote-api.md.
+
+---
+
 ## 6. Unified Pipeline (`nuguard scan`)
 
 ```bash

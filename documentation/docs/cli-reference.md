@@ -39,6 +39,12 @@ Jump straight to a command. Grouped by what you're trying to do.
 | 🛡️ | [`nuguard pentest`](#nuguard-pentest) | Explicitly authorized Nuclei-based conventional HTTP/HTTPS pentest |
 | 🔌 | [`nuguard target`](#nuguard-target) | Verify target connectivity and authentication before scanning |
 
+**🌐 Service**
+
+| | Command | What it does |
+|---|---|---|
+| 🌐 | [`nuguard serve`](#nuguard-serve) | Run the remote scan API (SBOM + static analysis of git repositories over HTTP) |
+
 **🧪 Test-Run Management** ![planned](https://img.shields.io/badge/status-planned-6e7681?style=flat-square)
 
 Not implemented yet — see [Planned Commands](#planned-commands) for what's coming.
@@ -827,6 +833,23 @@ target:
 > ⚠️ The captured session cookie is short-lived (apps commonly expire it within ~24h) — there is no automatic refresh yet. When `nuguard target verify` receives HTTP 401 or 403 for the saved default cookie session, it prints a refresh hint; re-run `nuguard target discover-browser --write --yes`.
 
 </details>
+
+---
+
+## `nuguard serve`
+
+Runs the remote scan API described in the [Remote Scan API guide](remote-api.md). Requires
+`pip install "nuguard[service]"`.
+
+```bash
+nuguard serve keygen --id vulnframework-prod   # print a new API key once, plus its sha256
+nuguard serve --config nuguard.yaml            # start the service (also: nuguard-service)
+nuguard serve --config nuguard.yaml --host 127.0.0.1 --port 9000
+```
+
+The service refuses to start, exiting with code `2`, when `service.api_keys` or
+`service.git.allowed_hosts` is empty, or when it would listen on a non-loopback address without
+TLS or `service.trust_proxy: true`.
 
 ---
 
