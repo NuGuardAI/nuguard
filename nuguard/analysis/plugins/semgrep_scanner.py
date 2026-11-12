@@ -101,6 +101,7 @@ class SemgrepScannerPlugin(AnalysisPlugin):
                 status="skipped",
                 plugin=self.name,
                 message="no source paths found in SBOM — semgrep scan skipped",
+                details={"not_applicable": True},
             )
 
         rule_files: list[str] = [str(p) for p in _BUNDLED_RULES]
@@ -200,6 +201,9 @@ def _parse_semgrep_output(data: dict[str, Any], scan_path: str) -> list[dict[str
                 "source": "semgrep",
                 "scan_target": scan_path,
                 "nga_rule": nga_rule,
+                "path": file_path,
+                "start_line": start_line,
+                "end_line": r.get("end", {}).get("line") or start_line,
             }
         )
     return findings

@@ -19,8 +19,9 @@ from pydantic import BaseModel, Field
 
 from nuguard.analysis.static_analyzer import StaticAnalyzer
 from nuguard.common.logging import get_logger
-from nuguard.models.finding import Finding, Severity
+from nuguard.models.finding import Finding, FindingLocation, Severity
 from nuguard.models.token_usage import TokenUsage
+from nuguard.models.tool_run import ToolRun, ToolRunStatus
 from nuguard.remediation.backfill import backfill_finding_remediation
 from nuguard.remediation.models import RemediationArtefact
 
@@ -30,6 +31,15 @@ if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
+
+__all__ = [
+    "AnalysisRunRequest",
+    "AnalysisRunResult",
+    "FindingLocation",
+    "ToolRun",
+    "ToolRunStatus",
+    "run_analysis",
+]
 
 
 class AnalysisRunRequest(BaseModel):
@@ -60,6 +70,14 @@ class AnalysisRunRequest(BaseModel):
     supply_chain_profile: str = "standard"
     supply_chain_verify_artifacts: str = "off"
     supply_chain_threat_intel_feeds: list[str] | None = None
+    offline: bool = Field(
+        default=False,
+        description="Skip network-backed tools (OSV, Grype, Trivy) and report them as skipped.",
+    )
+    dedupe_posture: bool = Field(
+        default=True,
+        description="Merge per-model-name posture findings (e.g. NGA-002) into one per SBOM node.",
+    )
 
 
 class AnalysisRunResult(BaseModel):
@@ -74,6 +92,14 @@ class AnalysisRunResult(BaseModel):
 
     findings: list[Finding]
     tool_status: dict[str, dict[str, str]] = Field(default_factory=dict)
+    tool_runs: list[ToolRun] = Field(default_factory=list)
+    """Typed per-tool outcome (status, findings, duration, version, reason).
+
+    The authoritative coverage record: a tool whose status is not ``ok``
+    (``failed``, ``skipped``, ``timeout``, …) did not produce a clean result,
+    even when it contributed no findings. ``tool_status`` is the legacy,
+    string-only view of the same data.
+    """
     nga_audit: list[dict[str, Any]] = Field(default_factory=list)
     sc_audit: list[dict[str, Any]] = Field(default_factory=list)
     token_usage: TokenUsage = Field(default_factory=TokenUsage)
@@ -153,6 +179,8 @@ async def run_analysis(
         supply_chain_profile=request.supply_chain_profile,
         supply_chain_verify_artifacts=request.supply_chain_verify_artifacts,
         supply_chain_threat_intel_feeds=request.supply_chain_threat_intel_feeds,
+        offline=request.offline,
+        dedupe_posture=request.dedupe_posture,
     )
     findings = await analyzer.analyze(sbom)
 
@@ -164,6 +192,7 @@ async def run_analysis(
     return AnalysisRunResult(
         findings=findings,
         tool_status=analyzer.tool_status,
+        tool_runs=analyzer.tool_runs,
         nga_audit=analyzer.nga_audit,
         sc_audit=analyzer.sc_audit,
         token_usage=analyzer.token_usage,

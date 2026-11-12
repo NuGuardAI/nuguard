@@ -62,19 +62,28 @@ def _run_grype(
     target: str,
     timeout: float = 180.0,
     max_retries: int = 3,
+    strict: bool = False,
 ) -> list[dict[str, Any]]:
     """Run ``grype <target> --output json --quiet`` and return parsed matches.
 
     Retries up to *max_retries* times on timeout (e.g. first run while the
-    vulnerability DB is being downloaded).  Returns an empty list on all errors.
+    vulnerability DB is being downloaded).  Returns an empty list on all errors,
+    or raises ``ScannerError`` when *strict* is set.
     """
+    from nuguard.analysis.scanner_errors import ScannerError  # noqa: PLC0415
+
+    def _fail(reason: str, *, timed_out: bool = False) -> list[dict[str, Any]]:
+        if strict:
+            raise ScannerError(reason, timeout=timed_out)
+        return []
+
     binary = _grype_path()
     if binary is None:
         _log.warning(
             "grype binary not found on PATH; install from https://github.com/anchore/grype "
             "to enable Grype scanning"
         )
-        return []
+        return _fail("grype not installed")
 
     cmd = [binary, target, "--output", "json", "--quiet"]
     _log.debug("running: %s", " ".join(cmd))
@@ -96,10 +105,10 @@ def _run_grype(
                 "grype timed out scanning %s (timeout=%.0fs) after %d attempts — giving up",
                 target, timeout, max_retries,
             )
-            return []
+            return _fail("timed out", timed_out=True)
         except OSError as exc:
             _log.warning("grype process error for %s: %s", target, exc)
-            return []
+            return _fail("process error")
 
         if result.returncode not in (0, 1):
             # Grype exits 1 when vulnerabilities are found (strict mode off = 0)
@@ -107,13 +116,13 @@ def _run_grype(
             _log.warning("grype exited %d for %s%s",
                          result.returncode, target,
                          f": {stderr[:200]}" if stderr else "")
-            return []
+            return _fail(f"exit status {result.returncode}")
 
         try:
             data = json.loads(result.stdout)
         except (json.JSONDecodeError, ValueError) as exc:
             _log.warning("grype output parse error for %s: %s", target, exc)
-            return []
+            return _fail("invalid output")
 
         return data.get("matches") or []
 
@@ -190,6 +199,8 @@ def query_grype_sbom(
     sbom_dict: dict[str, Any],
     timeout: float = 300.0,
     max_retries: int = 3,
+    *,
+    strict: bool = False,
 ) -> list[dict[str, Any]]:
     """Scan package dependencies in *sbom_dict* via Grype using a CycloneDX BOM.
 
@@ -210,6 +221,10 @@ def query_grype_sbom(
         cdx_str = json.dumps(cdx)
     except Exception as exc:
         _log.warning("grype: failed to build CycloneDX BOM: %s", exc)
+        if strict:
+            from nuguard.analysis.scanner_errors import ScannerError  # noqa: PLC0415
+
+            raise ScannerError("could not build CycloneDX input") from None
         return []
 
     with tempfile.NamedTemporaryFile(
@@ -219,7 +234,9 @@ def query_grype_sbom(
         tmp_path = tmp.name
 
     try:
-        matches = _run_grype(f"sbom:{tmp_path}", timeout=timeout, max_retries=max_retries)
+        matches = _run_grype(
+            f"sbom:{tmp_path}", timeout=timeout, max_retries=max_retries, strict=strict
+        )
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
@@ -232,6 +249,8 @@ def query_grype_images(
     container_nodes: list[dict[str, Any]],
     timeout: float = 300.0,
     max_retries: int = 3,
+    *,
+    strict: bool = False,
 ) -> list[dict[str, Any]]:
     """Scan container images referenced in *container_nodes* via Grype.
 
@@ -253,20 +272,34 @@ def query_grype_images(
         _log.debug("grype: no CONTAINER_IMAGE refs found in SBOM nodes")
         return []
 
+    from nuguard.analysis.scanner_errors import ScannerError  # noqa: PLC0415
+
     sorted_refs = sorted(locations_by_ref)
     all_findings: list[dict[str, Any]] = []
+    failures: list[ScannerError] = []
     # Each image scan is an independent, blocking `grype <ref>` subprocess —
     # run them concurrently instead of one at a time.
     with ThreadPoolExecutor(max_workers=min(_IMAGE_SCAN_CONCURRENCY, len(sorted_refs))) as pool:
         future_to_ref = {}
         for ref in sorted_refs:
             _log.info("grype: scanning container image %s", ref)
-            future_to_ref[pool.submit(_run_grype, ref, timeout, max_retries)] = ref
+            future_to_ref[pool.submit(_run_grype, ref, timeout, max_retries, strict)] = ref
         for future in as_completed(future_to_ref):
             ref = future_to_ref[future]
-            matches = future.result()
+            try:
+                matches = future.result()
+            except ScannerError as exc:
+                failures.append(exc)
+                continue
             locations = locations_by_ref[ref]
             all_findings.extend(_match_to_finding(m, ref, locations) for m in matches)
+    if failures:
+        # Keep the images that did scan, but never report the run as clean.
+        raise ScannerError(
+            f"{len(failures)} of {len(sorted_refs)} image scan(s) failed: {failures[0].reason}",
+            timeout=all(f.timeout for f in failures),
+            partial_findings=all_findings,
+        )
 
     _log.info("grype image scan(s): %d total finding(s) across %d image(s)",
               len(all_findings), len(locations_by_ref))

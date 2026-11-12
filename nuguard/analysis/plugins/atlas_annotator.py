@@ -803,7 +803,9 @@ def _native_finding(
         "severity": _max_severity(technique_tuples),
         "title": check["title"],
         "description": check["description"],
-        "affected": affected,
+        # Callers collect names while iterating sets; sort so output (and the
+        # finding identity derived from it) is the same on every run.
+        "affected": sorted(dict.fromkeys(affected)),
         "remediation": check["remediation"],
         "source": "atlas-native",
         "atlas": _build_atlas_block(technique_tuples),

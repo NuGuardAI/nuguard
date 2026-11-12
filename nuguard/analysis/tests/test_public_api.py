@@ -39,6 +39,7 @@ def _make_mock_analyzer(findings: list[Finding]) -> MagicMock:
     instance = MagicMock()
     instance.analyze = AsyncMock(return_value=findings)
     instance.tool_status = {"osv": {"status": "ok", "findings": str(len(findings))}}
+    instance.tool_runs = []
     instance.nga_audit = [{"rule_id": "NGA-001", "status": "PASS"}]
     instance.sc_audit = [{"rule_id": "NGA-SC-001", "status": "PASS"}]
     instance.token_usage = TokenUsage(input_tokens=5, output_tokens=7)

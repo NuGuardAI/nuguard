@@ -85,6 +85,7 @@ class CheckovScannerPlugin(AnalysisPlugin):
                 status="skipped",
                 plugin=self.name,
                 message="no IaC paths found in SBOM — checkov scan skipped",
+                details={"not_applicable": True},
             )
 
         result = run_scanner(
@@ -216,6 +217,10 @@ def _parse_checkov_output(data: Any, scan_path: str) -> list[dict[str, Any]]:
         raise ValueError("Invalid Checkov output shape")
     entries = data if isinstance(data, list) else [data]
     for entry in entries:
+        # With nothing to check, Checkov prints only a summary object
+        # ({"passed": 0, "failed": 0, ..., "resource_count": 0}) — no findings, not an error.
+        if isinstance(entry, dict) and "results" not in entry and "resource_count" in entry:
+            continue
         if not isinstance(entry, dict) or not isinstance(entry.get("results"), dict):
             raise ValueError("Invalid Checkov results shape")
         for check_result in (entry.get("results", {}).get("failed_checks") or []):
@@ -247,6 +252,9 @@ def _parse_checkov_output(data: Any, scan_path: str) -> list[dict[str, Any]]:
                 "url":         guideline,
                 "source":      "checkov",
                 "scan_target": scan_path,
+                "file_path":   file_path,
+                "line_range":  list(line_range),
+                "resource":    resource,
             })
 
     return findings

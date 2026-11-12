@@ -10,8 +10,10 @@ Flow
    calls on large result sets).
 3. Parse severity from ``database_specific.severity`` or CVSS vector.
 
-All network errors are caught; callers receive an empty list on failure so the
-rest of the vulnerability scan still runs.
+By default all network errors are caught and callers receive an empty list on
+failure so the rest of the vulnerability scan still runs. Pass ``strict=True``
+to get a :class:`~nuguard.analysis.scanner_errors.ScannerError` instead, so a
+failed lookup is not mistaken for a clean result.
 """
 from __future__ import annotations
 
@@ -120,13 +122,18 @@ def _affected_versions(detail: dict[str, Any]) -> str:
 def query_osv(
     deps: list[dict[str, Any]],
     timeout: float = _TIMEOUT,
+    *,
+    strict: bool = False,
 ) -> list[dict[str, Any]]:
     """Return a list of OSV finding dicts for each vulnerable dependency.
 
     Each finding dict has keys:
       ``dep_name``, ``dep_version``, ``purl``,
       ``advisory_id``, ``cve_ids``, ``summary``,
-      ``severity``, ``affected_versions``, ``url``
+      ``severity``, ``affected_versions``, ``url``, ``source_file``
+
+    With ``strict=True`` a failed batch query raises ``ScannerError`` instead
+    of returning ``[]``. Individual advisory-detail failures stay best-effort.
     """
     purls_with_meta = [
         (dep.get("purl", ""), dep.get("name", ""), dep.get("version_spec", ""))
@@ -135,6 +142,11 @@ def query_osv(
     ]
     if not purls_with_meta:
         return []
+    source_files = {
+        dep.get("purl", ""): str(dep.get("source_file") or "")
+        for dep in deps
+        if dep.get("purl")
+    }
 
     queries = [{"package": {"purl": purl}} for purl, _, _ in purls_with_meta]
 
@@ -142,6 +154,10 @@ def query_osv(
         batch_resp = _post_json(_BATCH_URL, {"queries": queries}, timeout=timeout)
     except Exception as exc:
         _log.warning("OSV querybatch failed: %s", exc)
+        if strict:
+            from nuguard.analysis.scanner_errors import scanner_error_from  # noqa: PLC0415
+
+            raise scanner_error_from(exc) from None
         return []
 
     # Collect (purl_meta, advisory_id) pairs
@@ -198,6 +214,7 @@ def query_osv(
             "severity":        sev,
             "affected_versions": _affected_versions(detail),
             "url":             f"https://osv.dev/vulnerability/{adv_id}",
+            "source_file":     source_files.get(purl, ""),
         })
 
     # Sort by severity then advisory ID

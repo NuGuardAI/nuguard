@@ -193,6 +193,46 @@ def _finding(
     return result
 
 
+def _group_meta(
+    key: str,
+    member: str,
+    title: str,
+    remediation: str,
+    anchor: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Grouping hints for rules that fire once per model-name string.
+
+    The StaticAnalyzer (``dedupe_posture``) merges findings that share
+    ``rule_id`` + ``dedupe_key`` into one finding titled ``group_title``,
+    listing every ``dedupe_member`` in its evidence. ``anchor`` names the SBOM
+    node the merged finding belongs to. Without dedupe the keys are ignored.
+    """
+    return {
+        "dedupe_key": key,
+        "dedupe_member": member,
+        "group_title": title,
+        "group_remediation": remediation,
+        "anchor": (
+            {
+                # component_type may be a str-Enum (model_dump() without mode="json").
+                "type": str(getattr(anchor.get("component_type"), "value", None)
+                            or anchor.get("component_type") or ""),
+                "name": str(anchor.get("name") or ""),
+            }
+            if anchor
+            else None
+        ),
+    }
+
+
+def _first_evidence_path(node: dict[str, Any]) -> str:
+    for ev in node.get("evidence") or []:
+        loc = (ev or {}).get("location") or {}
+        if loc.get("path"):
+            return str(loc["path"])
+    return ""
+
+
 def _node_ids_with_edge_to(
     nodes: list[dict[str, Any]],
     edges: list[dict[str, Any]],
@@ -320,6 +360,15 @@ def _rule_nga001_phi_to_external_llm(
                             affected,
                             remediation,
                             evidence=path,
+                            **_group_meta(
+                                f"flow:{agent_name}|{interm_name or ''}|{ds_name}",
+                                model_name,
+                                f"PII/PHI data flow to external LLMs: '{agent_name}' "
+                                f"reads '{ds_name}'",
+                                f"Mask or redact {ds_labels} fields from '{ds_name}' before "
+                                f"'{agent_name}' sends them to an external model.",
+                                agent,
+                            ),
                         )
                     )
         if findings:
@@ -402,6 +451,28 @@ def _rule_nga002_insufficient_guardrails(
                 f"MODEL '{model_name}' has no GUARDRAIL on its PROTECTS path. "
                 f"Used by: {agent_names or ['(no agent edges)']}"
             )
+            # Group per calling node; model strings with no caller group per file.
+            if using_agents:
+                anchor = sorted(using_agents, key=lambda a: str(a.get("name", "")))[0]
+                users = ", ".join(sorted(agent_names))
+                group = _group_meta(
+                    f"users:{users}",
+                    model_name,
+                    f"LLM models used by '{users}' have no output guardrail (sub-check A)",
+                    f"Attach a guardrail (e.g. LlamaGuard, NeMo Guardrails) to '{users}' "
+                    "or to each model it calls.",
+                    anchor,
+                )
+            else:
+                where = _first_evidence_path(model) or "(unknown file)"
+                group = _group_meta(
+                    f"file:{where}",
+                    model_name,
+                    f"LLM models referenced in '{where}' have no output guardrail (sub-check A)",
+                    f"Attach a guardrail (e.g. LlamaGuard, NeMo Guardrails) to the LLM "
+                    f"client in '{where}'.",
+                    None,
+                )
             findings.append(
                 _finding(
                     "NGA-002",
@@ -413,6 +484,7 @@ def _rule_nga002_insufficient_guardrails(
                     f"'{model_name}' or to each calling agent: {agent_names or ['unknown']}.",
                     evidence=evidence,
                     modeling_gap_risk=bool(global_guardrail_count),
+                    **group,
                 )
             )
 
@@ -2660,6 +2732,10 @@ def _osv_to_finding(osv: dict[str, Any]) -> dict[str, Any]:
         "advisory_url": osv.get("url"),
         "cve_ids": cve_ids,
         "fixed_version": fixed_version,
+        "dep_name": osv.get("dep_name"),
+        "dep_version": osv.get("dep_version"),
+        "purl": osv.get("purl"),
+        "source_file": osv.get("source_file") or None,
     }
 
 
@@ -2697,6 +2773,9 @@ def _grype_to_finding(grype: dict[str, Any]) -> dict[str, Any]:
         "advisory_url": grype.get("url"),
         "cve_ids": cve_ids,
         "fixed_version": fixed_version,
+        "dep_name": grype.get("dep_name"),
+        "dep_version": grype.get("dep_version"),
+        "purl": grype.get("purl"),
     }
     if grype.get("image_ref"):
         result["container_image"] = grype["image_ref"]
@@ -2752,6 +2831,7 @@ class NgaRulesPlugin(AnalysisPlugin):
         findings: list[dict[str, Any]] = []
         verbose = bool(config.get("verbose"))
         rule_audit: list[dict[str, Any]] = []
+        rule_errors: list[str] = []
         for i, rule in enumerate(_RULES):
             try:
                 rule_findings = rule(**ctx)
@@ -2792,6 +2872,7 @@ class NgaRulesPlugin(AnalysisPlugin):
                     )
             except Exception as exc:
                 _log.warning("NGA rule %s raised an error and was skipped: %s", rule.__name__, exc)
+                rule_errors.append(_RULE_META[i]["rule_id"])
                 if verbose:
                     meta = _RULE_META[i]
                     rule_audit.append(
@@ -2869,5 +2950,6 @@ class NgaRulesPlugin(AnalysisPlugin):
                     **{k.lower(): v for k, v in counts.items()},
                 },
                 **({"rule_audit": rule_audit} if rule_audit else {}),
+                "rule_errors": rule_errors,
             },
         )
