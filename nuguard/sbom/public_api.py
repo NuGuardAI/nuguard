@@ -18,11 +18,18 @@ SbomRenderFormat = Literal["json", "cyclonedx", "cyclonedx-ext", "markdown"]
 
 
 class SbomGenerateRequest(BaseModel):
-    """JSON-safe request for SBOM extraction."""
+    """JSON-safe request for SBOM extraction.
+
+    ``repo_token`` authenticates a ``repo_url`` clone. It is handed to git via
+    an ephemeral credential helper (never embedded in the URL, argv, logs or
+    errors), used for GitHub API calls on subfolder URLs, and never appears in
+    the result.
+    """
 
     source_path: str | None = None
     repo_url: str | None = None
     repo_ref: str = "main"
+    repo_token: SecretStr | None = None
     config: AiSbomConfig = Field(default_factory=AiSbomConfig)
 
     @model_validator(mode="after")
@@ -31,6 +38,8 @@ class SbomGenerateRequest(BaseModel):
         repo_set = bool(self.repo_url)
         if source_set == repo_set:
             raise ValueError("Provide exactly one of source_path or repo_url")
+        if self.repo_token is not None and not repo_set:
+            raise ValueError("repo_token requires repo_url")
         return self
 
 
@@ -41,6 +50,9 @@ class SbomGenerateResult(BaseModel):
     source_ref: str
     node_count: int
     edge_count: int
+    resolved_commit: str | None = Field(
+        default=None, description="Commit SHA checked out for repo_url sources"
+    )
 
 
 class SbomParseRequest(BaseModel):
@@ -221,7 +233,11 @@ async def generate_sbom(request: SbomGenerateRequest) -> SbomGenerateResult:
         source_ref = str(source)
     else:
         assert request.repo_url is not None
-        doc = generator.from_repo(request.repo_url, ref=request.repo_ref)
+        # Pass token only when set, so substituted from_repo helpers keep working.
+        auth: dict[str, Any] = (
+            {"token": request.repo_token.get_secret_value()} if request.repo_token else {}
+        )
+        doc = generator.from_repo(request.repo_url, ref=request.repo_ref, **auth)
         source_ref = sanitize_repository_url(request.repo_url)
 
     return SbomGenerateResult(
@@ -229,6 +245,7 @@ async def generate_sbom(request: SbomGenerateRequest) -> SbomGenerateResult:
         source_ref=source_ref,
         node_count=len(doc.nodes),
         edge_count=len(doc.edges),
+        resolved_commit=doc.resolved_commit,
     )
 
 

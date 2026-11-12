@@ -22,11 +22,12 @@ merged by confidence/priority, and assembled into an ``AiSbomDocument``.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import os
 import re
 import shutil
-import subprocess
+import subprocess  # noqa: F401  (clone tests patch nuguard.sbom.extractor.core.subprocess.run)
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -37,10 +38,8 @@ from urllib.parse import urlsplit
 from nuguard.common.github_url import try_parse_github_subfolder
 from nuguard.common.logging import get_logger
 from nuguard.common.soft_reject import partition_node_counts
-from nuguard.common.url_sanitization import (
-    redact_repository_url_from_text,
-    sanitize_repository_url,
-)
+from nuguard.common.url_sanitization import sanitize_repository_url
+from nuguard.sbom.extractor.git_clone import CloneOptions, check_clone_url, clone_options_for
 
 from ..adapters.azure_yaml import AzureYamlAdapter, is_azure_yaml
 from ..adapters.base import (
@@ -2356,6 +2355,7 @@ class AiSbomExtractor:
         config: AiSbomConfig,
         cache_dir: str | Path | None = None,
         source_ref: str | None = None,
+        token: str | None = None,
     ) -> AiSbomDocument:
         """Clone a git repository and extract an SBOM from it.
 
@@ -2377,6 +2377,9 @@ class AiSbomExtractor:
             source_ref: Display URL stored in the SBOM ``target`` field.
                 Defaults to *url* when not supplied.  Use this to avoid
                 leaking auth tokens embedded in *url*.
+            token: Optional repository token. Handed to git through an
+                ephemeral credential helper (never the URL or argv) and used
+                for GitHub API calls on the subfolder path.
 
         Returns:
             The extracted :class:`AiSbomDocument`. When *cache_dir* is supplied,
@@ -2404,14 +2407,28 @@ class AiSbomExtractor:
         ).path.rstrip("/")
         app_name = PurePosixPath(repository_path).name.removesuffix(".git") or "repo"
 
+        options = clone_options_for(config, token)
+        # Only bind extra arguments when they differ from the defaults, so a
+        # caller-substituted ``_clone_repo(*, url, ref, dest)`` keeps working.
+        clone_plain: Any = (
+            self._clone_repo
+            if options == CloneOptions()
+            else functools.partial(self._clone_repo, options=options)
+        )
+        subfolder_options = options if options != CloneOptions() else None
+
         if cache_dir is not None:
             repo_dir = Path(cache_dir) / "repo" / app_name
             repo_dir.mkdir(parents=True, exist_ok=True)
-            cloned = resolve_and_clone(url, ref, repo_dir, clone_plain=self._clone_repo)
+            cloned = resolve_and_clone(
+                url, ref, repo_dir, clone_plain=clone_plain, token=token,
+                clone_options=subfolder_options,
+            )
             doc = self.extract_from_path(
                 cloned.path, config, source_ref=display_url, branch=cloned.ref_used
             )
             doc.local_cloned_path = str(Path(cloned.path).resolve())
+            doc.resolved_commit = cloned.commit_sha
             return doc
 
         with tempfile.TemporaryDirectory(
@@ -2419,10 +2436,14 @@ class AiSbomExtractor:
         ) as temp_dir:
             repo_dir = Path(temp_dir) / "repo" / app_name
             repo_dir.mkdir(parents=True, exist_ok=True)
-            cloned = resolve_and_clone(url, ref, repo_dir, clone_plain=self._clone_repo)
+            cloned = resolve_and_clone(
+                url, ref, repo_dir, clone_plain=clone_plain, token=token,
+                clone_options=subfolder_options,
+            )
             doc = self.extract_from_path(
                 cloned.path, config, source_ref=display_url, branch=cloned.ref_used
             )
+            doc.resolved_commit = cloned.commit_sha
         _log.debug("Deleted cloned repo temp dir: %s", temp_dir)
         return doc
 
@@ -2487,14 +2508,23 @@ class AiSbomExtractor:
             or "repo"
         )
 
+        options = clone_options_for(config, token)
+        subfolder_options = options if options != CloneOptions() else None
+        if subfolder_options is not None:
+            check_clone_url(repo_root_url, subfolder_options.allowed_hosts)
+
         if cache_dir is not None:
             repo_dir = Path(cache_dir) / "repo" / repo_name
             repo_dir.mkdir(parents=True, exist_ok=True)
-            clone_github_subfolder(repo_root_url, ref, subpath, repo_dir, token=token)
+            sha = clone_github_subfolder(
+                repo_root_url, ref, subpath, repo_dir, token=token,
+                clone_options=subfolder_options,
+            )
             doc = self.extract_from_path(
                 repo_dir / subpath, config, source_ref=display_url, branch=ref
             )
             doc.local_cloned_path = str((repo_dir / subpath).resolve())
+            doc.resolved_commit = sha if isinstance(sha, str) else None
             return doc
 
         with tempfile.TemporaryDirectory(
@@ -2502,10 +2532,14 @@ class AiSbomExtractor:
         ) as temp_dir:
             repo_dir = Path(temp_dir) / "repo" / repo_name
             repo_dir.mkdir(parents=True, exist_ok=True)
-            clone_github_subfolder(repo_root_url, ref, subpath, repo_dir, token=token)
+            sha = clone_github_subfolder(
+                repo_root_url, ref, subpath, repo_dir, token=token,
+                clone_options=subfolder_options,
+            )
             doc = self.extract_from_path(
                 repo_dir / subpath, config, source_ref=display_url, branch=ref
             )
+            doc.resolved_commit = sha if isinstance(sha, str) else None
         _log.debug("Deleted cloned repo temp dir: %s", temp_dir)
         return doc
 
@@ -3605,7 +3639,21 @@ class AiSbomExtractor:
     _SAFE_URL_RE = SAFE_URL_RE
 
     @staticmethod
-    def _clone_repo(url: str, ref: str | None, dest: Path) -> None:
+    def _clone_repo(
+        url: str,
+        ref: str | None,
+        dest: Path,
+        *,
+        options: CloneOptions | None = None,
+    ) -> str | None:
+        """Shallow-clone *url* at *ref* into *dest*; return the checked-out commit SHA.
+
+        *options* carries the repository token (handed to git via an ephemeral
+        credential helper, never the URL or argv), the host policy, and the
+        timeout / size limits — see :mod:`nuguard.sbom.extractor.git_clone`.
+        """
+        from nuguard.sbom.extractor.git_clone import secure_clone  # noqa: PLC0415
+
         if shutil.which("git") is None:
             raise RuntimeError("git executable not found on PATH")
         # Reject argument-injection attempts.  ``ref`` and ``url`` are passed
@@ -3615,31 +3663,11 @@ class AiSbomExtractor:
         # run arbitrary commands on the operator's machine.
         validate_ref(ref)
         validate_url(url)
-        # Use ``--`` to terminate option parsing so any future ref/url values
-        # that pass validation can never be reinterpreted as flags. Omitting
-        # ``--branch`` entirely (ref=None) clones the repo's default branch,
-        # instead of assuming every repo uses "main".
-        cmd = ["git", "clone", "--depth", "1"]
-        if ref is not None:
-            cmd += ["--branch", ref]
-        cmd += ["--", url, str(dest)]
-        display_url = sanitize_repository_url(url)
-        display_cmd = [display_url if item == url else item for item in cmd]
-        _log.debug("running: %s", " ".join(display_cmd))
-        try:
-            result = subprocess.run(cmd, check=True, capture_output=True)
-            stderr = result.stderr.decode(errors="replace").strip()[:200] if result.stderr else ""
-            _log.debug(
-                "git clone succeeded (stderr: %s)",
-                redact_repository_url_from_text(stderr, url) or "(none)",
-            )
-        except subprocess.CalledProcessError as exc:
-            stderr = exc.stderr.decode(errors="replace").strip() if exc.stderr else ""
-            stderr = redact_repository_url_from_text(stderr, url)
-            raise RuntimeError(
-                f"git clone failed for {display_url!r} @ {ref!r}"
-                + (f": {stderr}" if stderr else "")
-            ) from exc
+        # secure_clone uses ``--`` to terminate option parsing so any future
+        # ref/url values that pass validation can never be reinterpreted as
+        # flags. Omitting ``--branch`` entirely (ref=None) clones the repo's
+        # default branch, instead of assuming every repo uses "main".
+        return secure_clone(url, ref, dest, options or CloneOptions())
 
     @staticmethod
     def _iter_files(root: Path, config: AiSbomConfig) -> Iterator[tuple[Path, int]]:

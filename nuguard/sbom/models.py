@@ -1630,6 +1630,15 @@ class AiSbomDocument(BaseModel):
             "read it from the returned object before serializing."
         ),
     )
+    resolved_commit: str | None = Field(
+        default=None,
+        exclude=True,  # in-process handoff only; never serialized
+        description=(
+            "Commit SHA that was actually checked out when the document was produced from "
+            "a repository clone (extract_from_repo / extract_from_repo_subfolder); None for "
+            "local paths or when it could not be determined. Excluded from serialization."
+        ),
+    )
     nodes: list[Node] = Field(
         default_factory=list,
         description="Detected AI components",

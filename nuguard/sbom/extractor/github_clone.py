@@ -18,7 +18,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import urlsplit
 
 import httpx
@@ -31,6 +31,9 @@ from nuguard.common.url_sanitization import (
 )
 
 from .git_safety import validate_ref, validate_url
+
+if TYPE_CHECKING:
+    from .git_clone import CloneOptions
 
 _log = get_logger(__name__)
 
@@ -65,7 +68,7 @@ class ClonePlain(Protocol):
     (rather than ``Callable``) because callers/tests invoke it with keyword
     arguments (``url=``, ``ref=``, ``dest=``)."""
 
-    def __call__(self, *, url: str, ref: str | None, dest: Path) -> None: ...
+    def __call__(self, *, url: str, ref: str | None, dest: Path) -> str | None: ...
 
 
 @dataclass(frozen=True)
@@ -81,6 +84,8 @@ class ClonedSource:
 
     path: Path
     ref_used: str | None
+    # Commit SHA actually checked out, when the clone step reported one.
+    commit_sha: str | None = None
 
 
 def resolve_and_clone(
@@ -90,6 +95,7 @@ def resolve_and_clone(
     *,
     clone_plain: ClonePlain,
     token: str | None = None,
+    clone_options: CloneOptions | None = None,
 ) -> ClonedSource:
     """Clone *url* into *dest_root*, transparently handling GitHub subfolder URLs.
 
@@ -123,29 +129,38 @@ def resolve_and_clone(
     resolved_token = token or parsed.password or parsed.username or None
     clean_url = sanitize_repository_url(url)
     gh = try_parse_github_subfolder(clean_url)
+    # Pass clone_options only when set, so existing call shapes are unchanged.
+    extra: dict[str, Any] = {"clone_options": clone_options} if clone_options is not None else {}
+
+    def _sha(value: object) -> str | None:
+        return value if isinstance(value, str) else None
 
     if gh is None:
-        clone_plain(url=url, ref=ref, dest=dest_root)
-        return ClonedSource(path=dest_root, ref_used=ref)
+        sha = clone_plain(url=url, ref=ref, dest=dest_root)
+        return ClonedSource(path=dest_root, ref_used=ref, commit_sha=_sha(sha))
 
     if not gh.is_ambiguous_shorthand:
         assert gh.subpath is not None  # guaranteed by try_parse_github_subfolder
         effective_ref = ref if ref is not None else gh.url_ref
-        clone_github_subfolder(
-            gh.repo_root_url, effective_ref, gh.subpath, dest_root, token=resolved_token
+        sha = clone_github_subfolder(
+            gh.repo_root_url, effective_ref, gh.subpath, dest_root, token=resolved_token, **extra
         )
-        return ClonedSource(path=dest_root / gh.subpath, ref_used=effective_ref)
+        return ClonedSource(
+            path=dest_root / gh.subpath, ref_used=effective_ref, commit_sha=_sha(sha)
+        )
 
     assert gh.subpath is not None  # guaranteed by try_parse_github_subfolder
     try:
-        clone_plain(url=url, ref=ref, dest=dest_root)
+        sha = clone_plain(url=url, ref=ref, dest=dest_root)
     except RuntimeError as exc:
         if not is_repository_not_found_error(exc):
             raise
-        clone_github_subfolder(gh.repo_root_url, ref, gh.subpath, dest_root, token=resolved_token)
-        return ClonedSource(path=dest_root / gh.subpath, ref_used=ref)
+        sha = clone_github_subfolder(
+            gh.repo_root_url, ref, gh.subpath, dest_root, token=resolved_token, **extra
+        )
+        return ClonedSource(path=dest_root / gh.subpath, ref_used=ref, commit_sha=_sha(sha))
     else:
-        return ClonedSource(path=dest_root, ref_used=ref)
+        return ClonedSource(path=dest_root, ref_used=ref, commit_sha=_sha(sha))
 
 
 def _sparse_pattern(path: str) -> bytes:
@@ -162,15 +177,33 @@ def _owner_repo_from_root(repo_root_url: str) -> tuple[str, str]:
 
 
 def _run_git(
-    args: list[str], *, cwd: Path, timeout: float, input_data: bytes | None = None
+    args: list[str],
+    *,
+    cwd: Path,
+    timeout: float,
+    input_data: bytes | None = None,
+    clone_options: CloneOptions | None = None,
+    home: Path | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
+    if clone_options is None:
+        return subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            timeout=timeout,
+            input=input_data,
+        )
+    from .git_clone import git_config_args, git_env  # noqa: PLC0415
+
     return subprocess.run(
-        ["git", *args],
+        ["git", *git_config_args(clone_options), *args],
         cwd=cwd,
         check=True,
         capture_output=True,
         timeout=timeout,
         input=input_data,
+        env=git_env(clone_options, home or cwd),
     )
 
 
@@ -274,6 +307,7 @@ def clone_github_subfolder(
     max_files: int = DEFAULT_MAX_FILES,
     max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
     timeout_seconds: float = 120.0,
+    clone_options: CloneOptions | None = None,
 ) -> str:
     """Clone only *subpath* of a GitHub repo into *dest* via sparse-checkout.
 
@@ -289,9 +323,25 @@ def clone_github_subfolder(
             "repo not found" is unchanged.
     """
     import shutil
+    import tempfile
 
     validate_url(repo_root_url)
     validate_ref(ref)
+    if clone_options is not None:
+        from .git_clone import check_clone_url  # noqa: PLC0415
+
+        check_clone_url(repo_root_url, clone_options.allowed_hosts)
+        token = token or clone_options.token
+        timeout_seconds = clone_options.timeout_s
+        max_total_bytes = min(max_total_bytes, clone_options.max_repo_bytes)
+    git_home = Path(tempfile.mkdtemp(prefix="nuguard_git_home_"))
+
+    def _git(args: list[str], input_data: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
+        # Extra kwargs only when set, so substituted _run_git helpers keep working.
+        extra: dict[str, Any] = (
+            {"clone_options": clone_options, "home": git_home} if clone_options is not None else {}
+        )
+        return _run_git(args, cwd=dest, timeout=timeout_seconds, input_data=input_data, **extra)
 
     display_url = sanitize_repository_url(repo_root_url)
     owner, repo = _owner_repo_from_root(repo_root_url)
@@ -305,30 +355,22 @@ def clone_github_subfolder(
     )
 
     try:
-        _run_git(["init", "-q"], cwd=dest, timeout=timeout_seconds)
-        _run_git(["remote", "add", "origin", repo_root_url], cwd=dest, timeout=timeout_seconds)
+        _git(["init", "-q"])
+        _git(["remote", "add", "origin", repo_root_url])
 
         fetch_ref = ref or "HEAD"
         try:
-            _run_git(
-                ["fetch", "--depth", "1", "--filter=blob:none", "origin", fetch_ref],
-                cwd=dest,
-                timeout=timeout_seconds,
-            )
+            _git(["fetch", "--depth", "1", "--filter=blob:none", "origin", fetch_ref])
         except subprocess.CalledProcessError:
             if ref is not None:
                 raise
             _log.info(
                 "Default-branch fetch failed for %s; retrying with 'master'", display_url
             )
-            _run_git(
-                ["fetch", "--depth", "1", "--filter=blob:none", "origin", "master"],
-                cwd=dest,
-                timeout=timeout_seconds,
-            )
+            _git(["fetch", "--depth", "1", "--filter=blob:none", "origin", "master"])
 
         commit_sha = (
-            _run_git(["rev-parse", "FETCH_HEAD"], cwd=dest, timeout=timeout_seconds)
+            _git(["rev-parse", "FETCH_HEAD"])
             .stdout.decode()
             .strip()
         )
@@ -354,15 +396,8 @@ def clone_github_subfolder(
             )
 
         sparse_input = b"".join(_sparse_pattern(path) for path in selected)
-        _run_git(
-            ["sparse-checkout", "set", "--no-cone", "--stdin"],
-            cwd=dest,
-            timeout=timeout_seconds,
-            input_data=sparse_input,
-        )
-        _run_git(
-            ["checkout", "--detach", "FETCH_HEAD", "-q"], cwd=dest, timeout=timeout_seconds
-        )
+        _git(["sparse-checkout", "set", "--no-cone", "--stdin"], input_data=sparse_input)
+        _git(["checkout", "--detach", "FETCH_HEAD", "-q"])
 
         scan_root = dest / subpath
         if not scan_root.is_dir():
@@ -374,6 +409,8 @@ def clone_github_subfolder(
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.decode(errors="replace").strip() if exc.stderr else ""
         stderr = redact_repository_url_from_text(stderr, repo_root_url)
+        if token:
+            stderr = stderr.replace(token, "***")
         shutil.rmtree(dest, ignore_errors=True)
         raise RuntimeError(
             f"git clone (subfolder {subpath!r}) failed for {display_url!r} @ {ref!r}"
@@ -382,3 +419,5 @@ def clone_github_subfolder(
     except Exception:
         shutil.rmtree(dest, ignore_errors=True)
         raise
+    finally:
+        shutil.rmtree(git_home, ignore_errors=True)
