@@ -29,6 +29,7 @@ from nuguard.cli.commands.report import report_app
 from nuguard.cli.commands.sbom import sbom_app
 from nuguard.cli.commands.scan import scan_app
 from nuguard.cli.commands.seed import seed_app
+from nuguard.cli.commands.serve import serve_app
 from nuguard.cli.commands.target import target_app
 from nuguard.cli.commands.validate import validate_app
 
@@ -54,6 +55,7 @@ app.add_typer(seed_app, name="seed")
 app.add_typer(report_app, name="report")
 app.add_typer(findings_app, name="findings")
 app.add_typer(replay_app, name="replay")
+app.add_typer(serve_app, name="serve")
 
 
 if __name__ == "__main__":

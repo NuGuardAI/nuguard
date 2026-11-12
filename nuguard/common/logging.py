@@ -28,6 +28,10 @@ class _JsonFormatter(logging.Formatter):
             "message": record.getMessage(),
             "ts": self.formatTime(record, self.datefmt),
         }
+        for key in ("job_id", "owner_id"):
+            value = getattr(record, key, None)
+            if value is not None:
+                payload[key] = value
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
         return json.dumps(payload)
@@ -76,7 +80,7 @@ def get_logger(name: str) -> logging.Logger:
     level = _log_level()
     logger.setLevel(level)
 
-    if _is_ci():
+    if _is_ci() or os.environ.get("NUGUARD_LOG_FORMAT", "").lower() == "json":
         handler: logging.Handler = logging.StreamHandler(sys.stderr)
         handler.setFormatter(_JsonFormatter())
     else:
