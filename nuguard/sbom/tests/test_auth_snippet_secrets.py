@@ -263,3 +263,35 @@ def test_pipeline_auth_secrets_absent_from_sbom_json(language: str, tmp_path: Pa
     for secret in _SECRETS[language]:
         assert secret not in dumped, f"{language}: {secret!r} leaked into the SBOM"
     assert REDACTED in dumped
+
+
+# ---------------------------------------------------------------------------
+# TypeScript: Azure credential constructors (typescript/azure_ai_agents.py)
+# ---------------------------------------------------------------------------
+
+_TS_AZURE_CREDENTIAL = (
+    'import { AIProjectClient } from "@azure/ai-projects";\n'
+    'import { ClientSecretCredential } from "@azure/identity";\n\n'
+    "const credential = new ClientSecretCredential("
+    '"TsAzureTenantValue", "TsAzureClientValue", "TsAzureSecretValue");\n'
+    'const client = new AIProjectClient("https://example.services.ai.azure.com", credential);\n'
+)
+
+
+def test_pipeline_ts_azure_credential_literals_absent_from_sbom_json(tmp_path: Path) -> None:
+    manifest = {
+        "name": "app",
+        "dependencies": {"@azure/ai-projects": "^1.0.0", "@azure/identity": "^4.0.0"},
+    }
+    (tmp_path / "package.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (tmp_path / "agent.ts").write_text(_TS_AZURE_CREDENTIAL, encoding="utf-8")
+
+    doc = AiSbomExtractor().extract_from_path(tmp_path, AiSbomConfig(enable_llm=False))
+
+    assert any(n.component_type == ComponentType.AUTH for n in doc.nodes), (
+        "expected an AUTH node for the Azure credential"
+    )
+    dumped = doc.model_dump_json()
+    for secret in ("TsAzureTenantValue", "TsAzureClientValue", "TsAzureSecretValue"):
+        assert secret not in dumped, f"{secret!r} leaked into the SBOM"
+    assert "new ClientSecretCredential(" in dumped
