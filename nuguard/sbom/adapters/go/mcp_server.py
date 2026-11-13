@@ -5,6 +5,10 @@ Detects ``github.com/mark3labs/mcp-go`` usage and emits:
 - a ``FRAMEWORK`` node for the mcp-go SDK;
 - ``TOOL`` nodes from ``mcp.NewTool(...)`` calls;
 - ``FRAMEWORK -[CALLS]-> TOOL`` relationships for ``AddTool(...)`` registrations.
+
+A tool is ``high_privilege`` when its options carry
+``mcp.WithDestructiveHintAnnotation(true)``, or when it is not annotated
+read-only and its name starts with a write verb (``refund_payment``).
 """
 
 from __future__ import annotations
@@ -30,6 +34,49 @@ _NEW_TOOL = "NewTool"
 _ADD_TOOL = "AddTool"
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _CALLEE_RE = re.compile(r"^(?P<callee>[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\s*\(")
+_HINT_RE = re.compile(
+    r"\bWith(?P<hint>Destructive|ReadOnly)HintAnnotation\s*\(\s*(?P<value>true|false)\s*\)"
+)
+_STRUCT_HINT_RE = re.compile(
+    r"\b(?P<hint>Destructive|ReadOnly)Hint\s*:\s*"
+    r"(?:[A-Za-z_][A-Za-z0-9_.]*\s*\(\s*(?P<call_value>true|false)\s*\)"
+    r"|&\s*(?P<ref_value>true|false)\b)"
+)
+_GO_COMMENT_OR_STRING_RE = re.compile(
+    r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\\n])*"|`[^`]*`|\'(?:\\.|[^\'\\\n])*\'',
+    re.DOTALL,
+)
+_NAME_WORD_RE = re.compile(r"[_\-\s]+|(?<=[a-z0-9])(?=[A-Z])")
+_WRITE_VERBS = frozenset(
+    {
+        "add",
+        "approve",
+        "archive",
+        "cancel",
+        "charge",
+        "create",
+        "delete",
+        "drop",
+        "execute",
+        "grant",
+        "insert",
+        "modify",
+        "patch",
+        "pay",
+        "purge",
+        "put",
+        "refund",
+        "remove",
+        "reset",
+        "revoke",
+        "send",
+        "set",
+        "submit",
+        "transfer",
+        "update",
+        "write",
+    }
+)
 
 
 class MCPGoServerAdapter(GoFrameworkAdapter):
@@ -104,6 +151,7 @@ class MCPGoServerAdapter(GoFrameworkAdapter):
                     metadata["assigned_to"] = instantiation.assigned_to
                 if server_name:
                     metadata["server_name"] = server_name
+                metadata.update(_privilege_metadata(tool_name, instantiation.source_snippet or ""))
 
                 tools_by_canonical[canonical] = ComponentDetection(
                     component_type=ComponentType.TOOL,
@@ -312,6 +360,7 @@ class MCPGoServerAdapter(GoFrameworkAdapter):
         }
         if server_name:
             metadata["server_name"] = server_name
+        metadata.update(_privilege_metadata(tool_name, call.source_snippet or ""))
 
         return ComponentDetection(
             component_type=ComponentType.TOOL,
@@ -326,6 +375,26 @@ class MCPGoServerAdapter(GoFrameworkAdapter):
             snippet=call.source_snippet or f"{call.receiver}.AddTool({tool_name}, ...)",
             evidence_kind="ast_call",
         )
+
+
+def _privilege_metadata(tool_name: str, source_snippet: str) -> dict[str, Any]:
+    """Tool annotation hints, plus ``high_privilege`` when they or the name imply writes."""
+    code = _GO_COMMENT_OR_STRING_RE.sub(
+        lambda match: re.sub(r"[^\n]", " ", match.group(0)), source_snippet
+    )
+    hints = {match["hint"]: match["value"] == "true" for match in _HINT_RE.finditer(code)}
+    for match in _STRUCT_HINT_RE.finditer(code):
+        hints[match["hint"]] = (match["call_value"] or match["ref_value"]) == "true"
+    metadata: dict[str, Any] = {}
+    if "Destructive" in hints:
+        metadata["destructive_hint"] = hints["Destructive"]
+    if "ReadOnly" in hints:
+        metadata["read_only_hint"] = hints["ReadOnly"]
+
+    first_word = _NAME_WORD_RE.split(tool_name.strip(), maxsplit=1)[0].lower()
+    if hints.get("Destructive") or (not hints.get("ReadOnly") and first_word in _WRITE_VERBS):
+        metadata["high_privilege"] = True
+    return metadata
 
 
 def _first_argument_expression(source_snippet: str) -> str:

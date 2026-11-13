@@ -19,12 +19,15 @@ TEST_PATH_PARTS: frozenset[str] = frozenset({"tests", "test", "__tests__", "spec
 
 def looks_like_test_path(file_path: str) -> bool:
     """True when any path component of *file_path* names a test directory,
-    or the filename follows a common pytest/JS test naming convention."""
+    or the filename follows a common pytest/JS/Go test naming convention."""
     path = PurePosixPath(file_path.replace("\\", "/"))
     if {part.lower() for part in path.parts} & TEST_PATH_PARTS:
         return True
     stem = path.stem.lower()
     if stem.endswith(".test") or stem.endswith(".spec"):
+        return True
+    # ``go test`` only compiles ``*_test.go`` files into test binaries.
+    if path.suffix.lower() == ".go" and stem.endswith("_test"):
         return True
     return path.suffix.lower() in {".py", ".pyw"} and (
         stem == "conftest" or stem.startswith("test_") or stem.endswith("_test")

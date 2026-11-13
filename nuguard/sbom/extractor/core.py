@@ -2591,7 +2591,10 @@ class AiSbomExtractor:
                 host = acc.metadata.get("host", "")
                 port = acc.metadata.get("port", "")
                 transport = acc.metadata.get("transport", "")
-                if host or port:
+                # host/port only describe the endpoint when the adapter gave no
+                # route path; otherwise they must not clobber the real path
+                # (host stays available in metadata.extras).
+                if (host or port) and not acc.metadata.get("endpoint"):
                     node.metadata.endpoint = (
                         f"{host}:{port}" if (host and port) else str(host or port)
                     )
@@ -3337,6 +3340,7 @@ class AiSbomExtractor:
             ComponentType.TOOL,
             ComponentType.PROMPT,
             ComponentType.FRAMEWORK,
+            ComponentType.PRIVILEGE,
         } and looks_like_test_path(jvm_evidence_path(det.file_path)):
             return
 
@@ -3827,14 +3831,23 @@ class AiSbomExtractor:
 
         endpoints = by_type.get(ComponentType.API_ENDPOINT, [])
         endpoints_with_auth_type = [ep for ep in endpoints if _auth_type(ep)]
+        # When an adapter marked some endpoints protected (without naming a
+        # mechanism) those are the targets, so unprotected ones get no edge.
+        # auth_required=False alone is not evidence of a public endpoint:
+        # group/global middleware is invisible per-route, so with no endpoint
+        # marked protected keep the broad fallback.
         endpoints_without_auth_type = [ep for ep in endpoints if not _auth_type(ep)]
+        endpoints_marked_protected = [
+            ep for ep in endpoints_without_auth_type if ep.metadata.auth_required
+        ]
         for auth in by_type.get(ComponentType.AUTH, []):
             matched = [ep for ep in endpoints_with_auth_type if _auth_type(ep) == _auth_type(auth)]
             is_matched = bool(matched)
             targets = (
                 matched
                 if matched
-                else sorted(endpoints_without_auth_type, key=lambda n: n.name)[:10]
+                else endpoints_marked_protected
+                or sorted(endpoints_without_auth_type, key=lambda n: n.name)[:10]
             )
             for ep in targets:
                 key = (auth.id, ep.id, "PROTECTS")
