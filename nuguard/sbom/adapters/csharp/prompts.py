@@ -93,6 +93,67 @@ _PROMPT_FIELD_NAMES = {
 }
 
 
+# Userinfo whose password holds spaces ("user:pa' S3CRET@db"): used only when
+# the first whitespace-delimited token has no '@'. Bounded (<= 5 words, no
+# newline) so it stays linear; a port-like value ("host:8080 mail a@b.com") is
+# not treated as a password. Ambiguous prose is redacted conservatively.
+# Each extra word needs a non-space character and trailing blanks before '@' are
+# matched separately, so a run of spaces splits only one way (no backtracking).
+_SPACED_PASSWORD = (
+    r"(?!\d+(?:[\s/?#]|$))"
+    r"(?:\S{0,256}(?:[ \t]+\S{1,256}){1,4}?[ \t]*@|\S{0,256}[ \t]{1,256}@)"
+)
+
+_URL_USERINFO_RE = re.compile(
+    r"(?P<prefix>(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://)"
+    r"(?:[^\r\n\"/@:]*:(?!//)(?:\S*@|" + _SPACED_PASSWORD + r")|[^\s\"/@:]+@)",
+    re.IGNORECASE,
+)
+
+_URL_SPACED_USERINFO_RE = re.compile(r"[^\r\n\"/@:]*:(?!//)(?:\S*@|" + _SPACED_PASSWORD + r")")
+
+_CREDENTIAL_KV_RE = re.compile(
+    r"(?P<prefix>(?<![a-z0-9])(?:password|passwd|pass|pwd|psw|user\s*password|account\s*key"
+    r"|shared\s*access\s*key|shared\s*access\s*signature|sig|access\s*token|api[\s_-]?key"
+    r"|client[\s_-]?secret|secret[\s_-]?key|private[\s_-]?key|secret|token)\s*=\s*)"
+    r"(?:(?:\"[^\"]*\"|'[^']*')[^;&\r\n]*|[\"'][^\r\n]*|[^;&\r\n]+)?",
+    re.IGNORECASE,
+)
+
+_REDACTED = "<redacted>"
+
+
+def _redact_credentials(value: str) -> str:
+    """Replace credential values (URL userinfo, key=value secrets) with a marker.
+
+    A key=value secret runs to the next ``;``, ``&`` or line end, as a driver
+    splits it, so a value containing spaces or stray quotes is not partly
+    kept. A quoted value may itself contain ``;``/``&`` and runs past its
+    closing quote to the next terminator; an unclosed quote runs to line end.
+    """
+    if "://" in value:
+        value = _URL_USERINFO_RE.sub(lambda m: f"{m.group('prefix')}{_REDACTED}@", value)
+    return _CREDENTIAL_KV_RE.sub(lambda m: f"{m.group('prefix')}{_REDACTED}", value)
+
+
+def _has_unredacted_url_userinfo(value: str) -> bool:
+    """True if any ``://`` authority still carries userinfo after redaction.
+
+    Fail-closed check for shapes the redaction regex misses (e.g. a scheme
+    glued to a preceding digit). Linear: one pass per ``://`` occurrence.
+    """
+    start = value.find("://")
+    while start != -1:
+        rest = value[start + 3 :]
+        authority = re.split(r"[\s/]", rest, maxsplit=1)[0]
+        if not rest.startswith(f"{_REDACTED}@") and (
+            "@" in authority or _URL_SPACED_USERINFO_RE.match(rest)
+        ):
+            return True
+        start = value.find("://", start + 3)
+    return False
+
+
 def _is_prompt_constant(
     value: str,
     assigned_to: str | None,
@@ -224,12 +285,15 @@ class CSharpPromptAdapter(CSharpFrameworkAdapter):
             lines = code.splitlines()
             line_src = lines[lit.line - 1] if 0 < lit.line <= len(lines) else ""
 
-            if not _is_prompt_constant(lit.value, lit.assigned_to, line_src):
+            value = _redact_credentials(lit.value)
+            if _has_unredacted_url_userinfo(value):
+                continue
+            if not _is_prompt_constant(value, lit.assigned_to, line_src):
                 continue
 
-            template_vars = _extract_vars(lit.value)
-            risk = _injection_risk(lit.value, template_vars, code)
-            name = _prompt_name(lit.assigned_to, lit.value, lit.line)
+            template_vars = _extract_vars(value)
+            risk = _injection_risk(value, template_vars, code)
+            name = _prompt_name(lit.assigned_to, value, lit.line)
             canon = canonicalize_text(name.lower())
 
             detected.append(
@@ -242,20 +306,20 @@ class CSharpPromptAdapter(CSharpFrameworkAdapter):
                     confidence=0.88 if template_vars else 0.82,
                     metadata={
                         "framework": "csharp_prompts",
-                        "role": _detect_role(lit.value),
+                        "role": _detect_role(value),
                         "is_template": len(template_vars) > 0,
                         "is_interpolated": lit.is_interpolated,
                         "template_variables": template_vars,
                         "injection_risk_score": risk,
                         "assigned_to": lit.assigned_to,
                         "enclosing_method": lit.enclosing_method,
-                        "content": lit.value[:500],
-                        "char_count": len(lit.value),
+                        "content": value[:500],
+                        "char_count": len(value),
                         "language": "csharp",
                     },
                     file_path=file_path,
                     line=lit.line,
-                    snippet=lit.value[:80],
+                    snippet=value[:80],
                     evidence_kind="ast_string_literal",
                 )
             )

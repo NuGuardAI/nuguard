@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import urlsplit
 
 from ...normalization import canonicalize_text
 from ...types import ComponentType
@@ -93,6 +94,75 @@ _REDIS_URL_RE = re.compile(
     r"""(?:(?:redis|rediss)://[^\s"']+|(?:"(?:redis|rediss)://[^"]+")|(?:'(?:redis|rediss)://[^']+'))""",
     re.IGNORECASE,
 )
+
+# Connection strings can carry credentials in many shapes (URL userinfo, query
+# options, quoted ADO.NET values, Redis option lists). Previews therefore keep
+# only an allowlist of non-secret parts, and give up (return "") whenever the
+# string could be split differently by the real driver than by this parser.
+_SAFE_CONNECTION_KEYS = frozenset(
+    {
+        "host",
+        "server",
+        "data source",
+        "datasource",
+        "address",
+        "addr",
+        "network address",
+        "port",
+        "database",
+        "initial catalog",
+        "dbname",
+        "filename",
+        "mode",
+    }
+)
+_URL_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+_STRICT_HOST_RE = re.compile(r"(?:[a-z0-9-]+(?:\.[a-z0-9-]+)*|\[[0-9a-f:.]+\])(?::\d{1,5})?", re.IGNORECASE)
+
+
+def _safe_connection_preview(text: str) -> str:
+    """Return the non-secret parts of a connection string, or ``""``."""
+    # Escape sequences (a unicode escape can spell ';') can hide separators
+    # from this parser but not from the compiler; don't guess.
+    if "\\" in text:
+        return ""
+    text = text.strip()
+    if _URL_SCHEME_RE.match(text):
+        try:
+            parsed = urlsplit(text)
+            host = parsed.hostname or ""
+            port = f":{parsed.port}" if parsed.port else ""
+        except ValueError:
+            return ""
+        # An '@' outside the parsed netloc means the driver may place the
+        # authority boundary elsewhere (e.g. '/' inside a password).
+        if "@" in text.split("://", 1)[1].replace(parsed.netloc, "", 1):
+            return ""
+        # urlsplit accepts almost anything as a host ("db;password=x"), so
+        # each host (Mongo allows "h1,h2:27017") must match a strict grammar.
+        hosts = parsed.netloc.rsplit("@", 1)[-1]
+        if not all(_STRICT_HOST_RE.fullmatch(h) for h in hosts.split(",")):
+            return ""
+        return f"{parsed.scheme}://{host}{port}" if host else ""
+    # Quotes and braces let ADO.NET values contain ';' or '=', which a plain
+    # split would misread; don't guess.
+    if "://" in text or any(ch in text for ch in "\"'{}"):
+        return ""
+    kept = []
+    for part in text.split(";"):
+        key, sep, value = part.partition("=")
+        if not sep:
+            continue
+        if key.strip().casefold() in _SAFE_CONNECTION_KEYS:
+            kept.append(f"{key.strip()}={value.strip()}")
+    return ";".join(kept)
+
+
+def _redact_string_literals(snippet: str) -> str:
+    """Cut a code snippet at its first quote so no literal (regular, verbatim,
+    interpolated, raw or truncated) can show a secret."""
+    cut = min((i for i in (snippet.find('"'), snippet.find("'")) if i >= 0), default=-1)
+    return snippet if cut < 0 else snippet[:cut] + '"[REDACTED]"'
 
 
 class CSharpDatastoreAdapter(CSharpFrameworkAdapter):
@@ -199,7 +269,7 @@ class CSharpDatastoreAdapter(CSharpFrameworkAdapter):
                     metadata=meta,
                     file_path=file_path,
                     line=call.line,
-                    snippet=call.snippet,
+                    snippet=_redact_string_literals(call.snippet),
                     evidence_kind="ast_call",
                 )
             )
@@ -303,23 +373,28 @@ def _extract_url_meta(
         return meta
 
     # Clean up string delimiters
-    cleaned = resolved.strip("'\"`")
+    verbatim = resolved.lstrip("$").startswith("@")
+    cleaned = resolved.lstrip("@$").strip("'\"`")
+    if verbatim:
+        cleaned = cleaned.replace('""', '"')
     if cleaned.startswith("$("):
         return meta
 
     if provider == "mongodb":
         m = _MONGO_URL_RE.search(cleaned)
         if m:
-            meta["connection_string_preview"] = cleaned[:120]
+            meta["connection_string_preview"] = _safe_connection_preview(cleaned)[:120]
     elif provider == "redis":
         m = _REDIS_URL_RE.search(cleaned)
         if m:
-            meta["connection_string_preview"] = cleaned[:120]
+            meta["connection_string_preview"] = _safe_connection_preview(cleaned)[:120]
     elif provider in ("npgsql", "sqlite", "mssql"):
         # These typically take a connection string as the first arg
         if len(cleaned) > 5:
-            meta["connection_string_preview"] = cleaned[:120]
+            meta["connection_string_preview"] = _safe_connection_preview(cleaned)[:120]
 
+    if not meta.get("connection_string_preview"):
+        meta.pop("connection_string_preview", None)
     return meta
 
 
