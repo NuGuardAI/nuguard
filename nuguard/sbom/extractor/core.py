@@ -1623,8 +1623,18 @@ class AiSbomExtractor:
         _csharp_route_group_bindings: dict[str, Any] = {}
         _csharp_ambiguous_bindings: set[str] = set()
         _csharp_kernel_plugins: dict[str, Any] = {}
+        _csharp_call_graph: dict[str, Any] = {}
         _csharp_implicit_dirs: set[str] = set()
         try:
+            from nuguard.sbom.adapters.csharp._call_graph import (  # noqa: PLC0415
+                collect_call_graph as _collect_cs_call_graph,
+            )
+            from nuguard.sbom.adapters.csharp._call_graph import (
+                empty_call_graph as _empty_cs_call_graph,
+            )
+            from nuguard.sbom.adapters.csharp._call_graph import (
+                merge_call_graph as _merge_cs_call_graph,
+            )
             from nuguard.sbom.adapters.csharp._csharp_base import (  # noqa: PLC0415
                 web_sdk_implicit_usings as _web_sdk_implicit_usings,
             )
@@ -1647,6 +1657,7 @@ class AiSbomExtractor:
                 except OSError:
                     return ""
 
+            _csharp_call_graph = _empty_cs_call_graph()
             _csproj_dirs: dict[Path, bool] = {}
             for _cs_path, _ in self._iter_files(root, config):
                 if _cs_path.suffix.lower() not in _CSHARP_EXTENSIONS:
@@ -1667,6 +1678,7 @@ class AiSbomExtractor:
                 except Exception:
                     continue
                 _cs_rel = str(_cs_path.relative_to(root))
+                _merge_cs_call_graph(_csharp_call_graph, _collect_cs_call_graph(_cs_src, _cs_rel))
                 for _rg_key, _rg_scope in _collect_cs_route_groups(_cs_src, _cs_rel).items():
                     if _rg_key in _csharp_ambiguous_bindings:
                         continue
@@ -1689,6 +1701,7 @@ class AiSbomExtractor:
         _global_index_setters = {
             "set_csharp_route_group_bindings": (_csharp_route_group_bindings,),
             "set_csharp_kernel_plugins": (_csharp_kernel_plugins,),
+            "set_csharp_call_graph": (_csharp_call_graph,),
             "set_global_model_schemas": (_global_model_schemas,),
             "set_global_router_prefixes": (_global_router_prefixes,),
             "set_global_route_prefix": (
@@ -3633,6 +3646,27 @@ class AiSbomExtractor:
                     )
                 )
 
+        # API_ENDPOINT → AGENT: the C# adapter resolved the handler's service-call chain
+        # to the files that build agents; link to the AGENT nodes detected there.
+        _agent_nodes = [n for n in doc.nodes if n.component_type == ComponentType.AGENT]
+        for node in doc.nodes:
+            host_files = node.metadata.extras.pop("agent_host_files", None)
+            if node.component_type != ComponentType.API_ENDPOINT or not host_files:
+                continue
+            for agent in _agent_nodes:
+                if {ev.location.path for ev in agent.evidence} & set(host_files):
+                    edge_key = (node.id, agent.id, "CALLS")
+                    if edge_key not in seen_edges:
+                        seen_edges.add(edge_key)
+                        doc.edges.append(
+                            Edge(
+                                source=node.id,
+                                target=agent.id,
+                                relationship_type=RelationshipType.CALLS,
+                                derivation="hint",
+                            )
+                        )
+
         # Fallback edge inference — fills in edges not covered by explicit hints.
         by_type: dict[ComponentType, list[Node]] = {}
         for node in doc.nodes:
@@ -3720,9 +3754,24 @@ class AiSbomExtractor:
         # Fallback: FRAMEWORK → TOOL (CALLS) via shared metadata.framework.
         # Covers cases where hint resolution already added explicit CALLS edges
         # (e.g. MCP tools) — _add_edge is idempotent so duplicate keys are skipped.
+        # A C# Semantic Kernel tool that an agent already CALLS is reached through that
+        # agent; the framework only registers it (USES), so it must not look like a
+        # direct caller of every tool.
+        agent_called_tools = {
+            e.target
+            for e in doc.edges
+            if e.relationship_type == RelationshipType.CALLS and e.source in agent_ids
+        }
         for tool in by_type.get(ComponentType.TOOL, []):
             fw_name = tool.metadata.framework or ""
             fw_id = fw_name_to_id.get(fw_name)
+            if (
+                fw_id
+                and fw_name == "semantic_kernel"
+                and tool.id in agent_called_tools
+                and tool.metadata.extras.get("language") == "csharp"
+            ):
+                continue
             if fw_id:
                 _add_edge(fw_id, tool.id, "CALLS")
 
