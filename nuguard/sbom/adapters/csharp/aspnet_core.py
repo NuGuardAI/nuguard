@@ -12,6 +12,13 @@ from ...normalization import canonicalize_text
 from ...types import ComponentType
 from .._handler_signals_text import regex_handler_signals
 from ..base import ComponentDetection, RelationshipHint
+from ._call_graph import (
+    AGENT_HOST_FILES_KEY,
+    CallGraph,
+    empty_call_graph,
+    enclosing_type,
+    handler_agent_files,
+)
 from ._csharp_base import CSharpFrameworkAdapter
 from ._source import (
     find_calls,
@@ -126,6 +133,12 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
     def __init__(self) -> None:
         # Route-group scopes handed to methods in other files, keyed by method name.
         self._route_group_bindings: dict[str, _RouteScope] = {}
+        # Repository-wide method call graph, to link an endpoint to the agents it drives.
+        self._call_graph: CallGraph = empty_call_graph()
+
+    def set_csharp_call_graph(self, graph: CallGraph) -> None:
+        """Receive the cross-file call graph from the extractor pre-pass."""
+        self._call_graph = graph
 
     def set_csharp_route_group_bindings(
         self,
@@ -358,6 +371,14 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                         list(method.parameters), http_method, route, request_schema
                     ),
                     handler_text="\n".join([*method.parameters, *method.attributes, body]),
+                    agent_files=handler_agent_files(
+                        self._call_graph,
+                        content,
+                        result,
+                        body,
+                        method.containing_type or "",
+                        list(method.parameters),
+                    ),
                 )
             )
 
@@ -478,6 +499,14 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                         list(_lambda_parameters(handler)), method, normalized_route, request_schema
                     ),
                     handler_text=handler,
+                    agent_files=handler_agent_files(
+                        self._call_graph,
+                        content,
+                        result,
+                        handler,
+                        enclosing_type(result, call.line),
+                        list(_lambda_parameters(handler)),
+                    ),
                 )
             )
 
@@ -501,6 +530,7 @@ def _endpoint_node(
     response_key: str | None,
     http_request: dict[str, Any] | None = None,
     handler_text: str | None = None,
+    agent_files: list[str] | None = None,
 ) -> ComponentDetection:
     canonical = canonicalize_text(f"aspnet:endpoint:{http_method}:{route}")
     metadata: dict[str, Any] = {
@@ -513,6 +543,11 @@ def _endpoint_node(
 
     if request_schema:
         metadata["request_body_schema"] = request_schema
+
+    if agent_files:
+        # Consumed (and removed) by the extractor, which links the endpoint to the
+        # AGENT nodes detected in these files.
+        metadata[AGENT_HOST_FILES_KEY] = list(agent_files)
 
     if http_request:
         metadata["http_request"] = http_request

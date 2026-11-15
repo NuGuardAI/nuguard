@@ -326,11 +326,18 @@ def privilege_adapters() -> list[RegexAdapter]:
                 ),
                 # shell=True flag — explicit shell injection risk marker
                 re.compile(r"\bshell\s*=\s*True\b"),
-                # exec/eval used on dynamic strings (agent code-gen context)
+                # exec/eval used on dynamic strings (agent code-gen context).
+                # SQL receivers (Go's ``db.Exec(ctx, sql)``, SQLite's
+                # ``db.exec(sql)``) are excluded; ``cp.exec(script)`` is kept.
                 re.compile(
-                    r"\b(exec\s*\([^)]*(?:code|script|source|generated|llm|response|output)"
-                    r"|eval\s*\([^)]*(?:code|expr|generated|llm|response))\b",
-                    re.IGNORECASE,
+                    r"(?<!\w)"
+                    r"(?<!\b(?i:db|tx)\.)(?<!\b(?i:conn|pool|stmt)\.)(?<!\b(?i:cursor)\.)"
+                    r"(?<!_(?i:db|tx)\.)(?<!_(?i:conn|pool|stmt)\.)(?<!_(?i:cursor)\.)"
+                    r"(?<![a-z0-9](?:DB|Db)\.)(?<![a-z0-9](?:Conn|Pool|Stmt)\.)"
+                    r"(?<![a-z0-9]Cursor\.)"
+                    r"((?i:exec)\s*\((?!\s*ctx\b)[^)]*"
+                    r"(?i:code|script|source|generated|llm|response|output)"
+                    r"|(?<!\.)eval\s*\([^)]*(?i:code|expr|generated|llm|response))\b",
                 ),
                 # Sandboxed code-execution tool class names
                 re.compile(
