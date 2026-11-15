@@ -94,16 +94,22 @@ class AutoGenAdapter(FrameworkAdapter):
 
                 # Extract model from llm_config dict
                 model_name = ""
+                model_argument: str | tuple[str | int, ...] | None = None
                 if isinstance(llm_config, dict):
                     config_list = llm_config.get("config_list")
                     if isinstance(config_list, list) and config_list:
                         model_name = _clean(
                             config_list[0].get("model") if isinstance(config_list[0], dict) else ""
                         )
+                        if model_name:
+                            model_argument = ("llm_config", "config_list", 0, "model")
                     if not model_name:
                         model_name = _clean(llm_config.get("model", ""))
+                        if model_name:
+                            model_argument = ("llm_config", "model")
                 elif isinstance(llm_config, str) and not llm_config.startswith("$"):
                     model_name = llm_config
+                    model_argument = "llm_config"
 
                 if model_name:
                     provider = infer_provider(model_name)
@@ -210,6 +216,8 @@ class AutoGenAdapter(FrameworkAdapter):
                             line=inst.line,
                             snippet=f"llm_config={{model: {model_name!r}}}",
                             evidence_kind="ast_instantiation",
+                            source_call=inst,
+                            source_model_argument=model_argument,
                         )
                     )
 
@@ -290,7 +298,10 @@ class AutoGenAdapter(FrameworkAdapter):
                 continue
             if "llm" not in var.lower() and "config" not in var.lower():
                 continue
-            model_val = _clean(call.args.get("model") or call.args.get("model_name") or "")
+            source_model_argument = (
+                "model" if call.args.get("model") else "model_name"
+            )
+            model_val = _clean(call.args.get(source_model_argument) or "")
             if not model_val:
                 continue
             provider = infer_provider(model_val)
@@ -312,6 +323,8 @@ class AutoGenAdapter(FrameworkAdapter):
                     },
                     file_path=file_path,
                     line=call.line,
+                    source_call=call,
+                    source_model_argument=source_model_argument,
                     snippet=f"{var} = dict(model={model_val!r})",
                     evidence_kind="ast_call",
                 )

@@ -1,0 +1,30 @@
+id: juiceshop-search-sqli
+
+info:
+  name: OWASP Juice Shop - Error-Based SQL Injection in Product Search
+  author: security-tester
+  severity: high
+  description: >
+    The product search endpoint concatenates the 'q' query parameter directly
+    into a SQL query without escaping. A single unescaped quote triggers a
+    raw SQLite syntax error in the response, confirming the query string is
+    injectable (classic error-based SQL injection entry point).
+  tags: juiceshop, sqli, injection
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/rest/products/search?q=apple'"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 500
+
+      - type: word
+        words:
+          - "SQLITE_ERROR"
+          - "syntax error"
+        condition: and
+# digest: 4b0a00483046022100c145c3966b2a544b70105292b0ace4cf7749e6c7f077e128df66833d4b4fc867022100bedafd941c2d4723d7f47280a1d72e50d36c63ac6d80367bda7650a35e2ddeea:2ded6eed97d125cafacc29c18bc0d60c

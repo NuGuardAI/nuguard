@@ -36,37 +36,37 @@ Run commands from the NuGuard repository root. Docker mode requires Docker Compo
    tests/apps/owasp-finbot/finbot-redteam.sh --redteam-only
    ```
 
-The wrappers obtain a temporary anonymous session from `/vendor/`, extract its
-CSRF token, and validate the pair without invoking the AI. They then target
-`/vendor/api/v1/chat` with consistent session fingerprint headers. CSRF protection
-stays enabled. Credentials remain in process memory and are refreshed each run.
+FinBot needs a temporary anonymous session cookie and a matching CSRF token.
+NuGuard's pre-scan discovery recognises the CSRF/session rejection, fetches
+`/vendor/` to obtain both, validates them, and pins the client fingerprint headers
+(`User-Agent`, `Accept-Language`, `Accept-Encoding`) the session was issued to.
+`behavior`, `redteam` and `pentest` (with `--allow-dynamic-auth`) all do this
+automatically, and `behavior`/`redteam` refresh the session if FinBot expires it
+mid-run. CSRF protection stays enabled and no helper script is required.
 Reports and logs are written under `reports/`.
 
-For direct CLI verification, load your assessment credentials, then source the
-session helper in the same shell:
-
-```bash
-SCRIPT_DIR="$PWD/tests/apps/owasp-finbot"
-source "$SCRIPT_DIR/prepare-session.sh"
-uv run nuguard target verify --config "$SCRIPT_DIR/nuguard.yaml" --skip-discovery
-```
-
 The temporary identity does not represent a verified email or privileged account.
-Long runs may need a new session if FinBot expires or rotates its cookie.
 
 ## Conventional pentest
 
+The wrappers use `nuguard-azure.yaml` by default. For the local deployment above,
+set `FINBOT_CONFIG=tests/apps/owasp-finbot/nuguard.yaml`.
+
 NuGuard blocks loopback addresses for conventional pentest, including when
-`--allow-private` is set. Use the running FinBot container's private address:
+`--allow-private` is set, so a local run needs FinBot's private address:
 
 ```bash
-tests/apps/owasp-finbot/finbot-redteam.sh --pentest-only
+FINBOT_CONFIG=tests/apps/owasp-finbot/nuguard.yaml \
+FINBOT_PENTEST_TARGET=docker \
+  tests/apps/owasp-finbot/finbot-redteam.sh --pentest-only
 ```
 
-The wrapper discovers `finbot-app`'s private Docker IPv4 address and uses
-`--allow-private`. If that address is unreachable from the scanner host, set
-`FINBOT_PENTEST_TARGET` to FinBot's authorized private/public URL. The URL is
-validated before session preparation. Chat testing keeps its configured target.
+`FINBOT_PENTEST_TARGET=docker` uses the running `finbot-app` container's private
+Docker IPv4 address. If that address is unreachable from the scanner host, set
+`FINBOT_PENTEST_TARGET` to FinBot's authorized private/public URL instead. The
+target is scope-validated before any request is sent. Chat testing keeps its
+configured target. With `FINBOT_PENTEST_TARGET` unset, pentest uses `target.url`
+from the config.
 
 For custom pentest options, invoke the stage directly:
 
@@ -76,13 +76,11 @@ tests/apps/owasp-finbot/finbot-pentest.sh --scan-timeout 300
 
 DAST fuzzing and headless testing are enabled by default. Set
 `FINBOT_PENTEST_ACTIVE_FUZZING=0` or `FINBOT_PENTEST_HEADLESS=0` to disable
-those engines. The wrapper writes the session cookie, CSRF token, and fingerprint
-headers to an owner-only, exact-host-scoped Nuclei credential file, then removes
-it when the stage exits. This differs from the chat wrappers' memory-only flow.
-The session is temporary; a scanner warning that no identity endpoint could
+those engines. Pentest acquires its temporary session through
+`--allow-dynamic-auth`; a scanner warning that no identity endpoint could
 verify it does not establish privileged or verified-email coverage.
 
-With no stage flag, `finbot-redteam.sh` runs pentest followed by redteam and
-obtains a fresh chat session between stages. Pentest setup/execution failures
-stop the script and do not announce a completed report. Findings and coverage
-gate failures retain the generated report at `reports/finbot-pentest.md`.
+With no stage flag, `finbot-redteam.sh` runs pentest followed by redteam. Pentest
+setup/execution failures stop the script and do not announce a completed report.
+Findings and coverage gate failures retain the generated report at
+`reports/finbot-pentest.md`.

@@ -90,7 +90,12 @@ class TestCoverageTracker:
 
     def test_to_dict_empty(self) -> None:
         tracker = CoverageTracker()
-        assert tracker.to_dict() == {"nodes": [], "policy_clauses": [], "capped_count": 0}
+        assert tracker.to_dict() == {
+            "nodes": [],
+            "policy_clauses": [],
+            "capped_count": 0,
+            "uncovered": [],
+        }
 
     def test_to_dict_shape_is_json_safe(self) -> None:
         import json

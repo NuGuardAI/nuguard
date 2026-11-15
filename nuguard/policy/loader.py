@@ -28,7 +28,7 @@ def save_controls(controls: list[PolicyControl], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
-            [c.model_dump() for c in controls],
+            [c.model_dump(exclude_none=True) for c in controls],
             indent=2,
             ensure_ascii=False,
         ),

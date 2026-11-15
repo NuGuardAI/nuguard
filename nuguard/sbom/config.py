@@ -183,6 +183,11 @@ class AiSbomConfig(BaseModel):
         description="Glob patterns for files/directories to exclude from scanning, "
         "matched against the path relative to the scan root.",
     )
+    include_test_sources: bool = Field(
+        default=False,
+        description="Also scan JVM test sources (src/test, src/testFixtures, src/integrationTest). "
+        "Off by default so test helpers are not reported as application agents/prompts.",
+    )
     scan_images: bool = Field(
         default=False,
         description="Run `syft` against pulled base images to record their real OS and "

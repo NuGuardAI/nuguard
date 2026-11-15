@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
@@ -310,6 +310,8 @@ def redteam(
         chat_payload_list=cfg.redteam_chat_payload_list,
         chat_response_key=cfg.redteam_chat_response_key or None,
         chat_payload_extras=cfg.redteam_chat_payload_extras or None,
+        chat_method=cfg.redteam_chat_method,
+        chat_payload_in=cfg.redteam_chat_payload_in,
         guided_conversations=effective_guided,
         guided_max_turns=effective_guided_max_turns,
         guided_concurrency=effective_guided_concurrency,
@@ -340,6 +342,9 @@ def redteam(
         turn_delay_seconds=effective_turn_delay,
         scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
         similar_miss_threshold=cfg.redteam_similar_miss_threshold,
+        universal_safety_probes=cfg.redteam_universal_safety_probes,
+        workflows=cfg.redteam_workflows or None,
+        workflow_templates=cfg.redteam_workflow_templates or None,
         hard_refusal_abort_turns=cfg.redteam_hard_refusal_abort_turns,
         stall_abort_threshold=cfg.redteam_stall_abort_threshold,
         skip_discovery=cfg.redteam_skip_discovery,
@@ -649,6 +654,9 @@ async def _run_redteam(
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
+    universal_safety_probes: bool = True,
+    workflows: "list[dict[str, Any]] | None" = None,
+    workflow_templates: "list[str] | None" = None,
     hard_refusal_abort_turns: int = 5,
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
@@ -660,6 +668,8 @@ async def _run_redteam(
     preflight_candidates: int = 3,
     llm_capability_dedup: bool = False,
     chat_payload_extras: dict[str, Any] | None = None,
+    chat_method: Literal["GET", "POST", "PUT", "PATCH"] = "POST",
+    chat_payload_in: Literal["body", "query"] | None = None,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
     verify_findings: bool = False,
@@ -786,6 +796,8 @@ async def _run_redteam(
                 chat_payload_list=chat_payload_list,
                 chat_response_key=chat_response_key,
                 chat_payload_extras=chat_payload_extras,
+                chat_method=chat_method,
+                chat_payload_in=chat_payload_in,
                 guided_conversations=guided_conversations,
                 guided_max_turns=guided_max_turns,
                 guided_concurrency=guided_concurrency,
@@ -820,6 +832,9 @@ async def _run_redteam(
                 turn_delay_seconds=turn_delay_seconds,
                 scenario_delay_seconds=scenario_delay_seconds,
                 similar_miss_threshold=similar_miss_threshold,
+                universal_safety_probes=universal_safety_probes,
+                workflows=workflows,
+                workflow_templates=workflow_templates,
                 hard_refusal_abort_turns=hard_refusal_abort_turns,
                 stall_abort_threshold=stall_abort_threshold,
                 skip_discovery=skip_discovery,
@@ -863,6 +878,8 @@ async def _run_redteam(
         chat_payload_list=chat_payload_list,
         chat_response_key=chat_response_key,
         chat_payload_extras=chat_payload_extras,
+        chat_method=chat_method,
+        chat_payload_in=chat_payload_in,
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
@@ -897,6 +914,9 @@ async def _run_redteam(
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
+        universal_safety_probes=universal_safety_probes,
+        workflows=workflows,
+        workflow_templates=workflow_templates,
         hard_refusal_abort_turns=hard_refusal_abort_turns,
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
@@ -937,6 +957,8 @@ async def _run_orchestrator(  # noqa: C901
     chat_payload_list: bool = False,
     chat_response_key: str | None = None,
     chat_payload_extras: dict[str, Any] | None = None,
+    chat_method: Literal["GET", "POST", "PUT", "PATCH"] = "POST",
+    chat_payload_in: Literal["body", "query"] | None = None,
     guided_conversations: bool = True,
     guided_max_turns: int = 12,
     guided_concurrency: int = 3,
@@ -964,6 +986,9 @@ async def _run_orchestrator(  # noqa: C901
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
+    universal_safety_probes: bool = True,
+    workflows: "list[dict[str, Any]] | None" = None,
+    workflow_templates: "list[str] | None" = None,
     hard_refusal_abort_turns: int = 5,
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
@@ -1001,6 +1026,7 @@ async def _run_orchestrator(  # noqa: C901
     from nuguard.redteam.campaign.config import CampaignConfig
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
     from nuguard.redteam.public_api import RedteamAuthConfig, RedteamRunRequest, run_redteam
+    from nuguard.redteam.workflows import WorkflowSpec
 
     redteam_llm: LLMClient | None = None
     if redteam_llm_model:
@@ -1071,6 +1097,9 @@ async def _run_orchestrator(  # noqa: C901
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
+        universal_safety_probes=universal_safety_probes,
+        workflows=[WorkflowSpec.model_validate(w) for w in workflows or []],
+        workflow_templates=workflow_templates or [],
         hard_refusal_abort_turns=hard_refusal_abort_turns,
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
@@ -1083,6 +1112,8 @@ async def _run_orchestrator(  # noqa: C901
         browser_discovery=browser_discovery or BrowserDiscoveryConfig(),
         llm_capability_dedup=llm_capability_dedup,
         chat_payload_extras=chat_payload_extras or None,
+        chat_method=chat_method,
+        chat_payload_in=chat_payload_in,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
         golden_data=golden_data,

@@ -18,10 +18,17 @@ from nuguard.common.errors import (
     TargetQuotaExhaustedError,
     TargetUnavailableError,  # noqa: F401 — re-exported for callers
 )
-from nuguard.common.http import quota_exhausted_detail
+from nuguard.common.http import quota_exhausted_detail, resolve_chat_request, to_query_params
 from nuguard.common.logging import get_logger
+from nuguard.common.payload_templates import (
+    contains_message_token as _contains_message_token,
+)
+from nuguard.common.payload_templates import (
+    render_payload_template as _render_payload_template,
+)
 from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KEYS
 from nuguard.common.transport import is_provider_blocked, strip_known_boilerplate
+from nuguard.common.web_session import SessionRefresher, is_session_rejection
 from nuguard.redteam.campaign.transport.context import RetryDeferred
 
 from .session import AttackSession
@@ -100,60 +107,16 @@ def _is_message_history_key(key: str) -> bool:
     return key.strip().lower() in _MESSAGE_HISTORY_KEYS
 
 
-# Recognized tokens inside a chat_payload_extras template — see
-# TargetAppClient._build_templated_chat_payload. Deliberately only these four;
-# an unrecognized {{foo}} sequence is left untouched rather than guessed at.
-_PAYLOAD_TOKEN_PATTERN = re.compile(r"\{\{(message|history|session_id|conversation_id)\}\}")
+def _parse_plain_text_reply(text: str) -> Any:
+    """Reply body of a ``text/plain`` response: parsed JSON when it is JSON, else the text."""
+    stripped = text.strip()
+    if stripped[:1] in ("{", "["):
+        try:
+            return json.loads(stripped)
+        except ValueError:
+            pass
+    return stripped
 
-
-def _contains_message_token(obj: Any) -> bool:
-    """Recursively check whether any string value in *obj* contains ``{{message}}``.
-
-    This gate decides whether chat_payload_extras is treated as a literal
-    template (this feature) or merged with the auto-detected body shape
-    (existing behaviour, unchanged when the token is absent).
-    """
-    if isinstance(obj, str):
-        return "{{message}}" in obj
-    if isinstance(obj, dict):
-        return any(_contains_message_token(v) for v in obj.values())
-    if isinstance(obj, list):
-        return any(_contains_message_token(v) for v in obj)
-    return False
-
-
-def _render_payload_template(
-    template: Any,
-    *,
-    message: str,
-    history: str,
-    session_id: str,
-    conversation_id: str,
-) -> Any:
-    """Deep-copy *template*, substituting ``{{message}}``/``{{history}}``/
-    ``{{session_id}}``/``{{conversation_id}}`` tokens in every string value.
-
-    Substitution happens on Python objects before ``json.dumps``, so message
-    content containing quotes or braces is safe — there is no JSON-injection
-    risk from user-controlled text landing in ``message``/``history``.
-    """
-    substitutions = {
-        "message": message,
-        "history": history,
-        "session_id": session_id,
-        "conversation_id": conversation_id,
-    }
-
-    def _walk(node: Any) -> Any:
-        if isinstance(node, str):
-            return _PAYLOAD_TOKEN_PATTERN.sub(lambda m: substitutions[m.group(1)], node)
-        if isinstance(node, dict):
-            return {k: _walk(v) for k, v in node.items()}
-        if isinstance(node, list):
-            return [_walk(v) for v in node]
-        return node
-
-    return _walk(template)
 
 
 # Path-parameter placeholder styles seen across frameworks: FastAPI/ASP.NET
@@ -308,6 +271,10 @@ class TargetAppClient:
         # value for chat_payload_key is a dict built from this template instead
         # of a plain string (e.g. {"role": "user", "content": "..."}).
         chat_payload_value_template: "dict[str, Any] | None" = None,
+        # HTTP method for chat turns and where the payload goes. GET defaults to the
+        # query string ("query"); the other methods default to the body ("body").
+        chat_method: str = "POST",
+        chat_payload_in: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._chat_path = chat_path
@@ -318,6 +285,9 @@ class TargetAppClient:
             chat_payload_format if chat_payload_format in ("json", "form") else "json"
         )
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
+        self._chat_method, self._chat_payload_in = resolve_chat_request(
+            chat_method, chat_payload_in
+        )
         self._chat_response_key = chat_response_key  # explicit key overrides auto-detection
         # Lazily-detected response key: set on the first successful dict response when
         # no explicit key is configured.  Avoids returning raw JSON to judges.
@@ -402,6 +372,11 @@ class TargetAppClient:
         # (falls straight through to the existing "[HTTP <status>]" behaviour).
         self._heal_llm: "LLMClient | None" = heal_llm
         self._heal_attempts_used = 0
+        # Optional web-session refresher (cookie + CSRF). Set via
+        # set_session_refresher(); lets a long run survive session expiry.
+        self._session_refresher: SessionRefresher | None = None
+        self._session_generation = 0
+        self._session_refresh_lock = asyncio.Lock()
 
     def _parse_retry_after_seconds(self, value: str | None) -> float | None:
         if not value:
@@ -706,6 +681,69 @@ class TargetAppClient:
         if transport is None or not transport.extras_overlay:
             return self._chat_payload_extras
         return {**self._chat_payload_extras, **transport.extras_overlay}
+
+    def set_session_refresher(self, refresher: SessionRefresher | None) -> None:
+        """Install a callable that re-acquires the cookie/CSRF session on expiry."""
+        self._session_refresher = refresher
+
+    async def _refresh_web_session(self, generation: int) -> bool:
+        """Refresh the session once per expiry, shared by concurrent requests.
+
+        *generation* is the value read before the rejected request; if another
+        task already refreshed since, the caller just retries with the new headers.
+        """
+        if self._session_refresher is None:
+            return False
+        async with self._session_refresh_lock:
+            if generation != self._session_generation:
+                return True
+            try:
+                fresh = await self._session_refresher()
+            except Exception as exc:  # noqa: BLE001 - refresh is best effort
+                _log.warning("Web session refresh failed: %s", type(exc).__name__)
+                return False
+            if not fresh:
+                return False
+            self.update_default_headers(fresh)
+            self._session_generation += 1
+            _log.info("Target web session refreshed after cookie/CSRF rejection")
+            return True
+
+    async def _post_chat(
+        self, chat_path: str, body: Any, headers: dict[str, str] | None,
+    ) -> httpx.Response:
+        """Send the chat turn (configured method and payload location), refreshing the web
+        session once on a cookie/CSRF rejection."""
+
+        async def _once() -> httpx.Response:
+            if self._chat_method != "POST" or self._chat_payload_in != "body":
+                return await self._client.request(
+                    self._chat_method,
+                    chat_path,
+                    headers=headers,
+                    **self._chat_request_kwargs(body),
+                )
+            if self._chat_payload_format == "form":
+                return await self._client.post(chat_path, data=body, headers=headers)
+            return await self._client.post(chat_path, json=body, headers=headers)
+
+        generation = self._session_generation
+        resp = await _once()
+        if (
+            self._session_refresher is not None
+            and is_session_rejection(resp.status_code, resp.text or "")
+            and await self._refresh_web_session(generation)
+        ):
+            resp = await _once()
+        return resp
+
+    def _chat_request_kwargs(self, body: Any) -> dict[str, Any]:
+        """httpx keyword arguments carrying *body* as query, form or JSON."""
+        if self._chat_payload_in == "query":
+            return {"params": to_query_params(body)}
+        if self._chat_payload_format == "form":
+            return {"data": body}
+        return {"json": body}
 
     def update_default_headers(self, headers: dict[str, str] | None) -> None:
         """Merge headers into the default client headers for subsequent requests."""
@@ -1077,13 +1115,11 @@ class TargetAppClient:
                 session.last_request_body = body
 
                 _log.debug(
-                    "Target HTTP POST url=%s body=%s",
-                    chat_path, json.dumps(body, default=str),
+                    f"Target HTTP {self._chat_method} url=%s body=%s",
+                    chat_path,
+                    json.dumps(body, default=str),
                 )
-                if self._chat_payload_format == "form":
-                    resp = await self._client.post(chat_path, data=body, headers=_req_headers)
-                else:
-                    resp = await self._client.post(chat_path, json=body, headers=_req_headers)
+                resp = await self._post_chat(chat_path, body, _req_headers)
                 if transport is not None:
                     transport.absorb_response_cookies(resp.cookies)
                 if is_provider_blocked(resp.text):
@@ -1157,6 +1193,9 @@ class TargetAppClient:
                         data = ""
                     else:
                         data = ""
+                elif _content_type == "text/plain" and self._framework_adapter is None:
+                    # Plain-text reply (e.g. a Spring controller returning String).
+                    data = _parse_plain_text_reply(resp.text)
                 else:
                     data = resp.json()
                 break
@@ -1359,6 +1398,7 @@ class TargetAppClient:
                         request.headers.update(extra_headers)
                     resp = await self._client.send(request)
                 else:
+                    _generation = self._session_generation
                     resp = await self._client.request(
                         method=method.upper(),
                         url=path,
@@ -1366,6 +1406,18 @@ class TargetAppClient:
                         params=params,
                         headers=_hdrs or {},
                     )
+                    if (
+                        self._session_refresher is not None
+                        and is_session_rejection(resp.status_code, resp.text or "")
+                        and await self._refresh_web_session(_generation)
+                    ):
+                        resp = await self._client.request(
+                            method=method.upper(),
+                            url=path,
+                            json=body,
+                            params=params,
+                            headers=_hdrs or {},
+                        )
                     if transport is not None:
                         transport.absorb_response_cookies(resp.cookies)
                 if resp.status_code == 429 and attempt < self._max_429_retries:
@@ -1540,18 +1592,15 @@ class TargetAppClient:
                     return
 
             t_start = time.monotonic()
-            _stream_kwargs: dict[str, Any] = (
-                {"data": body}
-                if self._chat_payload_format == "form"
-                else {"json": body}
-            )
+            _stream_kwargs: dict[str, Any] = self._chat_request_kwargs(body)
             _log.debug(
-                "Target HTTP POST (stream) url=%s body=%s",
-                chat_path, json.dumps(body, default=str),
+                f"Target HTTP {self._chat_method} (stream) url=%s body=%s",
+                chat_path,
+                json.dumps(body, default=str),
             )
             if transport is not None:
                 _stream_kwargs["headers"] = transport.request_headers()
-            async with self._client.stream("POST", chat_path, **_stream_kwargs) as resp:
+            async with self._client.stream(self._chat_method, chat_path, **_stream_kwargs) as resp:
                 resp.raise_for_status()
                 content_type = resp.headers.get("content-type", "")
 

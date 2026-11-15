@@ -6,5 +6,8 @@
     "sync-marketplace": "node scripts/sync-marketplace.js",
     "version:bump": "node scripts/sync-marketplace.js",
     "version:check": "node scripts/validate-all-plugins.js"
+  },
+  "dependencies": {
+    "codex": "^0.2.3"
   }
 }

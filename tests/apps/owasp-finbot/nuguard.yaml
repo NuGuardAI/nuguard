@@ -28,18 +28,10 @@ sbom_generation:
   llm: true                        # set true to enrich SBOM nodes with LLM descriptions
                                     # requires LITELLM_API_KEY to be set
 target:
-  # FinBot's vendor chat API uses a temporary session plus a matching CSRF token.
-  # The test wrappers source prepare-session.sh before loading this configuration.
+  # FinBot's vendor chat API needs a temporary session cookie plus a matching CSRF token.
+  # NuGuard detects the rejection during discovery and acquires the session itself —
+  # no endpoint, headers or helper script are needed here.
   url: http://127.0.0.1:8000
-  endpoint: /vendor/api/v1/chat
-  chat_payload_key: message
-  chat_payload_list: false
-  headers:
-    Cookie: ${FINBOT_SESSION_COOKIE}
-    X-CSRF-Token: ${FINBOT_CSRF_TOKEN}
-    User-Agent: NuGuard-FinBot/1.0
-    Accept-Language: en-US
-    Accept-Encoding: identity
   auth:
     type: none  # FinBot creates a temporary anonymous session on GET /vendor/.
 
@@ -81,6 +73,10 @@ behavior:
   # Per-request timeout in seconds (default: 60)
   request_timeout: 60
 
+  # Per-scenario wall-clock timeout in seconds (default: 180). Raised because
+  # Azure LLM judge calls are slow and 21 of 49 scenarios hit 180s in the last run.
+  scenario_timeout: 600
+
   # Verbose output: include full per-turn traces in behavior report
   verbose: true
 
@@ -107,7 +103,7 @@ redteam:
   # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
   # Set false to run the legacy SBOM-only generator without catalog scenarios.
   use_catalog: true
-
+  
   # Scenario types to run (omit section to run all):
   #scenarios:
   #  - prompt-injection
@@ -179,7 +175,7 @@ redteam:
     model: azure/DeepSeek-V4-Pro    # any LiteLLM model string (openai/gpt-4o, etc.)
     api_key: ${AZURE_OPENAI_KEY}
     api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
-
+  
   # LLM for response evaluation and finding summarisation
   eval_llm:
   #  model: azure/gpt-5.4-mini

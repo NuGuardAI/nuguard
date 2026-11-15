@@ -21,8 +21,10 @@ from nuguard.config import NuGuardConfig, _flatten_yaml
 
 
 @pytest.fixture(autouse=True)
-def capture_scanner_logs(monkeypatch):
-    monkeypatch.setattr(runtime._log, "propagate", True)
+def capture_scanner_logs(caplog, monkeypatch):
+    # A configured parent logger can stop propagation before records reach root.
+    monkeypatch.setattr(runtime._log, "handlers", [*runtime._log.handlers, caplog.handler])
+    caplog.set_level(logging.INFO, logger=runtime._log.name)
 
 
 @pytest.mark.parametrize(
@@ -154,7 +156,10 @@ def test_directory_coverage_deduplicates_nested_paths(tmp_path):
 
 def test_plugin_errors_do_not_become_clean_scans(tmp_path):
     with (
-        patch("nuguard.analysis.plugins.semgrep_scanner._semgrep_path", return_value="semgrep"),
+        patch(
+            "nuguard.analysis.plugins.semgrep_scanner._engine_path",
+            return_value=("semgrep", "semgrep"),
+        ),
         patch.object(runtime, "_execute", return_value=({}, None, 0)),
     ):
         result = SemgrepScannerPlugin().run({}, {"source_path": str(tmp_path)})

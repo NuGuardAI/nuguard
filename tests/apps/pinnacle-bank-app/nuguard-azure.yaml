@@ -125,6 +125,13 @@ behavior:
 # ─── Red-team mode ────────────────────────────────────────────────────────────
 # nuguard redteam exercises adversarial scenarios to find break points.
 redteam:
+  mode: campaign
+  max_concurrent_requests: 1        # one target request at a time
+  campaign:
+    campaign_warmup: true           # one benign baseline per reusable branch
+    confirm_in_fresh_sessions: true # reproduce candidate findings in a fresh conversation
+    target_supports_session_reset: null  # detect target isolation support
+    declared_fixtures: false        # enable only when dry-run/sandbox tools are available
 
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
@@ -134,11 +141,11 @@ redteam:
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)
   #   full — all scenarios regardless of score
-  profile: full
+  profile: ci
 
-  scenarios:
-    - non-destructive   # safe-by-default: prompts, exfiltration probes, policy/API/recon attacks
-    - destructive       # uncomment to also run mutating actions against the target
+  #scenarios:
+  #  - non-destructive   # safe-by-default: prompts, exfiltration probes, policy/API/recon attacks
+  #  - destructive       # uncomment to also run mutating actions against the target
   #  - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
   #  - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
   #  - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
@@ -186,11 +193,8 @@ redteam:
   strict_outcome: false
   similar_miss_threshold: 4   # set to 0 to disable
 
-  # Pre-run warmup: wake up the Azure Container App before scenarios fire.
-  # The container scales to 0 when idle (minReplicas=0) and takes 2–8 s to cold-start.
-  # Sending 2 warmup probes absorbs the cold-start penalty so scenarios don't see
-  # 0-turn TargetUnavailableError aborts on the first batch of requests.
-  pre_run_warmup: 2
+  # Campaign mode manages branch warm-up; disable the legacy pre-run probes.
+  pre_run_warmup: 0
 
   # Authenticated test user — alice (user_id in POST body), email alice.johnson@pinnaclebank.com.
   # Real balances: checking $50,000 | savings $18,420.55 | investments $37,834.90
@@ -203,14 +207,12 @@ redteam:
   #      name: "Alice Johnson"
   #      email: "alice.johnson@pinnaclebank.com"
 
-  # Post-finding verification probe: re-send the triggering payload after a finding
-  # is emitted to confirm it reproduces. Set true for high-stakes audits.
-  # Off by default to keep runs fast.
+  # Legacy verification stays off; campaign.confirm_in_fresh_sessions handles reproduction.
   verify_findings: false
 
   # Guided adversarial conversations using ConversationDirector
-  concurrency: 1                     # parallel scenarios (raised from default 3 for throughput)
-  turn_delay_seconds: 1             # no inter-step sleep (models tolerate rapid requests)
+  concurrency: 1                   # one scenario at a time
+  turn_delay_seconds: 1             # delay between turns
   guided_conversations: true        # enable adaptive multi-turn attacks
   guided_max_turns: 8               # upper-bound cap on turns per guided scenario.
                                     # Scenario builders pick 8–12 by default; this

@@ -903,6 +903,8 @@ def _rule_nga008_untrusted_model_registry(
 
 # ── NGA-009 ──────────────────────────────────────────────────────────────────
 
+
+
 _AUDIT_LIBS = {
     "opentelemetry",
     "langfuse",
@@ -911,12 +913,6 @@ _AUDIT_LIBS = {
     "mlflow",
     "wandb",
     "helicone",
-}
-_AUDIT_MIDDLEWARE = {
-    "RequestLoggingMiddleware",
-    "AuditLogHandler",
-    "RotatingFileHandler",
-    "TimedRotatingFileHandler",
 }
 
 
@@ -929,14 +925,20 @@ def _rule_nga009_no_audit_logging(
         return []
 
     log_paths: list[str] = summary.get("log_paths") or []
-    frameworks: list[str] = [f.lower() for f in (summary.get("frameworks") or [])]
-
-    has_audit_lib = any(lib in frameworks for lib in _AUDIT_LIBS)
     has_log_paths = bool(log_paths)
-    has_middleware = any(mw in str(summary) for mw in _AUDIT_MIDDLEWARE)
-    has_instrumentation = bool(summary.get("instrumentation"))
+    instrumentation = summary.get("instrumentation")
+    model_dump = getattr(instrumentation, "model_dump", None)
+    if callable(model_dump):
+        instrumentation = model_dump(mode="python")
+    has_instrumentation = bool(
+        isinstance(instrumentation, dict)
+        and (
+            instrumentation.get("tracing_enabled") is True
+            or instrumentation.get("audit_logging_enabled") is True
+        )
+    )
 
-    if has_audit_lib or has_log_paths or has_middleware or has_instrumentation:
+    if has_log_paths or has_instrumentation:
         return []
 
     return [
@@ -945,13 +947,12 @@ def _rule_nga009_no_audit_logging(
             "HIGH",
             "AI application has no audit logging enabled",
             f"{len(agent_nodes)} agent(s) detected but no audit logging evidence found "
-            "(no log paths, no logging middleware, no observability library such as "
-            "OpenTelemetry, Langfuse, Arize, or whylogs). "
+            "(no log paths and no actively enabled tracing or audit logging). "
             "Audit logs are essential for incident response, compliance (HIPAA §164.312(b), "
             "SOC 2 CC7.2), and detecting prompt injection post-hoc.",
             [n.get("name", "") for n in agent_nodes],
-            "Integrate a structured logging or observability library (OpenTelemetry, Langfuse, "
-            "Arize) to capture every prompt, response, tool call, and user session. "
+            "Enable structured logging or active tracing (for example OpenTelemetry, LangSmith, "
+            "Langfuse, or Arize) to capture every prompt, response, tool call, and user session. "
             "Store logs in an append-only store with tamper detection. "
             "Set retention policies aligned with your compliance obligations.",
         )
@@ -2582,7 +2583,8 @@ def _build_pass_evidence(
 
 # ── OSV / Grype finding converters ───────────────────────────────────────────
 
-_RE_FIXED_VERSION = re.compile(r"<([^\s,;]+)")
+_RE_FIXED_VERSION = re.compile(r"<(?!=)([^\s,;]+)")
+_RE_LAST_AFFECTED = re.compile(r"<=(\d+(?:\.\d+)*)")
 _WS_RE = re.compile(r"\s+")
 _ADVISORY_HEADER_RE = re.compile(r"^(issue summary|impact summary|summary)\s*:\s*", re.IGNORECASE)
 
@@ -2590,6 +2592,12 @@ _ADVISORY_HEADER_RE = re.compile(r"^(issue summary|impact summary|summary)\s*:\s
 def _extract_fixed_version(affected_versions: str) -> str | None:
     """Extract the first fixed version from a range string such as '>=1.0,<2.0'."""
     m = _RE_FIXED_VERSION.search(affected_versions or "")
+    return m.group(1) if m else None
+
+
+def _extract_last_affected(affected_versions: str) -> str | None:
+    """Extract the last affected version from a range string such as '>=0.4,<=1.5.9'."""
+    m = _RE_LAST_AFFECTED.search(affected_versions or "")
     return m.group(1) if m else None
 
 
@@ -2638,9 +2646,21 @@ def _osv_to_finding(osv: dict[str, Any]) -> dict[str, Any]:
     cve_ids = osv.get("cve_ids") or []
     adv_id = osv.get("advisory_id", "")
     title = _finding_title(osv.get("dep_name", "?"), adv_id, osv.get("summary", ""))
+    aliases = [a for a in osv.get("aliases") or [] if a and a != adv_id]
+    if aliases:
+        # Carry every alias in the title so scanners reporting the same advisory
+        # under another id (pip-audit, grype, trivy) de-duplicate against it.
+        title = f"{title} [{', '.join([adv_id, *sorted(aliases)])}]"
     affected_versions = osv.get("affected_versions", "see advisory")
     fixed_version = _extract_fixed_version(affected_versions)
+    last_affected = None if fixed_version else _extract_last_affected(affected_versions)
     fixed_note = f"  Fixed in: {fixed_version}." if fixed_version else ""
+    if fixed_version:
+        remediation_fix = f" (fix available: {fixed_version})"
+    elif last_affected:
+        remediation_fix = f" (advisory affects versions up to {last_affected}; newer versions are not affected)"
+    else:
+        remediation_fix = ""
     return {
         "rule_id": adv_id,
         "severity": osv.get("severity", "UNKNOWN"),
@@ -2653,7 +2673,7 @@ def _osv_to_finding(osv: dict[str, Any]) -> dict[str, Any]:
         "affected": [osv.get("purl", osv.get("dep_name", "?"))],
         "remediation": (
             f"Upgrade {osv.get('dep_name')} to a version outside the affected range"
-            + (f" (fix available: {fixed_version})" if fixed_version else "")
+            + remediation_fix
             + f". See {osv.get('url', 'https://osv.dev')} for details."
         ),
         "source": "osv",

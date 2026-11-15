@@ -50,7 +50,8 @@ async def test_tool_status_key_order_is_fixed_regardless_of_completion_order() -
         findings = await analyzer.analyze(_sbom())
 
     assert list(analyzer.tool_status.keys()) == [
-        "nga-rules", "osv", "grype", "checkov", "trivy", "semgrep", "atlas", "supply-chain",
+        "nga-rules", "osv", "pip-audit", "grype", "checkov", "trivy", "semgrep", "atlas",
+        "supply-chain", "gitleaks",
     ]
     ids = {f.finding_id for f in findings}
     assert {"nga-1", "osv-1", "grype-1"} <= ids

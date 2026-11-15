@@ -36,6 +36,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from .java_dependencies import _maven_purl_identity
+
 if sys.version_info >= (3, 11):
     import tomllib
 else:
@@ -351,9 +353,13 @@ class DependencyScanner:
         ]:
             # Strip version from PURL for dedup key so pkg:pypi/foo and
             # pkg:npm/foo are treated as distinct entries.
-            key = dep.purl.split("@")[0] if "@" in dep.purl else dep.purl
-            if key.startswith(("pkg:nuget/", "pkg:maven/")):
-                key = key.casefold()
+            if dep.purl.startswith("pkg:maven/"):
+                # Removing a version must not remove type/classifier qualifiers.
+                key = _maven_purl_identity(dep.purl)
+            else:
+                key = dep.purl.split("@")[0] if "@" in dep.purl else dep.purl
+                if key.startswith("pkg:nuget/"):
+                    key = key.casefold()
             seen.setdefault(key, dep)
         return list(seen.values())
 

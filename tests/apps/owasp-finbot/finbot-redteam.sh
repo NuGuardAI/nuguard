@@ -18,6 +18,8 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
   source "$SCRIPT_DIR/.env"
   set +a
 fi
+CONFIG_FILE="${FINBOT_CONFIG:-$SCRIPT_DIR/nuguard-azure.yaml}"
+
 mkdir -p "$SCRIPT_DIR/reports"
 LOG_FILE="$SCRIPT_DIR/reports/finbot-security-$(date +%Y%m%dT%H%M%S).log"
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -26,16 +28,12 @@ if [[ "$MODE" != redteam ]]; then
   "$SCRIPT_DIR/finbot-pentest.sh"
 fi
 if [[ "$MODE" != pentest ]]; then
-  # Pentesting can invalidate sessions. Start redteam with a fresh pair at
-  # the configured chat origin, independent of the conventional scanner.
-  unset FINBOT_SESSION_URL
-  # shellcheck source=prepare-session.sh
-  source "$SCRIPT_DIR/prepare-session.sh"
+  # NuGuard acquires (and refreshes) FinBot's session cookie and CSRF token itself.
   REDTEAM_TMP="$(mktemp -d "${TMPDIR:-/tmp}/finbot-redteam.XXXXXX")"
   trap 'rm -rf "$REDTEAM_TMP"' EXIT
   status=0
   uv run nuguard redteam \
-    --config "$SCRIPT_DIR/nuguard.yaml" \
+    --config "$CONFIG_FILE" \
     --format markdown \
     --output "$REDTEAM_TMP/report.md" || status=$?
   if [[ "$status" -ne 0 && "$status" -ne 2 ]] || [[ ! -s "$REDTEAM_TMP/report.md" ]]; then

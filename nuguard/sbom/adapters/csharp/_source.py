@@ -22,7 +22,7 @@ _TOKEN_RE = re.compile(
 _GENERIC = r"(?:\s*<[^<>{}();\n]+>)?"
 _CALL_RE = re.compile(
     rf"(?P<callee>(?:global::)?{_IDENTIFIER}{_GENERIC}"
-    rf"(?:\s*\.\s*{_IDENTIFIER}{_GENERIC})*)\s*\("
+    rf"(?:\s*\??\.\s*{_IDENTIFIER}{_GENERIC})*)\s*\("
 )
 _CONTROL_NAMES = {
     "if",
@@ -91,7 +91,7 @@ def find_calls(
 
     for match in _CALL_RE.finditer(masked):
         callee = re.sub(
-            r"\s+",
+            r"\s+|\?(?=\s*\.)",
             "",
             match.group("callee"),
         )

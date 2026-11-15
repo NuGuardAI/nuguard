@@ -109,7 +109,10 @@ class AgnoAdapter(FrameworkAdapter):
             if inst.class_name not in _AGNO_MODEL_CLASSES:
                 continue
             args = inst.args or {}
-            model_id = _clean(args.get("id") or args.get("model") or args.get("model_id", ""))
+            model_argument = next(
+                (key for key in ("id", "model", "model_id") if args.get(key)), None
+            )
+            model_id = _clean(args.get(model_argument)) if model_argument else ""
             if not model_id or model_id.startswith("$"):
                 continue
             provider = _AGNO_MODEL_CLASSES.get(inst.class_name) or infer_provider(model_id)
@@ -132,6 +135,8 @@ class AgnoAdapter(FrameworkAdapter):
                 line=inst.line,
                 snippet=f"{inst.class_name}(id={model_id!r})",
                 evidence_kind="ast_instantiation",
+                source_call=inst,
+                source_model_argument=model_argument,
             )
             detected.append(det)
             model_by_line[inst.line] = det

@@ -9,6 +9,7 @@ from nuguard.cli.report_meta import ReportMeta
 from nuguard.models.finding import Finding, Severity
 from nuguard.redteam.report import (
     _attack_coverage_summary,
+    _coverage_counts,
     _scenario_coverage_table,
     _truncate_title_for_table,
     _turns_cell_with_reason,
@@ -340,16 +341,71 @@ def test_attack_coverage_summary_counts_circuit_breaker_abort_as_not_tested() ->
     assert table_line == "| API Attack | 2 | 1 | 50% |"
 
 
-def test_attack_coverage_summary_still_excludes_skipped_and_similar_miss() -> None:
+def test_attack_coverage_summary_still_excludes_skipped_from_numerator() -> None:
+    """Global-stop skips and unreachable targets stay in the denominator."""
     records = [
         SimpleNamespace(goal_type="API_ATTACK", chain_status="skipped"),
-        SimpleNamespace(goal_type="API_ATTACK", chain_status="similar_miss"),
         SimpleNamespace(goal_type="API_ATTACK", chain_status="target_unreachable"),
         SimpleNamespace(goal_type="API_ATTACK", chain_status="completed"),
     ]
     lines = _attack_coverage_summary(records)
     table_line = next(line for line in lines if line.startswith("| API Attack"))
-    assert table_line == "| API Attack | 4 | 3 | 25% |"
+    assert table_line == "| API Attack | 3 | 2 | 33% |"
+
+
+def test_attack_coverage_summary_excludes_similar_miss_from_denominator() -> None:
+    """Similarity suppression is not an untested eligible scenario: it leaves
+    the eligible total and is reported in a separate audit line."""
+    records = [
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="similar_miss"),
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="similar_miss"),
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="skipped"),
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="completed"),
+    ]
+    lines = _attack_coverage_summary(records)
+    table_line = next(line for line in lines if line.startswith("| API Attack"))
+    assert table_line == "| API Attack | 2 | 1 | 50% |"
+    assert any("Coverage**: 50% (1/2 eligible" in line for line in lines)
+    assert any("Similarity Excluded**: 2" in line for line in lines)
+
+
+def test_attack_coverage_summary_zero_eligible_is_not_a_failed_run() -> None:
+    records = [SimpleNamespace(goal_type="API_ATTACK", chain_status="similar_miss")]
+    lines = _attack_coverage_summary(records)
+    text = "\n".join(lines)
+    assert "Run not representative" not in text
+    assert "0/0 eligible" in text
+    table_line = next(line for line in lines if line.startswith("| API Attack"))
+    assert table_line == "| API Attack | 0 | 0 | n/a |"
+
+
+def test_coverage_accounting_shared_by_json_report() -> None:
+    """The JSON report carries the same numbers as the Markdown summary."""
+    records = [
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="similar_miss", scenario_type="x"),
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="skipped", scenario_type="x"),
+        SimpleNamespace(goal_type="API_ATTACK", chain_status="completed:endpoint_not_found", scenario_type="x"),
+        SimpleNamespace(goal_type="TOOL_ABUSE", chain_status="completed", scenario_type="x"),
+    ]
+    cov = json.loads(to_json([], scenario_records=records))["coverage"]
+    assert cov["selected"] == 4
+    assert cov["similarity_excluded"] == 1
+    assert cov["eligible"] == 3
+    assert cov["not_tested"] == 1
+    assert cov["not_reached"] == 1
+    assert cov["coverage_pct"] == 33
+    assert cov["by_goal_type"]["API_ATTACK"] == {
+        "selected": 3,
+        "similarity_excluded": 1,
+        "eligible": 2,
+        "not_tested": 1,
+        "not_reached": 1,
+        "inconclusive": 0,
+        "defended": 0,
+        "finding": 0,
+    }
+    md = "\n".join(_attack_coverage_summary(records))
+    assert "33% (1/3 eligible" in md
 
 
 # ── Gap A2: "Not Reached" (endpoint_not_found) distinct from "Not Tested" ───
@@ -469,3 +525,73 @@ def test_to_markdown_note_renders_even_with_findings_present() -> None:
     md = to_markdown(_sample_findings(), scan_outcome="aborted_target_unavailable")
     assert "**Note:**" in md
     assert "- **Total Findings**: 1" in md
+
+
+# ── Execution participation vs. objective evaluation ────────────────────────
+
+
+def _rec(status: str, steps: int = 1, finding: bool = False, goal: str = "API_ATTACK"):
+    return SimpleNamespace(
+        goal_type=goal,
+        chain_status=status,
+        had_finding=finding,
+        steps=[{"response": "x"}] * steps,
+        turns_used=steps,
+        scenario_type="x",
+    )
+
+
+def test_coverage_counts_separates_participation_from_evaluation() -> None:
+    records = [
+        _rec("completed"),  # defended
+        _rec("succeeded", finding=True),  # finding
+        _rec("aborted:hard_refusal"),  # guided stop: ran, not validly evaluated
+        _rec("timeout", steps=2),  # partial timeout keeps its evidence
+        _rec("inconclusive:no_auth_configured"),
+        _rec("skipped", steps=0),  # global-stop skip: never attempted
+        _rec("similar_miss", steps=0),  # audit-only
+        _rec("completed:endpoint_not_found"),
+    ]
+    c = _coverage_counts(records)
+    assert (c["selected"], c["similarity_excluded"], c["eligible"]) == (8, 1, 7)
+    assert (c["defended"], c["finding"], c["inconclusive"]) == (1, 1, 3)
+    assert (c["not_tested"], c["not_reached"]) == (1, 1)
+    assert (c["executed"], c["evaluated"]) == (6, 2)
+    assert (c["execution_pct"], c["evaluation_pct"]) == (86, 29)
+    outcomes = ("defended", "finding", "inconclusive", "not_tested", "not_reached")
+    assert sum(c[k] for k in outcomes) == c["eligible"]
+
+
+def test_coverage_summary_markdown_reports_both_shares() -> None:
+    text = "\n".join(
+        _attack_coverage_summary(
+            [_rec("completed"), _rec("aborted:stalled"), _rec("skipped", steps=0)]
+        )
+    )
+    assert "Execution Participation**: 67% (2/3" in text
+    assert "Objective Evaluated**: 33% (1/3" in text
+    assert "1 inconclusive, 1 not tested" in text
+
+
+def test_coverage_zero_eligible_has_no_shares() -> None:
+    c = _coverage_counts([_rec("similar_miss", steps=0)])
+    assert c["eligible"] == 0
+    assert c["execution_pct"] is None and c["evaluation_pct"] is None
+    assert "Execution Participation" not in "\n".join(
+        _attack_coverage_summary([_rec("similar_miss", steps=0)])
+    )
+
+
+def test_json_phase_rows_use_same_accounting() -> None:
+    records = [
+        _rec("completed"),
+        _rec("aborted:stalled"),
+        _rec("skipped", steps=0),
+        _rec("similar_miss", steps=0),
+    ]
+    payload = json.loads(to_json([], scenario_records=records))
+    rows = payload["phases"]
+    assert sum(r["scenarios_run"] for r in rows) == payload["coverage"]["eligible"] == 3
+    assert sum(r["executed"] for r in rows) == payload["coverage"]["executed"] == 2
+    assert sum(r["evaluated"] for r in rows) == payload["coverage"]["evaluated"] == 1
+    assert sum(r["similarity_excluded"] for r in rows) == 1

