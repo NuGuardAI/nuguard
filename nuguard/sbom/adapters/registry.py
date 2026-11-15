@@ -134,8 +134,10 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
     from .csharp import (
         CSharpAspNetCoreAdapter,
         CSharpAuthAdapter,
+        CSharpDatastoreAdapter,
         CSharpLLMClientsAdapter,
         CSharpMLNetAdapter,
+        CSharpPromptAdapter,
         CSharpSemanticKernelAdapter,
     )
     from .data_classification import DataClassificationPythonAdapter
@@ -284,8 +286,10 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         # C# adapters
         CSharpAspNetCoreAdapter(),
         CSharpAuthAdapter(),
+        CSharpDatastoreAdapter(),
         CSharpLLMClientsAdapter(),
         CSharpMLNetAdapter(),
+        CSharpPromptAdapter(),
         CSharpSemanticKernelAdapter(),
         # Java adapters
         JavaWebAdapter(),
