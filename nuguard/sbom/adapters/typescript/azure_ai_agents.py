@@ -23,6 +23,7 @@ from typing import Any
 from ...core.ts_parser import TSParseResult, parse_typescript
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from .._snippet_redaction import redact_code_snippet
 from ..base import ComponentDetection, RelationshipHint
 from ._ts_regex import TSFrameworkAdapter
 
@@ -123,7 +124,12 @@ class AzureAIAgentsTSAdapter(TSFrameworkAdapter):
                         },
                         file_path=file_path,
                         line=inst.line_start,
-                        snippet=inst.source_snippet or f"new {cls}()",
+                        snippet=redact_code_snippet(
+                            inst.source_snippet or "",
+                            language="ts",
+                            fallback=f"new {cls}()",
+                            limit=160,
+                        ),
                         evidence_kind="ast_instantiation",
                     )
                 )

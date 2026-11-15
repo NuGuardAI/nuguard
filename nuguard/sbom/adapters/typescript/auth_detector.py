@@ -35,6 +35,7 @@ import re
 from typing import Any
 
 from ...types import ComponentType
+from .._snippet_redaction import redact_code_snippet, redact_url_secrets
 from ..base import ComponentDetection
 from ._class_scan import _find_class_body_span, _line_index_at
 from ._ts_regex import TSFrameworkAdapter
@@ -131,7 +132,12 @@ class NestJSAuthTSAdapter(TSFrameworkAdapter):
                     },
                     file_path=file_path,
                     line=ev_line,
-                    snippet=lines[ev_line - 1].strip()[:160],
+                    snippet=redact_code_snippet(
+                        lines[ev_line - 1],
+                        language="ts",
+                        fallback="new OAuth2Client(...)",
+                        limit=160,
+                    ),
                     evidence_kind="regex",
                 )
             )
@@ -141,13 +147,18 @@ class NestJSAuthTSAdapter(TSFrameworkAdapter):
             window = content[m.end() : m.end() + 300]
             uri_m = _JWKS_URI_RE.search(window)
             uri = uri_m.group(1) if uri_m else ""
+            # The JWKS URI can embed credentials (userinfo, ?api_key=...): keep only a
+            # redacted form in the node name and metadata.
+            safe_uri = redact_url_secrets(uri)
             is_apple = "apple" in uri.lower()
             ev_line = _line_at(content, m.start())
             detected.append(
                 ComponentDetection(
                     component_type=ComponentType.AUTH,
                     canonical_name=(
-                        "auth:apple-sign-in-jwks" if is_apple else f"auth:jwks:{uri or file_path}"
+                        "auth:apple-sign-in-jwks"
+                        if is_apple
+                        else f"auth:jwks:{safe_uri or file_path}"
                     ),
                     display_name="Apple Sign-In (JWKS)" if is_apple else "JWKS",
                     adapter_name=self.name,
@@ -156,12 +167,17 @@ class NestJSAuthTSAdapter(TSFrameworkAdapter):
                     metadata={
                         "framework": "jwks-rsa",
                         "auth_type": "jwks",
-                        "auth_detail": {"protocols": ["jwks"], "jwks_uri": uri},
+                        "auth_detail": {"protocols": ["jwks"], "jwks_uri": safe_uri},
                         "language": "typescript",
                     },
                     file_path=file_path,
                     line=ev_line,
-                    snippet=lines[ev_line - 1].strip()[:160],
+                    snippet=redact_code_snippet(
+                        lines[ev_line - 1],
+                        language="ts",
+                        fallback="jwksClient(...)",
+                        limit=160,
+                    ),
                     evidence_kind="regex",
                 )
             )
@@ -202,7 +218,12 @@ class NestJSAuthTSAdapter(TSFrameworkAdapter):
                     },
                     file_path=file_path,
                     line=sign_line + 1,
-                    snippet=lines[sign_line].strip()[:160],
+                    snippet=redact_code_snippet(
+                        lines[sign_line],
+                        language="ts",
+                        fallback=".sign(...)",
+                        limit=160,
+                    ),
                     evidence_kind="regex",
                 )
             )
