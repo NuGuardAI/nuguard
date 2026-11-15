@@ -15,7 +15,7 @@ else
   echo "WARNING: .env not found — ensure APP_USERNAME, APP_PASSWORD, GEMINI_API_KEY are set." >&2
 fi
 
-CONFIG_FILE="$SCRIPT_DIR/nuguard-azure.yaml"
+CONFIG_FILE="${FINBOT_CONFIG:-$SCRIPT_DIR/nuguard-azure.yaml}"
 
 mkdir -p "$SCRIPT_DIR/reports"
 
