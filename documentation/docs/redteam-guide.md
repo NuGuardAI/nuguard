@@ -369,6 +369,13 @@ and counts each recognized category once. Unrecognized categories in older
 serialized snapshots are reported separately and do not inflate coverage.
 Catalog generation coverage is not proof that scenarios executed successfully.
 
+Run coverage separates execution from objective evaluation. Scenarios skipped as
+similar to one already run (`similar_miss`) are not counted as untested eligible
+scenarios, and the JSON report carries a `coverage` block with per-scenario outcomes.
+The engagement guard judges target health only from chat-routed steps. Failing
+auxiliary REST endpoints no longer trip it; scenarios skipped after it does trip
+are reported as `not_engaged`, not `circuit breaker open`.
+
 These safeguards improve remediation and coverage consistency. They do not
 change exploit-success evaluation or independently verify the underlying
 findings. Remediation remains advisory.

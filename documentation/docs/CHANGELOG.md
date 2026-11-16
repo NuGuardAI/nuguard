@@ -2,6 +2,36 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## v0.9.17 - 2026-11-16
+
+### Added
+- **Deep Agents detection:** The SBOM now detects Deep Agents assemblies, typed `SubAgent` mappings, and the flow between their components.
+- **Java chat models from configuration:** A chat model set in `application.properties` or `application.yml` is now recorded as a model, preserving the exact model name.
+- **Red-team coverage details:** The JSON report adds a `coverage` block with per-scenario outcomes, and coverage now separates execution from objective evaluation. See the [red-team guide](redteam-guide.md#remediation-priority-and-coverage-integrity).
+
+### Changed
+- **MCP 2.x support:** The `mcp` and `smithery` extras and the dev group accept `mcp>=1.0,<3`. The MCP server imports `MCPServer` (renamed from `FastMCP` in mcp 2.x) and falls back to the 1.x path, so both major versions work.
+- **JVM test sources skipped:** `src/test` trees are excluded from SBOM generation by default. See [JVM source-file selection](sbom-schema.md#jvm-source-file-selection).
+- **Spring Boot managed versions:** Maven dependencies whose versions come from the Spring Boot BOM are resolved, and OSV lookups are skipped for dependencies with no version.
+
+### Improved
+- **Go detection:** Go 1.22 `ServeMux` patterns (`"POST /x"`, `"GET host/x/{id}"`) yield the real method, host and path; `net/http` and `chi` endpoints infer auth from auth-named handler wrappers; Eino `adk.NewChatModelAgent` produces an agent with its model, prompt and tools; `mcp-go` tools are marked high-privilege from destructive hints or write-verb names; `*_test.go` files count as test evidence.
+- **C# detection:** Every Minimal API and controller route is emitted, with `MapGroup` prefixes and `RequireAuthorization`/`AllowAnonymous` resolved across nested groups and files. Web SDK implicit usings are honoured, `AddAuthentication().AddJwtBearer()` becomes one JWT auth node, and Semantic Kernel produces one agent per `ChatCompletionAgent` with endpoints linked to the agents they reach. The C# datastore and prompt adapters, previously never registered, now run.
+- **Java Semgrep/Opengrep rules:** Rules match Spring MVC inputs and `@AiService` calls.
+- **Tracing and model false positives:** Active tracing instrumentation is recognised; pricing-only, encoded and test-only model and runtime evidence is ignored; PII is scoped to matching datastores, and name-only dataclasses no longer imply PII.
+
+### Fixed
+- **Secrets in SBOM output:** Prompt and agent content is redacted for every language, C# datastore connection strings keep only scheme, host and port, and credential literals in Go and TypeScript `AUTH` snippets (including Azure AI agent credentials) are redacted (#725, #733).
+- **Behavior runs crashing on tool calls:** Target tool calls were stored as canary hits, so any target returning tool calls failed with a validation error and ran zero scenarios, and string tool calls could be reported as "Canary data disclosure". They are now recorded as tool calls and passed to policy checks.
+- **Red-team engagement guard:** REST-only steps no longer count toward the guard, so broken auxiliary endpoints cannot abort an assessment whose chat endpoint is healthy. Skipped scenarios report `not_engaged`.
+- **Red-team payload generation:** LLM payload generation honours the concurrency limit, and explicit default `redteam` payload settings are preserved.
+- **Chat probing:** Configured chat payload templates are rendered during probing, and session-changing routes are skipped during endpoint liveness checks.
+- **`pip install nuguard[mcp]`:** The MCP server could not start when mcp 2.x was resolved. It now runs on mcp 1.x and 2.x (see Changed).
+
+### Compatibility
+- Opengrep is now the source scanner used by the rule tests in CI. Install it as a standalone binary (it has no Python dependencies); see [scanner setup](static-analysis-guide.md#2-the-rest-of-the-software-infrastructure). `semgrep` remains a fallback.
+- Secret redaction can change prompt text in the SBOM and CycloneDX output when a prompt contained a credential.
+
 ## v0.9.16 - 2026-10-04
 
 ### Added

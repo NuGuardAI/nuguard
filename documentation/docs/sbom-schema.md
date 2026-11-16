@@ -201,6 +201,8 @@ A `GUARDRAIL` node is connected to the `AGENT` node(s) it protects via a `PROTEC
 | `template_variables` | string[] | Template variable names found in `content`, e.g. `["user_name"]` |
 | `prompt_type` | string | Prompt kind set by some adapters, e.g. `"instructions"`, `"agent_input"` |
 
+Prompt and agent content is passed through a shared secret redactor before the SBOM is written, for every language. URL credentials, `key=value` and JSON secrets, Bearer/Basic tokens, known key formats, and PEM private keys are replaced with a placeholder, so a credential embedded in a prompt literal does not reach the SBOM, its evidence, or the CycloneDX system-prompt excerpt.
+
 For backward compatibility, adapters also mirror these same values into `extras` (`extras.role`, `extras.content`, `extras.char_count`, `extras.is_template`, `extras.template_variables`) — new consumers should prefer the typed fields above.
 
 A `PROMPT` node is connected to its owning `AGENT` or `GUARDRAIL` through a `USES` edge when the adapter identifies that relationship. For independently detected prompts, the extractor infers `AGENT --USES--> PROMPT` when the nodes share a source file with one identifiable agent, the prompt name identifies one agent in a multi-agent file, or that agent's file imports and uses the prompt constant. A guardrail that protects the agent also receives a derived `GUARDRAIL --PROTECTS--> PROMPT` edge when the guardrail binding is explicit or it shares the prompt's source file. Ambiguous prompts remain unlinked rather than being assigned to unrelated agents.

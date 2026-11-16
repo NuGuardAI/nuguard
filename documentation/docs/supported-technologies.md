@@ -39,11 +39,11 @@ Application estate
 
 | Language | Frameworks and agent SDKs with dedicated or framework-aware coverage |
 |---|---|
-| Python | LangGraph, OpenAI Agents SDK, AutoGen, CrewAI, LlamaIndex, Agno, Azure AI Agent Service, AWS Bedrock AgentCore, Google ADK, Semantic Kernel, Claude Agent SDK, Vercel AI SDK, FastMCP and low-level MCP servers/clients |
+| Python | LangGraph, OpenAI Agents SDK, AutoGen, CrewAI, LlamaIndex, Agno, Azure AI Agent Service, AWS Bedrock AgentCore, Google ADK, Semantic Kernel, Deep Agents (assemblies, typed sub-agents, and component flows), Claude Agent SDK, Vercel AI SDK, FastMCP and low-level MCP servers/clients |
 | TypeScript/JavaScript | LangGraph.js, OpenAI Agents SDK, Claude Agent SDK, Google ADK, AWS Bedrock Agents, Azure AI Agents, Agno, Vercel AI SDK, NestJS, and agent registry/orchestrator patterns |
 | Go | LangChainGo, Eino, Genkit, MCP servers/clients, OpenAI, Anthropic, Google GenAI, Ollama, and direct HTTP model clients |
 | C# | Semantic Kernel, ML.NET, Azure OpenAI, OpenAI, Anthropic, and ASP.NET Core |
-| Java | Spring AI, LangChain4j, Quarkus LangChain4j, OpenAI Java, Azure OpenAI Java, AWS Bedrock, Google Gen AI, Google Vertex AI, Spring MVC/WebFlux, JAX-RS, and Quarkus |
+| Java | Spring AI (including chat models set in `application.properties`/`application.yml`), LangChain4j, Quarkus LangChain4j, OpenAI Java, Azure OpenAI Java, AWS Bedrock, Google Gen AI, Google Vertex AI, Spring MVC/WebFlux, JAX-RS, and Quarkus |
 
 LangChain and LangChain.js imports and model classes are also recognized through framework and model-client signals. Dedicated LangGraph adapters provide deeper graph, agent, and tool relationships.
 
