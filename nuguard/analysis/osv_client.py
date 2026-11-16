@@ -131,6 +131,16 @@ def _affected_versions(detail: dict[str, Any]) -> str:
     return "; ".join(ranges) if ranges else "see advisory"
 
 
+def _purl_has_version(purl: str) -> bool:
+    """True when the purl pins a version, for example ``pkg:maven/group/name@1.2.3``.
+
+    OSV answers a purl without a version with every advisory ever published for that package
+    name, not the ones that affect the project, so such dependencies must not be queried.
+    """
+    last_segment = purl.split("?", 1)[0].split("#", 1)[0].rsplit("/", 1)[-1]
+    return "@" in last_segment
+
+
 def _purl_version(purl: str) -> str:
     """Return the ``@version`` embedded in a PURL, or ``""``."""
     tail = purl.rsplit("/", 1)[-1].split("?", 1)[0]
@@ -176,17 +186,28 @@ def query_osv(
       ``advisory_id``, ``cve_ids``, ``summary``,
       ``severity``, ``affected_versions``, ``url``
     """
-    purls_with_meta = [
-        (dep.get("purl", ""), dep.get("name", ""), dep.get("version_spec", ""))
-        for dep in deps
-        if dep.get("purl")
-    ]
-    if not purls_with_meta:
+    # Filter on the PURL that will actually be sent (develop appends the lowest version a
+    # specifier admits). A dependency with no version even then would make OSV return every
+    # advisory ever published for the package name, so it is not queried. `queries` and
+    # `purls_with_meta` are built from the same survivors: OSV answers positionally.
+    candidates = [(dep, _query_purl(dep)) for dep in deps if dep.get("purl")]
+    unversioned = [purl for _, purl in candidates if not _purl_has_version(purl)]
+    if unversioned:
+        _log.info(
+            "OSV: skipping %d dependenc%s without a resolved version: %s",
+            len(unversioned),
+            "y" if len(unversioned) == 1 else "ies",
+            ", ".join(unversioned[:5]),
+        )
+        candidates = [(dep, purl) for dep, purl in candidates if _purl_has_version(purl)]
+    if not candidates:
         return []
 
-    queries = [
-        {"package": {"purl": _query_purl(dep)}} for dep in deps if dep.get("purl")
+    purls_with_meta = [
+        (dep.get("purl", ""), dep.get("name", ""), dep.get("version_spec", ""))
+        for dep, _ in candidates
     ]
+    queries = [{"package": {"purl": purl}} for _, purl in candidates]
 
     try:
         batch_resp = _post_json(_BATCH_URL, {"queries": queries}, timeout=timeout)

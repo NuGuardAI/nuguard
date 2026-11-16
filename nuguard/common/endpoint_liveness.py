@@ -125,6 +125,39 @@ def _probe_decision(meta: "NodeMetadata") -> tuple[bool, str | None]:
     return True, None
 
 
+# Issue #653: a GET handler with required query parameters answers a bare
+# request with HTTP 400 even though the route exists. The SBOM records those
+# parameters (http_request.parameters, location "query"), so the probe sends
+# placeholder values for them. The values only have to get past "parameter
+# missing"; a type-aware placeholder avoids a needless type-validation 400.
+_PLACEHOLDER_QUERY_VALUE = "nuguard-probe"
+_TYPED_PLACEHOLDER_QUERY_VALUES = {
+    "int": "1",
+    "integer": "1",
+    "long": "1",
+    "short": "1",
+    "float": "1.0",
+    "double": "1.0",
+    "number": "1",
+    "bool": "true",
+    "boolean": "true",
+}
+# The handler was reached and rejected the synthetic values: not a dead route.
+_VALIDATION_STATUS_CODES = frozenset({400, 422})
+
+
+def _required_query_params(meta: "NodeMetadata") -> dict[str, str]:
+    """Placeholder values for the required query parameters recorded in the SBOM."""
+    request = meta.http_request
+    if request is None:
+        return {}
+    return {
+        p.name: _TYPED_PLACEHOLDER_QUERY_VALUES.get(p.type_hint.lower(), _PLACEHOLDER_QUERY_VALUE)
+        for p in request.parameters
+        if p.location == "query" and p.required
+    }
+
+
 class LivenessReport(BaseModel):
     """Aggregate result of a :func:`check_endpoint_liveness` pass."""
 
@@ -152,8 +185,15 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _classify_status(status_code: int, response_text: str) -> tuple[bool, str]:
+def _classify_status(
+    status_code: int, response_text: str, sent_query_params: bool = False
+) -> tuple[bool, str]:
     """Return (operational, note) for a completed (non-exception) request."""
+    if sent_query_params and status_code in _VALIDATION_STATUS_CODES:
+        return True, (
+            f"HTTP {status_code} — endpoint reachable, it rejected the placeholder "
+            "values sent for its required query parameters."
+        )
     if status_code in _AUTH_ENFORCED_STATUS_CODES:
         return True, f"HTTP {status_code} — endpoint reachable, auth correctly enforced."
     if status_code in _DEAD_STATUS_CODES or response_text.startswith(_ROTATION_TRIGGER_PREFIXES):
@@ -188,9 +228,10 @@ async def _ping_one(
     endpoint = meta.endpoint or ""
     method = (meta.method or "GET").upper()
 
+    params = _required_query_params(meta)
     try:
         status_code, response_text, _json = await asyncio.wait_for(
-            client.invoke_endpoint(endpoint, method=method, body=None),
+            client.invoke_endpoint(endpoint, method=method, body=None, params=params or None),
             timeout=per_endpoint_timeout,
         )
     except asyncio.TimeoutError:
@@ -202,7 +243,7 @@ async def _ping_one(
         _log.error("Liveness: %s %s raised: %s", method, endpoint, exc)
         return False, note
 
-    operational, note = _classify_status(status_code, response_text)
+    operational, note = _classify_status(status_code, response_text, sent_query_params=bool(params))
     if operational:
         _log.debug("Liveness: %s %s -> operational (%s)", method, endpoint, note)
     else:

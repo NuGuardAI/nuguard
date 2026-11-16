@@ -6,6 +6,7 @@ attack variants for each scenario, grounded in the SBOM and cognitive policy.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 from typing import TYPE_CHECKING
 
 from nuguard.common.env_utils import env_float as _env_float
@@ -63,6 +64,27 @@ def _generation_kwargs() -> dict[str, float | int]:
     return kwargs
 
 
+# Shared generation-slot semaphore for the active ``enrich_all`` call.  A
+# ContextVar (copied into gather()'d tasks) keeps concurrent calls independent;
+# ``None`` means unbounded (direct ``enrich_family``/``enrich_scenario`` use).
+_GENERATION_SLOTS: contextvars.ContextVar[asyncio.Semaphore | None] = contextvars.ContextVar(
+    "nuguard_generation_slots", default=None
+)
+
+
+async def _bounded_complete(llm: LLMClient, timeout: float, *args, **kwargs) -> str:
+    """Run ``llm.complete`` under the shared generation slot and a deadline.
+
+    The slot is acquired *before* the deadline starts, so queueing does not eat
+    the timeout, and is held until the completion (incl. streaming/retries) ends.
+    """
+    slots = _GENERATION_SLOTS.get()
+    if slots is None:
+        return await asyncio.wait_for(llm.complete(*args, **kwargs), timeout=timeout)
+    async with slots:
+        return await asyncio.wait_for(llm.complete(*args, **kwargs), timeout=timeout)
+
+
 class LLMPromptGenerator:
     """Generates diverse attack payloads per scenario using the redteam LLM."""
 
@@ -112,14 +134,13 @@ class LLMPromptGenerator:
                 profile=self._discovered_profile,
             )
             try:
-                raw = await asyncio.wait_for(
-                    self._llm.complete(
-                        prompt,
-                        system=_FAMILY_SYSTEM_PROMPT,
-                        label=label,
-                        **_generation_kwargs(),
-                    ),
-                    timeout=90.0,
+                raw = await _bounded_complete(
+                    self._llm,
+                    90.0,
+                    prompt,
+                    system=_FAMILY_SYSTEM_PROMPT,
+                    label=label,
+                    **_generation_kwargs(),
                 )
                 if not raw.startswith("[NUGUARD_CANNED_RESPONSE]"):
                     parsed = _parse_family_response(raw, batch)
@@ -191,14 +212,13 @@ class LLMPromptGenerator:
         )
         _log.debug("Generating %d LLM attack sequences for scenario %r", self._n_variants, scenario.title)
         try:
-            raw = await asyncio.wait_for(
-                self._llm.complete(
-                    prompt,
-                    system=_SYSTEM_PROMPT,
-                    label=label,
-                    **_generation_kwargs(),
-                ),
-                timeout=60.0,
+            raw = await _bounded_complete(
+                self._llm,
+                60.0,
+                prompt,
+                system=_SYSTEM_PROMPT,
+                label=label,
+                **_generation_kwargs(),
             )
             if raw.startswith("[NUGUARD_CANNED_RESPONSE]"):
                 return []
@@ -225,7 +245,7 @@ class LLMPromptGenerator:
         scenarios: list["AttackScenario"],
         cache: PromptCache,
         cache_key: str,
-        concurrency: int = 5,  # retained for API compat; family calls are sequential
+        concurrency: int = 5,  # max simultaneous generation completions (not scenario execution)
     ) -> dict[str, list[list[str]]]:
         """Return {scenario_id: [[turn1, turn2, turn3], ...]} for all scenarios.
 
@@ -235,6 +255,9 @@ class LLMPromptGenerator:
 
         Cache entries are keyed by a deterministic slug (goal|type|title) so they
         survive across runs where scenario UUIDs are regenerated.
+
+        ``concurrency`` caps simultaneous generation completions across all
+        families, batches and per-scenario fallbacks of this call.
         """
         def _slug(s: "AttackScenario") -> str:
             return f"{s.goal_type.value}|{s.scenario_type.value}|{s.title}"
@@ -269,10 +292,14 @@ class LLMPromptGenerator:
             len(scenarios), len(families),
         )
 
-        # Run all families concurrently — each family is independent.
-        family_results = await asyncio.gather(
-            *(self.enrich_family(fam) for fam in families.values()),
-        )
+        # Families run concurrently, but every completion shares one slot pool.
+        token = _GENERATION_SLOTS.set(asyncio.Semaphore(max(1, concurrency)))
+        try:
+            family_results = await asyncio.gather(
+                *(self.enrich_family(fam) for fam in families.values()),
+            )
+        finally:
+            _GENERATION_SLOTS.reset(token)
         result = {}
         for fr in family_results:
             result.update(fr)

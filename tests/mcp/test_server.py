@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import inspect
+from typing import Any
 
 import pytest
 
 from nuguard.mcp.server import mcp
 from nuguard.mcp.__main__ import main
+
+
+def _schema(tool: Any) -> dict[str, Any]:
+    """Return a tool's JSON input schema (``input_schema`` in mcp 2.x, ``inputSchema`` in 1.x)."""
+    schema = getattr(tool, "input_schema", None)
+    return schema if schema is not None else tool.inputSchema
+
 
 _EXPECTED_TOOLS = {
     "nuguard_init",
@@ -41,7 +49,7 @@ async def test_each_tool_has_description(tools) -> None:
 @pytest.mark.asyncio
 async def test_each_tool_has_input_schema(tools) -> None:
     for tool in tools:
-        schema = tool.inputSchema
+        schema = _schema(tool)
         assert schema is not None, f"Tool '{tool.name}' has no inputSchema"
         assert schema.get("type") == "object", f"Tool '{tool.name}' inputSchema type is not 'object'"
 
@@ -49,7 +57,7 @@ async def test_each_tool_has_input_schema(tools) -> None:
 @pytest.mark.asyncio
 async def test_timeout_seconds_in_all_tools(tools) -> None:
     for tool in tools:
-        props = tool.inputSchema.get("properties", {})
+        props = _schema(tool).get("properties", {})
         assert "timeout_seconds" in props, (
             f"Tool '{tool.name}' is missing 'timeout_seconds' parameter"
         )
@@ -58,19 +66,19 @@ async def test_timeout_seconds_in_all_tools(tools) -> None:
 @pytest.mark.asyncio
 async def test_init_tool_has_project_dir(tools) -> None:
     init = next(t for t in tools if t.name == "nuguard_init")
-    assert "project_dir" in init.inputSchema.get("properties", {})
+    assert "project_dir" in _schema(init).get("properties", {})
 
 
 @pytest.mark.asyncio
 async def test_analyze_tool_has_sbom_param(tools) -> None:
     analyze = next(t for t in tools if t.name == "nuguard_analyze")
-    assert "sbom" in analyze.inputSchema.get("properties", {})
+    assert "sbom" in _schema(analyze).get("properties", {})
 
 
 @pytest.mark.asyncio
 async def test_redteam_tool_has_profile_param(tools) -> None:
     redteam = next(t for t in tools if t.name == "nuguard_redteam")
-    assert "profile" in redteam.inputSchema.get("properties", {})
+    assert "profile" in _schema(redteam).get("properties", {})
 
 
 # ---------------------------------------------------------------------------

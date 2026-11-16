@@ -6,7 +6,10 @@ import json
 import os
 from typing import Annotated
 
-from mcp.server.fastmcp import FastMCP
+try:  # mcp >= 2: FastMCP was renamed to MCPServer
+    from mcp.server.mcpserver import MCPServer as FastMCP
+except ImportError:  # mcp 1.x
+    from mcp.server.fastmcp import FastMCP  # type: ignore[no-redef,attr-defined]
 
 from nuguard.mcp._runner import (
     RunResult,

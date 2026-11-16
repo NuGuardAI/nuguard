@@ -86,7 +86,7 @@ def detect_hitl_bypass_violations(
             trigger,
         )
         tool_names = [
-            str(tc.get("name") or (tc.get("function") or {}).get("name") or "unknown")
+            str(tc.get("name") or (tc.get("function") or {}).get("name") or tc.get("tool") or tc.get("tool_name") or "unknown")
             for tc in tool_calls
         ]
         violations.append(
@@ -127,7 +127,7 @@ def _check_tool_conditions(
         return violations
 
     executed_tool_names = [
-        str(tc.get("name") or (tc.get("function") or {}).get("name") or "unknown")
+        str(tc.get("name") or (tc.get("function") or {}).get("name") or tc.get("tool") or tc.get("tool_name") or "unknown")
         for tc in tool_calls
     ]
 

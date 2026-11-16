@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+from typing import Any
 
 import httpx
 
@@ -70,3 +72,50 @@ def quota_exhausted_detail(status_code: int, body: str) -> str:
         "credentials are valid, but the test account has hit the app's plan/usage "
         "limit. Raise or reset the account's quota (e.g. upgrade its plan) and re-run."
     )
+
+
+CHAT_METHODS = frozenset({"GET", "POST", "PUT", "PATCH"})
+
+
+def resolve_chat_request(method: str | None, payload_in: str | None) -> tuple[str, str]:
+    """Normalise ``chat_method`` / ``chat_payload_in`` to ``(METHOD, "body" | "query")``.
+
+    Unknown methods fall back to POST. When *payload_in* is unset or unknown, GET
+    carries the payload in the query string and every other method in the body.
+    """
+    resolved = (method or "POST").upper()
+    if resolved not in CHAT_METHODS:
+        resolved = "POST"
+    if payload_in not in ("body", "query"):
+        payload_in = "query" if resolved == "GET" else "body"
+    return resolved, payload_in
+
+
+def to_query_params(body: Any) -> dict[str, Any]:
+    """Flatten a chat payload into query parameters (``chat_payload_in: query``).
+
+    Scalars become strings, booleans become ``true``/``false``, lists of scalars
+    become repeated parameters, and anything nested is JSON-encoded. ``None``
+    values are dropped.
+    """
+    if not isinstance(body, dict):
+        return {}
+
+    def _scalar(value: Any) -> str:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        return str(value)
+
+    params: dict[str, Any] = {}
+    for key, value in body.items():
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple)) and all(
+            isinstance(v, (str, int, float, bool)) for v in value
+        ):
+            params[key] = [_scalar(v) for v in value]
+        elif isinstance(value, (str, int, float, bool)):
+            params[key] = _scalar(value)
+        else:
+            params[key] = json.dumps(value, default=str)
+    return params

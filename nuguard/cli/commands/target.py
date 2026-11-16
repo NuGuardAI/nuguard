@@ -278,6 +278,8 @@ async def _verify_async(
     chat_payload_list = getattr(cfg, "redteam_chat_payload_list", False)
     chat_response_key = getattr(cfg, "redteam_chat_response_key", "") or None
     chat_payload_extras = getattr(cfg, "redteam_chat_payload_extras", None) or {}
+    chat_method = getattr(cfg, "redteam_chat_method", "POST") or "POST"
+    chat_payload_in = getattr(cfg, "redteam_chat_payload_in", None)
     configured_fields: set[str] = getattr(cfg, "model_fields_set", set())
 
     if sbom_doc is not None:
@@ -339,6 +341,8 @@ async def _verify_async(
                 canary_config=canary_config,
                 config_path=config_path,
                 endpoint_explicit=bool(ep_configured) or keep_resolved,
+                chat_method=chat_method,
+                chat_payload_in=chat_payload_in,
                 payload_key_explicit=keep_resolved or "redteam_chat_payload_key" in configured_fields,
                 response_key_explicit="redteam_chat_response_key" in configured_fields,
                 endpoint_source_hint="probe" if keep_resolved else None,
@@ -392,6 +396,8 @@ async def _verify_async(
                 canary_config=canary_config,
                 config_path=config_path,
                 endpoint_explicit=bool(ep_configured),
+                chat_method=chat_method,
+                chat_payload_in=chat_payload_in,
                 browser_discovery=cfg.target_browser_discovery,
                 payload_key_explicit="redteam_chat_payload_key" in configured_fields,
                 response_key_explicit="redteam_chat_response_key" in configured_fields,
@@ -584,6 +590,8 @@ async def _run_pre_scan_discovery(
             auth_headers=session_cfg.effective_headers or None,
             sbom=sbom_doc,
             payload_extras=session_cfg.chat_payload_extras or None,
+            chat_method=session_cfg.chat_method,
+            chat_payload_in=session_cfg.chat_payload_in,
         )
         session = AttackSession(
             session_id="target-verify-discovery",

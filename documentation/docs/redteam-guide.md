@@ -56,6 +56,7 @@ nuguard redteam --config nuguard.yaml --sbom app.sbom.json \
 
 - Target URL and endpoint — `target.url`, `target.endpoint` (omit the endpoint for authenticated live discovery)
 - Request/response payload shape — `redteam.chat_payload_key` / `chat_response_key` / `chat_payload_extras` if your app doesn't use `{"message": "..."}` / `{"response": "..."}`
+- GET chat endpoints — set `chat_method: GET` (under `target:`, or `redteam:` / `behavior:`) and send the message in the query string with a `chat_payload_extras` template, for example `GET /agent?sessionId=...&userMessage=...` with `sessionId: "{{session_id}}"` and `userMessage: "{{message}}"`. A `text/plain` reply is used as the reply text. See `nuguard.yaml.example`.
 
 Explicit payload settings take precedence over SBOM metadata and cached discovery, including `chat_payload_key: message` and `chat_payload_list: false`. Omit these fields to let NuGuard discover the payload shape. The same rule applies to shared `target:` settings and explicitly supplied `RedteamRunRequest` fields.
 - Auth — `target.auth`: `bearer`, `api_key`, `basic`, `login_flow`, or `cookie_file` (a captured session cookie — see below)
@@ -367,6 +368,13 @@ Catalog coverage uses the current ScenarioCategory taxonomy as its denominator
 and counts each recognized category once. Unrecognized categories in older
 serialized snapshots are reported separately and do not inflate coverage.
 Catalog generation coverage is not proof that scenarios executed successfully.
+
+Run coverage separates execution from objective evaluation. Scenarios skipped as
+similar to one already run (`similar_miss`) are not counted as untested eligible
+scenarios, and the JSON report carries a `coverage` block with per-scenario outcomes.
+The engagement guard judges target health only from chat-routed steps. Failing
+auxiliary REST endpoints no longer trip it; scenarios skipped after it does trip
+are reported as `not_engaged`, not `circuit breaker open`.
 
 These safeguards improve remediation and coverage consistency. They do not
 change exploit-success evaluation or independently verify the underlying

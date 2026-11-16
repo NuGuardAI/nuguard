@@ -1,0 +1,82 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: copilot
+      POSTGRES_USER: copilot
+      POSTGRES_PASSWORD: copilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - copilot-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U copilot -d copilot"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  mcp:
+    build:
+      context: .
+      dockerfile: deployments/api.Dockerfile
+    command: ["/app/mcp-server"]
+    environment:
+      APP_MODE: mock
+      MCP_ADDR: :8090
+      DATABASE_URL: postgres://copilot:copilot@db:5432/copilot?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8090/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: deployments/api.Dockerfile
+    environment:
+      APP_MODE: ${APP_MODE:-mock}
+      HTTP_ADDR: :8080
+      DATABASE_URL: postgres://copilot:copilot@db:5432/copilot?sslmode=disable
+      MCP_URL: http://mcp:8090/mcp
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_NAME: ${MODEL_NAME:-gpt-4.1-mini}
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-local}
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      mcp:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: deployments/web.Dockerfile
+      args:
+        API_ORIGIN: http://api:8080
+    environment:
+      API_ORIGIN: http://api:8080
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  copilot-db:

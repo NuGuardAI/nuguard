@@ -259,16 +259,17 @@ class DataClassificationPythonAdapter(FrameworkAdapter):
                 elif isinstance(b, ast.Attribute):
                     base_names.add(b.attr)
 
-            is_model = bool(base_names & (_PYDANTIC_BASES | _SQLALCHEMY_BASES))
+            is_framework_model = bool(base_names & (_PYDANTIC_BASES | _SQLALCHEMY_BASES))
+            is_dataclass = False
 
             # Also accept @dataclass-decorated classes
             for dec in node.decorator_list:
                 if isinstance(dec, ast.Name) and dec.id in _DATACLASS_DECS:
-                    is_model = True
+                    is_dataclass = True
                 elif isinstance(dec, ast.Attribute) and dec.attr in _DATACLASS_DECS:
-                    is_model = True
+                    is_dataclass = True
 
-            if not is_model:
+            if not (is_framework_model or is_dataclass):
                 continue
 
             # Collect field names from annotated assignments and plain assignments
@@ -283,6 +284,13 @@ class DataClassificationPythonAdapter(FrameworkAdapter):
 
             classified = classify_fields(field_names)
             if not classified:
+                continue
+            if (
+                is_dataclass
+                and not is_framework_model
+                and len(classified) == 1
+                and next(iter(classified)).lower() == "name"
+            ):
                 continue
 
             all_labels = sorted({lbl for lbls in classified.values() for lbl in lbls})

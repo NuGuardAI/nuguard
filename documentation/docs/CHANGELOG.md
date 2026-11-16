@@ -2,9 +2,40 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## v0.9.17 - 2026-11-16
+
+### Added
+- **Deep Agents detection:** The SBOM now detects Deep Agents assemblies, typed `SubAgent` mappings, and the flow between their components.
+- **Java chat models from configuration:** A chat model set in `application.properties` or `application.yml` is now recorded as a model, preserving the exact model name.
+- **Red-team coverage details:** The JSON report adds a `coverage` block with per-scenario outcomes, and coverage now separates execution from objective evaluation. See the [red-team guide](redteam-guide.md#remediation-priority-and-coverage-integrity).
+
+### Changed
+- **MCP 2.x support:** The `mcp` and `smithery` extras and the dev group accept `mcp>=1.0,<3`. The MCP server imports `MCPServer` (renamed from `FastMCP` in mcp 2.x) and falls back to the 1.x path, so both major versions work.
+- **JVM test sources skipped:** `src/test` trees are excluded from SBOM generation by default. See [JVM source-file selection](sbom-schema.md#jvm-source-file-selection).
+- **Spring Boot managed versions:** Maven dependencies whose versions come from the Spring Boot BOM are resolved, and OSV lookups are skipped for dependencies with no version.
+
+### Improved
+- **Go detection:** Go 1.22 `ServeMux` patterns (`"POST /x"`, `"GET host/x/{id}"`) yield the real method, host and path; `net/http` and `chi` endpoints infer auth from auth-named handler wrappers; Eino `adk.NewChatModelAgent` produces an agent with its model, prompt and tools; `mcp-go` tools are marked high-privilege from destructive hints or write-verb names; `*_test.go` files count as test evidence.
+- **C# detection:** Every Minimal API and controller route is emitted, with `MapGroup` prefixes and `RequireAuthorization`/`AllowAnonymous` resolved across nested groups and files. Web SDK implicit usings are honoured, `AddAuthentication().AddJwtBearer()` becomes one JWT auth node, and Semantic Kernel produces one agent per `ChatCompletionAgent` with endpoints linked to the agents they reach. The C# datastore and prompt adapters, previously never registered, now run.
+- **Java Semgrep/Opengrep rules:** Rules match Spring MVC inputs and `@AiService` calls.
+- **Tracing and model false positives:** Active tracing instrumentation is recognised; pricing-only, encoded and test-only model and runtime evidence is ignored; PII is scoped to matching datastores, and name-only dataclasses no longer imply PII.
+
+### Fixed
+- **Secrets in SBOM output:** Prompt and agent content is redacted for every language, C# datastore connection strings keep only scheme, host and port, and credential literals in Go and TypeScript `AUTH` snippets (including Azure AI agent credentials) are redacted (#725, #733).
+- **Behavior runs crashing on tool calls:** Target tool calls were stored as canary hits, so any target returning tool calls failed with a validation error and ran zero scenarios, and string tool calls could be reported as "Canary data disclosure". They are now recorded as tool calls and passed to policy checks.
+- **Red-team engagement guard:** REST-only steps no longer count toward the guard, so broken auxiliary endpoints cannot abort an assessment whose chat endpoint is healthy. Skipped scenarios report `not_engaged`.
+- **Red-team payload generation:** LLM payload generation honours the concurrency limit, and explicit default `redteam` payload settings are preserved.
+- **Chat probing:** Configured chat payload templates are rendered during probing, and session-changing routes are skipped during endpoint liveness checks.
+- **`pip install nuguard[mcp]`:** The MCP server could not start when mcp 2.x was resolved. It now runs on mcp 1.x and 2.x (see Changed).
+
+### Compatibility
+- Opengrep is now the source scanner used by the rule tests in CI. Install it as a standalone binary (it has no Python dependencies); see [scanner setup](static-analysis-guide.md#2-the-rest-of-the-software-infrastructure). `semgrep` remains a fallback.
+- Secret redaction can change prompt text in the SBOM and CycloneDX output when a prompt contained a credential.
+
 ## v0.9.16 - 2026-10-04
 
 ### Added
+- **GET chat endpoints:** `chat_method: GET` (under `target:`, `redteam:` or `behavior:`) sends chat turns as a GET request with the payload in the query string (`chat_payload_in: query`, the default for GET), using the same `{{message}}` / `{{session_id}}` templating as `chat_payload_extras`. `text/plain` replies are accepted. Auth bootstrap, `nuguard target verify`, behavior and red-team runs all use the configured method, and an explicitly configured GET endpoint is no longer probed with POST requests.
 - **Deeper dependency and secret scanning:** Static analysis now includes pip-audit for resolved Python dependencies, including transitive packages, and Gitleaks for hardcoded secrets with redacted values. Both run when installed; disable with `--no-pip-audit` or `--no-gitleaks`. See [scanner setup and coverage](static-analysis-guide.md#2-the-rest-of-the-software-infrastructure).
 - **Red-team campaign mode (opt-in):** `redteam.mode: campaign` (or `nuguard redteam --mode campaign`) reuses conversations across related attacks instead of opening a fresh session per scenario, schedules one representative attempt per control before expanding techniques, cools down `429`/5xx retries outside the request path, and reproduces each finding in a brand-new conversation (`confirmed`, `not_reproduced`, `blocked`, `not_attempted`). Objectives that need a second account, a callback server, or a declared dry-run/sandbox fixture are reported as blocked instead of running. Reports add coverage-quality and efficiency sections and mark a no-findings run with untested controls as inconclusive. `concurrent` and `progressive` are unchanged. See the [red-team guide](redteam-guide.md#campaign-mode-opt-in).
 - **Red-team API endpoint scoping:** For apps with many API endpoints the redteam LLM now picks the relevant endpoints for each direct-HTTP probe (JWT tampering, reflected XSS, injection, IDOR, and so on), and the `ci` profile spot-checks three endpoints. Rate-limit tests are classified as destructive and the `ci` profile no longer runs destructive scenarios. Tune with `redteam.api_endpoint_threshold` and `redteam.ci_api_spot_checks`.
@@ -27,6 +58,7 @@ Major product and documentation changes for NuGuard users. See the linked guides
 - **Dockerfile and nginx detection:** `Dockerfile.*` variants are scanned, and `proxy_pass` on the same line as a `location` block is detected.
 
 ### Fixed
+- **GET endpoints with required query parameters (#653):** The endpoint liveness check now sends placeholder values for the required query parameters recorded in the SBOM and treats a 400/422 returned for them as a live route. GET chat endpoints such as `/customerSupportAgent?sessionId=...&userMessage=...` are no longer marked non-operational and skipped.
 - **Fresh install crash:** `nuguard --help` and every command failed with `ModuleNotFoundError: No module named 'cryptography'` on installs without the `secrets` extra, because the pentest engine imports `cryptography` at startup. `cryptography` is now a core dependency, and the CycloneDX exporter's `cyclonedx-python-lib` is declared explicitly rather than arriving transitively.
 - **Defence regressions no longer fail safe confirmation requests (#655):** A regression can now set `expect: no_action`, which passes when the app refuses or asks for the missing confirmation or details and reports no state-changing tool call, instead of requiring a refusal. Failing findings carry wording and a fixed remediation patch that match the configured expectation rather than an LLM rewrite of the app's own reply, and an unknown `expect` value skips that entry with a warning instead of raising.
 - **Collapsed chat discovery (#628):** Browser fallback opens recognized chat widgets before interacting with visible, enabled, editable inputs. Configurable opener selectors and bounded readiness waits are shared by verification, behavior, and redteam. Background requests are ignored unless they contain the probe message; UI failures produce discovery notes without confirming an endpoint.

@@ -59,8 +59,9 @@ To settle R5, the next run writes a per-turn transcript to `reports/logs/shim.lo
   all during endpoint detection; none during the real scenarios). Two observations in one: a NuGuard
   probe detail, and the example app turns any user message containing `{{x}}` into a 500.
 - `No redteam.canary tenant with a session_token is configured`: expected, the app has no authentication.
-- The CI result of the `prepublish-sanity.sh` gate on a fork PR (green with `aborted_target_unavailable`)
-  is tracked by the maintainers in #651.
+- Fork CI now uses a deterministic local OpenAI-compatible stub for the application when provider
+  credentials are unavailable. That path verifies transport and report gates; the live Azure path
+  remains the source for the security findings documented above.
 
 ## Hypotheses from EXPECTED_SBOM.md
 

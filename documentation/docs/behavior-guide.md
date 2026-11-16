@@ -16,6 +16,7 @@ Behavior testing needs a live target — point `nuguard init` at your running ap
 
 - Target URL and endpoint — `target.url`, `target.endpoint` (default: auto-discovered from SBOM, fallback `/chat`)
 - Request/response payload shape — `chat_payload_key` / `chat_response_key` / `chat_payload_extras` if your app doesn't use `{"message": "..."}` / `{"response": "..."}`
+- GET chat endpoints — set `chat_method: GET` (under `target:`, or `redteam:` / `behavior:`) and send the message in the query string with a `chat_payload_extras` template, for example `GET /agent?sessionId=...&userMessage=...` with `sessionId: "{{session_id}}"` and `userMessage: "{{message}}"`. A `text/plain` reply is used as the reply text. See `nuguard.yaml.example`.
 - Auth — `target.auth`: `bearer`, `api_key`, `basic`, `login_flow`, or `cookie_file` (a captured session cookie — see below)
 - Custom session headers — `target.headers` applies during endpoint discovery, authentication bootstrap, and scenario requests. For CSRF-protected apps, supply the session cookie and its matching CSRF header through environment variables; identity auth headers take precedence. Refresh the pair when the target rotates or expires the session.
 - Endpoint liveness checks skip logout/session-invalidation routes and declared mutations, including routes exposed with GET, HEAD, or OPTIONS. Skipped endpoints remain unverified rather than being marked operational.

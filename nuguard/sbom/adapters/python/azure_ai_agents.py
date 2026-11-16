@@ -57,7 +57,7 @@ _CREDENTIAL_CLASSES = {
 }
 
 # Env-var / string kwargs that commonly hold the agent model name
-_MODEL_KWARGS = {"model", "deployment_name", "model_deployment_name", "ai_model_id"}
+_MODEL_KWARGS = ("model", "deployment_name", "model_deployment_name", "ai_model_id")
 _AGENT_NAME_KWARGS = {"name", "agent_name"}
 
 
@@ -159,9 +159,11 @@ class AzureAIAgentsAdapter(FrameworkAdapter):
                     agent_name = _clean(call.assigned_to or "enterprise_agent")
 
                 model = ""
+                model_argument: str | None = None
                 for kw in _MODEL_KWARGS:
                     model = _clean((call.args or {}).get(kw, ""))
                     if model:
+                        model_argument = kw
                         break
 
                 instructions = _clean((call.args or {}).get("instructions", ""))
@@ -201,6 +203,8 @@ class AzureAIAgentsAdapter(FrameworkAdapter):
                             line=call.line,
                             snippet=f"{call.receiver}.{call.function_name}(model={model!r})",
                             evidence_kind="ast_method_call",
+                            source_call=call,
+                            source_model_argument=model_argument,
                         )
                     )
 

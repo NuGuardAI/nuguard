@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,6 +19,9 @@ class AdapterMatch:
     line: int
     snippet: str
     groups: dict[str, str] = field(default_factory=dict)
+    column: int | None = None
+    end_line: int | None = None
+    end_column: int | None = None
 
 
 @dataclass(frozen=True)
@@ -75,11 +78,20 @@ class RegexAdapter(DetectionAdapter):
         for pattern in self.patterns:
             for match in pattern.finditer(content):
                 line = bisect_right(newline_offsets, match.start()) + 1
+                line_start = newline_offsets[line - 2] + 1 if line > 1 else 0
+                # ``match.end()`` is exclusive.  A token ending immediately
+                # before a newline therefore still ends on the current line;
+                # only newlines strictly before the exclusive endpoint count.
+                end_line = bisect_left(newline_offsets, match.end()) + 1
+                end_line_start = newline_offsets[end_line - 2] + 1 if end_line > 1 else 0
                 all_matches.append(
                     AdapterMatch(
                         pattern=pattern.pattern,
                         line=line,
                         snippet=match.group(0)[:120],
+                        column=match.start() - line_start + 1,
+                        end_line=end_line,
+                        end_column=match.end() - end_line_start + 1,
                         groups={k: v for k, v in match.groupdict().items() if v is not None},
                     )
                 )
@@ -144,6 +156,16 @@ class ComponentDetection:
     source_tier: str = "code"
     # Relationships to other components detected in the same pass
     relationships: list[RelationshipHint] = field(default_factory=list)
+    # Location and internal Python MODEL provenance are appended after every
+    # pre-existing field so positional third-party adapter constructors remain
+    # backward compatible.
+    column: int | None = None
+    end_line: int | None = None
+    end_column: int | None = None
+    source_call: Any | None = field(default=None, repr=False, compare=False)
+    source_model_argument: str | int | tuple[str | int, ...] | None = field(
+        default=None, repr=False, compare=False
+    )
 
 
 class FrameworkAdapter:

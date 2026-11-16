@@ -35,6 +35,8 @@ APP_RUNS=(
   "gemini-auto|tests/apps/Gemini-Auto-app/nuguard.prepublish.yaml|tests/apps/Gemini-Auto-app/gemini-auto.sbom.json|tests/apps/Gemini-Auto-app/reports/gemini-auto-prepublish-behavior|tests/apps/Gemini-Auto-app/reports/gemini-auto-prepublish-redteam|/api/agent/chat"
   "pinnacle-bank|tests/apps/pinnacle-bank-app/nuguard-azure.prepublish.yaml|tests/apps/pinnacle-bank-app/pinnacle-bank.sbom.json|tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-behavior|tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-redteam|/api/chat"
   "customer-support|tests/apps/java/customer-support-agent-example/nuguard.prepublish.yaml|tests/apps/java/customer-support-agent-example/customer-support-agent.sbom.json|tests/apps/java/customer-support-agent-example/reports/customer-support-prepublish-behavior|tests/apps/java/customer-support-agent-example/reports/customer-support-prepublish-redteam|/chat"
+  "go-support|tests/apps/go/eino-support-copilot/nuguard.prepublish.yaml|tests/apps/go/eino-support-copilot/eino-support-copilot.sbom.json|tests/apps/go/eino-support-copilot/reports/go-support-prepublish-behavior|tests/apps/go/eino-support-copilot/reports/go-support-prepublish-redteam|/chat"
+  "csharp-banking|tests/apps/csharp/banking-multi-agent-copilot/nuguard.prepublish.yaml|tests/apps/csharp/banking-multi-agent-copilot/banking-multi-agent-copilot.sbom.json|tests/apps/csharp/banking-multi-agent-copilot/reports/csharp-banking-prepublish-behavior|tests/apps/csharp/banking-multi-agent-copilot/reports/csharp-banking-prepublish-redteam|/chat"
 )
 
 # Optional first argument restricts the run to a single app (matching the
@@ -133,6 +135,10 @@ for entry in "${APP_RUNS[@]}"; do
   echo "[APP] ${name}"
   app_start="$(date +%s)"
 
+  # Do not let reports from an earlier invocation satisfy this run's gates.
+  rm -f -- "${behavior_base}.json" "${behavior_base}.md" \
+    "${redteam_base}.json" "${redteam_base}.md"
+
   # SBOM generation is expected to be strictly successful.
   run_with_allowed_rc "${name}: sbom" "0" \
     uv run nuguard sbom generate \
@@ -188,7 +194,10 @@ effective = str(data.get("effective_endpoint") or "")
 if expected and effective and effective != expected:
   raise SystemExit(f"behavior_effective_endpoint_mismatch:{effective}!={expected}")
 
-outcome = str(data.get("scan_outcome") or "unknown")
+outcome = str(data.get("scan_outcome") or "unknown").strip().lower()
+# Counts and bare chain-stop traces cannot override a run-level health abort.
+if outcome.startswith("aborted") or outcome == "inconclusive_target_errors":
+    raise SystemExit(f"behavior_scan_outcome_not_live:{outcome}")
 print(f"outcome={outcome};scenarios={executed};endpoint_source={source or 'unknown'};effective_endpoint={effective or 'unknown'}")
 PY
 )"; then
@@ -212,9 +221,10 @@ if not path.exists() or path.stat().st_size == 0:
     raise SystemExit(f"missing_or_empty_report:{path}")
 
 data = json.loads(path.read_text(encoding="utf-8"))
-outcome = str(data.get("scan_outcome") or "unknown")
-if outcome == "inconclusive_target_errors":
-    raise SystemExit("redteam_inconclusive_target_errors")
+outcome = str(data.get("scan_outcome") or "unknown").strip().lower()
+# Counts and bare chain-stop traces cannot override a run-level health abort.
+if outcome.startswith("aborted") or outcome == "inconclusive_target_errors":
+    raise SystemExit(f"redteam_scan_outcome_not_live:{outcome}")
 
 meta = data.get("_meta") or {}
 source = str(meta.get("target_endpoint_source") or "").lower()

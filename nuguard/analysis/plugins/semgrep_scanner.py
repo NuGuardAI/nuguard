@@ -43,23 +43,62 @@ Config keys
 from __future__ import annotations
 
 import shutil
+import tempfile
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
+from nuguard.analysis.plugins.java_aiservice import (
+    find_ai_service_interfaces,
+    write_augmented_java_rules,
+)
 from nuguard.analysis.plugins.scanner_runtime import collect_sbom_source_paths, run_scanner
 from nuguard.common.logging import get_logger
 
 _log = get_logger("analysis.plugins.semgrep")
 
+_JAVA_RULES = Path(__file__).parent / "semgrep_rules" / "java-ai-security.yaml"
+
 # Bundled rulesets: AI/LLM patterns for Python/Go and Java, plus classic
 # non-AI vulnerability classes for JavaScript/TypeScript.
 _BUNDLED_RULES: list[Path] = [
     Path(__file__).parent / "semgrep_rules" / "ai-security.yaml",
-    Path(__file__).parent / "semgrep_rules" / "java-ai-security.yaml",
+    _JAVA_RULES,
     Path(__file__).parent / "semgrep_rules" / "generic-security.yaml",
 ]
+
+
+def _with_ai_service_sinks(
+    rule_files: list[str], src_paths: Iterable[str], directory: Path
+) -> list[str]:
+    """Swap the bundled Java rules for a copy with typed sinks for ``@AiService`` interfaces.
+
+    Semgrep sees one file at a time, so a controller calling an ``@AiService`` interface
+    declared elsewhere is only recognisable once the interface names are known.
+    """
+    interfaces = find_ai_service_interfaces(src_paths)
+    if not interfaces:
+        return rule_files
+    _log.info("semgrep: typed sinks for AI service interface(s): %s", ", ".join(interfaces))
+    augmented = str(write_augmented_java_rules(_JAVA_RULES, interfaces, directory))
+    return [augmented if rule == str(_JAVA_RULES) else rule for rule in rule_files]
+
+
+def _restore_rule_prefix(findings: list[Any], directory: Path) -> None:
+    """Give rule ids from the augmented ruleset the same prefix as the bundled rules.
+
+    Semgrep prefixes a rule id with the dotted directory of its rules file. The augmented
+    copy lives in a random temp directory, which would change every finding id on each run.
+    """
+    parts = _JAVA_RULES.parent.parts
+    bundled = ".".join(parts[1:] if parts and parts[0] == _JAVA_RULES.anchor else parts)
+    for finding in findings:
+        head, _, rule = str(finding.get("rule_id", "")).rpartition(".")
+        if directory.name in head:
+            finding["rule_id"] = f"{bundled}.{rule}"
+
 
 # Semgrep severity → nuguard severity label
 _SEV_MAP: dict[str, str] = {
@@ -128,13 +167,19 @@ class SemgrepScannerPlugin(AnalysisPlugin):
                 return AnalysisResult(status="error", plugin=self.name, message="Additional Semgrep rules path does not exist")
             rule_files.append(str(extra_rules))
 
-        result = run_scanner(
-            self.name, src_paths,
-            lambda path: _semgrep_command(binary, path, rule_files, config.get("semgrep_exclude_tests", True)),
-            _parse_semgrep_output,
-            timeout=config.get("semgrep_timeout", 120.0),
-            total_timeout=config.get("semgrep_total_timeout", 300.0),
-        )
+        with tempfile.TemporaryDirectory(prefix="nuguard-semgrep-") as tmp:
+            scan_rules = _with_ai_service_sinks(rule_files, src_paths, Path(tmp))
+            result = run_scanner(
+                self.name,
+                src_paths,
+                lambda path: _semgrep_command(
+                    binary, path, scan_rules, config.get("semgrep_exclude_tests", True)
+                ),
+                _parse_semgrep_output,
+                timeout=config.get("semgrep_timeout", 120.0),
+                total_timeout=config.get("semgrep_total_timeout", 300.0),
+            )
+            _restore_rule_prefix(result.findings, Path(tmp))
         result.details["paths_scanned"] = result.details.get("scanned_paths", [])
         result.details["rule_files"] = rule_files
         result.details["engine"] = engine

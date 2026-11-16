@@ -2,8 +2,7 @@
 
 Covers:
   TestHintCanonicalization  — colon-canonical hints resolve to Edge objects
-  TestAgentModelFallback    — AGENT→MODEL USES even when agent has CALLS tool edges
-  TestAgentToolFallback     — AGENT→TOOL CALLS fires when no explicit tool edges
+  TestAgentModelHints       - only hinted agents receive model dependencies
   TestFrameworkAgentFallback — FRAMEWORK→AGENT CALLS via metadata.framework
   TestFrameworkToolFallback  — FRAMEWORK→TOOL CALLS via metadata.framework
   TestAgentDatastoreTransitive — AGENT→DATASTORE via CALLS→TOOL→ACCESSES chain
@@ -131,11 +130,15 @@ class TestLangGraphFixture:
         agent_to_model = [e for e in uses_edges if e.target in model_ids]
         assert agent_to_model, "Expected AGENT -[USES]-> MODEL edges"
 
-    def test_agent_calls_tool_edges(self, doc) -> None:
-        calls_edges = _edges_by_rel(doc, RelationshipType.CALLS)
+    def test_agent_tool_edges_are_not_repository_fallbacks(self, doc) -> None:
+        agent_ids = _node_ids(doc, ComponentType.AGENT)
         tool_ids = _node_ids(doc, ComponentType.TOOL)
-        agent_to_tool = [e for e in calls_edges if e.target in tool_ids]
-        assert agent_to_tool, "Expected AGENT -[CALLS]-> TOOL edges"
+        assert tool_ids
+        agent_to_tool = [
+            edge for edge in _edges_by_rel(doc, RelationshipType.CALLS)
+            if edge.source in agent_ids and edge.target in tool_ids
+        ]
+        assert all(edge.derivation == "hint" for edge in agent_to_tool)
 
     def test_all_edge_nodes_exist(self, doc) -> None:
         all_ids = {n.id for n in doc.nodes}
@@ -194,52 +197,22 @@ class TestFrameworkAgentFallback:
 
 
 # ---------------------------------------------------------------------------
-# AGENT → MODEL USES fallback: fires even when agent has tool edges
+# AGENT -> MODEL relationships come from adapter hints, not missing-edge filling.
 # ---------------------------------------------------------------------------
 
 
-class TestAgentModelFallback:
-    """Agent→Model USES edges are present even for agents that already have tool edges."""
-
-    @pytest.fixture(scope="class")
-    def doc(self):
-        return extract(_LANGGRAPH_FIXTURE)
-
-    def test_agents_with_tool_edges_still_have_model_edges(self, doc) -> None:
-        calls_edges = _edges_by_rel(doc, RelationshipType.CALLS)
-        uses_edges = _edges_by_rel(doc, RelationshipType.USES)
-        tool_ids = _node_ids(doc, ComponentType.TOOL)
+class TestAgentModelHints:
+    def test_only_hinted_langgraph_agents_receive_model_edges(self) -> None:
+        doc = extract(_LANGGRAPH_FIXTURE)
+        agent_ids = _node_ids(doc, ComponentType.AGENT)
         model_ids = _node_ids(doc, ComponentType.MODEL)
-
-        agents_with_tool_edges = {e.source for e in calls_edges if e.target in tool_ids}
-        agents_with_model_edges = {e.source for e in uses_edges if e.target in model_ids}
-
-        # At least some agent that has tool edges should also have model edges
-        overlap = agents_with_tool_edges & agents_with_model_edges
-        assert overlap, (
-            "Expected agents with CALLS-tool edges to also have USES-model edges; "
-            f"tool-edge agents={agents_with_tool_edges}, model-edge agents={agents_with_model_edges}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# AGENT → TOOL CALLS fallback: fires when no explicit tool hints
-# ---------------------------------------------------------------------------
-
-
-class TestAgentToolFallback:
-    """When no explicit CALLS hints exist, fallback connects agents to tools."""
-
-    @pytest.fixture(scope="class")
-    def doc(self):
-        return extract(_LANGGRAPH_FIXTURE)
-
-    def test_agent_to_tool_edges_present(self, doc) -> None:
-        calls_edges = _edges_by_rel(doc, RelationshipType.CALLS)
-        tool_ids = _node_ids(doc, ComponentType.TOOL)
-        assert any(e.target in tool_ids for e in calls_edges), (
-            "Expected AGENT -[CALLS]-> TOOL edges from fallback or hints"
-        )
+        agent_to_model = [
+            edge for edge in _edges_by_rel(doc, RelationshipType.USES)
+            if edge.source in agent_ids and edge.target in model_ids
+        ]
+        by_id = {node.id: node for node in doc.nodes}
+        assert {by_id[edge.source].name for edge in agent_to_model} == {"Researcher", "Writer"}
+        assert all(edge.derivation == "hint" and edge.confidence is None for edge in agent_to_model)
 
 
 # ---------------------------------------------------------------------------

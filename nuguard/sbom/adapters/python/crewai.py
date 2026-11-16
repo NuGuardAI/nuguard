@@ -62,7 +62,10 @@ class CrewAIAdapter(FrameworkAdapter):
                 )
                 goal = _clean(args.get("goal", ""))
                 backstory = _clean(args.get("backstory", ""))
-                llm_ref = _clean(args.get("llm") or args.get("llm_config"))
+                model_argument = next(
+                    (key for key in ("llm", "llm_config") if args.get(key)), None
+                )
+                llm_ref = _clean(args.get(model_argument)) if model_argument else ""
                 tools_raw = args.get("tools", [])
 
                 canon = canonicalize_text(f"crewai:{agent_name}")
@@ -100,6 +103,8 @@ class CrewAIAdapter(FrameworkAdapter):
                             line=inst.line,
                             snippet=f"Agent(llm={llm_ref!r})",
                             evidence_kind="ast_instantiation",
+                            source_call=inst,
+                            source_model_argument=model_argument,
                         )
                     )
 
