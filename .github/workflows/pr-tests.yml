@@ -212,11 +212,20 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev --extra mcp
 
-      # Semgrep is an optional runtime scanner dependency, but Go rule-behaviour
-      # tests need the executable. Pin the version used for local validation so
-      # CI does not silently drift onto an incompatible Semgrep release.
-      - name: Install Semgrep for rule-behaviour tests
-        run: uv pip install "semgrep==1.172.0"
+      # Opengrep is the preferred (optional) source scanner, and the Go/C#/Java
+      # rule-behaviour tests need the executable. Pin the version so CI does not
+      # silently drift onto an incompatible release.
+      - name: Install Opengrep for rule-behaviour tests
+        # Opengrep is a standalone binary (no Python deps), so it cannot clash
+        # with the project venv (semgrep pins opentelemetry 1.37.x, which breaks
+        # against opentelemetry-api>=1.45 required by mcp 2.x).
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/opengrep" \
+            https://github.com/opengrep/opengrep/releases/download/v1.33.1/opengrep_manylinux_x86
+          chmod +x "$HOME/.local/bin/opengrep"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          opengrep --version
 
       - name: Run package unit tests
         run: uv run pytest nuguard/ -q
@@ -247,8 +256,17 @@ jobs:
         run: uv sync --dev --extra mcp
 
       # Preserve the environment used by the former serial full-suite job.
-      - name: Install Semgrep for rule-behaviour tests
-        run: uv pip install "semgrep==1.172.0"
+      - name: Install Opengrep for rule-behaviour tests
+        # Opengrep is a standalone binary (no Python deps), so it cannot clash
+        # with the project venv (semgrep pins opentelemetry 1.37.x, which breaks
+        # against opentelemetry-api>=1.45 required by mcp 2.x).
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o "$HOME/.local/bin/opengrep" \
+            https://github.com/opengrep/opengrep/releases/download/v1.33.1/opengrep_manylinux_x86
+          chmod +x "$HOME/.local/bin/opengrep"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          opengrep --version
 
       - name: Run integration tests
         run: uv run pytest tests/ --ignore=tests/apps/contact-center-ai-samples -v
