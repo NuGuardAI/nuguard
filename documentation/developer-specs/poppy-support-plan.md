@@ -56,6 +56,28 @@ Add `GoalType` values and a scenario module `redteam/scenarios/poppy_attacks.py`
 - **Injection via Company content:** business-agent messages and `excluded_tasks.alternative.instructions` that try to act as user consent (spec 9.4, 10.1). Reuse the MCP poison server pattern.
 - **Handoff:** `/handoff` abuse, a human-impersonation `author.type`.
 - **Device/browser join:** CSRF on browser join, consent phishing via device code.
+- **Cross-user access:** with two signed-in test users, request the other user's orders, bookings or claims through APIs and MCP tools by swapping object IDs or User IDs. A Session alone must give no account access (spec 5.3, 10.7). This goes beyond the cross-user `sid` check above: it tests object-level authorization behind a valid token.
+- **Company-agent policy bypass:** prompt injection of the Company Agent conversation to get an outcome the Company's rules forbid (an ineligible refund, a waived fee, a skipped fraud check). This is the reverse direction of the Company-content family above: here the Personal Agent attacks the Company's agent.
+- **Business-flow abuse:** a correctly signed-in agent runs a sensitive flow at machine speed (scalping, return fraud, loyalty-point theft). Checks per-agent and per-customer limits, beyond the 429 check in 3.1.
+- **Fetch abuse (SSRF):** the Company has to fetch the agent-supplied `client_id` metadata document and `jwks_uri` (spec 4.1). Point them at loopback, private or link-local addresses and at redirects. Spec section 3 says a Company must not connect to such an address for a URL the other party gave it.
+- **Cross-Company replay:** client assertions, Session JWTs and tokens issued for one Company presented at another, including Companies on a shared host (spec 10.4).
+
+Scenario catalogue. IDs let findings, tests and issues refer to one family; "expected" is what a test asserts, and a finding is any departure from it. The mapping column is a proposal: `nuguard/common/control_mappings/` covers OWASP LLM, OWASP Agentic and ATLAS today, and has no OWASP API Security or RFC 9700 references yet.
+
+| ID | Family | Expected secure behavior | Basis | Proposed mapping |
+|---|---|---|---|---|
+| POPPY-01 | Approval bypass | An approval covers one revision of the terms; a retry never performs the action twice; changed terms need a new approval | `operations` extension | ASI03, ASI09 |
+| POPPY-02 | Consent and scope | No scope beyond those requested is granted; the consent page lists every scope it will grant | Spec 4.7, 10.8 | OWASP API5, ASI03 |
+| POPPY-03 | Session | The Session header is verified before its claims are relied on; a wrong `aud` is rejected | Spec 4.1, 5.2, 5.3 | ASI03 |
+| POPPY-04 | Injection via Company content | Company content never stands in for the User's approval | Spec 9.4, 10.1 | LLM01, ASI01 |
+| POPPY-05 | Handoff | Agent-supplied context is not treated as verified by staff | Spec 8.9; Company policy | ASI09 |
+| POPPY-06 | Device/browser join | Join codes are unguessable, single-use and bound to a cookie; consent is shown for every sign-in request | Spec 6, 10.6, 10.8 | RFC 9700 |
+| POPPY-07 | Cross-user access | Account data is returned only for the account the access token was issued for | Spec 5.3, 10.7 | OWASP API1 |
+| POPPY-08 | Company-agent policy bypass | Eligibility, refund and fraud rules are enforced outside the conversation and hold whatever the agent says | Company policy | LLM01, ASI01 |
+| POPPY-09 | Business-flow abuse | Per-agent and per-customer limits apply to agent traffic | Company policy; spec 5.6 | OWASP API6 |
+| POPPY-10 | Fetch abuse (SSRF) | No connection to a loopback, private or link-local address for an agent-supplied URL | Spec 3, 4.1 | OWASP API7 |
+| POPPY-11 | Cross-Company replay | A token or assertion collected by one Company is rejected by every other | Spec 10.4 | RFC 9700 |
+
 Safety: gate behind explicit scope config, no production target by default (the vendor kit validator itself starts real Sessions).
 
 ### 3.4 Happy-path behavior analysis (no offensive testing)
@@ -88,6 +110,14 @@ Add optional, backward-compatible sections to `CognitivePolicy` and `parse_polic
   - Secrets (tokens, private keys, device codes) logged or placed in LLM context (ties to the existing PII-to-LLM rules).
   - Company text or tool output forwarded to the model as instructions.
   - `poppy.json` served with a mismatched `organization.domain`.
+  - Fetching the agent-supplied `client_id` metadata document or `jwks_uri` with no block on loopback, private and link-local addresses (spec section 3; the static side of POPPY-10).
+
+### 3.8 Prerequisite for dynamic tests: acting as a Personal Agent
+The happy-path runs in 3.4 and the redteam families in 3.3 both need NuGuard to be a Personal Agent that a Company accepts. Build this once and share it:
+- **Identity:** a `client_id` that is an HTTPS URL serving a client metadata document, with a `jwks_uri` on the same domain (spec 4.1). For a local sandbox, the Company has to be configured on purpose to fetch a local URL, because of the private-address rule in spec section 3.
+- **Signing:** client assertions (`private_key_jwt`) and a per-request `Poppy-Session` JWT signed with a delegated key that a delegation of at most 24 hours vouches for (spec 4.1, 5.2).
+- **Sign-in:** Direct or Device Sign-In with test accounts, and at least two test users so cross-user tests (POPPY-07) are possible.
+- **Secret handling:** keys, tokens and JWTs stay out of LLM context and out of findings (spec 10.2; see Risks).
 
 ## 4. Delivery phases (revised after decisions)
 
@@ -96,7 +126,7 @@ Priority order from the user: AIBOM, then static rules, then validation. Everyth
 1. **Phase 1 - AIBOM (`sbom generate`):** `poppy.json` parser/models (in `nuguard/sbom/`), a JSON adapter for committed `poppy.json`, language adapters (Python, TypeScript, Go) detecting Poppy route handlers and `Poppy-Session` / `Poppy-Approval` handling, plus the missing TypeScript MCP adapter. Reuse existing node types with `framework=poppy` metadata and risk tags. Schema/doc sync. Fixtures taken from `authlete/poppy-company` (TypeScript, Stays module).
 2. **Phase 2 - Static rules (`analyze`, `behavior` static BA rules):** NGA/BA/Semgrep rules from 3.7 and the scope-hint-versus-behavior check from 3.4.
 3. **Phase 3 - Validation (conformance/authenticity from 3.2):** fold into `analyze` as a live-URL mode, or into the `pentest` template pack, to be decided at the start of the phase. Runs read-only (GET survey) against the sandbox targets below.
-4. **Later:** Policy sections (3.6), happy-path behavior (3.4), redteam families (3.3). Personal-agent (consumer) side comes after the site side.
+4. **Later:** Policy sections (3.6), happy-path behavior (3.4), redteam families (3.3). The dynamic work in 3.4 and 3.3 needs 3.8 first. Personal-agent (consumer) side comes after the site side.
 
 Each phase ships independently with tests (`uv run pytest`, `ruff`, `mypy`, `deptry`). Config keys go in `nuguard.yaml` and `nuguard.yaml.example`.
 
@@ -135,3 +165,5 @@ The authlete README also mentions a hosted `*.poppysandbox.dev` environment. I h
 
 - Where validation lives (an `analyze` live-URL mode versus the `pentest` template pack). Decide at the start of Phase 3.
 - Whether to read the unread extension pages and the kit validator source before Phase 1; I recommend yes for `browser-control`, `disclosures` and `links`, since they may add discovery surfaces.
+- Control mappings for the 3.3 catalogue: whether to add OWASP API Security Top 10 and RFC 9700 references to `nuguard/common/control_mappings/`, or map those families to the existing OWASP Agentic and LLM entries only.
+- Agent-initiated payments are not covered by this plan. Mastercard Agent Pay and Visa's Trusted Agent Protocol use Web Bot Auth (RFC 9421) so a merchant can verify a shopping agent, and the Poppy roadmap lists payments tied to an approved operation. The merchant-side checks overlap 3.1 and 3.3 enough that they may belong in a separate plan that reuses 3.8.
