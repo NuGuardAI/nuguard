@@ -120,7 +120,7 @@ _COMMUNITY_FIXTURE_NAME = "vulnerable.go"
 
 
 def _semgrep_binary() -> str | None:
-    return shutil.which("semgrep")
+    return shutil.which("opengrep") or shutil.which("semgrep")
 
 
 def _require_semgrep() -> None:

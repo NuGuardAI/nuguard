@@ -21,6 +21,7 @@ from typing import Any
 
 from ...core.go_parser import GoParseResult, parse_go
 from ...types import ComponentType
+from .._snippet_redaction import redact_code_snippet
 from ..base import ComponentDetection
 from ._go_base import GoFrameworkAdapter
 
@@ -74,7 +75,11 @@ class GoJWTAdapter(GoFrameworkAdapter):
                         },
                         file_path=file_path,
                         line=call.line,
-                        snippet=call.source_snippet or f"jwt.{call.function_name}(...)",
+                        snippet=redact_code_snippet(
+                            call.source_snippet or "",
+                            language="go",
+                            fallback=f"jwt.{call.function_name}(...)",
+                        ),
                         evidence_kind="ast_call",
                     )
                 ]
@@ -121,7 +126,11 @@ class GoOAuth2Adapter(GoFrameworkAdapter):
                         },
                         file_path=file_path,
                         line=inst.line,
-                        snippet=inst.source_snippet or "oauth2.Config{...}",
+                        snippet=redact_code_snippet(
+                            inst.source_snippet or "",
+                            language="go",
+                            fallback="oauth2.Config{...}",
+                        ),
                         evidence_kind="ast_instantiation",
                     )
                 ]
@@ -143,7 +152,11 @@ class GoOAuth2Adapter(GoFrameworkAdapter):
                         },
                         file_path=file_path,
                         line=call.line,
-                        snippet=call.source_snippet or "oauth2.NewClient(...)",
+                        snippet=redact_code_snippet(
+                            call.source_snippet or "",
+                            language="go",
+                            fallback="oauth2.NewClient(...)",
+                        ),
                         evidence_kind="ast_call",
                     )
                 ]

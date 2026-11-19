@@ -6,8 +6,8 @@ access required for the core pass. It looks at your application from two angles 
 1. **The AI stack itself** — agents, models, tools, prompts, guardrails, and the data/privilege
    paths between them — using 30 built-in structural rules purpose-built for AI/agentic systems.
 2. **The rest of the software infrastructure around it** — CI/CD pipelines, dependencies, IaC,
-   containers, secrets, and supply-chain integrity — using 27 more structural rules plus five
-   optional third-party scanners (OSV, Grype, Checkov, Trivy, Semgrep).
+   containers, secrets, and supply-chain integrity — using 27 more structural rules plus seven
+   optional third-party scanners (OSV, pip-audit, Gitleaks, Grype, Checkov, Trivy, Opengrep).
 
 Both dimensions produce the same normalized `Finding` model, mapped to OWASP and MITRE ATLAS, and
 rendered as Markdown, SARIF, JSON, or CSV.
@@ -70,7 +70,7 @@ MITRE ATLAS: AML.T0040, AML.T0000, AML.T0016
 
 ### 2. The rest of the software infrastructure
 
-27 more structural rules (`NGA-SC-001`–`NGA-SC-027`) — plus five optional third-party scanners —
+27 more structural rules (`NGA-SC-001`–`NGA-SC-027`) — plus seven optional third-party scanners —
 cover everything *around* the AI stack: the CI/CD pipeline that ships it, its dependencies, its
 IaC, and the containers it runs in. This is where a compromised build pipeline or a malicious
 package gets caught before it ever reaches the AI components above.
@@ -96,13 +96,46 @@ toggleable:
 | Scanner | Covers | Requires |
 |---|---|---|
 | OSV | Python/JS/Go dependency CVEs via [osv.dev](https://osv.dev) | Network access only, no binary |
+| pip-audit | Deep scan of Python dependencies as resolved by pip, including transitive packages, via OSV | `pip-audit` binary |
+| Gitleaks | Hardcoded secrets (cloud keys, tokens, private keys) in source; secret values are redacted in output | `gitleaks` binary |
 | Grype | Package + container image CVEs (NVD, GHSA, distro advisories) | `grype` binary on `PATH` |
 | Checkov | IaC misconfigurations — Terraform, CloudFormation, Bicep, Kubernetes | `checkov` binary |
 | Trivy | Container image / filesystem secrets and CVEs | `trivy` binary |
-| Semgrep | AI-security source patterns and code smells, via NuGuard's bundled rule pack | `semgrep` binary |
+| Opengrep (Semgrep fallback) | AI-security source patterns and code smells, via NuGuard's bundled rule pack | `opengrep` on PATH (or `semgrep` as fallback) |
 
-Every scanner that needs a binary is **skipped, not failed**, when that binary isn't installed —
-`nuguard analyze` always completes and the report's Tool Coverage table shows exactly what ran.
+Missing scanner binaries produce a `skipped` status. The report's **Tool Coverage** table shows
+what ran, what was skipped, and what failed; skipped checks leave gaps in coverage.
+
+**Opengrep replaces Semgrep as the preferred source-analysis engine.** NuGuard selects
+`opengrep` first and falls back to `semgrep` only when Opengrep is absent. Existing
+`--semgrep` / `--no-semgrep` flags, `semgrep_timeout` / `semgrep_total_timeout` settings,
+`enable_semgrep` API parameter, and the `semgrep` finding-source and tool-status keys remain
+compatible. The bundled rules work with either engine.
+
+Install the Python scanner tools with `pip install checkov pip-audit`. Install
+[Opengrep](https://github.com/opengrep/opengrep#installation) and
+[Gitleaks](https://github.com/gitleaks/gitleaks#installing) using their official instructions,
+and put their binaries on `PATH`.
+
+To turn off the new scans, use `--no-pip-audit` or `--no-gitleaks`. Both are enabled by default
+when their binaries and scan inputs are available. Scanner deadlines can be set under `analyze`
+in `nuguard.yaml`; see [the example configuration](https://github.com/NuGuardAI/nuguard/blob/develop/nuguard.yaml.example).
+
+Opengrep applies its default ignores when scanning a directory: paths under `tests/` and `test/`
+and paths excluded by `.gitignore` are not scanned. Semgrep also skips these for directory scans.
+Scan the source tree itself, not a copy placed under a `tests/` path, if its findings are needed.
+
+pip-audit reports no severity, so its findings are rated MEDIUM unless another scanner rates the
+same advisory. Advisories reported by several scanners under different IDs (for example OSV's
+`PYSEC-…` and Trivy's `CVE-…`, linked by the advisory's aliases) are merged into one finding. The
+report's **Recommended Actions** section lists one de-duplicated action per vulnerable component.
+
+Gitleaks runs `gitleaks dir` with `--redact`, so the matched secret never reaches NuGuard's output,
+JSON, or SARIF. Gitleaks reports no severity, so every leak is rated HIGH. Rotate the credential
+regardless of type, and purge it from git history if it was committed. Leaks under a directory named
+`test` or `tests` (relative to each source root) are excluded by default, since test fixtures often
+contain intentionally fake credentials. Other files under the source paths, including build artifacts,
+are still scanned; gitleaks does not read `.gitignore`.
 
 **Example finding** (`NGA-SC-004`, rendered Markdown):
 
@@ -145,13 +178,16 @@ assessment rolls up into a framework-level score.
 
 ## Findings, output, and exit codes
 
-Every finding — from NGA, NGA-SC, OSV, Grype, Checkov, Trivy, or Semgrep — normalizes into the
-same `Finding` model: `finding_id`, `title`, `severity`, `description`, `affected_component`,
+Every finding — from NGA, NGA-SC, OSV, pip-audit, Gitleaks, Grype, Checkov, Trivy, or
+Opengrep — normalizes into the same `Finding` model: `finding_id`, `title`, `severity`, `description`, `affected_component`,
 `remediation`, `references`, plus the OWASP/ATLAS fields above. Output formats: `markdown`
 (default, human review), `json` (automation), `sarif` (GitHub Code Scanning), `csv` (spreadsheets).
 
-Exit codes: `0` clean, `1` findings at or above `--fail-on` (default `high`), `2` analysis/SBOM
-error.
+Exit codes: `0` no findings at or above `--fail-on` (default `high`), `1` findings at or above
+that threshold, `2` analysis/SBOM
+error, including incomplete Checkov, Opengrep (or Semgrep fallback), or Gitleaks scans.
+Partial findings are retained when a scanner fails; review Tool Coverage before treating a run
+as complete.
 
 ### 📖 Need every flag?
 

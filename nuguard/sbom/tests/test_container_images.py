@@ -183,6 +183,31 @@ def test_dockerfile_variant_names_are_scanned_and_dockerignore_detected(tmp_path
     assert (app.id, base.id, "BUILT_FROM") in edge_types
 
 
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Dockerfile", True),
+        ("Dockerfile.dev", True),
+        ("Dockerfile-api", True),
+        ("api.dockerfile", True),
+        ("dockerfile.py", False),
+        ("dockerfile.ts", False),
+        ("Dockerfile.dockerignore", False),
+    ],
+)
+def test_is_dockerfile_name_excludes_source_files(name: str, expected: bool) -> None:
+    from nuguard.sbom.extractor.core import _is_dockerfile_name
+
+    assert _is_dockerfile_name(name) is expected
+
+
+def test_python_file_named_dockerfile_prefix_does_not_yield_image_nodes(tmp_path: Path) -> None:
+    (tmp_path / "dockerfile.py").write_text("from typing import Any\nfrom __future__ import annotations\n")
+    doc = AiSbomExtractor().extract_from_path(tmp_path, AiSbomConfig())
+    images = [n for n in doc.nodes if n.component_type == ComponentType.CONTAINER_IMAGE]
+    assert images == []
+
+
 # --------------------------------------------------------------------------- syft
 _SYFT_JSON = json.dumps(
     {

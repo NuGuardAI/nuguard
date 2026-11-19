@@ -58,21 +58,24 @@ from nuguard import __version__
 
 from .deps import PackageDep
 from .models import AiSbomDocument
+from .redaction import REDACTED, redact_secrets
 from .types import ComponentType
 
 # Maximum characters kept from a system prompt excerpt (rest is redacted).
 _SYSTEM_PROMPT_MAX_CHARS = 200
 
-# Regex that matches likely secrets / API keys in system prompt text.
+# Fallback for the excerpt: any 8+ character value after these prefixes,
+# kept so the excerpt is never redacted less than before the shared step.
 _SECRET_RE = re.compile(
-    r"(sk-|Bearer\s+|token\s*[:=]\s*|api[_-]?key\s*[:=]\s*|password\s*[:=]\s*)[^\s\"']{8,}",
+    r"(sk-|Bearer\s+|token\s*[:=]\s*|api[_-]?key\s*[:=]\s*|password\s*[:=]\s*)"
+    rf"(?!{re.escape(REDACTED)})[^\s\"']{{8,}}",
     re.IGNORECASE,
 )
 
 
 def _redact_system_prompt(text: str) -> str:
-    """Replace likely secret values with ``[REDACTED]``."""
-    return _SECRET_RE.sub(r"\1[REDACTED]", text)
+    """Replace likely secret values with ``<redacted>`` (shared SBOM redaction)."""
+    return _SECRET_RE.sub(rf"\1{REDACTED}", redact_secrets(text))
 
 
 # CycloneDX 1.6 `compositions.aggregate` values for NuGuard relationship types.
@@ -439,7 +442,7 @@ class AiSbomSerializer:
             # System prompt excerpt — redact sensitive-looking tokens
             system_prompt: str = extras.get("system_prompt") or ""
             if system_prompt:
-                excerpt = _redact_system_prompt(system_prompt[:_SYSTEM_PROMPT_MAX_CHARS])
+                excerpt = _redact_system_prompt(system_prompt)[:_SYSTEM_PROMPT_MAX_CHARS]
                 if len(system_prompt) > _SYSTEM_PROMPT_MAX_CHARS:
                     excerpt += " … [truncated]"
                 props.append({"name": "nuguard:system_prompt_excerpt", "value": excerpt})

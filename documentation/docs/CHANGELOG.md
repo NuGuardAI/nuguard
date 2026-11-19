@@ -2,13 +2,59 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
-## Unreleased - 2026-10-04
+## Unreleased
 
 ### Added
 - **Remote scan API (`nuguard serve`):** An optional HTTP job API (`pip install "nuguard[service]"`) that clones a GitHub repository with a per-request read-only token, generates the AI-SBOM, runs static analysis and returns a machine-readable result: per-tool coverage, a `succeeded`/`partial` status that never reports a tool that did not run as clean, stable `nf1_…` finding fingerprints, repo-relative locations, provenance (tool and rule-pack versions) and a reproducible `result_sha256`. Results are also available as SARIF, and the AI-SBOM as JSON, CycloneDX or Markdown. Each scan runs in its own worker process with an explicitly built environment, a hard timeout that kills the whole process tree, and a host-restricted, hardened clone; tokens are held in memory only. API keys are stored as SHA-256 digests. A container image is provided in `deploy/service/Dockerfile`. See the [Remote Scan API guide](remote-api.md).
-- **Typed tool coverage in analysis results:** `AnalysisRunResult.tool_runs` reports each tool as `ok`, `failed`, `skipped`, `disabled`, `not_applicable` or `timeout` with duration, version and a sanitized reason. `AnalysisRunRequest.offline` reports network tools as skipped instead of running them.
+- **Typed tool coverage in analysis results:** `AnalysisRunResult.tool_runs` reports each tool, including pip-audit and Gitleaks, as `ok`, `failed`, `skipped`, `disabled`, `not_applicable` or `timeout` with duration, version and a sanitized reason. `AnalysisRunRequest.offline` reports network tools (OSV, Grype, Trivy, pip-audit) as skipped instead of running them.
 - **Stable finding identity:** Findings carry `rule_id`, `source_tool`, `kind`, repo-relative `locations` and, for posture findings, `component_ref`.
 - **Authenticated, policy-constrained clones:** `SbomGenerateRequest.repo_token` authenticates `repo_url` clones without embedding the token in the URL, and `SbomGenerateResult.resolved_commit` reports the commit checked out. `AiSbomConfig.allowed_git_hosts`, `clone_timeout_s` and `max_repo_bytes` constrain clones; `repo_ref` may be a full commit SHA.
+
+### Changed
+- **NGA-002 / NGA-001 fan-out:** Analysis now merges findings that fired once per model-name string into one finding per SBOM node (the calling agent or client, or the file for unattached model strings), listing the model names in `evidence`. Set `AnalysisRunRequest.dedupe_posture: false` for the previous one-per-model output.
+- **Clone limits:** Repository clones now time out after 120 seconds and abort when the checked-out tree exceeds 500 MB (`AiSbomConfig.clone_timeout_s`, `max_repo_bytes`). Git LFS objects are no longer downloaded during clones.
+
+### Fixed
+- **False-clean analysis results:** When OSV could not be reached, the Grype database failed, Trivy exited with an error or timed out, or an NGA rule raised, the tool was reported `ok` with zero findings. These now report `failed` or `timeout` (`"error"` in the legacy `tool_status`).
+- **AI source rules that could never match:** `nuguard-llm-prompt-injection-fstring` (its exclusion was identical to its match), and `nuguard-eval-on-llm-output`, `nuguard-hardcoded-api-key`, `nuguard-llm-ssrf-requests` and `nuguard-pickle-model-load` (alternatives were combined with AND) now detect what they describe, with Opengrep or Semgrep. The prompt-injection rule also covers OpenAI `chat.completions.create`, Anthropic `messages.create` and LangChain `invoke`/`ainvoke`; the SSRF rule now tracks LLM output into HTTP clients.
+- **Clones behind a proxy:** Under `allowed_git_hosts`, git's minimal environment dropped the proxy and certificate variables, so clones failed where github.com is reachable only through a proxy. It now keeps `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `ALL_PROXY` (both cases), `SSL_CERT_FILE`, `SSL_CERT_DIR`, `GIT_SSL_CAINFO` and `CURL_CA_BUNDLE`, and still drops `GH_TOKEN`, `GITHUB_TOKEN` and `NUGUARD_*`.
+- **Unstable ATLAS finding order:** ATLAS native check findings listed affected components in a different order on each run; they are now sorted.
+
+## v0.9.17 - 2026-11-16
+
+### Added
+- **Deep Agents detection:** The SBOM now detects Deep Agents assemblies, typed `SubAgent` mappings, and the flow between their components.
+- **Java chat models from configuration:** A chat model set in `application.properties` or `application.yml` is now recorded as a model, preserving the exact model name.
+- **Red-team coverage details:** The JSON report adds a `coverage` block with per-scenario outcomes, and coverage now separates execution from objective evaluation. See the [red-team guide](redteam-guide.md#remediation-priority-and-coverage-integrity).
+
+### Changed
+- **MCP 2.x support:** The `mcp` and `smithery` extras and the dev group accept `mcp>=1.0,<3`. The MCP server imports `MCPServer` (renamed from `FastMCP` in mcp 2.x) and falls back to the 1.x path, so both major versions work.
+- **JVM test sources skipped:** `src/test` trees are excluded from SBOM generation by default. See [JVM source-file selection](sbom-schema.md#jvm-source-file-selection).
+- **Spring Boot managed versions:** Maven dependencies whose versions come from the Spring Boot BOM are resolved, and OSV lookups are skipped for dependencies with no version.
+
+### Improved
+- **Go detection:** Go 1.22 `ServeMux` patterns (`"POST /x"`, `"GET host/x/{id}"`) yield the real method, host and path; `net/http` and `chi` endpoints infer auth from auth-named handler wrappers; Eino `adk.NewChatModelAgent` produces an agent with its model, prompt and tools; `mcp-go` tools are marked high-privilege from destructive hints or write-verb names; `*_test.go` files count as test evidence.
+- **C# detection:** Every Minimal API and controller route is emitted, with `MapGroup` prefixes and `RequireAuthorization`/`AllowAnonymous` resolved across nested groups and files. Web SDK implicit usings are honoured, `AddAuthentication().AddJwtBearer()` becomes one JWT auth node, and Semantic Kernel produces one agent per `ChatCompletionAgent` with endpoints linked to the agents they reach. The C# datastore and prompt adapters, previously never registered, now run.
+- **Java Semgrep/Opengrep rules:** Rules match Spring MVC inputs and `@AiService` calls.
+- **Tracing and model false positives:** Active tracing instrumentation is recognised; pricing-only, encoded and test-only model and runtime evidence is ignored; PII is scoped to matching datastores, and name-only dataclasses no longer imply PII.
+
+### Fixed
+- **Secrets in SBOM output:** Prompt and agent content is redacted for every language, C# datastore connection strings keep only scheme, host and port, and credential literals in Go and TypeScript `AUTH` snippets (including Azure AI agent credentials) are redacted (#725, #733).
+- **Behavior runs crashing on tool calls:** Target tool calls were stored as canary hits, so any target returning tool calls failed with a validation error and ran zero scenarios, and string tool calls could be reported as "Canary data disclosure". They are now recorded as tool calls and passed to policy checks.
+- **Red-team engagement guard:** REST-only steps no longer count toward the guard, so broken auxiliary endpoints cannot abort an assessment whose chat endpoint is healthy. Skipped scenarios report `not_engaged`.
+- **Red-team payload generation:** LLM payload generation honours the concurrency limit, and explicit default `redteam` payload settings are preserved.
+- **Chat probing:** Configured chat payload templates are rendered during probing, and session-changing routes are skipped during endpoint liveness checks.
+- **`pip install nuguard[mcp]`:** The MCP server could not start when mcp 2.x was resolved. It now runs on mcp 1.x and 2.x (see Changed).
+
+### Compatibility
+- Opengrep is now the source scanner used by the rule tests in CI. Install it as a standalone binary (it has no Python dependencies); see [scanner setup](static-analysis-guide.md#2-the-rest-of-the-software-infrastructure). `semgrep` remains a fallback.
+- Secret redaction can change prompt text in the SBOM and CycloneDX output when a prompt contained a credential.
+
+## v0.9.16 - 2026-10-04
+
+### Added
+- **GET chat endpoints:** `chat_method: GET` (under `target:`, `redteam:` or `behavior:`) sends chat turns as a GET request with the payload in the query string (`chat_payload_in: query`, the default for GET), using the same `{{message}}` / `{{session_id}}` templating as `chat_payload_extras`. `text/plain` replies are accepted. Auth bootstrap, `nuguard target verify`, behavior and red-team runs all use the configured method, and an explicitly configured GET endpoint is no longer probed with POST requests.
+- **Deeper dependency and secret scanning:** Static analysis now includes pip-audit for resolved Python dependencies, including transitive packages, and Gitleaks for hardcoded secrets with redacted values. Both run when installed; disable with `--no-pip-audit` or `--no-gitleaks`. See [scanner setup and coverage](static-analysis-guide.md#2-the-rest-of-the-software-infrastructure).
 - **Red-team campaign mode (opt-in):** `redteam.mode: campaign` (or `nuguard redteam --mode campaign`) reuses conversations across related attacks instead of opening a fresh session per scenario, schedules one representative attempt per control before expanding techniques, cools down `429`/5xx retries outside the request path, and reproduces each finding in a brand-new conversation (`confirmed`, `not_reproduced`, `blocked`, `not_attempted`). Objectives that need a second account, a callback server, or a declared dry-run/sandbox fixture are reported as blocked instead of running. Reports add coverage-quality and efficiency sections and mark a no-findings run with untested controls as inconclusive. `concurrent` and `progressive` are unchanged. See the [red-team guide](redteam-guide.md#campaign-mode-opt-in).
 - **Red-team API endpoint scoping:** For apps with many API endpoints the redteam LLM now picks the relevant endpoints for each direct-HTTP probe (JWT tampering, reflected XSS, injection, IDOR, and so on), and the `ci` profile spot-checks three endpoints. Rate-limit tests are classified as destructive and the `ci` profile no longer runs destructive scenarios. Tune with `redteam.api_endpoint_threshold` and `redteam.ci_api_spot_checks`.
 - **Container and deployment layer (AI-SBOM schema 1.7.0):** The SBOM now records what an attacker or analyst needs to know about how the application runs. Each Dockerfile produces an app-image node with its base image, OS name and version, entrypoint, ports, and the packages installed by `RUN` instructions. Each deployed service gets a workload with replicas and min/max autoscaling, ports and how far each is exposed, CPU and memory, identity, and environment variable and secret *names* (never values). Sources are docker-compose, Kubernetes (Services, autoscalers, Ingress), Helm values, Kustomize, Bicep with `azure.yaml`, Terraform, CloudFormation/SAM, Cloud Run YAML, and ECS task definitions. See [SBOM schema](sbom-schema.md) and [supported technologies](supported-technologies.md).
@@ -16,12 +62,12 @@ Major product and documentation changes for NuGuard users. See the linked guides
 - **Image scanning:** `nuguard sbom generate --scan-images` runs `syft` on pulled base images to record the real OS and package list. It is off by default and needs `syft` and registry access.
 
 ### Changed
-- **NGA-002 / NGA-001 fan-out:** Analysis now merges findings that fired once per model-name string into one finding per SBOM node (the calling agent or client, or the file for unattached model strings), listing the model names in `evidence`. Set `AnalysisRunRequest.dedupe_posture: false` for the previous one-per-model output.
-- **Clone limits:** Repository clones now time out after 120 seconds and abort when the checked-out tree exceeds 500 MB (`AiSbomConfig.clone_timeout_s`, `max_repo_bytes`). Git LFS objects are no longer downloaded during clones.
+- **Opengrep source analysis:** Opengrep replaces Semgrep as the preferred engine for bundled AI-security and generic source rules. Semgrep remains a fallback when Opengrep is absent; existing flags, settings, API parameters, and finding-source keys remain compatible.
 - **Red-team OWASP mappings:** Scenario catalog references now use the OWASP LLM Top 10 **2026** numbering. The catalog previously carried 2025-era numbers, so for example destructive tool actions were cited as `LLM06` and are now `LLM03` (Excessive Agency), hidden-context probes are `LLM08`, and vector/RAG scenarios are `LLM09`. Agentic references were corrected the same way (for example destructive actions map to `ASI02`, not `ASI06`). The per-scenario references set by the individual attack builders were also normalized to the same `LLM02:2026` / `ASI03` format and 2026 meanings (they previously mixed 2023, 2025 and 2026 numbers and free-text labels), so findings from legacy-builder scenarios now cite the same IDs as catalog scenarios. Reports and findings produced from catalog scenarios cite the new IDs; historical reports keep the 2025 numbers they were generated with.
 
 ### Improved
-- **Static scanner reliability:** Checkov and Semgrep now have configurable per-process and total deadlines, worker cleanup, path-level timings and heartbeat logs. Failed or incomplete scans report errors while retaining partial findings; overlapping source paths are scanned once.
+- **Static scanner reliability:** Checkov and Opengrep (including the Semgrep fallback) now have configurable per-process and total deadlines, worker cleanup, path-level timings and heartbeat logs. Failed or incomplete scans report errors while retaining partial findings; overlapping source paths are scanned once.
+- **Clearer dependency reports:** Advisories reported by multiple scanners are merged by alias, with one recommended action per vulnerable component and severity from scanners that provide it.
 - **Guided campaign confirmation:** Successful guided attacks now replay their recorded attacker turns in a fresh conversation and use the same success criteria to judge reproduction. Confirmation removes unnecessary turns where possible; without a configured red-team LLM judge, it reports `blocked` with `no_judge_available`.
 - **Campaign checkpoint security:** Stronger credential fingerprints make offline guessing more expensive while keeping raw credentials out of checkpoints. Credential rotation invalidates resume.
 - **Red-team setup guidance:** The guide now starts with source discovery, configuration, and target verification, and clarifies profiles, non-destructive defaults, campaign budgets, and coverage results. The documentation landing page adds visual security workflows.
@@ -30,11 +76,9 @@ Major product and documentation changes for NuGuard users. See the linked guides
 - **Dockerfile and nginx detection:** `Dockerfile.*` variants are scanned, and `proxy_pass` on the same line as a `location` block is detected.
 
 ### Fixed
-- **False-clean analysis results:** When OSV could not be reached, the Grype database failed, Trivy exited with an error or timed out, or an NGA rule raised, the tool was reported `ok` with zero findings. These now report `failed` or `timeout` (`"error"` in the legacy `tool_status`).
-- **Semgrep AI rules that could never match:** `nuguard-llm-prompt-injection-fstring` (its exclusion was identical to its match), and `nuguard-eval-on-llm-output`, `nuguard-hardcoded-api-key`, `nuguard-llm-ssrf-requests` and `nuguard-pickle-model-load` (alternatives were combined with AND) now detect what they describe. The prompt-injection rule also covers OpenAI `chat.completions.create`, Anthropic `messages.create` and LangChain `invoke`/`ainvoke`; the SSRF rule now tracks LLM output into HTTP clients.
-- **Base install start-up:** `pip install nuguard` without extras no longer fails at start-up with `No module named 'cryptography'`; the pentest template signer imports it lazily.
-- **Clones behind a proxy:** Under `allowed_git_hosts`, git's minimal environment dropped the proxy and certificate variables, so clones failed where github.com is reachable only through a proxy. It now keeps `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `ALL_PROXY` (both cases), `SSL_CERT_FILE`, `SSL_CERT_DIR`, `GIT_SSL_CAINFO` and `CURL_CA_BUNDLE`, and still drops `GH_TOKEN`, `GITHUB_TOKEN` and `NUGUARD_*`.
-- **Unstable ATLAS finding order:** ATLAS native check findings listed affected components in a different order on each run; they are now sorted.
+- **GET endpoints with required query parameters (#653):** The endpoint liveness check now sends placeholder values for the required query parameters recorded in the SBOM and treats a 400/422 returned for them as a live route. GET chat endpoints such as `/customerSupportAgent?sessionId=...&userMessage=...` are no longer marked non-operational and skipped.
+- **Fresh install crash:** `nuguard --help` and every command failed with `ModuleNotFoundError: No module named 'cryptography'` on installs without the `secrets` extra, because the pentest engine imports `cryptography` at startup. `cryptography` is now a core dependency, and the CycloneDX exporter's `cyclonedx-python-lib` is declared explicitly rather than arriving transitively.
+- **Defence regressions no longer fail safe confirmation requests (#655):** A regression can now set `expect: no_action`, which passes when the app refuses or asks for the missing confirmation or details and reports no state-changing tool call, instead of requiring a refusal. Failing findings carry wording and a fixed remediation patch that match the configured expectation rather than an LLM rewrite of the app's own reply, and an unknown `expect` value skips that entry with a warning instead of raising.
 - **Collapsed chat discovery (#628):** Browser fallback opens recognized chat widgets before interacting with visible, enabled, editable inputs. Configurable opener selectors and bounded readiness waits are shared by verification, behavior, and redteam. Background requests are ignored unless they contain the probe message; UI failures produce discovery notes without confirming an endpoint.
 - **HTTP chat discovery (#627):** Shared reply extraction recognizes outputs-only and nested text replies while rejecting empty, error-only, and metadata-only bodies. Blind discovery checks field omission rather than confirming a guessed message field from a default greeting. Ambiguous candidates cannot create validated endpoint caches; existing endpoint confirmations are revalidated. API-only targets with optional message fields can provide explicit payload configuration.
   Omitted-field errors must identify the candidate field; generic empty-body errors remain inconclusive. OpenAPI probing retains the selected route's object schema and supports arrays of message objects. Sessions preserve discovered object templates, and runtime validation supports buffered SSE/NDJSON replies and configured paths within stream frames.
@@ -42,6 +86,7 @@ Major product and documentation changes for NuGuard users. See the linked guides
 - **Dockerfile scan performance:** Malformed package-install flags no longer cause excessive regex backtracking, preventing scan stalls on crafted Dockerfiles.
 
 ### Compatibility
+- Core installs now include `cryptography` and `cyclonedx-python-lib`, so `pip install nuguard` pulls in two more packages. The `secrets` extra still exists.
 - Schema changes are additive. Code that switches exhaustively on edge `relationship_type` must handle the six new values.
 - Authenticated campaign checkpoints created with the older SHA-256 credential fingerprint cannot be resumed after the fingerprint upgrade. Start a new campaign without `--resume`; incompatible checkpoints raise `CheckpointMismatchError` before state is restored.
 

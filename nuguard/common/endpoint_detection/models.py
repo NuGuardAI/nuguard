@@ -51,6 +51,8 @@ class ResolvedEndpoint:
     path_source: EndpointSource = EndpointSource.UNKNOWN
     path_explicit: bool = False
     notes: tuple[str, ...] = ()
+    # Cookie/CSRF headers auto-acquired during discovery (secret; never log or persist).
+    session_headers: dict[str, str] = field(default_factory=dict, repr=False, compare=False)
 
     @property
     def payload_key(self) -> str | None:

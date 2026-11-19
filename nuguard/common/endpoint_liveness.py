@@ -21,6 +21,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
+from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel, Field
 
@@ -81,13 +82,23 @@ _DEAD_STATUS_CODES = frozenset({400, 404, 405, 422})
 # this node — never lingers and gets mistaken for a current result.
 _SAFE_LIVENESS_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
+# Some applications expose logout/session invalidation as GET handlers. Even
+# HEAD can execute the same handler, so changing the method is not sufficient.
+_SESSION_CHANGING_PATH_RE = re.compile(
+    r"(?:^|/)(?:log[-_]?out|sign[-_]?out|log[-_]?off|sign[-_]?off)"
+    r"(?:[-_]?all)?(?:/|$)"
+    r"|(?:^|/)(?:auth|sessions?|tokens?)/(?:revoke|invalidate|destroy|clear|reset|terminate)"
+    r"(?:/|$)",
+    re.IGNORECASE,
+)
+
 
 def _probe_decision(meta: "NodeMetadata") -> tuple[bool, str | None]:
     """Return (allowed, skip_reason) — pure and synchronous, no I/O.
 
     Decided *before* any network call and before the cache-freshness check
     (see :func:`check_endpoint_liveness`), so a policy skip is never masked
-    by a stale cache hit from before this decision applied. Two conditions,
+    by a stale cache hit from before this decision applied. Conditions,
     evaluated in order:
 
     1. An unresolved path template (``:id``/``{id}``/``<id>``) can only
@@ -97,13 +108,54 @@ def _probe_decision(meta: "NodeMetadata") -> tuple[bool, str | None]:
        ``:id`` path returned 500 "invalid input syntax for type uuid").
     2. A mutating method (``DELETE``/``POST``/``PUT``/``PATCH``) is never
        probed — see the module-level note above.
+    3. A session-changing route or an endpoint with declared mutation effects
+       is skipped even when it advertises a safe HTTP method.
     """
     if HAS_PATH_PARAM_RE.search(meta.endpoint or ""):
         return False, "unresolved path parameter — cannot be safely probed without a real ID"
     method = (meta.method or "GET").upper()
     if method not in _SAFE_LIVENESS_METHODS:
         return False, f"{method} is not a safe method (GET/HEAD/OPTIONS only) — never dynamically probed"
+    path = unquote(urlsplit(meta.endpoint or "").path)
+    if _SESSION_CHANGING_PATH_RE.search(path):
+        return False, "session-changing route — liveness must not invalidate authentication"
+    semantics = meta.mutation_semantics
+    if semantics and semantics.mutation_kind not in {"none", "unknown"}:
+        return False, f"declared {semantics.mutation_kind} mutation — never dynamically probed"
     return True, None
+
+
+# Issue #653: a GET handler with required query parameters answers a bare
+# request with HTTP 400 even though the route exists. The SBOM records those
+# parameters (http_request.parameters, location "query"), so the probe sends
+# placeholder values for them. The values only have to get past "parameter
+# missing"; a type-aware placeholder avoids a needless type-validation 400.
+_PLACEHOLDER_QUERY_VALUE = "nuguard-probe"
+_TYPED_PLACEHOLDER_QUERY_VALUES = {
+    "int": "1",
+    "integer": "1",
+    "long": "1",
+    "short": "1",
+    "float": "1.0",
+    "double": "1.0",
+    "number": "1",
+    "bool": "true",
+    "boolean": "true",
+}
+# The handler was reached and rejected the synthetic values: not a dead route.
+_VALIDATION_STATUS_CODES = frozenset({400, 422})
+
+
+def _required_query_params(meta: "NodeMetadata") -> dict[str, str]:
+    """Placeholder values for the required query parameters recorded in the SBOM."""
+    request = meta.http_request
+    if request is None:
+        return {}
+    return {
+        p.name: _TYPED_PLACEHOLDER_QUERY_VALUES.get(p.type_hint.lower(), _PLACEHOLDER_QUERY_VALUE)
+        for p in request.parameters
+        if p.location == "query" and p.required
+    }
 
 
 class LivenessReport(BaseModel):
@@ -133,8 +185,15 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _classify_status(status_code: int, response_text: str) -> tuple[bool, str]:
+def _classify_status(
+    status_code: int, response_text: str, sent_query_params: bool = False
+) -> tuple[bool, str]:
     """Return (operational, note) for a completed (non-exception) request."""
+    if sent_query_params and status_code in _VALIDATION_STATUS_CODES:
+        return True, (
+            f"HTTP {status_code} — endpoint reachable, it rejected the placeholder "
+            "values sent for its required query parameters."
+        )
     if status_code in _AUTH_ENFORCED_STATUS_CODES:
         return True, f"HTTP {status_code} — endpoint reachable, auth correctly enforced."
     if status_code in _DEAD_STATUS_CODES or response_text.startswith(_ROTATION_TRIGGER_PREFIXES):
@@ -169,9 +228,10 @@ async def _ping_one(
     endpoint = meta.endpoint or ""
     method = (meta.method or "GET").upper()
 
+    params = _required_query_params(meta)
     try:
         status_code, response_text, _json = await asyncio.wait_for(
-            client.invoke_endpoint(endpoint, method=method, body=None),
+            client.invoke_endpoint(endpoint, method=method, body=None, params=params or None),
             timeout=per_endpoint_timeout,
         )
     except asyncio.TimeoutError:
@@ -183,7 +243,7 @@ async def _ping_one(
         _log.error("Liveness: %s %s raised: %s", method, endpoint, exc)
         return False, note
 
-    operational, note = _classify_status(status_code, response_text)
+    operational, note = _classify_status(status_code, response_text, sent_query_params=bool(params))
     if operational:
         _log.debug("Liveness: %s %s -> operational (%s)", method, endpoint, note)
     else:
@@ -222,7 +282,9 @@ async def check_endpoint_liveness(
     Never sends a mutating request (``DELETE``/``POST``/``PUT``/``PATCH``) —
     see :func:`_probe_decision`. Those nodes, and nodes with an unresolved
     path parameter, are left at ``operational=None`` (never probed, not
-    confirmed dead) rather than being invoked or skipped-as-if-dead.
+    confirmed dead) rather than being invoked or skipped-as-if-dead. Routes
+    that terminate sessions and endpoints with declared mutation effects are
+    skipped even if they advertise GET, HEAD, or OPTIONS.
 
     Nodes whose ``endpoint`` value fails :func:`_looks_like_rest_path` (bind
     address, MCP/SSE annotation, ...) are also skipped entirely — never

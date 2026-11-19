@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -2036,6 +2037,219 @@ async def test_run_scenario_copies_scoped_tools_and_agents_into_result() -> None
 
     assert result.scoped_tools == ["transfer_funds", "check_balance"]
     assert result.scoped_agents == ["assistant"]
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_target_tool_calls_are_not_canary_hits() -> None:
+    """client.send() returns the target's tool calls as its second value. They
+    used to be stored as TurnRecord.canary_hits (list[str]), so a target that
+    returns tool calls crashed the scenario with a ValidationError, or would
+    have been reported as a critical canary disclosure."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=_make_sbom_with_tool("get_account_status"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+
+    tool_call = {"tool": "get_account_status", "arguments": {"account_id": "acct_1"}}
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(return_value=("Your account is active.", [tool_call]))
+
+    fake_director = MagicMock()
+    fake_director.next_message = AsyncMock(side_effect=[None])
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_tool_calls",
+        messages=["Is my account active?"],
+        scoped_tools=["get_account_status"],
+        primary_agent="assistant",
+    )
+
+    records: list[TurnRecord] = []
+
+    def _capture(**kwargs: Any) -> TurnRecord:
+        record = TurnRecord(**kwargs)
+        records.append(record)
+        return record
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director), \
+            patch("nuguard.behavior.runner.TurnRecord", side_effect=_capture):
+        result = await runner._run_scenario(scenario, mock_client, None)
+
+    assert result.total_turns == 1
+    assert not [d for d in result.deviations if d.get("deviation_type") == "data_leak"]
+    assert len(records) == 1
+    assert records[0].tool_calls == [tool_call]
+    assert records[0].canary_hits == []
+    assert records[0].passed is True
+    assert result.verdicts[0]["tool_calls"] == [tool_call]
+    assert BehaviorRunner._turn_record_to_attack_step(records[0])["tool_calls"] == [tool_call]
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_keeps_tool_calls_from_follow_up_sends() -> None:
+    """A confirmation or credential follow-up send can add tool calls to the
+    turn. All of them are recorded, not only as many as the first send returned,
+    and calls that are not dicts are dropped."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=_make_sbom_with_tool("get_account_status"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+
+    first = {"tool": "get_account_status", "arguments": {"account_id": "acct_1"}}
+    second = {"tool": "close_account", "arguments": {"account_id": "acct_1"}}
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(return_value=("Shall I close it?", [first, "not-a-call"]))
+
+    async def _follow_up(**kwargs: Any) -> tuple[str, list]:
+        return "Account closed.", list(kwargs["tool_calls"]) + [second]
+
+    fake_director = MagicMock()
+    fake_director.next_message = AsyncMock(side_effect=[None])
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_follow_up_tool_calls",
+        messages=["Close my account."],
+        scoped_tools=["get_account_status"],
+        primary_agent="assistant",
+    )
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director), \
+            patch("nuguard.common.turn_helpers.handle_mid_turn_interrupts", side_effect=_follow_up):
+        result = await runner._run_scenario(scenario, mock_client, None)
+
+    assert result.verdicts[0]["tool_calls"] == [first, second]
+
+
+def _single_turn_runner(tool_name: str = "get_account_status", canary: str = "") -> BehaviorRunner:
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat", canary=canary),
+        sbom=_make_sbom_with_tool(tool_name),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+    return runner
+
+
+async def _run_single_turn(
+    runner: BehaviorRunner,
+    reply: str,
+    tool_calls: list,
+    policy_evaluator: Any = None,
+) -> tuple[ScenarioResult, list[TurnRecord]]:
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(return_value=(reply, tool_calls))
+    fake_director = MagicMock()
+    fake_director.next_message = AsyncMock(side_effect=[None])
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_single_turn",
+        messages=["Is my account active?"],
+        scoped_tools=["get_account_status"],
+        primary_agent="assistant",
+    )
+    records: list[TurnRecord] = []
+
+    def _capture(**kwargs: Any) -> TurnRecord:
+        record = TurnRecord(**kwargs)
+        records.append(record)
+        return record
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director), \
+            patch("nuguard.behavior.runner.TurnRecord", side_effect=_capture):
+        result = await runner._run_scenario(scenario, mock_client, policy_evaluator)
+    return result, records
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_passes_target_tool_calls_to_policy_evaluator() -> None:
+    """The policy evaluator gets the turn's tool calls, so its restricted-action
+    and HITL checks can fire; entries that are not dicts are dropped."""
+    runner = _single_turn_runner()
+    call = {"name": "close_account", "arguments": {"account_id": "acct_1"}}
+    evaluator = MagicMock()
+    evaluator.evaluate = MagicMock(return_value=[])
+
+    await _run_single_turn(runner, "Done.", [call, "not-a-call"], policy_evaluator=evaluator)
+
+    evaluator.evaluate.assert_called_once()
+    assert evaluator.evaluate.call_args.kwargs["tool_calls"] == [call]
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_reports_canary_in_reply_as_data_leak() -> None:
+    from nuguard.redteam.target.canary import CanaryConfig, CanaryScanner
+
+    runner = _single_turn_runner()
+    runner._canary_scanner = CanaryScanner(CanaryConfig(global_watch_values=["CANARY-ACCT-7731"]))
+
+    result, records = await _run_single_turn(runner, "Your account id is CANARY-ACCT-7731.", [])
+
+    assert records[0].canary_hits == ["CANARY-ACCT-7731"]
+    assert records[0].passed is False
+    leaks = [d for d in result.deviations if d.get("deviation_type") == "data_leak"]
+    assert len(leaks) == 1
+    assert leaks[0]["severity"] == "critical"
+    assert leaks[0]["attack_step"]["canary_hits"] == ["CANARY-ACCT-7731"]
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_reports_canary_in_tool_call_as_data_leak() -> None:
+    """A watch value that only appears in a tool call's arguments or result is
+    still a leak, even when the reply does not repeat it."""
+    from nuguard.redteam.target.canary import CanaryConfig, CanaryScanner
+
+    runner = _single_turn_runner()
+    runner._canary_scanner = CanaryScanner(CanaryConfig(global_watch_values=["CANARY-ACCT-7731"]))
+    call = {"tool": "get_account_status", "result": {"owner_id": "CANARY-ACCT-7731"}}
+
+    result, records = await _run_single_turn(runner, "Your account is active.", [call])
+
+    assert records[0].canary_hits == ["CANARY-ACCT-7731"]
+    assert [d["deviation_type"] for d in result.deviations if d.get("deviation_type") == "data_leak"] == ["data_leak"]
+
+
+@pytest.mark.asyncio
+async def test_run_scenario_clean_turn_has_no_canary_hits() -> None:
+    from nuguard.redteam.target.canary import CanaryConfig, CanaryScanner
+
+    runner = _single_turn_runner()
+    runner._canary_scanner = CanaryScanner(CanaryConfig(global_watch_values=["CANARY-ACCT-7731"]))
+
+    result, records = await _run_single_turn(runner, "Your account is active.", [{"tool": "get_account_status"}])
+
+    assert records[0].canary_hits == []
+    assert records[0].passed is True
+    assert not [d for d in result.deviations if d.get("deviation_type") == "data_leak"]
+
+
+def test_build_canary_scanner_loads_behavior_canary_file(tmp_path) -> None:
+    canary_file = tmp_path / "canary.json"
+    canary_file.write_text('{"global_watch_values": ["CANARY-ACCT-7731"]}')
+
+    scanner = _single_turn_runner(canary=str(canary_file))._build_canary_scanner()
+
+    assert scanner is not None
+    assert scanner.scan("id CANARY-ACCT-7731") == ["CANARY-ACCT-7731"]
+
+
+def test_build_canary_scanner_off_without_or_with_unreadable_file(tmp_path) -> None:
+    assert _single_turn_runner()._build_canary_scanner() is None
+    assert _single_turn_runner(canary=str(tmp_path / "missing.json"))._build_canary_scanner() is None
 
 
 # ---------------------------------------------------------------------------

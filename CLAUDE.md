@@ -19,6 +19,12 @@ uv run pytest tests/ -k "test_llm_eval_high_confidence" -v
 uv run ruff check nuguard/
 uv run mypy nuguard/
 
+# Dependency hygiene (undeclared / unused / transitive imports)
+uv run deptry nuguard/
+
+# Clean-install import check (run against an installed wheel with no extras)
+uv run python scripts/check_clean_install.py
+
 # Run the CLI
 uv run nuguard --help
 uv run nuguard sbom generate --from-repo https://github.com/org/repo --ref main

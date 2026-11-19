@@ -26,7 +26,7 @@ MODEL_NAME_PATTERNS: tuple[re.Pattern[str], ...] = (
         # - o-series: require word boundary or letter suffix to avoid hex
         # - deepseek/qwen/phi: common open-weight families
         # - <name>:<size_tag>: generic Ollama pull format (mistral:7b)
-        r"\b(gpt-[\d][\w.-]*|claude-[\d][\w.-]*|claude-(?:sonnet|opus|haiku|instant)[\d-][\w.-]*|gemini-[\d][\w.]*"
+        r"\b(gpt-[\d][\w.-]*|claude-[\d][\w.-]*|claude-(?:sonnet|opus|haiku|instant)[\d-][\w.-]*|gemini-[\d][\w.-]*"
         r"|llama-[\d][\w.-]*|llama[\d][\w.]*:[a-z0-9]+"
         r"|mistral-[\w.-]+|o\d(?:-[a-z][a-z0-9-]*)?\b"
         r"|deepseek-[\w.-]+|qwen[\d][\w.-]*|phi[\d][\w.-]*"
@@ -133,8 +133,11 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
     """
     from .csharp import (
         CSharpAspNetCoreAdapter,
+        CSharpAuthAdapter,
+        CSharpDatastoreAdapter,
         CSharpLLMClientsAdapter,
         CSharpMLNetAdapter,
+        CSharpPromptAdapter,
         CSharpSemanticKernelAdapter,
     )
     from .data_classification import DataClassificationPythonAdapter
@@ -282,8 +285,11 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         GenkitGoAdapter(),
         # C# adapters
         CSharpAspNetCoreAdapter(),
+        CSharpAuthAdapter(),
+        CSharpDatastoreAdapter(),
         CSharpLLMClientsAdapter(),
         CSharpMLNetAdapter(),
+        CSharpPromptAdapter(),
         CSharpSemanticKernelAdapter(),
         # Java adapters
         JavaWebAdapter(),
@@ -484,7 +490,13 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 priority=140,
                 patterns=(
                     # Full authentication/authorization words — avoids gcloud auth, auth@v2, etc.
-                    re.compile(r"\bauth(?:entication|orization|enticate|orize)\b", re.IGNORECASE),
+                    # Not namespace segments: ARM's Microsoft.Authorization/roleAssignments
+                    # and Microsoft.AspNetCore.Authentication (C# auth adapter covers those).
+                    re.compile(
+                        r"(?<!Microsoft\.)(?<!AspNetCore\.)"
+                        r"\bauth(?:entication|orization|enticate|orize)\b",
+                        re.IGNORECASE,
+                    ),
                     # Compound token forms — avoids bare CI token vars like token=$TOKEN
                     re.compile(r"\bauth_token\b", re.IGNORECASE),
                     # Password hashing and session-based auth patterns

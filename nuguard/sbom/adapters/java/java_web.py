@@ -6,6 +6,7 @@ import re
 from pathlib import PurePosixPath
 from typing import Any
 
+from ...core.java_parser import _mask_non_code
 from ...http_semantics import HANDLER_SIGNALS_KEY
 from ...normalization import canonicalize_text
 from ...types import ComponentType
@@ -25,6 +26,130 @@ _JAVA_COOKIE_PATTERNS = (
     re.compile(r"\.addCookie\s*\(|\bResponseCookie\b|\bHttpSession\b|session\.setAttribute\s*\("),
     re.compile(r"[\"']Set-Cookie[\"']", re.IGNORECASE),
 )
+
+
+_PACKAGE_RE = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.MULTILINE)
+_ANNOTATION_RE = re.compile(r"@\w+(?:\([^)]*\))?\s*")
+# ``Type name;`` / ``Type name =`` declarations in a class body (fields, local variables).
+# A lowercase package prefix is kept (``demo.agents.SupportAgent agent;``).
+_DECLARED_TYPE_RE = re.compile(
+    r"\b((?:[a-z_]\w*\.)*[A-Z]\w*(?:\.[A-Z]\w*)*)(?:<[^>;{}()]*>)?\s+[a-z_]\w*\s*[;=]"
+)
+# Simple types that are never agents; skipping them keeps the hint list short.
+_NON_AGENT_TYPES = frozenset(
+    {"String", "Object", "Integer", "Long", "Double", "Boolean", "List", "Map", "Set", "Optional"}
+)
+
+
+def _constructor_parameter_type(parameter: str) -> str:
+    """Return the type of ``@Qualifier("x") final SupportAgent agent`` (generics removed)."""
+    text = _ANNOTATION_RE.sub("", parameter).strip()
+    text = re.sub(r"\bfinal\b", "", text).strip()
+    parts = text.rsplit(None, 1)
+    if len(parts) != 2:
+        return ""
+    return re.sub(r"<.*>", "", parts[0]).strip()
+
+
+def _injected_agent_hints(
+    content: str,
+    file_path: str,
+    owner: Any,
+    owner_name: str,
+    result: Any,
+    agent_canonical: str,
+) -> list[RelationshipHint]:
+    """Link a controller to the agents it is injected with.
+
+    The extractor resolves a hint by the canonical name of its target, and that name is built from
+    the target's file path. Java mirrors packages in directories, so the file of an injected type
+    can be derived from the controller's own path, its package and its imports. A hint whose
+    target is not an agent never resolves and is dropped, so only real agents get linked.
+
+    A simple name is resolved the way Java does: a single-type import, then the controller's
+    own package, then on-demand imports. Each injected type becomes one hint carrying its
+    candidate files in that order, and the extractor takes the first one that was scanned.
+    Comments and string literals are masked first so commented-out code is not a declaration.
+    """
+    package_match = _PACKAGE_RE.search(content)
+    package = package_match.group(1) if package_match else ""
+    parent = str(PurePosixPath(file_path).parent)
+    parent = "" if parent == "." else parent
+    package_path = package.replace(".", "/")
+    source_root: str | None
+    if not package_path:
+        source_root = parent
+    elif parent == package_path:
+        source_root = ""
+    elif parent.endswith("/" + package_path):
+        source_root = parent[: -len(package_path) - 1]
+    else:
+        source_root = None  # the directory layout does not mirror the package
+
+    type_names: list[str] = []
+    for method in result.method_declarations:
+        if method.is_constructor and method.containing_type == owner_name:
+            type_names.extend(_constructor_parameter_type(item) for item in method.parameters)
+    if owner is not None:
+        newlines = [match.start() for match in re.finditer(r"\n", content)]
+        masked, _, _ = _mask_non_code(content, newlines)
+        body = masked[owner.body_start : owner.body_end + 1]
+        type_names.extend(_DECLARED_TYPE_RE.findall(body))
+
+    explicit = {
+        item.module.rsplit(".", 1)[-1]: item.module
+        for item in result.imports
+        if not item.wildcard and not item.is_static
+    }
+    wildcards = [item.module for item in result.imports if item.wildcard and not item.is_static]
+
+    def _path_for(qualified: str) -> str | None:
+        if source_root is None:
+            return None
+        relative = qualified.replace(".", "/") + ".java"
+        return f"{source_root}/{relative}" if source_root else relative
+
+    def _candidate(qualified: str, simple: str) -> tuple[str, str] | None:
+        target_file = _path_for(qualified)
+        if target_file is None:
+            if "." in qualified and qualified.rsplit(".", 1)[0] != package:
+                return None
+            target_file = f"{parent}/{simple}.java" if parent else f"{simple}.java"
+        return target_file, _agent_canonical(target_file, simple)
+
+    hints: dict[tuple[tuple[str, str], ...], RelationshipHint] = {}
+    for type_name in type_names:
+        if not type_name:
+            continue
+        simple = type_name.rsplit(".", 1)[-1]
+        if not simple[:1].isupper() or simple == owner_name or simple in _NON_AGENT_TYPES:
+            continue
+        if "." in type_name:
+            qualified_names = [type_name]
+        elif type_name in explicit:
+            qualified_names = [explicit[type_name]]
+        else:
+            qualified_names = [f"{package}.{type_name}" if package else type_name]
+            qualified_names.extend(f"{module}.{type_name}" for module in wildcards)
+        candidates: list[tuple[str, str]] = []
+        for qualified in qualified_names:
+            candidate = _candidate(qualified, simple)
+            if candidate is not None and candidate not in candidates:
+                candidates.append(candidate)
+        if not candidates or any(canonical == agent_canonical for _, canonical in candidates):
+            continue
+        hints.setdefault(
+            tuple(candidates),
+            RelationshipHint(
+                source_canonical=agent_canonical,
+                source_type=ComponentType.AGENT,
+                target_canonical=candidates[0][1],
+                target_type=ComponentType.AGENT,
+                relationship_type="CALLS",
+                target_files=tuple(candidates),
+            ),
+        )
+    return list(hints.values())
 
 
 class JavaWebAdapter(JavaFrameworkAdapter):
@@ -248,6 +373,9 @@ class JavaWebAdapter(JavaFrameworkAdapter):
             )
             if agent_canonical not in emitted_agents:
                 emitted_agents.add(agent_canonical)
+                injected_agents = _injected_agent_hints(
+                    content, file_path, owner, owner_name, result, agent_canonical
+                )
                 detections.append(
                     ComponentDetection(
                         component_type=ComponentType.AGENT,
@@ -265,6 +393,7 @@ class JavaWebAdapter(JavaFrameworkAdapter):
                         line=owner.line if owner else method.line,
                         snippet=owner.signature[:160] if owner else method.signature[:160],
                         evidence_kind="ast_decorator",
+                        relationships=injected_agents,
                     )
                 )
             if auth_required:

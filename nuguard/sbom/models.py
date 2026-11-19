@@ -68,6 +68,11 @@ class SourceLocation(BaseModel):
 
     path: str = Field(description="Relative path to the source file")
     line: int | None = Field(default=None, description="1-based line number, if known")
+    column: int | None = Field(default=None, description="1-based start column, if known")
+    end_line: int | None = Field(default=None, description="1-based inclusive end line, if known")
+    end_column: int | None = Field(
+        default=None, description="1-based exclusive end column, if known"
+    )
 
 
 # Alias for backward compatibility

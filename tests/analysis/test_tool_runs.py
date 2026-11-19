@@ -199,7 +199,8 @@ async def test_every_tool_has_a_run_with_duration_in_display_order() -> None:
     with patch("shutil.which", return_value=None):
         await analyzer.analyze(_sbom())
     assert [r.tool for r in analyzer.tool_runs] == [
-        "nga-rules", "osv", "grype", "checkov", "trivy", "semgrep", "atlas", "supply-chain",
+        "nga-rules", "osv", "pip-audit", "grype", "checkov", "trivy", "semgrep", "atlas",
+        "supply-chain", "gitleaks",
     ]
     assert all(r.duration_ms is not None for r in analyzer.tool_runs)
     assert next(r for r in analyzer.tool_runs if r.tool == "nga-rules").version

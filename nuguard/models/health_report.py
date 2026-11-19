@@ -11,7 +11,7 @@ class CredentialCheckResult(BaseModel):
     """Result of one credential verification attempt against the target."""
 
     identity: str                  # "default", or canary.json tenant_id
-    auth_type: str                 # "bearer", "api_key", "basic", "none", "skipped"
+    auth_type: str                 # "bearer", "api_key", "basic", "web_session", "none", "skipped"
     endpoint: str                  # full URL checked
     status: Literal[
         "ok",                      # 2xx — auth confirmed

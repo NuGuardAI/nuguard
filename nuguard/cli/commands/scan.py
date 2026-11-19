@@ -96,7 +96,7 @@ def scan(
     ),
     no_semgrep: bool = typer.Option(
         False, "--no-semgrep",
-        help="Skip Semgrep AI-security rules scan.",
+        help="Skip the Opengrep/Semgrep AI-security rules scan.",
     ),
     no_supply_chain: bool = typer.Option(
         False, "--no-supply-chain",
@@ -226,7 +226,7 @@ def scan(
             tool_status["grype"] = _detect_tool_status("grype", not no_grype)
             tool_status["checkov"] = _detect_tool_status("checkov", not no_checkov)
             tool_status["trivy"] = _detect_tool_status("trivy", not no_trivy)
-            tool_status["semgrep"] = _detect_tool_status("semgrep", not no_semgrep)
+            tool_status["semgrep"] = _detect_tool_status(("opengrep", "semgrep"), not no_semgrep)
             tool_status["atlas"] = "ok" if not no_atlas else "skipped"
             tool_status["supply-chain"] = "ok" if not no_supply_chain else "skipped"
             typer.echo(f"    ✓ Analysis complete: {len(all_findings)} finding(s)")
@@ -363,11 +363,12 @@ def scan(
     _exit(all_findings, fail_sev)
 
 
-def _detect_tool_status(tool: str, enabled: bool) -> str:
+def _detect_tool_status(tool: str | tuple[str, ...], enabled: bool) -> str:
     if not enabled:
         return "skipped"
     import shutil  # noqa: PLC0415
-    return "ok" if shutil.which(tool) else "skipped"
+    names = (tool,) if isinstance(tool, str) else tool
+    return "ok" if any(shutil.which(name) for name in names) else "skipped"
 
 
 

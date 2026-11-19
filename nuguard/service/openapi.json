@@ -1410,6 +1410,17 @@
             ],
             "title": "Regression Paraphrase Kind"
           },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regression Expect"
+          },
           "dual_path_verdict": {
             "anyOf": [
               {

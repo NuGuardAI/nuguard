@@ -13,7 +13,7 @@ Pipeline
 4. **Checkov IaC scans** — subprocess; skipped when checkov absent or no IaC
    paths found.  Requires ``source_path`` or IaC paths in SBOM node metadata.
 5. **Trivy** — subprocess; skipped when trivy absent or no scan targets found.
-6. **Semgrep** — subprocess; skipped when semgrep absent or no source paths.
+6. **Opengrep** (Semgrep fallback) — subprocess; skipped when neither `opengrep` nor `semgrep` is on PATH or no source paths.
 7. **MITRE ATLAS native checks** (NC-001..004) — offline graph checks that are
    not already covered by NGA rules (e.g. NC-003: MODEL→DEPLOYMENT without
    AUTH).  ``skip_nga=True`` is passed so the atlas annotator does not re-run
@@ -72,7 +72,8 @@ _SEV_MAP: dict[str, Severity] = {
 
 # Display order of tools in tool_status / tool_runs.
 TOOL_ORDER: tuple[str, ...] = (
-    "nga-rules", "osv", "grype", "checkov", "trivy", "semgrep", "atlas", "supply-chain",
+    "nga-rules", "osv", "pip-audit", "grype", "checkov", "trivy", "semgrep", "atlas",
+    "supply-chain", "gitleaks",
 )
 
 # _raw_to_finding source label → ToolRun.tool name
@@ -83,6 +84,7 @@ _DEFAULT_KIND: dict[str, FindingKind] = {
     "nga-rules": "posture",
     "atlas": "posture",
     "osv": "dependency",
+    "pip-audit": "dependency",
     "grype": "dependency",
     "checkov": "iac",
     "trivy": "dependency",
@@ -228,8 +230,15 @@ class StaticAnalyzer:
         Run Trivy container/fs scan.  Defaults to ``True`` (skipped when
         trivy is not installed or no scan targets are found).
     enable_semgrep:
-        Run Semgrep source code scan with bundled AI-security rules.
-        Defaults to ``True`` (skipped when semgrep is not installed).
+        Run the Opengrep (or Semgrep fallback) source scan with bundled AI-security rules.
+        Defaults to ``True`` (skipped when neither engine is installed).
+    enable_pip_audit:
+        Run pip-audit against the Python manifests in the SBOM.  It audits
+        the resolved dependency tree, including transitive packages.
+        Defaults to ``True`` (skipped when pip-audit is not installed).
+    enable_gitleaks:
+        Run gitleaks against the SBOM source paths to detect hardcoded secrets.
+        Defaults to ``True`` (skipped when gitleaks is not installed).
     source_path:
         Optional filesystem path to the application source directory.
         When provided it is injected into SBOM node metadata so that
@@ -259,6 +268,7 @@ class StaticAnalyzer:
         enable_trivy: bool = True,
         enable_semgrep: bool = True,
         enable_supply_chain: bool = True,
+        enable_pip_audit: bool = True,
         source_path: Path | None = None,
         atlas_config: dict[str, Any] | None = None,
         min_severity: Severity = Severity.LOW,
@@ -274,9 +284,20 @@ class StaticAnalyzer:
         semgrep_total_timeout: float = 300.0,
         offline: bool = False,
         dedupe_posture: bool = False,
+        pip_audit_timeout: float = 300.0,
+        pip_audit_total_timeout: float = 600.0,
+        enable_gitleaks: bool = True,
+        gitleaks_timeout: float = 120.0,
+        gitleaks_total_timeout: float = 300.0,
     ) -> None:
         from nuguard.analysis.plugins.scanner_runtime import positive_timeout
 
+        self.pip_audit_timeout = positive_timeout(pip_audit_timeout)
+        self.pip_audit_total_timeout = positive_timeout(pip_audit_total_timeout)
+        self.enable_pip_audit = enable_pip_audit
+        self.gitleaks_timeout = positive_timeout(gitleaks_timeout)
+        self.gitleaks_total_timeout = positive_timeout(gitleaks_total_timeout)
+        self.enable_gitleaks = enable_gitleaks
         self.checkov_timeout = positive_timeout(checkov_timeout)
         self.checkov_total_timeout = positive_timeout(checkov_total_timeout)
         self.semgrep_timeout = positive_timeout(semgrep_timeout)
@@ -382,6 +403,10 @@ class StaticAnalyzer:
         m1_config["checkov_total_timeout"] = self.checkov_total_timeout
         m1_config["semgrep_timeout"] = self.semgrep_timeout
         m1_config["semgrep_total_timeout"] = self.semgrep_total_timeout
+        m1_config["pip_audit_timeout"] = self.pip_audit_timeout
+        m1_config["pip_audit_total_timeout"] = self.pip_audit_total_timeout
+        m1_config["gitleaks_timeout"] = self.gitleaks_timeout
+        m1_config["gitleaks_total_timeout"] = self.gitleaks_total_timeout
         if self.source_path:
             m1_config["source_path"] = str(self.source_path)
         m1_config["supply_chain_profile"] = self.supply_chain_profile
@@ -445,7 +470,9 @@ class StaticAnalyzer:
             if not enabled:
                 self._set_status(tool, ToolRunStatus.DISABLED)
                 return []
-            if tool == "trivy" and self.offline:
+            # pip-audit resolves advisories over the network, as Trivy's
+            # database download does; gitleaks is local and still runs.
+            if tool in ("trivy", "pip-audit") and self.offline:
                 self._set_status(tool, ToolRunStatus.SKIPPED, reason=offline_reason)
                 return []
             findings = await asyncio.to_thread(self._run_m1, tool, sbom_dict, m1_config)
@@ -460,13 +487,15 @@ class StaticAnalyzer:
             finally:
                 self._finish_run(tool, step_started)
 
-        step_labels = ("osv", "grype", "checkov", "trivy", "semgrep")
+        step_labels = ("osv", "grype", "checkov", "trivy", "semgrep", "pip-audit", "gitleaks")
         step_results = await asyncio.gather(
             _timed("osv", _osv_step()),
             _timed("grype", _grype_step()),
             _timed("checkov", _m1_step("checkov", self.enable_checkov)),
             _timed("trivy", _m1_step("trivy", self.enable_trivy)),
             _timed("semgrep", _m1_step("semgrep", self.enable_semgrep)),
+            _timed("pip-audit", _m1_step("pip-audit", self.enable_pip_audit)),
+            _timed("gitleaks", _m1_step("gitleaks", self.enable_gitleaks)),
             return_exceptions=True,
         )
         for label, result in zip(step_labels, step_results):
@@ -799,11 +828,21 @@ class StaticAnalyzer:
     def _run_m1(
         self, tool: str, sbom_dict: dict[str, Any], config: dict[str, Any] | None = None
     ) -> list[Finding]:
-        """Run a named M1 scanner plugin (checkov | trivy | semgrep)."""
+        """Run a named M1 scanner plugin (checkov | trivy | semgrep | pip-audit | gitleaks)."""
         cfg = config or {}
         try:
             plugin: Any
-            if tool == "checkov":
+            if tool == "gitleaks":
+                from nuguard.analysis.plugins.gitleaks_scanner import (
+                    GitleaksScannerPlugin,  # noqa: PLC0415
+                )
+                plugin = GitleaksScannerPlugin()
+            elif tool == "pip-audit":
+                from nuguard.analysis.plugins.pip_audit_scanner import (
+                    PipAuditScannerPlugin,  # noqa: PLC0415
+                )
+                plugin = PipAuditScannerPlugin()
+            elif tool == "checkov":
                 from nuguard.analysis.plugins.checkov_scanner import (
                     CheckovScannerPlugin,  # noqa: PLC0415
                 )
