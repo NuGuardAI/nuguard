@@ -59,12 +59,28 @@ _ENV_PATTERN = re.compile(
     r"\b(dev|development|stage|staging|prod|production|test|qa|uat)\b",
     re.IGNORECASE,
 )
+# Bare words such as "audio", "voice" or "speech" are deliberately not signals on
+# their own ("invoice", "provision"); only specific SDK and API names are listed.
 _VOICE_PATTERN = re.compile(
-    r"\b(twilio|webrtc|tts|stt|whisper|microphone|pyaudio|sounddevice|vosk|speechrecognition|pyttsx)\b",
+    r"\b("
+    r"twilio|webrtc|tts|stt|whisper|microphone|pyaudio|sounddevice|vosk|"
+    r"speechrecognition|pyttsx|"
+    # Python speech SDKs and audio model APIs
+    r"speech_recognition|pyttsx3|gtts|elevenlabs|deepgram|assemblyai|livekit|pipecat|"
+    r"input_audio|gpt-4o-realtime|gpt-4o-transcribe|gpt-4o-audio|"
+    r"audio\.transcriptions|audio\.speech|beta\.realtime|"
+    r"cognitiveservices\.speech|speechconfig|speechrecognizer|speechsynthesizer|"
+    # Browser audio and speech APIs (JS/TS)
+    r"audiocontext|webkitspeechrecognition"
+    r")\b",
     re.IGNORECASE,
 )
 _IMAGE_PATTERN = re.compile(
-    r"\b(vision|ocr|opencv|pillow|pil|cv2|dall.e|stable.diffusion|image.generation)\b",
+    r"\b("
+    r"vision|ocr|opencv|pillow|pil|cv2|dall.e|stable.diffusion|image.generation|"
+    r"image_url|input_image|gpt-image|images\.generate|images\.edit|"
+    r"pytesseract|easyocr"
+    r")\b",
     re.IGNORECASE,
 )
 _VIDEO_PATTERN = re.compile(
@@ -72,6 +88,21 @@ _VIDEO_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _MODALITY_MATCH_THRESHOLD = 2
+# Documentation prose and lockfiles are not evidence that the application itself
+# handles a modality: "our vision" in a README or a transitive dependency in a
+# lockfile would otherwise count towards the match threshold.
+_MODALITY_SKIP_SUFFIXES = (".md", ".mdx", ".rst")
+_MODALITY_SKIP_NAMES = frozenset(
+    {
+        "package-lock.json",
+        "npm-shrinkwrap.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "poetry.lock",
+        "uv.lock",
+        "pipfile.lock",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Streaming detection patterns
@@ -433,16 +464,36 @@ def extract_deployment_context(files: Sequence[tuple[str, str]]) -> dict[str, li
     }
 
 
+def _is_modality_noise(path: str) -> bool:
+    """Return True for documentation and lockfiles, which are not application code."""
+    lowered = path.replace("\\", "/").lower()
+    name = lowered.rsplit("/", 1)[-1]
+    return lowered.endswith(_MODALITY_SKIP_SUFFIXES) or name in _MODALITY_SKIP_NAMES
+
+
+def _count_modality_matches(files: Sequence[tuple[str, str]]) -> tuple[int, int, int]:
+    """Count voice, image and video signal matches across all collected files."""
+    voice = image = video = 0
+    for path, content in files:
+        if not content or _is_modality_noise(path):
+            continue
+        voice += len(_VOICE_PATTERN.findall(content))
+        image += len(_IMAGE_PATTERN.findall(content))
+        video += len(_VIDEO_PATTERN.findall(content))
+        if min(voice, image, video) >= _MODALITY_MATCH_THRESHOLD:
+            break
+    return voice, image, video
+
+
 def infer_modalities_support(
     nodes: Sequence[Node],
     files: Sequence[tuple[str, str]],
 ) -> dict[str, bool]:
     """Infer supported input/output modalities from nodes and file content."""
-    combined = " ".join((content or "") for _, content in files[:200]).lower()
-
-    voice = len(_VOICE_PATTERN.findall(combined)) >= _MODALITY_MATCH_THRESHOLD
-    image = len(_IMAGE_PATTERN.findall(combined)) >= _MODALITY_MATCH_THRESHOLD
-    video = len(_VIDEO_PATTERN.findall(combined)) >= _MODALITY_MATCH_THRESHOLD
+    voice_hits, image_hits, video_hits = _count_modality_matches(files)
+    voice = voice_hits >= _MODALITY_MATCH_THRESHOLD
+    image = image_hits >= _MODALITY_MATCH_THRESHOLD
+    video = video_hits >= _MODALITY_MATCH_THRESHOLD
 
     for node in nodes:
         extras = node.metadata.extras
