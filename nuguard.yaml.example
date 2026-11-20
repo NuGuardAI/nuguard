@@ -762,3 +762,20 @@ output:
     fail_on_policy_violation: true      # cognitive policy violations block (behavior)
     effective_coverage_floor: 80        # fail if effective scenario % drops below this
     # baseline_run_id: ${LAST_GOOD_RUN} # diff findings against a prior run; only new block
+
+# ── Remote scan API (nuguard serve) ─────────────────────────────────────────────
+# Optional HTTP job API for SBOM + static analysis of GitHub repositories.
+# Requires: pip install "nuguard[service]". Full reference: documentation/docs/remote-api.md
+# service:
+#   bind: 127.0.0.1
+#   port: 8080
+#   api_keys:                      # nuguard serve keygen --id <caller>
+#     - id: my-orchestrator
+#       sha256: ${NUGUARD_SERVICE_KEY_SHA256}
+#   git:
+#     allowed_hosts: [github.com]
+#   jobs:
+#     max_concurrent: 4
+#     job_timeout_s: 900
+#     scratch_dir: /var/lib/nuguard/scratch
+#     db_path: /var/lib/nuguard/service.db

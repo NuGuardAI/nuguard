@@ -1,0 +1,31 @@
+# Example service configuration for the container image. Mount at
+# /etc/nuguard/nuguard.yaml. Generate keys with: nuguard serve keygen --id <caller>
+service:
+  bind: 0.0.0.0
+  port: 8080
+  trust_proxy: true              # TLS terminates at your reverse proxy (e.g. Caddy)
+  public_base_url: https://nuguard.internal.example.com
+  api_keys:
+    - id: vulnframework-prod
+      sha256: ${NUGUARD_SERVICE_KEY_VF_SHA256}
+      max_concurrent_scans: 4
+      max_queued_scans: 50
+  git:
+    allowed_hosts: [github.com]
+    clone_timeout_s: 120
+    max_repo_bytes: 524288000
+  jobs:
+    max_concurrent: 4
+    job_timeout_s: 900
+    queue_limit: 200
+    result_ttl_hours: 168
+    scratch_dir: /var/lib/nuguard/scratch
+    db_path: /var/lib/nuguard/service.db
+  analysis_defaults:
+    min_severity: low
+    network: true
+    tools: [nga-rules, atlas, semgrep, osv, grype, checkov, trivy, supply-chain]
+  llm:
+    enabled: false
+  webhooks:
+    allowed_hosts: []

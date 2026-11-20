@@ -22,7 +22,7 @@ def _node(name: str, tag: str) -> dict:
 def test_query_grype_images_collects_all_images_concurrently() -> None:
     nodes = [_node("alpine", "3.19"), _node("nginx", "1.25"), _node("curl", "8.5")]
 
-    def _fake_run_grype(target: str, timeout: float, max_retries: int):
+    def _fake_run_grype(target: str, timeout: float, max_retries: int, strict: bool = False):
         # One synthetic match per image, tagged by target so we can verify
         # every image's result made it into the final list.
         return [{
@@ -51,7 +51,7 @@ def test_query_grype_images_findings_carry_image_ref_and_locations() -> None:
         "evidence": [{"kind": "dockerfile", "location": {"path": "Dockerfile", "line": 1}}],
     }
 
-    def _fake_run_grype(target: str, timeout: float, max_retries: int):
+    def _fake_run_grype(target: str, timeout: float, max_retries: int, strict: bool = False):
         return [{
             "vulnerability": {"id": "CVE-2024-1", "severity": "high"},
             "artifact": {"name": "libssl3", "version": "3.5.6", "purl": "pkg:apk/alpine/libssl3@3.5.6"},

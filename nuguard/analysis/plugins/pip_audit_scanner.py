@@ -80,6 +80,7 @@ class PipAuditScannerPlugin(AnalysisPlugin):
                 status="skipped",
                 plugin=self.name,
                 message="no Python manifests found in SBOM — pip-audit skipped",
+                details={"not_applicable": True},
             )
 
         result = run_scanner(

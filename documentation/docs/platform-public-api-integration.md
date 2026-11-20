@@ -85,6 +85,26 @@ Response model:
 Entry point:
 - `await run_analysis(request, sbom=..., policy=..., llm_client=...)`
 
+**Coverage is reported per tool.** `AnalysisRunResult.tool_runs` is a list of `ToolRun`
+(`tool`, `status`, `findings`, `duration_ms`, `version`, `reason`) with a closed status set:
+`ok`, `failed`, `skipped`, `disabled`, `not_applicable`, `timeout`. A tool that did not finish is
+never `ok`: an unreachable OSV API, a Grype database failure, a Trivy exit error or an NGA rule
+exception is `failed` (or `timeout`) with a sanitized `reason`. `tool_status` keeps its legacy
+string form (`failed`/`timeout` appear there as `"error"`, `not_applicable` as `"skipped"`).
+
+`AnalysisRunRequest` adds `offline` (default `false`: OSV, Grype and Trivy are reported
+`skipped` instead of run, and artifact verification is forced off) and `dedupe_posture`
+(default `true`: NGA-002 sub-check A and NGA-001 data-flow findings that fire once per
+model-name string are merged into one finding per SBOM node, with the model names in
+`evidence`).
+
+**Stable finding identity.** `Finding` adds optional `rule_id` (stable across runs, unlike
+`finding_id`), `source_tool`, `kind` (`code`, `posture`, `dependency`, `iac`, `container`,
+`supply_chain`), `locations` (`FindingLocation`: repo-relative `path`, `start_line`, `end_line`,
+`symbol`) and `component_ref` (`NODE_TYPE:canonical name` of the SBOM node a posture finding is
+anchored to). Paths are never absolute; absolute paths under `source_path` are also removed from
+finding text fields. Semgrep rule ids are reported without the rules-file prefix.
+
 `AnalysisRunResult.remediation_plan` is synthesized from findings against the (required) `sbom`
 argument. It is `[]` only when there are no findings to synthesize against; `llm_client` is
 optional and only upgrades template-based remediation text with LLM-authored content when
@@ -242,6 +262,14 @@ Entry points:
 - `await render_sbom(request, sbom=...)`
 - `await export_sbom(request, sbom=...)`
 - `await enrich_sbom(request)`
+
+**Authenticated clones.** `SbomGenerateRequest.repo_token` (`SecretStr`) authenticates a
+`repo_url` clone. It is handed to git through an ephemeral credential helper (never the URL,
+argv, logs or errors) and used for GitHub API calls on subfolder URLs.
+`SbomGenerateResult.resolved_commit` is the commit SHA actually checked out. `AiSbomConfig` adds
+`allowed_git_hosts` (when set: https only, exactly these hosts, no userinfo/IP literals/localhost,
+isolated git environment, no LFS smudge, symlinks checked out as files), `clone_timeout_s`
+(default 120) and `max_repo_bytes` (default 500 MB). `repo_ref` may be a full commit SHA.
 
 Enrichment validates input and output, operates copy-on-write, and writes only when
 `output_path` is explicitly supplied. The deterministic `cache_fingerprint` supports
@@ -528,6 +556,15 @@ result = await run_toolbox_plugin(
     sbom=generated.sbom,
 )
 ```
+
+## Remote API
+
+For programs that cannot embed the Python library, `nuguard serve` exposes SBOM generation and
+static analysis of GitHub repositories as an authenticated HTTP job API (`POST /v1/scans`, then
+poll and fetch the result, SARIF or AI-SBOM). Results carry per-tool coverage, stable `nf1_…`
+fingerprints and a reproducible `result_sha256`. Its request/response models live in
+`nuguard.service.models` and are part of the schema snapshot; the OpenAPI document is committed
+at `nuguard/service/openapi.json`. See the [Remote Scan API guide](remote-api.md).
 
 ## Contract governance
 

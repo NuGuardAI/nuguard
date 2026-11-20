@@ -2,6 +2,24 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## Unreleased
+
+### Added
+- **Remote scan API (`nuguard serve`):** An optional HTTP job API (`pip install "nuguard[service]"`) that clones a GitHub repository with a per-request read-only token, generates the AI-SBOM, runs static analysis and returns a machine-readable result: per-tool coverage, a `succeeded`/`partial` status that never reports a tool that did not run as clean, stable `nf1_…` finding fingerprints, repo-relative locations, provenance (tool and rule-pack versions) and a reproducible `result_sha256`. Results are also available as SARIF, and the AI-SBOM as JSON, CycloneDX or Markdown. Each scan runs in its own worker process with an explicitly built environment, a hard timeout that kills the whole process tree, and a host-restricted, hardened clone; tokens are held in memory only. API keys are stored as SHA-256 digests. A container image is provided in `deploy/service/Dockerfile`. See the [Remote Scan API guide](remote-api.md).
+- **Typed tool coverage in analysis results:** `AnalysisRunResult.tool_runs` reports each tool, including pip-audit and Gitleaks, as `ok`, `failed`, `skipped`, `disabled`, `not_applicable` or `timeout` with duration, version and a sanitized reason. `AnalysisRunRequest.offline` reports network tools (OSV, Grype, Trivy, pip-audit) as skipped instead of running them.
+- **Stable finding identity:** Findings carry `rule_id`, `source_tool`, `kind`, repo-relative `locations` and, for posture findings, `component_ref`.
+- **Authenticated, policy-constrained clones:** `SbomGenerateRequest.repo_token` authenticates `repo_url` clones without embedding the token in the URL, and `SbomGenerateResult.resolved_commit` reports the commit checked out. `AiSbomConfig.allowed_git_hosts`, `clone_timeout_s` and `max_repo_bytes` constrain clones; `repo_ref` may be a full commit SHA.
+
+### Changed
+- **NGA-002 / NGA-001 fan-out:** Analysis now merges findings that fired once per model-name string into one finding per SBOM node (the calling agent or client, or the file for unattached model strings), listing the model names in `evidence`. Set `AnalysisRunRequest.dedupe_posture: false` for the previous one-per-model output.
+- **Clone limits:** Repository clones now time out after 120 seconds and abort when the checked-out tree exceeds 500 MB (`AiSbomConfig.clone_timeout_s`, `max_repo_bytes`). Git LFS objects are no longer downloaded during clones.
+
+### Fixed
+- **False-clean analysis results:** When OSV could not be reached, the Grype database failed, Trivy exited with an error or timed out, or an NGA rule raised, the tool was reported `ok` with zero findings. These now report `failed` or `timeout` (`"error"` in the legacy `tool_status`).
+- **AI source rules that could never match:** `nuguard-llm-prompt-injection-fstring` (its exclusion was identical to its match), and `nuguard-eval-on-llm-output`, `nuguard-hardcoded-api-key`, `nuguard-llm-ssrf-requests` and `nuguard-pickle-model-load` (alternatives were combined with AND) now detect what they describe, with Opengrep or Semgrep. The prompt-injection rule also covers OpenAI `chat.completions.create`, Anthropic `messages.create` and LangChain `invoke`/`ainvoke`; the SSRF rule now tracks LLM output into HTTP clients.
+- **Clones behind a proxy:** Under `allowed_git_hosts`, git's minimal environment dropped the proxy and certificate variables, so clones failed where github.com is reachable only through a proxy. It now keeps `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`, `ALL_PROXY` (both cases), `SSL_CERT_FILE`, `SSL_CERT_DIR`, `GIT_SSL_CAINFO` and `CURL_CA_BUNDLE`, and still drops `GH_TOKEN`, `GITHUB_TOKEN` and `NUGUARD_*`.
+- **Unstable ATLAS finding order:** ATLAS native check findings listed affected components in a different order on each run; they are now sorted.
+
 ## v0.9.17 - 2026-11-16
 
 ### Added

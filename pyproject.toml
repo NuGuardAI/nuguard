@@ -69,6 +69,11 @@ browser = [
     "playwright>=1.45",
     "ruamel.yaml>=0.18",
 ]
+service = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "nuguard[secrets]",
+]
 
 [project.urls]
 Homepage = "https://github.com/NuGuardAI/nuguard"
@@ -78,6 +83,7 @@ Issues = "https://github.com/NuGuardAI/nuguard/issues"
 [project.scripts]
 nuguard = "nuguard.cli.main:app"
 nuguard-mcp = "nuguard.mcp.__main__:main"
+nuguard-service = "nuguard.service.__main__:main"
 
 [project.entry-points."smithery"]
 server = "nuguard.mcp.server:create_server"
@@ -120,6 +126,7 @@ markers = [
     "benchmark_redteam: Full benchmark redteam CLI scan (opt-in: NUGUARD_REDTEAM_BENCHMARK=1)",
     "analyze_e2e: E2E analyze pipeline from GitHub clone (opt-in: NUGUARD_ANALYZE_E2E=1)",
     "smoke: Smoke tests for key extraction scenarios",
+    "service_e2e: Remote scan service against a real public GitHub repo (opt-in: NUGUARD_SERVICE_E2E=1)",
     "redteam_judge_eval: Judge-accuracy corpus replay against a real LLM (opt-in, needs an LLM API key)",
 ]
 
@@ -166,6 +173,7 @@ exclude = [
 dev = [
     "boto3>=1.42.91",
     "deptry>=0.23",
+    "fastapi>=0.115",
     "mcp>=1.0,<3",
     "mypy>=1.19.1",
     "pre-commit>=4.0.0",

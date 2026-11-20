@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from nuguard.analysis.public_api import AnalysisRunRequest, AnalysisRunResult
+from nuguard.analysis.public_api import AnalysisRunRequest, AnalysisRunResult, ToolRun
 from nuguard.behavior.models import BehaviorAnalysisResult, BehaviorRunResult
 from nuguard.behavior.public_api import BehaviorAnalysisRequest, BehaviorRunRequest
 from nuguard.common.browser_login.config import BrowserDiscoveryConfig
@@ -99,6 +99,16 @@ from nuguard.sbom.toolbox.public_api import (
     ToolboxRunPluginRequest,
     ToolboxRunPluginResult,
 )
+from nuguard.service.models import (
+    Capabilities,
+    HealthStatus,
+    ProblemDetail,
+    ScanCreateRequest,
+    ScanJob,
+    ScanList,
+    ScanOptions,
+    ScanResult,
+)
 
 _SCHEMA_FILE = Path(__file__).parent / "public_api.schema.json"
 
@@ -111,6 +121,7 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "remediation.PentestRemediationFinding": PentestRemediationFinding,
     "analysis.AnalysisRunRequest": AnalysisRunRequest,
     "analysis.AnalysisRunResult": AnalysisRunResult,
+    "analysis.ToolRun": ToolRun,
     "behavior.BehaviorAnalysisRequest": BehaviorAnalysisRequest,
     "behavior.BehaviorAnalysisResult": BehaviorAnalysisResult,
     "behavior.BehaviorRunRequest": BehaviorRunRequest,
@@ -177,6 +188,14 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "sbom.toolbox.ToolboxRunAllResult": ToolboxRunAllResult,
     "sbom.toolbox.ToolboxRunPluginRequest": ToolboxRunPluginRequest,
     "sbom.toolbox.ToolboxRunPluginResult": ToolboxRunPluginResult,
+    "service.Capabilities": Capabilities,
+    "service.HealthStatus": HealthStatus,
+    "service.ProblemDetail": ProblemDetail,
+    "service.ScanCreateRequest": ScanCreateRequest,
+    "service.ScanJob": ScanJob,
+    "service.ScanList": ScanList,
+    "service.ScanOptions": ScanOptions,
+    "service.ScanResult": ScanResult,
 }
 
 

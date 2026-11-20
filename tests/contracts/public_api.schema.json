@@ -184,6 +184,18 @@
         ],
         "default": null,
         "title": "Supply Chain Threat Intel Feeds"
+      },
+      "offline": {
+        "default": false,
+        "description": "Skip network-backed tools (OSV, Grype, Trivy) and report them as skipped.",
+        "title": "Offline",
+        "type": "boolean"
+      },
+      "dedupe_posture": {
+        "default": true,
+        "description": "Merge per-model-name posture findings (e.g. NGA-002) into one per SBOM node.",
+        "title": "Dedupe Posture",
+        "type": "boolean"
       }
     },
     "title": "AnalysisRunRequest",
@@ -238,6 +250,69 @@
             },
             "title": "References",
             "type": "array"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "source_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Tool"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "posture",
+                  "dependency",
+                  "iac",
+                  "container",
+                  "supply_chain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/$defs/FindingLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "component_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Component Ref"
           },
           "container_image": {
             "anyOf": [
@@ -651,6 +726,60 @@
         "title": "Finding",
         "type": "object"
       },
+      "FindingLocation": {
+        "description": "Where a finding lives in the scanned source tree.",
+        "properties": {
+          "path": {
+            "description": "Repo-relative path with POSIX separators; never absolute",
+            "title": "Path",
+            "type": "string"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start Line"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Line"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Enclosing function/class for code, or the resource address for IaC, if known",
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "FindingLocation",
+        "type": "object"
+      },
       "RemediationArtefact": {
         "description": "A concrete, SBOM-node-specific remediation action.\n\nProduced by RemediationSynthesizer as the final pass after all findings\nare collected. Each artefact targets a specific SBOM node and provides\nactionable instructions (patch text, guardrail spec, or architectural change).",
         "properties": {
@@ -1054,6 +1183,83 @@
         },
         "title": "TokenUsage",
         "type": "object"
+      },
+      "ToolRun": {
+        "description": "What one analysis tool actually did during a run.",
+        "properties": {
+          "tool": {
+            "description": "nga-rules, osv, grype, checkov, trivy, semgrep, atlas, supply-chain",
+            "title": "Tool",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Binary or rule-pack version used",
+            "title": "Version"
+          },
+          "status": {
+            "$ref": "#/$defs/ToolRunStatus"
+          },
+          "findings": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Findings",
+            "type": "integer"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Duration Ms"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Short sanitized cause; set unless status is ok or disabled",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "tool",
+          "status"
+        ],
+        "title": "ToolRun",
+        "type": "object"
+      },
+      "ToolRunStatus": {
+        "description": "Closed set of outcomes for one analysis tool.\n\n``ok``: the tool ran and finished. ``failed``: it was attempted and errored\nor could not reach its data source. ``skipped``: a precondition was missing\n(binary not installed, offline mode). ``disabled``: the request turned it\noff. ``not_applicable``: nothing for the tool to look at. ``timeout``: it\nhit its deadline.",
+        "enum": [
+          "ok",
+          "failed",
+          "skipped",
+          "disabled",
+          "not_applicable",
+          "timeout"
+        ],
+        "title": "ToolRunStatus",
+        "type": "string"
       }
     },
     "description": "JSON-safe result of :func:`run_analysis`.\n\nBundles ``StaticAnalyzer.analyze()``'s return value together with the\nside-effect instance attributes the CLI reads separately today\n(``tool_status``, ``nga_audit``, ``sc_audit``, ``token_usage``), so\nexternal callers get one self-contained object instead of having to know\nwhich attributes to read off the analyzer instance.",
@@ -1074,6 +1280,13 @@
         },
         "title": "Tool Status",
         "type": "object"
+      },
+      "tool_runs": {
+        "items": {
+          "$ref": "#/$defs/ToolRun"
+        },
+        "title": "Tool Runs",
+        "type": "array"
       },
       "nga_audit": {
         "items": {
@@ -1106,6 +1319,85 @@
       "findings"
     ],
     "title": "AnalysisRunResult",
+    "type": "object"
+  },
+  "analysis.ToolRun": {
+    "$defs": {
+      "ToolRunStatus": {
+        "description": "Closed set of outcomes for one analysis tool.\n\n``ok``: the tool ran and finished. ``failed``: it was attempted and errored\nor could not reach its data source. ``skipped``: a precondition was missing\n(binary not installed, offline mode). ``disabled``: the request turned it\noff. ``not_applicable``: nothing for the tool to look at. ``timeout``: it\nhit its deadline.",
+        "enum": [
+          "ok",
+          "failed",
+          "skipped",
+          "disabled",
+          "not_applicable",
+          "timeout"
+        ],
+        "title": "ToolRunStatus",
+        "type": "string"
+      }
+    },
+    "description": "What one analysis tool actually did during a run.",
+    "properties": {
+      "tool": {
+        "description": "nga-rules, osv, grype, checkov, trivy, semgrep, atlas, supply-chain",
+        "title": "Tool",
+        "type": "string"
+      },
+      "version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Binary or rule-pack version used",
+        "title": "Version"
+      },
+      "status": {
+        "$ref": "#/$defs/ToolRunStatus"
+      },
+      "findings": {
+        "default": 0,
+        "minimum": 0,
+        "title": "Findings",
+        "type": "integer"
+      },
+      "duration_ms": {
+        "anyOf": [
+          {
+            "minimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Duration Ms"
+      },
+      "reason": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Short sanitized cause; set unless status is ok or disabled",
+        "title": "Reason"
+      }
+    },
+    "required": [
+      "tool",
+      "status"
+    ],
+    "title": "ToolRun",
     "type": "object"
   },
   "behavior.BehaviorAnalysisRequest": {
@@ -9641,6 +9933,69 @@
             "title": "References",
             "type": "array"
           },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "source_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Tool"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "posture",
+                  "dependency",
+                  "iac",
+                  "container",
+                  "supply_chain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/$defs/FindingLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "component_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Component Ref"
+          },
           "container_image": {
             "anyOf": [
               {
@@ -10051,6 +10406,60 @@
           "description"
         ],
         "title": "Finding",
+        "type": "object"
+      },
+      "FindingLocation": {
+        "description": "Where a finding lives in the scanned source tree.",
+        "properties": {
+          "path": {
+            "description": "Repo-relative path with POSIX separators; never absolute",
+            "title": "Path",
+            "type": "string"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start Line"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Line"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Enclosing function/class for code, or the resource address for IaC, if known",
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "FindingLocation",
         "type": "object"
       },
       "ObjectiveExecutionRecord": {
@@ -12654,6 +13063,69 @@
             "title": "References",
             "type": "array"
           },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "source_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Tool"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "posture",
+                  "dependency",
+                  "iac",
+                  "container",
+                  "supply_chain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/$defs/FindingLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "component_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Component Ref"
+          },
           "container_image": {
             "anyOf": [
               {
@@ -13064,6 +13536,60 @@
           "description"
         ],
         "title": "Finding",
+        "type": "object"
+      },
+      "FindingLocation": {
+        "description": "Where a finding lives in the scanned source tree.",
+        "properties": {
+          "path": {
+            "description": "Repo-relative path with POSIX separators; never absolute",
+            "title": "Path",
+            "type": "string"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start Line"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Line"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Enclosing function/class for code, or the resource address for IaC, if known",
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "FindingLocation",
         "type": "object"
       },
       "ObjectiveExecutionRecord": {
@@ -14631,6 +15157,19 @@
             "default": null,
             "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
             "title": "Local Cloned Path"
+          },
+          "resolved_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Commit SHA that was actually checked out when the document was produced from a repository clone (extract_from_repo / extract_from_repo_subfolder); None for local paths or when it could not be determined. Excluded from serialization.",
+            "title": "Resolved Commit"
           },
           "nodes": {
             "description": "Detected AI components",
@@ -19096,6 +19635,19 @@
             "default": null,
             "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
             "title": "Local Cloned Path"
+          },
+          "resolved_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Commit SHA that was actually checked out when the document was produced from a repository clone (extract_from_repo / extract_from_repo_subfolder); None for local paths or when it could not be determined. Excluded from serialization.",
+            "title": "Resolved Commit"
           },
           "nodes": {
             "description": "Detected AI components",
@@ -23706,13 +24258,43 @@
             "minimum": 0,
             "title": "Bulk Catalog Keep",
             "type": "integer"
+          },
+          "allowed_git_hosts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "When set, clones are restricted to https:// URLs on exactly these hosts (no userinfo, IP literals or localhost) and git runs with an isolated environment (GIT_ALLOW_PROTOCOL=https, no system/global config, no LFS smudge, symlinks checked out as plain files). None keeps the unrestricted library behaviour.",
+            "title": "Allowed Git Hosts"
+          },
+          "clone_timeout_s": {
+            "default": 120.0,
+            "description": "Wall-clock limit for one git clone, in seconds.",
+            "exclusiveMinimum": 0,
+            "title": "Clone Timeout S",
+            "type": "number"
+          },
+          "max_repo_bytes": {
+            "default": 524288000,
+            "description": "Abort when the checked-out working tree exceeds this many bytes.",
+            "minimum": 1,
+            "title": "Max Repo Bytes",
+            "type": "integer"
           }
         },
         "title": "AiSbomConfig",
         "type": "object"
       }
     },
-    "description": "JSON-safe request for SBOM extraction.",
+    "description": "JSON-safe request for SBOM extraction.\n\n``repo_token`` authenticates a ``repo_url`` clone. It is handed to git via\nan ephemeral credential helper (never embedded in the URL, argv, logs or\nerrors), used for GitHub API calls on subfolder URLs, and never appears in\nthe result.",
     "properties": {
       "source_path": {
         "anyOf": [
@@ -23742,6 +24324,20 @@
         "default": "main",
         "title": "Repo Ref",
         "type": "string"
+      },
+      "repo_token": {
+        "anyOf": [
+          {
+            "format": "password",
+            "type": "string",
+            "writeOnly": true
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Repo Token"
       },
       "config": {
         "$ref": "#/$defs/AiSbomConfig"
@@ -23802,6 +24398,19 @@
             "default": null,
             "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
             "title": "Local Cloned Path"
+          },
+          "resolved_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Commit SHA that was actually checked out when the document was produced from a repository clone (extract_from_repo / extract_from_repo_subfolder); None for local paths or when it could not be determined. Excluded from serialization.",
+            "title": "Resolved Commit"
           },
           "nodes": {
             "description": "Detected AI components",
@@ -28098,6 +28707,19 @@
       "edge_count": {
         "title": "Edge Count",
         "type": "integer"
+      },
+      "resolved_commit": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Commit SHA checked out for repo_url sources",
+        "title": "Resolved Commit"
       }
     },
     "required": [
@@ -28175,6 +28797,19 @@
             "default": null,
             "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
             "title": "Local Cloned Path"
+          },
+          "resolved_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Commit SHA that was actually checked out when the document was produced from a repository clone (extract_from_repo / extract_from_repo_subfolder); None for local paths or when it could not be determined. Excluded from serialization.",
+            "title": "Resolved Commit"
           },
           "nodes": {
             "description": "Detected AI components",
@@ -32736,6 +33371,2091 @@
       "message"
     ],
     "title": "ToolboxRunPluginResult",
+    "type": "object"
+  },
+  "service.Capabilities": {
+    "$defs": {
+      "ToolVersion": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ToolVersion",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "nuguard_version": {
+        "title": "Nuguard Version",
+        "type": "string"
+      },
+      "service_version": {
+        "title": "Service Version",
+        "type": "string"
+      },
+      "tools": {
+        "items": {
+          "$ref": "#/$defs/ToolVersion"
+        },
+        "title": "Tools",
+        "type": "array"
+      },
+      "tools_allowed": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Tools Allowed",
+        "type": "array"
+      },
+      "network_default": {
+        "title": "Network Default",
+        "type": "boolean"
+      },
+      "llm_available": {
+        "title": "Llm Available",
+        "type": "boolean"
+      },
+      "allowed_git_hosts": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Allowed Git Hosts",
+        "type": "array"
+      },
+      "limits": {
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            }
+          ]
+        },
+        "title": "Limits",
+        "type": "object"
+      }
+    },
+    "required": [
+      "nuguard_version",
+      "service_version",
+      "tools",
+      "tools_allowed",
+      "network_default",
+      "llm_available",
+      "allowed_git_hosts",
+      "limits"
+    ],
+    "title": "Capabilities",
+    "type": "object"
+  },
+  "service.HealthStatus": {
+    "properties": {
+      "status": {
+        "enum": [
+          "ok",
+          "not_ready"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "failing": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Failing",
+        "type": "array"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "title": "HealthStatus",
+    "type": "object"
+  },
+  "service.ProblemDetail": {
+    "description": "RFC 9457 problem details; ``detail`` never carries stderr, paths or tokens.",
+    "properties": {
+      "type": {
+        "title": "Type",
+        "type": "string"
+      },
+      "title": {
+        "title": "Title",
+        "type": "string"
+      },
+      "status": {
+        "title": "Status",
+        "type": "integer"
+      },
+      "code": {
+        "title": "Code",
+        "type": "string"
+      },
+      "detail": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Detail"
+      }
+    },
+    "required": [
+      "type",
+      "title",
+      "status",
+      "code"
+    ],
+    "title": "ProblemDetail",
+    "type": "object"
+  },
+  "service.ScanCreateRequest": {
+    "$defs": {
+      "ScanOptions": {
+        "additionalProperties": false,
+        "description": "What to run. The server may narrow these; it never widens them.",
+        "properties": {
+          "tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "nga-rules",
+                    "atlas",
+                    "semgrep",
+                    "osv",
+                    "grype",
+                    "checkov",
+                    "trivy",
+                    "supply-chain"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Subset of the server's allowed tools; null = all allowed",
+            "title": "Tools"
+          },
+          "min_severity": {
+            "$ref": "#/$defs/Severity",
+            "default": "low"
+          },
+          "include_sbom": {
+            "default": false,
+            "description": "Embed the full AI-SBOM in the result",
+            "title": "Include Sbom",
+            "type": "boolean"
+          },
+          "include_posture": {
+            "default": true,
+            "description": "Include kind=posture findings",
+            "title": "Include Posture",
+            "type": "boolean"
+          },
+          "network": {
+            "default": true,
+            "description": "false: OSV/Grype/Trivy are reported skipped, never ok",
+            "title": "Network",
+            "type": "boolean"
+          },
+          "use_llm": {
+            "default": false,
+            "description": "Rejected unless the server enables LLM use",
+            "title": "Use Llm",
+            "type": "boolean"
+          },
+          "subpath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Scan only this repo-relative directory",
+            "title": "Subpath"
+          }
+        },
+        "title": "ScanOptions",
+        "type": "object"
+      },
+      "Severity": {
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "``POST /v1/scans`` body.",
+    "properties": {
+      "repo_url": {
+        "description": "https://<host>/<owner>/<repo>[.git][/tree/<ref>/<subpath>]",
+        "maxLength": 2048,
+        "title": "Repo Url",
+        "type": "string"
+      },
+      "ref": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Branch, tag or full commit SHA",
+        "title": "Ref"
+      },
+      "github_token": {
+        "anyOf": [
+          {
+            "format": "password",
+            "type": "string",
+            "writeOnly": true
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Read-only token; held in memory only, never stored or returned",
+        "title": "Github Token"
+      },
+      "options": {
+        "$ref": "#/$defs/ScanOptions"
+      },
+      "client_reference": {
+        "anyOf": [
+          {
+            "maxLength": 200,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Client Reference"
+      },
+      "callback_url": {
+        "anyOf": [
+          {
+            "maxLength": 2048,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Callback Url"
+      }
+    },
+    "required": [
+      "repo_url"
+    ],
+    "title": "ScanCreateRequest",
+    "type": "object"
+  },
+  "service.ScanJob": {
+    "$defs": {
+      "ProblemDetail": {
+        "description": "RFC 9457 problem details; ``detail`` never carries stderr, paths or tokens.",
+        "properties": {
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Detail"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "title": "ProblemDetail",
+        "type": "object"
+      },
+      "ScanPhase": {
+        "enum": [
+          "queued",
+          "cloning",
+          "sbom",
+          "analyzing",
+          "finalizing"
+        ],
+        "title": "ScanPhase",
+        "type": "string"
+      },
+      "ScanStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "partial",
+          "failed",
+          "cancelled",
+          "expired"
+        ],
+        "title": "ScanStatus",
+        "type": "string"
+      }
+    },
+    "properties": {
+      "id": {
+        "description": "\"scn_\" + 26-character ULID",
+        "title": "Id",
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/$defs/ScanStatus"
+      },
+      "phase": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ScanPhase"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "repo_url": {
+        "title": "Repo Url",
+        "type": "string"
+      },
+      "ref_requested": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Ref Requested"
+      },
+      "commit_sha": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Commit Sha"
+      },
+      "client_reference": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Client Reference"
+      },
+      "created_at": {
+        "format": "date-time",
+        "title": "Created At",
+        "type": "string"
+      },
+      "started_at": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Started At"
+      },
+      "finished_at": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Finished At"
+      },
+      "error": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ProblemDetail"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "links": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "title": "Links",
+        "type": "object"
+      }
+    },
+    "required": [
+      "id",
+      "status",
+      "repo_url",
+      "created_at"
+    ],
+    "title": "ScanJob",
+    "type": "object"
+  },
+  "service.ScanList": {
+    "$defs": {
+      "ProblemDetail": {
+        "description": "RFC 9457 problem details; ``detail`` never carries stderr, paths or tokens.",
+        "properties": {
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Detail"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "title": "ProblemDetail",
+        "type": "object"
+      },
+      "ScanJob": {
+        "properties": {
+          "id": {
+            "description": "\"scn_\" + 26-character ULID",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/ScanStatus"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ScanPhase"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "repo_url": {
+            "title": "Repo Url",
+            "type": "string"
+          },
+          "ref_requested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ref Requested"
+          },
+          "commit_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Commit Sha"
+          },
+          "client_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Client Reference"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Finished At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ProblemDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "links": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Links",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "repo_url",
+          "created_at"
+        ],
+        "title": "ScanJob",
+        "type": "object"
+      },
+      "ScanPhase": {
+        "enum": [
+          "queued",
+          "cloning",
+          "sbom",
+          "analyzing",
+          "finalizing"
+        ],
+        "title": "ScanPhase",
+        "type": "string"
+      },
+      "ScanStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "partial",
+          "failed",
+          "cancelled",
+          "expired"
+        ],
+        "title": "ScanStatus",
+        "type": "string"
+      }
+    },
+    "properties": {
+      "items": {
+        "items": {
+          "$ref": "#/$defs/ScanJob"
+        },
+        "title": "Items",
+        "type": "array"
+      },
+      "next_cursor": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Next Cursor"
+      }
+    },
+    "required": [
+      "items"
+    ],
+    "title": "ScanList",
+    "type": "object"
+  },
+  "service.ScanOptions": {
+    "$defs": {
+      "Severity": {
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity",
+        "type": "string"
+      }
+    },
+    "additionalProperties": false,
+    "description": "What to run. The server may narrow these; it never widens them.",
+    "properties": {
+      "tools": {
+        "anyOf": [
+          {
+            "items": {
+              "enum": [
+                "nga-rules",
+                "atlas",
+                "semgrep",
+                "osv",
+                "grype",
+                "checkov",
+                "trivy",
+                "supply-chain"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Subset of the server's allowed tools; null = all allowed",
+        "title": "Tools"
+      },
+      "min_severity": {
+        "$ref": "#/$defs/Severity",
+        "default": "low"
+      },
+      "include_sbom": {
+        "default": false,
+        "description": "Embed the full AI-SBOM in the result",
+        "title": "Include Sbom",
+        "type": "boolean"
+      },
+      "include_posture": {
+        "default": true,
+        "description": "Include kind=posture findings",
+        "title": "Include Posture",
+        "type": "boolean"
+      },
+      "network": {
+        "default": true,
+        "description": "false: OSV/Grype/Trivy are reported skipped, never ok",
+        "title": "Network",
+        "type": "boolean"
+      },
+      "use_llm": {
+        "default": false,
+        "description": "Rejected unless the server enables LLM use",
+        "title": "Use Llm",
+        "type": "boolean"
+      },
+      "subpath": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Scan only this repo-relative directory",
+        "title": "Subpath"
+      }
+    },
+    "title": "ScanOptions",
+    "type": "object"
+  },
+  "service.ScanResult": {
+    "$defs": {
+      "Coverage": {
+        "properties": {
+          "tool_runs": {
+            "description": "One per requested tool, always present",
+            "items": {
+              "$ref": "#/$defs/ToolRun"
+            },
+            "title": "Tool Runs",
+            "type": "array"
+          },
+          "languages_detected": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Languages Detected",
+            "type": "array"
+          },
+          "files_scanned": {
+            "default": 0,
+            "title": "Files Scanned",
+            "type": "integer"
+          },
+          "files_skipped": {
+            "default": 0,
+            "title": "Files Skipped",
+            "type": "integer"
+          },
+          "gaps": {
+            "description": "e.g. \"osv: failed (timed out)\"",
+            "items": {
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tool_runs"
+        ],
+        "title": "Coverage",
+        "type": "object"
+      },
+      "Finding": {
+        "properties": {
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/$defs/Severity"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "affected_component": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Affected Component"
+          },
+          "remediation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Remediation"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "source_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Tool"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "posture",
+                  "dependency",
+                  "iac",
+                  "container",
+                  "supply_chain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/$defs/FindingLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "component_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Component Ref"
+          },
+          "container_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Container Image"
+          },
+          "container_image_locations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Container Image Locations",
+            "type": "array"
+          },
+          "goal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Goal Type"
+          },
+          "scenario_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scenario Type"
+          },
+          "sbom_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sbom Path",
+            "type": "array"
+          },
+          "sbom_path_descriptions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sbom Path Descriptions",
+            "type": "array"
+          },
+          "policy_clauses_violated": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Clauses Violated",
+            "type": "array"
+          },
+          "chain_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Chain Id"
+          },
+          "owasp_asi_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Asi Ref"
+          },
+          "owasp_llm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Llm Ref"
+          },
+          "owasp_cicd_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Cicd Ref"
+          },
+          "mitre_atlas_technique": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mitre Atlas Technique"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Evidence"
+          },
+          "log_correlation_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Log Correlation Status"
+          },
+          "reasoning": {
+            "default": "",
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "evidence_quote": {
+            "default": "",
+            "title": "Evidence Quote",
+            "type": "string"
+          },
+          "success_indicator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Success Indicator"
+          },
+          "scores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Scores",
+            "type": "object"
+          },
+          "attack_steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Attack Steps",
+            "type": "array"
+          },
+          "golden_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Golden Ids",
+            "type": "array"
+          },
+          "golden_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Golden Name"
+          },
+          "golden_data_excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Golden Data Excerpt"
+          },
+          "verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Verified"
+          },
+          "catalog_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Catalog Id"
+          },
+          "reproduction_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Reproduction Status"
+          },
+          "evidence_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Evidence Kind"
+          },
+          "effect_verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Effect Verified"
+          },
+          "framework_versions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Framework Versions",
+            "type": "array"
+          },
+          "ngrs_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ngrs Score"
+          },
+          "ngrs_vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ngrs Vector"
+          },
+          "authorization_decision": {
+            "default": "",
+            "title": "Authorization Decision",
+            "type": "string"
+          },
+          "guardrail_control": {
+            "default": "",
+            "title": "Guardrail Control",
+            "type": "string"
+          },
+          "evasion_differential": {
+            "default": false,
+            "title": "Evasion Differential",
+            "type": "boolean"
+          },
+          "decorator_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Decorator Name"
+          },
+          "callback_evidence": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Callback Evidence"
+          },
+          "regression_paraphrase_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Paraphrase Kind"
+          },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Regression Expect"
+          },
+          "dual_path_verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Dual Path Verdict"
+          },
+          "state_diff_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "State Diff Outcome"
+          }
+        },
+        "required": [
+          "finding_id",
+          "title",
+          "severity",
+          "description"
+        ],
+        "title": "Finding",
+        "type": "object"
+      },
+      "FindingLocation": {
+        "description": "Where a finding lives in the scanned source tree.",
+        "properties": {
+          "path": {
+            "description": "Repo-relative path with POSIX separators; never absolute",
+            "title": "Path",
+            "type": "string"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start Line"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Line"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Enclosing function/class for code, or the resource address for IaC, if known",
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "FindingLocation",
+        "type": "object"
+      },
+      "InventorySummary": {
+        "properties": {
+          "node_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Node Counts",
+            "type": "object"
+          },
+          "edge_count": {
+            "default": 0,
+            "title": "Edge Count",
+            "type": "integer"
+          },
+          "frameworks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Frameworks",
+            "type": "array"
+          },
+          "model_providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Model Providers",
+            "type": "array"
+          }
+        },
+        "title": "InventorySummary",
+        "type": "object"
+      },
+      "ProblemDetail": {
+        "description": "RFC 9457 problem details; ``detail`` never carries stderr, paths or tokens.",
+        "properties": {
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Detail"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "title": "ProblemDetail",
+        "type": "object"
+      },
+      "Provenance": {
+        "properties": {
+          "nuguard_version": {
+            "title": "Nuguard Version",
+            "type": "string"
+          },
+          "service_version": {
+            "title": "Service Version",
+            "type": "string"
+          },
+          "image_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Image Digest"
+          },
+          "rulepack_sha256": {
+            "title": "Rulepack Sha256",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/$defs/ToolVersion"
+            },
+            "title": "Tools",
+            "type": "array"
+          },
+          "options_effective": {
+            "$ref": "#/$defs/ScanOptions"
+          },
+          "llm_used": {
+            "default": false,
+            "title": "Llm Used",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "nuguard_version",
+          "service_version",
+          "rulepack_sha256",
+          "options_effective"
+        ],
+        "title": "Provenance",
+        "type": "object"
+      },
+      "ScanFinding": {
+        "properties": {
+          "fingerprint": {
+            "description": "nf1_\u2026 stable identity; see the fingerprint docs",
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "source_tool": {
+            "title": "Source Tool",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "code",
+              "posture",
+              "dependency",
+              "iac",
+              "container",
+              "supply_chain"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/$defs/Severity"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/$defs/FindingLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "affected_component": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Affected Component"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "owasp_llm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Llm Ref"
+          },
+          "owasp_asi_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Asi Ref"
+          },
+          "mitre_atlas_technique": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mitre Atlas Technique"
+          },
+          "remediation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Remediation"
+          },
+          "raw": {
+            "$ref": "#/$defs/Finding"
+          }
+        },
+        "required": [
+          "fingerprint",
+          "rule_id",
+          "source_tool",
+          "kind",
+          "severity",
+          "title",
+          "description",
+          "raw"
+        ],
+        "title": "ScanFinding",
+        "type": "object"
+      },
+      "ScanJob": {
+        "properties": {
+          "id": {
+            "description": "\"scn_\" + 26-character ULID",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/ScanStatus"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ScanPhase"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "repo_url": {
+            "title": "Repo Url",
+            "type": "string"
+          },
+          "ref_requested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ref Requested"
+          },
+          "commit_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Commit Sha"
+          },
+          "client_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Client Reference"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Finished At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ProblemDetail"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "links": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Links",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "repo_url",
+          "created_at"
+        ],
+        "title": "ScanJob",
+        "type": "object"
+      },
+      "ScanOptions": {
+        "additionalProperties": false,
+        "description": "What to run. The server may narrow these; it never widens them.",
+        "properties": {
+          "tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "nga-rules",
+                    "atlas",
+                    "semgrep",
+                    "osv",
+                    "grype",
+                    "checkov",
+                    "trivy",
+                    "supply-chain"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Subset of the server's allowed tools; null = all allowed",
+            "title": "Tools"
+          },
+          "min_severity": {
+            "$ref": "#/$defs/Severity",
+            "default": "low"
+          },
+          "include_sbom": {
+            "default": false,
+            "description": "Embed the full AI-SBOM in the result",
+            "title": "Include Sbom",
+            "type": "boolean"
+          },
+          "include_posture": {
+            "default": true,
+            "description": "Include kind=posture findings",
+            "title": "Include Posture",
+            "type": "boolean"
+          },
+          "network": {
+            "default": true,
+            "description": "false: OSV/Grype/Trivy are reported skipped, never ok",
+            "title": "Network",
+            "type": "boolean"
+          },
+          "use_llm": {
+            "default": false,
+            "description": "Rejected unless the server enables LLM use",
+            "title": "Use Llm",
+            "type": "boolean"
+          },
+          "subpath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Scan only this repo-relative directory",
+            "title": "Subpath"
+          }
+        },
+        "title": "ScanOptions",
+        "type": "object"
+      },
+      "ScanPhase": {
+        "enum": [
+          "queued",
+          "cloning",
+          "sbom",
+          "analyzing",
+          "finalizing"
+        ],
+        "title": "ScanPhase",
+        "type": "string"
+      },
+      "ScanStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "partial",
+          "failed",
+          "cancelled",
+          "expired"
+        ],
+        "title": "ScanStatus",
+        "type": "string"
+      },
+      "Severity": {
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity",
+        "type": "string"
+      },
+      "ToolRun": {
+        "description": "What one analysis tool actually did during a run.",
+        "properties": {
+          "tool": {
+            "description": "nga-rules, osv, grype, checkov, trivy, semgrep, atlas, supply-chain",
+            "title": "Tool",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Binary or rule-pack version used",
+            "title": "Version"
+          },
+          "status": {
+            "$ref": "#/$defs/ToolRunStatus"
+          },
+          "findings": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Findings",
+            "type": "integer"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Duration Ms"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Short sanitized cause; set unless status is ok or disabled",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "tool",
+          "status"
+        ],
+        "title": "ToolRun",
+        "type": "object"
+      },
+      "ToolRunStatus": {
+        "description": "Closed set of outcomes for one analysis tool.\n\n``ok``: the tool ran and finished. ``failed``: it was attempted and errored\nor could not reach its data source. ``skipped``: a precondition was missing\n(binary not installed, offline mode). ``disabled``: the request turned it\noff. ``not_applicable``: nothing for the tool to look at. ``timeout``: it\nhit its deadline.",
+        "enum": [
+          "ok",
+          "failed",
+          "skipped",
+          "disabled",
+          "not_applicable",
+          "timeout"
+        ],
+        "title": "ToolRunStatus",
+        "type": "string"
+      },
+      "ToolVersion": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ToolVersion",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "schema_version": {
+        "const": "1.0",
+        "default": "1.0",
+        "title": "Schema Version",
+        "type": "string"
+      },
+      "job": {
+        "$ref": "#/$defs/ScanJob"
+      },
+      "provenance": {
+        "$ref": "#/$defs/Provenance"
+      },
+      "coverage": {
+        "$ref": "#/$defs/Coverage"
+      },
+      "summary": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "propertyNames": {
+          "$ref": "#/$defs/Severity"
+        },
+        "title": "Summary",
+        "type": "object"
+      },
+      "findings": {
+        "items": {
+          "$ref": "#/$defs/ScanFinding"
+        },
+        "title": "Findings",
+        "type": "array"
+      },
+      "inventory": {
+        "$ref": "#/$defs/InventorySummary"
+      },
+      "sbom": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Sbom"
+      },
+      "result_sha256": {
+        "description": "SHA-256 of the canonical JSON of this result with volatile fields removed (job id/timestamps/links/client_reference, tool durations, raw finding ids, sbom)",
+        "title": "Result Sha256",
+        "type": "string"
+      }
+    },
+    "required": [
+      "job",
+      "provenance",
+      "coverage",
+      "summary",
+      "findings",
+      "inventory",
+      "result_sha256"
+    ],
+    "title": "ScanResult",
     "type": "object"
   }
 }

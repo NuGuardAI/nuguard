@@ -1,0 +1,2262 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "NuGuard Remote Scan API",
+    "version": "1.0"
+  },
+  "paths": {
+    "/v1/scans": {
+      "post": {
+        "summary": "Create Scan",
+        "operationId": "create_scan_v1_scans_post",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "name": "prefer",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Prefer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJob"
+                }
+              }
+            }
+          },
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJob"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        }
+      },
+      "get": {
+        "summary": "List Scans",
+        "operationId": "list_scans_v1_scans_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ScanStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2048
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 512
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanList"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        }
+      }
+    },
+    "/v1/scans/{job_id}": {
+      "get": {
+        "summary": "Get Scan",
+        "operationId": "get_scan_v1_scans__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJob"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        }
+      }
+    },
+    "/v1/scans/{job_id}/result": {
+      "get": {
+        "summary": "Get Result",
+        "operationId": "get_result_v1_scans__job_id__result_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(json|sarif)$",
+              "default": "json",
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanResult"
+                }
+              },
+              "application/sarif+json": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        }
+      }
+    },
+    "/v1/scans/{job_id}/sbom": {
+      "get": {
+        "summary": "Get Sbom",
+        "operationId": "get_sbom_v1_scans__job_id__sbom_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(json|cyclonedx|cyclonedx-ext|markdown)$",
+              "default": "json",
+              "title": "Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "text/markdown": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        }
+      }
+    },
+    "/v1/scans/{job_id}/cancel": {
+      "post": {
+        "summary": "Cancel Scan",
+        "operationId": "cancel_scan_v1_scans__job_id__cancel_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanJob"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        }
+      }
+    },
+    "/v1/healthz": {
+      "get": {
+        "summary": "Healthz",
+        "operationId": "healthz_v1_healthz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/readyz": {
+      "get": {
+        "summary": "Readyz",
+        "operationId": "readyz_v1_readyz_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "summary": "Capabilities",
+        "operationId": "capabilities_v1_capabilities_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Capabilities": {
+        "properties": {
+          "nuguard_version": {
+            "type": "string",
+            "title": "Nuguard Version"
+          },
+          "service_version": {
+            "type": "string",
+            "title": "Service Version"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolVersion"
+            },
+            "type": "array",
+            "title": "Tools"
+          },
+          "tools_allowed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tools Allowed"
+          },
+          "network_default": {
+            "type": "boolean",
+            "title": "Network Default"
+          },
+          "llm_available": {
+            "type": "boolean",
+            "title": "Llm Available"
+          },
+          "allowed_git_hosts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Git Hosts"
+          },
+          "limits": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Limits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nuguard_version",
+          "service_version",
+          "tools",
+          "tools_allowed",
+          "network_default",
+          "llm_available",
+          "allowed_git_hosts",
+          "limits"
+        ],
+        "title": "Capabilities"
+      },
+      "Coverage": {
+        "properties": {
+          "tool_runs": {
+            "items": {
+              "$ref": "#/components/schemas/ToolRun"
+            },
+            "type": "array",
+            "title": "Tool Runs",
+            "description": "One per requested tool, always present"
+          },
+          "languages_detected": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Languages Detected"
+          },
+          "files_scanned": {
+            "type": "integer",
+            "title": "Files Scanned",
+            "default": 0
+          },
+          "files_skipped": {
+            "type": "integer",
+            "title": "Files Skipped",
+            "default": 0
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Gaps",
+            "description": "e.g. \"osv: failed (timed out)\""
+          }
+        },
+        "type": "object",
+        "required": [
+          "tool_runs"
+        ],
+        "title": "Coverage"
+      },
+      "Finding": {
+        "properties": {
+          "finding_id": {
+            "type": "string",
+            "title": "Finding Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "affected_component": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affected Component"
+          },
+          "remediation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remediation"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "References"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id"
+          },
+          "source_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Tool"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "code",
+                  "posture",
+                  "dependency",
+                  "iac",
+                  "container",
+                  "supply_chain"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/FindingLocation"
+            },
+            "type": "array",
+            "title": "Locations"
+          },
+          "component_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Component Ref"
+          },
+          "container_image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container Image"
+          },
+          "container_image_locations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Container Image Locations"
+          },
+          "goal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Goal Type"
+          },
+          "scenario_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Type"
+          },
+          "sbom_path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sbom Path"
+          },
+          "sbom_path_descriptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sbom Path Descriptions"
+          },
+          "policy_clauses_violated": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Policy Clauses Violated"
+          },
+          "chain_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chain Id"
+          },
+          "owasp_asi_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owasp Asi Ref"
+          },
+          "owasp_llm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owasp Llm Ref"
+          },
+          "owasp_cicd_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owasp Cicd Ref"
+          },
+          "mitre_atlas_technique": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mitre Atlas Technique"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence"
+          },
+          "log_correlation_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Correlation Status"
+          },
+          "reasoning": {
+            "type": "string",
+            "title": "Reasoning",
+            "default": ""
+          },
+          "evidence_quote": {
+            "type": "string",
+            "title": "Evidence Quote",
+            "default": ""
+          },
+          "success_indicator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Success Indicator"
+          },
+          "scores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Scores"
+          },
+          "attack_steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Attack Steps"
+          },
+          "golden_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Golden Ids"
+          },
+          "golden_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Golden Name"
+          },
+          "golden_data_excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Golden Data Excerpt"
+          },
+          "verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified"
+          },
+          "catalog_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catalog Id"
+          },
+          "reproduction_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reproduction Status"
+          },
+          "evidence_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Kind"
+          },
+          "effect_verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect Verified"
+          },
+          "framework_versions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Framework Versions"
+          },
+          "ngrs_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ngrs Score"
+          },
+          "ngrs_vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ngrs Vector"
+          },
+          "authorization_decision": {
+            "type": "string",
+            "title": "Authorization Decision",
+            "default": ""
+          },
+          "guardrail_control": {
+            "type": "string",
+            "title": "Guardrail Control",
+            "default": ""
+          },
+          "evasion_differential": {
+            "type": "boolean",
+            "title": "Evasion Differential",
+            "default": false
+          },
+          "decorator_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decorator Name"
+          },
+          "callback_evidence": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callback Evidence"
+          },
+          "regression_paraphrase_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regression Paraphrase Kind"
+          },
+          "regression_expect": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regression Expect"
+          },
+          "dual_path_verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dual Path Verdict"
+          },
+          "state_diff_outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Diff Outcome"
+          }
+        },
+        "type": "object",
+        "required": [
+          "finding_id",
+          "title",
+          "severity",
+          "description"
+        ],
+        "title": "Finding"
+      },
+      "FindingLocation": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "Repo-relative path with POSIX separators; never absolute"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Line"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Line"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symbol",
+            "description": "Enclosing function/class for code, or the resource address for IaC, if known"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "FindingLocation",
+        "description": "Where a finding lives in the scanned source tree."
+      },
+      "HealthStatus": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "not_ready"
+            ],
+            "title": "Status"
+          },
+          "failing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Failing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "HealthStatus"
+      },
+      "InventorySummary": {
+        "properties": {
+          "node_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Node Counts"
+          },
+          "edge_count": {
+            "type": "integer",
+            "title": "Edge Count",
+            "default": 0
+          },
+          "frameworks": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Frameworks"
+          },
+          "model_providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Model Providers"
+          }
+        },
+        "type": "object",
+        "title": "InventorySummary"
+      },
+      "ProblemDetail": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "title": "ProblemDetail",
+        "description": "RFC 9457 problem details; ``detail`` never carries stderr, paths or tokens."
+      },
+      "Provenance": {
+        "properties": {
+          "nuguard_version": {
+            "type": "string",
+            "title": "Nuguard Version"
+          },
+          "service_version": {
+            "type": "string",
+            "title": "Service Version"
+          },
+          "image_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Digest"
+          },
+          "rulepack_sha256": {
+            "type": "string",
+            "title": "Rulepack Sha256"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolVersion"
+            },
+            "type": "array",
+            "title": "Tools"
+          },
+          "options_effective": {
+            "$ref": "#/components/schemas/ScanOptions"
+          },
+          "llm_used": {
+            "type": "boolean",
+            "title": "Llm Used",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "nuguard_version",
+          "service_version",
+          "rulepack_sha256",
+          "options_effective"
+        ],
+        "title": "Provenance"
+      },
+      "ScanCreateRequest": {
+        "properties": {
+          "repo_url": {
+            "type": "string",
+            "maxLength": 2048,
+            "title": "Repo Url",
+            "description": "https://<host>/<owner>/<repo>[.git][/tree/<ref>/<subpath>]"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref",
+            "description": "Branch, tag or full commit SHA"
+          },
+          "github_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "password",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Github Token",
+            "description": "Read-only token; held in memory only, never stored or returned"
+          },
+          "options": {
+            "$ref": "#/components/schemas/ScanOptions"
+          },
+          "client_reference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Reference"
+          },
+          "callback_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callback Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "repo_url"
+        ],
+        "title": "ScanCreateRequest",
+        "description": "``POST /v1/scans`` body."
+      },
+      "ScanFinding": {
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint",
+            "description": "nf1_\u2026 stable identity; see the fingerprint docs"
+          },
+          "rule_id": {
+            "type": "string",
+            "title": "Rule Id"
+          },
+          "source_tool": {
+            "type": "string",
+            "title": "Source Tool"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "code",
+              "posture",
+              "dependency",
+              "iac",
+              "container",
+              "supply_chain"
+            ],
+            "title": "Kind"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/components/schemas/FindingLocation"
+            },
+            "type": "array",
+            "title": "Locations"
+          },
+          "affected_component": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affected Component"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "References"
+          },
+          "owasp_llm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owasp Llm Ref"
+          },
+          "owasp_asi_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owasp Asi Ref"
+          },
+          "mitre_atlas_technique": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mitre Atlas Technique"
+          },
+          "remediation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remediation"
+          },
+          "raw": {
+            "$ref": "#/components/schemas/Finding"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fingerprint",
+          "rule_id",
+          "source_tool",
+          "kind",
+          "severity",
+          "title",
+          "description",
+          "raw"
+        ],
+        "title": "ScanFinding"
+      },
+      "ScanJob": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "\"scn_\" + 26-character ULID"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ScanStatus"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScanPhase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repo_url": {
+            "type": "string",
+            "title": "Repo Url"
+          },
+          "ref_requested": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref Requested"
+          },
+          "commit_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commit Sha"
+          },
+          "client_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Reference"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProblemDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "links": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Links"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "repo_url",
+          "created_at"
+        ],
+        "title": "ScanJob"
+      },
+      "ScanList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScanJob"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ScanList"
+      },
+      "ScanOptions": {
+        "properties": {
+          "tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "nga-rules",
+                    "atlas",
+                    "semgrep",
+                    "osv",
+                    "grype",
+                    "checkov",
+                    "trivy",
+                    "supply-chain"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tools",
+            "description": "Subset of the server's allowed tools; null = all allowed"
+          },
+          "min_severity": {
+            "$ref": "#/components/schemas/Severity",
+            "default": "low"
+          },
+          "include_sbom": {
+            "type": "boolean",
+            "title": "Include Sbom",
+            "description": "Embed the full AI-SBOM in the result",
+            "default": false
+          },
+          "include_posture": {
+            "type": "boolean",
+            "title": "Include Posture",
+            "description": "Include kind=posture findings",
+            "default": true
+          },
+          "network": {
+            "type": "boolean",
+            "title": "Network",
+            "description": "false: OSV/Grype/Trivy are reported skipped, never ok",
+            "default": true
+          },
+          "use_llm": {
+            "type": "boolean",
+            "title": "Use Llm",
+            "description": "Rejected unless the server enables LLM use",
+            "default": false
+          },
+          "subpath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subpath",
+            "description": "Scan only this repo-relative directory"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScanOptions",
+        "description": "What to run. The server may narrow these; it never widens them."
+      },
+      "ScanPhase": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "cloning",
+          "sbom",
+          "analyzing",
+          "finalizing"
+        ],
+        "title": "ScanPhase"
+      },
+      "ScanResult": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "const": "1.0",
+            "title": "Schema Version",
+            "default": "1.0"
+          },
+          "job": {
+            "$ref": "#/components/schemas/ScanJob"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "summary": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/Severity"
+            },
+            "type": "object",
+            "title": "Summary"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ScanFinding"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "inventory": {
+            "$ref": "#/components/schemas/InventorySummary"
+          },
+          "sbom": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sbom"
+          },
+          "result_sha256": {
+            "type": "string",
+            "title": "Result Sha256",
+            "description": "SHA-256 of the canonical JSON of this result with volatile fields removed (job id/timestamps/links/client_reference, tool durations, raw finding ids, sbom)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job",
+          "provenance",
+          "coverage",
+          "summary",
+          "findings",
+          "inventory",
+          "result_sha256"
+        ],
+        "title": "ScanResult"
+      },
+      "ScanStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "partial",
+          "failed",
+          "cancelled",
+          "expired"
+        ],
+        "title": "ScanStatus"
+      },
+      "Severity": {
+        "type": "string",
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity"
+      },
+      "ToolRun": {
+        "properties": {
+          "tool": {
+            "type": "string",
+            "title": "Tool",
+            "description": "nga-rules, osv, grype, checkov, trivy, semgrep, atlas, supply-chain"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "Binary or rule-pack version used"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ToolRunStatus"
+          },
+          "findings": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Findings",
+            "default": 0
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Short sanitized cause; set unless status is ok or disabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tool",
+          "status"
+        ],
+        "title": "ToolRun",
+        "description": "What one analysis tool actually did during a run."
+      },
+      "ToolRunStatus": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "failed",
+          "skipped",
+          "disabled",
+          "not_applicable",
+          "timeout"
+        ],
+        "title": "ToolRunStatus",
+        "description": "Closed set of outcomes for one analysis tool.\n\n``ok``: the tool ran and finished. ``failed``: it was attempted and errored\nor could not reach its data source. ``skipped``: a precondition was missing\n(binary not installed, offline mode). ``disabled``: the request turned it\noff. ``not_applicable``: nothing for the tool to look at. ``timeout``: it\nhit its deadline."
+      },
+      "ToolVersion": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ToolVersion"
+      }
+    }
+  }
+}
