@@ -917,6 +917,7 @@ class RedteamOrchestrator:
         scenario_delay_seconds: float = 0.0,
         similar_miss_threshold: int = 4,
         universal_safety_probes: bool = True,
+        multimodal_scenarios: str = "auto",
         workflows: "list[dict[str, Any]] | None" = None,
         workflow_templates: "list[str] | None" = None,
         skip_discovery: bool = False,
@@ -1032,6 +1033,7 @@ class RedteamOrchestrator:
         self._scenario_delay_seconds = max(0.0, scenario_delay_seconds)
         self._similar_miss_threshold = max(1, similar_miss_threshold)
         self._universal_safety_probes = universal_safety_probes
+        self._multimodal_mode = multimodal_scenarios
         from nuguard.redteam.workflows import WorkflowSpec  # noqa: PLC0415
 
         self._workflows = [WorkflowSpec.model_validate(w) for w in (workflows or [])]
@@ -2035,6 +2037,7 @@ class RedteamOrchestrator:
             canary_config=self._canary_config,
             endpoint_plan=_endpoint_plan,
             universal_safety_probes=self._universal_safety_probes,
+            multimodal_scenarios=self._multimodal_mode,
         )
         all_scenarios = generator.generate(with_guided=_with_guided, progressive=_progressive)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))

@@ -413,8 +413,10 @@ class ScenarioGenerator:
         canary_config: "CanaryConfig | None" = None,
         endpoint_plan: "EndpointPlan | None" = None,
         universal_safety_probes: bool = True,
+        multimodal_scenarios: str = "auto",
     ) -> None:
         self._universal_safety_probes = universal_safety_probes
+        self._multimodal_mode = multimodal_scenarios
         # Optional relevance plan narrowing which API endpoints each direct-HTTP
         # probe family is generated for (see endpoint_selector.build_endpoint_plan).
         self._endpoint_plan = endpoint_plan
@@ -2781,6 +2783,7 @@ class ScenarioGenerator:
                     agent_id=str(node.id),
                     agent_name=node.name,
                     blocked_action=blocked_action,
+                    mode=self._multimodal_mode,
                 )
             )
         return out

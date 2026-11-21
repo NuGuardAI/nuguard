@@ -11873,6 +11873,11 @@
         "title": "Universal Safety Probes",
         "type": "boolean"
       },
+      "multimodal_scenarios": {
+        "default": "auto",
+        "title": "Multimodal Scenarios",
+        "type": "string"
+      },
       "workflows": {
         "items": {
           "$ref": "#/$defs/WorkflowSpec"
