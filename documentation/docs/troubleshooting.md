@@ -51,17 +51,6 @@ This is expected. Use:
 nuguard init --force
 ```
 
-## `nuguard --help` works but a subcommand fails immediately
-
-Check whether the command is currently a stub.
-
-Currently stubbed commands:
-
-- `nuguard seed`
-- `nuguard report`
-- `nuguard findings`
-- `nuguard replay`
-
 ## SBOM Generation
 
 ## `Error: --source is required` or no SBOM is produced

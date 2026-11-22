@@ -2,6 +2,11 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## Unreleased
+
+### Removed
+- **Placeholder CLI commands:** `nuguard seed`, `nuguard report`, `nuguard findings` and `nuguard replay` have been removed. They only printed "not yet implemented" and exited with code 3, because the run-history store they depend on was never built. To inject canary values, pass `--canary <file.json>` to `nuguard redteam`, `behavior` or `validate`; for reports, use `--output` and `--format` on each command.
+
 ## v0.9.17 - 2026-11-16
 
 ### Added

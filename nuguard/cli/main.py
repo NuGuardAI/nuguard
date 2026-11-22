@@ -19,16 +19,12 @@ import typer
 from nuguard.cli.commands import target_browser  # noqa: F401 — registers `target discover-browser`
 from nuguard.cli.commands.analyze import analyze_app
 from nuguard.cli.commands.behavior import behavior_app
-from nuguard.cli.commands.findings import findings_app
 from nuguard.cli.commands.init import init_command
 from nuguard.cli.commands.pentest import pentest as pentest_command
 from nuguard.cli.commands.policy import policy_app
 from nuguard.cli.commands.redteam import redteam_app
-from nuguard.cli.commands.replay import replay_app
-from nuguard.cli.commands.report import report_app
 from nuguard.cli.commands.sbom import sbom_app
 from nuguard.cli.commands.scan import scan_app
-from nuguard.cli.commands.seed import seed_app
 from nuguard.cli.commands.target import target_app
 from nuguard.cli.commands.validate import validate_app
 
@@ -50,10 +46,6 @@ app.add_typer(policy_app, name="policy")
 app.add_typer(redteam_app, name="redteam")
 app.add_typer(target_app, name="target")
 app.add_typer(validate_app, name="validate")
-app.add_typer(seed_app, name="seed")
-app.add_typer(report_app, name="report")
-app.add_typer(findings_app, name="findings")
-app.add_typer(replay_app, name="replay")
 
 
 if __name__ == "__main__":

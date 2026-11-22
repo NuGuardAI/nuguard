@@ -39,17 +39,6 @@ Jump straight to a command. Grouped by what you're trying to do.
 | 🛡️ | [`nuguard pentest`](#nuguard-pentest) | Explicitly authorized Nuclei-based conventional HTTP/HTTPS pentest |
 | 🔌 | [`nuguard target`](#nuguard-target) | Verify target connectivity and authentication before scanning |
 
-**🧪 Test-Run Management** ![planned](https://img.shields.io/badge/status-planned-6e7681?style=flat-square)
-
-Not implemented yet — see [Planned Commands](#planned-commands) for what's coming.
-
-| | Command | What it does |
-|---|---|---|
-| 🌱 | `nuguard seed` | Seed canary data into the target before a scan |
-| 📄 | `nuguard report` | Regenerate a report for a completed test run |
-| 🔎 | `nuguard findings` | List findings from a completed test run |
-| ⏮️ | `nuguard replay` | Deterministically replay a completed test run |
-
 ---
 
 <details open>
@@ -839,28 +828,6 @@ target:
 ```
 
 > ⚠️ The captured session cookie is short-lived (apps commonly expire it within ~24h) — there is no automatic refresh yet. When `nuguard target verify` receives HTTP 401 or 403 for the saved default cookie session, it prints a refresh hint; re-run `nuguard target discover-browser --write --yes`.
-
-</details>
-
----
-
-## Planned Commands
-
-`nuguard seed`, `nuguard report`, `nuguard findings`, and `nuguard replay` are registered in the CLI and appear in `nuguard --help`, but each is currently a stub: running any of them prints `not yet implemented` and exits with code `3`. They're listed here so you know what they're *for* — not because they work today.
-
-<details>
-<summary>What each one will do</summary>
-
-<br>
-
-| Command | Intended purpose | Flags already wired |
-|---|---|---|
-| `nuguard seed` | Seed canary data into the target application before red-team testing, independent of running a full scan | `--target`, `--seed-file`, `--output-canary` |
-| `nuguard report` | Regenerate a `markdown` \| `sarif` \| `json` report for a completed test run by ID, without re-running the scan | `--test-id`, `--format` |
-| `nuguard findings` | List findings from a completed test run, filterable by severity | `--test-id`, `--severity` |
-| `nuguard replay` | Deterministically replay a completed test run's recorded traces against a (possibly different) target | `--test-id`, `--target` |
-
-For now, `--canary` on `redteam`/`behavior`/`validate` covers the seeding use case (seed the values into your app yourself, then pass the file), and `--output`/`--format` on each command covers ad-hoc reporting.
 
 </details>
 
