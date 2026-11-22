@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from itertools import pairwise
 from typing import Any
 
 import pytest
 import yaml
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from nuguard.config import NuGuardConfig, _flatten_yaml
 from nuguard.models.exploit_chain import ExploitChain, GoalType, ScenarioType
@@ -28,8 +29,8 @@ from nuguard.redteam.scenarios.multimodal_injection import (
     build_voice_spoken_injection,
 )
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
-from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata, ScanSummary
-from nuguard.sbom.types import ComponentType
+from nuguard.sbom.models import AiSbomDocument, Edge, Node, NodeMetadata, ScanSummary
+from nuguard.sbom.types import ComponentType, RelationshipType
 
 AGENT_ID = "agent-1"
 BLOCKED = "export user data"
@@ -204,7 +205,7 @@ def test_voice_spoken_builder_structure() -> None:
     assert "comma" in steps[1].payload  # dictated punctuation
     assert "I-G-N-O-R-E" in steps[2].payload  # letter-by-letter spelling
     assert "Caller ID" in steps[3].payload  # caller-identity claim
-    for prev, cur in zip(steps, steps[1:], strict=False):
+    for prev, cur in pairwise(steps):
         assert cur.depends_on == [prev.step_id]
     assert "no audio is sent" in s.description
     _assert_well_formed(s.chain)
@@ -224,7 +225,7 @@ def test_voice_multilingual_builder_covers_each_language_once() -> None:
         assert BLOCKED in st.payload
         assert "{goal}" not in st.payload
     assert steps[0].depends_on == []
-    for prev, cur in zip(steps, steps[1:], strict=False):
+    for prev, cur in pairwise(steps):
         assert cur.depends_on == [prev.step_id]
     assert "no audio is sent" in s.description
     _assert_well_formed(s.chain)
@@ -322,3 +323,86 @@ def test_config_accepts_valid_and_rejects_invalid_value() -> None:
 
 def test_public_api_request_defaults_to_auto() -> None:
     assert RedteamRunRequest.model_fields["multimodal_scenarios"].default == "auto"
+
+
+def test_public_api_request_field_is_a_literal() -> None:
+    adapter: TypeAdapter[Any] = TypeAdapter(
+        RedteamRunRequest.model_fields["multimodal_scenarios"].annotation
+    )
+    assert adapter.validate_python("on") == "on"
+    with pytest.raises(ValidationError):
+        adapter.validate_python("sometimes")
+
+
+# ---------------------------------------------------------------------------
+# Review fixes: eager mode validation, agent cap and entry-agent coverage
+# ---------------------------------------------------------------------------
+
+
+def test_generator_rejects_invalid_mode_at_construction() -> None:
+    with pytest.raises(ValueError, match="auto, on, off"):
+        ScenarioGenerator(_sbom(), multimodal_scenarios="sometimes")
+
+
+def _multi_agent_sbom(agents: int, entry_index: int | None = None) -> AiSbomDocument:
+    """``agents`` AGENT nodes with the image and voice flags set.
+
+    With ``entry_index``, one API endpoint CALLS that agent, making it the only
+    entry agent.
+    """
+    nodes: list[Node] = [
+        Node(
+            id=uuid.uuid5(uuid.NAMESPACE_URL, f"agent-{i}"),
+            name=f"agent-{i}",
+            component_type=ComponentType.AGENT,
+            confidence=0.9,
+            metadata=NodeMetadata(),
+        )
+        for i in range(agents)
+    ]
+    edges: list[Edge] = []
+    if entry_index is not None:
+        endpoint = Node(
+            name="POST /chat", component_type=ComponentType.API_ENDPOINT, confidence=1.0
+        )
+        edges.append(
+            Edge(
+                source=endpoint.id,
+                target=nodes[entry_index].id,
+                relationship_type=RelationshipType.CALLS,
+            )
+        )
+        nodes.append(endpoint)
+    return AiSbomDocument(
+        generated_at=datetime.now(UTC),
+        target="test-app",
+        nodes=nodes,
+        edges=edges,
+        summary=ScanSummary(modality_support={"image": True, "voice": True}),
+    )
+
+
+def _multimodal_agent_targets(sbom: AiSbomDocument) -> list[str]:
+    """Agent names targeted by the multimodal scenarios that survive generate()."""
+    return [
+        s.title.split(" — ")[-1]
+        for s in ScenarioGenerator(sbom).generate()
+        if s.scenario_type == ScenarioType.MULTIMODAL_INJECTION
+    ]
+
+
+@pytest.mark.parametrize(("agents", "expected"), [(1, 4), (2, 8), (3, 8), (6, 8)])
+def test_multimodal_scenarios_are_capped_at_two_agents(agents: int, expected: int) -> None:
+    assert len(_multimodal_agent_targets(_multi_agent_sbom(agents))) == expected
+
+
+@pytest.mark.parametrize(("agents", "entry_index"), [(3, 0), (3, 2), (6, 5)])
+def test_entry_agent_is_always_covered(agents: int, entry_index: int) -> None:
+    targets = _multimodal_agent_targets(_multi_agent_sbom(agents, entry_index))
+    assert f"agent-{entry_index}" in targets
+    assert len(targets) == 8
+
+
+def test_agents_after_the_cap_are_not_targeted() -> None:
+    targets = _multimodal_agent_targets(_multi_agent_sbom(6, entry_index=5))
+    assert sorted(set(targets)) == ["agent-0", "agent-5"]

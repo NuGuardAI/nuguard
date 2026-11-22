@@ -11875,6 +11875,11 @@
       },
       "multimodal_scenarios": {
         "default": "auto",
+        "enum": [
+          "auto",
+          "on",
+          "off"
+        ],
         "title": "Multimodal Scenarios",
         "type": "string"
       },

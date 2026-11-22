@@ -508,6 +508,9 @@ redteam:
 
   # Multimodal injection scenarios (image, PDF, voice). auto: generate them
   # only when the SBOM shows that modality; on: always; off: never.
+  # SBOM detection also matches output-side APIs (for example images.generate or
+  # audio.speech), so auto can generate scenarios for an app that cannot take that
+  # input. Set off to skip them for such an app.
   multimodal_scenarios: auto     # auto | on | off (CLI: --multimodal)
 
   # Pre-scan discovery: nuguard sends warm-up turns to learn the target's persona
