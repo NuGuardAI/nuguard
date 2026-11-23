@@ -26,8 +26,8 @@ Mark optional fields clearly — only `llm_api_key` and `target_url` are require
   Accepts any LiteLLM-compatible key (Gemini, OpenAI, Anthropic, Azure, etc.).
   Example: `AIza...`, `sk-...`
 
-- **Model name** *(optional, default: `gemini/gemini-2.0-flash`)* — LiteLLM model string.
-  Examples: `gemini/gemini-2.0-flash`, `openai/gpt-4o`, `azure/gpt-4o`, `anthropic/claude-opus-4-7`
+- **Model name** *(optional, default: `gemini/gemini-3.6-flash`)* — LiteLLM model string.
+  Examples: `gemini/gemini-3.6-flash`, `openai/gpt-4o`, `azure/gpt-4o`, `anthropic/claude-opus-4-7`
 
 - **API Base URL** *(optional)* — Required for Azure OpenAI or self-hosted models.
   Example: `https://my-instance.openai.azure.com`
@@ -94,7 +94,7 @@ nuguard init --target <target_url>
 Then — whether the file was just created or already existed — patch these values into `nuguard.yaml`
 using the Read and Edit tools:
 
-- **`llm.model`** → set to the collected model name (default `gemini/gemini-2.0-flash`)
+- **`llm.model`** → set to the collected model name (default `gemini/gemini-3.6-flash`)
 - **`target.url`** → set to the collected target URL (if provided)
 - **`target.endpoint`** → set to the chat endpoint (if provided and not the default `/chat`)
 - **`target.auth`** → write the auth block matching the chosen auth type:
