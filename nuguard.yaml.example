@@ -506,6 +506,13 @@ redteam:
   # path is not a real auth-bypass. Set false to report all 2xx responses as findings.
   suppress_spa_html_auth_bypass: true
 
+  # Multimodal injection scenarios (image, PDF, voice). auto: generate them
+  # only when the SBOM shows that modality; on: always; off: never.
+  # SBOM detection also matches output-side APIs (for example images.generate or
+  # audio.speech), so auto can generate scenarios for an app that cannot take that
+  # input. Set off to skip them for such an app.
+  multimodal_scenarios: auto     # auto | on | off (CLI: --multimodal)
+
   # Pre-scan discovery: nuguard sends warm-up turns to learn the target's persona
   # before generating attack payloads.
   skip_discovery: false             # set true to skip the discovery phase entirely
