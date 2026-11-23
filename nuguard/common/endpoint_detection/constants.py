@@ -18,6 +18,8 @@ UNSET = _UnsetType()
 DEFAULT_PAYLOAD_KEY = "message"
 DEFAULT_PAYLOAD_LIST = False
 
+GRAPHQL_ENDPOINT_PATHS = ("/graphql", "/api/graphql", "/v1/graphql")
+
 HTTP_ENDPOINT_FALLBACK_PATHS = (
     "/chat",
     "/run",

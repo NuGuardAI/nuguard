@@ -369,6 +369,10 @@ def discover_chat_candidates_from_sbom(
         elif endpoint_l.endswith("/chat"):
             score += 1
 
+        # GraphQL servers are single-endpoint; a "graphql" path is the chat surface.
+        if "graphql" in endpoint_l:
+            score += 3
+
         # Conversational resource segment anywhere in the path
         # (e.g. /chat/conversations/:id/messages).
         if any(seg in CONVERSATIONAL_PATH_SEGMENTS for seg in endpoint_segments):

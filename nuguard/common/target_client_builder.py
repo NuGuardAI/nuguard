@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
+from nuguard.common.errors import ConfigError
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
@@ -725,6 +726,15 @@ def build_target_app_client(
             discovered_response_key,
         )
         response_key = discovered_response_key
+
+    # shortcut: detection only — no GraphQL-aware client yet (#760 steps 3-5:
+    # query template / introspection, client.py formatting, public models).
+    if payload_key == "__graphql__":
+        raise ConfigError(
+            f"GraphQL endpoint detected at {endpoint or '/graphql'}, but GraphQL "
+            "live testing is not supported yet (#760). Point target_endpoint at a "
+            "REST/chat route instead."
+        )
 
     # ── 4. Construct the client ─────────────────────────────────────────────
     if payload_key == "__websocket__":
