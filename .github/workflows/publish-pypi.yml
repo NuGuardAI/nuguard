@@ -241,7 +241,10 @@ jobs:
         with:
           name: smithery-bundle
 
+      # Smithery removed server updates (HTTP 403 "Updating servers has been removed");
+      # kept non-blocking so finalize-release still runs. Remove the job once confirmed with support@smithery.ai.
       - name: Publish to Smithery
+        continue-on-error: true
         env:
           SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
         run: node smithery-cli/index.js mcp publish server.mcpb -n NuGuardAI/nuguard
