@@ -13,6 +13,7 @@ from ...types import ComponentType
 from .._handler_signals_text import regex_handler_signals
 from ..base import ComponentDetection, RelationshipHint
 from ._http_params import build_http_request
+from ._http_security import http_security_detections
 from ._java_base import JavaFrameworkAdapter
 from .java_ai import _agent_canonical, _method_contains_ai
 
@@ -275,6 +276,18 @@ class JavaWebAdapter(JavaFrameworkAdapter):
         emitted_agents: set[str] = set()
         emitted_auth: set[str] = set()
         emitted_validation: set[str] = set()
+
+        # Spring Security filter chains declare auth for the whole app, not per route.
+        detections.extend(
+            http_security_detections(
+                methods=result.method_declarations,
+                types=type_map,
+                file_path=file_path,
+                framework=framework,
+                adapter_name=self.name,
+                priority=self.priority,
+            )
+        )
 
         for method in result.method_declarations:
             route = self._route(method.annotations)
