@@ -922,7 +922,11 @@ class NodeMetadata(BaseModel):
     )
     auth_scope: str | None = Field(
         default=None,
-        description="OAuth2 scope or role required to call this endpoint: 'user' | 'admin' | 'none'",
+        description=(
+            "OAuth2 scope or role required to call this endpoint, e.g. 'user', 'admin' or "
+            "'none'. Several roles or authorities are comma-separated and any one of them "
+            "grants access (Spring Security hasAnyRole / hasAnyAuthority)"
+        ),
     )
     accepts_user_input: bool | None = Field(
         default=None,

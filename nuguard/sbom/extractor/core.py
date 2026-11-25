@@ -75,6 +75,11 @@ from ..adapters.iac import (
     K8sAdapter,
     TerraformAdapter,
 )
+from ..adapters.java._http_security import (
+    HTTP_SECURITY_AUTH_TYPE,
+    chain_from_extras,
+    evaluate_http_security,
+)
 from ..adapters.java._java_base import JavaFrameworkAdapter
 from ..adapters.java.java_config import (
     application_yaml_allows_scan,
@@ -3559,6 +3564,69 @@ class AiSbomExtractor:
         tokens_b = {t for t in re.split(r"[^a-z0-9]+", b.name.lower()) if len(t) > 2}
         return bool(tokens_a & tokens_b)
 
+    def _apply_http_security_rules(
+        self,
+        doc: AiSbomDocument,
+        seen_edges: set[tuple[Any, Any, str]],
+    ) -> None:
+        """Apply Spring Security HTTP rules (``http-security`` AUTH nodes) to Spring endpoints.
+
+        The first matching rule decides ``auth_required``, ``no_auth_required`` and
+        ``auth_scope``, and every protected endpoint gets a PROTECTS edge from its chain.
+        Endpoints that no supported rule matches keep the adapter's values, and method-level
+        security is never downgraded.
+        """
+        chains = []
+        for node in doc.nodes:
+            if node.component_type != ComponentType.AUTH:
+                continue
+            chain = chain_from_extras(node.id, node.metadata.extras)
+            if chain is not None:
+                chains.append(chain)
+        if not chains:
+            return
+        for ep in doc.nodes:
+            if ep.component_type != ComponentType.API_ENDPOINT:
+                continue
+            extras = ep.metadata.extras
+            if extras.get("language") != "java" or extras.get("framework") != "spring-boot":
+                continue
+            path = extras.get("api_endpoint") or ep.metadata.endpoint
+            method = extras.get("method") or ep.metadata.method
+            decision = evaluate_http_security(
+                chains,
+                str(method) if method else None,
+                str(path) if path else None,
+            )
+            if decision is None:
+                continue
+            meta = ep.metadata
+            if decision.access == "permit_all":
+                if meta.auth_required:
+                    continue  # @PreAuthorize and friends still apply on top of the chain
+                meta.auth_required = False
+                meta.no_auth_required = True
+            else:
+                meta.auth_required = True
+                meta.no_auth_required = False
+                scope = ", ".join((*decision.roles, *decision.authorities))
+                if scope:
+                    meta.auth_scope = scope
+                key = (decision.key, ep.id, "PROTECTS")
+                if key not in seen_edges:
+                    seen_edges.add(key)
+                    doc.edges.append(
+                        Edge(
+                            source=decision.key,
+                            target=ep.id,
+                            relationship_type=RelationshipType.PROTECTS,
+                            derivation="hint",
+                        )
+                    )
+            extras["auth_required"] = meta.auth_required
+            extras["no_auth_required"] = meta.no_auth_required
+            extras["auth_source"] = HTTP_SECURITY_AUTH_TYPE
+
     def _resolve_edges(
         self,
         doc: AiSbomDocument,
@@ -3892,6 +3960,10 @@ class AiSbomExtractor:
             ep for ep in endpoints_without_auth_type if ep.metadata.auth_required
         ]
         for auth in by_type.get(ComponentType.AUTH, []):
+            if _auth_type(auth) == HTTP_SECURITY_AUTH_TYPE:
+                # Precise PROTECTS edges come from applying the chain's rules below; this
+                # fallback would link permitAll endpoints to the chain.
+                continue
             matched = [ep for ep in endpoints_with_auth_type if _auth_type(ep) == _auth_type(auth)]
             is_matched = bool(matched)
             targets = (
@@ -3913,6 +3985,10 @@ class AiSbomExtractor:
                             confidence=None if is_matched else 0.4,
                         )
                     )
+
+        # Spring Security HTTP rules decide auth for Spring endpoints (#654). This runs after
+        # the AUTH fallback above so that pass still sees the adapters' own auth_required.
+        self._apply_http_security_rules(doc, seen_edges)
 
         # Fallback: GUARDRAIL → AGENT (PROTECTS) for GUARDRAIL nodes with no
         # outgoing PROTECTS edge yet (e.g. guardrails_ai.py / go/guardrails.py,

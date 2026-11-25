@@ -218,7 +218,7 @@ The `name` shown in the AIBOM uses the detected handler name when it is unique. 
 | `transport` | string | Transport protocol: `"sse"`, `"streamable-http"`, `"stdio"` |
 | `server_name` | string | Server display name, such as FastMCP `name` kwarg or inferred service name |
 | `auth_required` | boolean | True when this endpoint requires authentication |
-| `auth_scope` | string | OAuth2 scope or role required, e.g. `"user"`, `"admin"`, `"none"` |
+| `auth_scope` | string | OAuth2 scope or role required, e.g. `"user"`, `"admin"`, `"none"`. Spring Security rules store the required roles or authorities, comma-separated when any one suffices, e.g. `"ADMIN, AUDITOR"` |
 | `accepts_user_input` | boolean | True when user-controlled input is accepted in body or query params |
 | `returns_sensitive_data` | boolean | True when this endpoint returns PII, PHI, PFI, or other sensitive data |
 | `rate_limited` | boolean | True when rate limiting is configured |
@@ -412,6 +412,64 @@ Populated by the supply-chain second pass for AI coding-agent and editor configs
 | `origin` | string | Configured allowed origin(s), e.g. `"*"` or `"https://example.com"` |
 | `allow_credentials` | boolean | True when the CORS policy allows credentialed cross-origin requests |
 | `wildcard_with_credentials` | boolean | True when origin is wildcarded AND credentials are allowed — the dangerous combination |
+
+### Spring Security HTTP rules
+
+A Spring `SecurityFilterChain` bean, or a legacy `WebSecurityConfigurerAdapter` whose
+`configure(HttpSecurity)` calls `authorizeRequests()`, produces one `AUTH` node per chain with
+`auth_type: "http-security"`. Its `metadata.extras` carry:
+
+| Extra | Type | Description |
+|---|---|---|
+| `http_security_rules` | array | Rules in source order. Each has `kind` (`matchers`, `any_request` or `unknown`), `methods`, `patterns`, `access` (`permit_all`, `authenticated`, `has_role`, `has_any_role`, `has_authority`, `has_any_authority`, `deny_all` or `unsupported`), `roles`, `authorities`, `matcher_supported`, `supported` and `call` |
+| `http_security_unsupported_rules` | integer | Number of rules that could not be applied. `0` with no rules applied means no auth was configured; a value above `0` means auth exists that the SBOM could not read |
+| `http_security_scope` | array | Ant patterns from `securityMatcher(...)`; empty means the chain handles every request |
+| `http_security_scope_supported` | boolean | `false` when the chain's `securityMatcher` is not made of string literals |
+| `http_security_reserved_paths` | array | URLs that `formLogin(...)` and `logout(...)` serve: literal `loginPage`, `loginProcessingUrl`, `failureUrl`, `logoutUrl` and `logoutSuccessUrl` values plus the defaults `/login` and `/logout`. Endpoints at these paths are never decided from the rules |
+| `http_security_order` | integer or null | Explicit `@Order` value (on the `@Bean` method, or on the class for a legacy adapter) |
+| `http_security_style` | string | `SecurityFilterChain` or `WebSecurityConfigurerAdapter` |
+| `http_security_file`, `http_security_line` | string, integer | Where the chain is declared |
+
+**How the rules are applied to Spring endpoints**
+
+1. Chains are ordered by explicit `@Order`, then by file path and line. A chain without
+   `@Order` comes after every chain that has one. A chain without `securityMatcher` matches
+   every request.
+2. The first chain whose `securityMatcher` covers the endpoint path is the only one consulted.
+   Inside it the first matching rule wins.
+3. Matching uses Ant patterns (`**`, `*`, `?`). A path variable such as `{id}` counts as one
+   segment, and trailing slashes are ignored. A rule with an `HttpMethod` only matches that
+   method.
+4. `permitAll` sets `auth_required: false` and `no_auth_required: true`. Every other supported
+   rule sets `auth_required: true` and `no_auth_required: false`, sets `auth_scope` to the roles
+   or authorities (comma-separated), and adds a `PROTECTS` edge from the chain's `AUTH` node.
+   `denyAll` counts as protected.
+5. An endpoint that no supported rule matches keeps the values it had before. An endpoint that
+   already has `auth_required: true` from method-level security is never downgraded.
+   Endpoints at the URLs that `formLogin(...)` and `logout(...)` configure (see
+   `http_security_reserved_paths`) are also left unchanged, because
+   `permitAll()` on those configurers makes them public outside the rules.
+6. Endpoints changed this way also get `extras.auth_source: "http-security"`.
+
+**Known limits**
+
+- Rules are read only from string-literal Ant patterns. Regex matchers, constants or arrays as
+  matcher arguments, `antMatcher(...)` or `RequestMatcher` objects (including `mvc.matcher(...)` builders), `access(...)`,
+  `hasIpAddress`, `fullyAuthenticated`, `anonymous`, `rememberMe`, custom `AuthorizationManager`
+  rules and non-literal role names are recorded and counted in `http_security_unsupported_rules`
+  but not applied.
+- An unsupported matcher stops evaluation for the endpoints not yet matched in that chain. An
+  unsupported authorization with a readable path leaves the endpoints it matches unchanged. A
+  chain with an unreadable `securityMatcher` leaves every endpoint it might cover unchanged.
+  In all of these cases the endpoints keep their previous values.
+- An endpoint mapped without an HTTP method (`@RequestMapping` with no `method`) is not changed
+  by a method-qualified rule.
+- Not modelled: the servlet or context path, `WebSecurity.ignoring()`, chain selection by a
+  custom request matcher, case and trailing-slash variants, `@Profile` and `@Conditional`
+  beans, URLs served by other security filters (`oauth2Login`, `saml2Login`) and Kotlin or
+  Groovy configuration. Method-level annotations (`@PreAuthorize`,
+  `@Secured`) behave as before.
+- Rules apply to Spring endpoints found anywhere in the scan; there is no per-module scoping.
 
 ### AuthDetail
 
