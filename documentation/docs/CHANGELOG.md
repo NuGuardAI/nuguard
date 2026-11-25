@@ -2,6 +2,11 @@
 
 Major product and documentation changes for NuGuard users. See the linked guides for setup and configuration details.
 
+## Unreleased
+
+### Fixed
+- **Java controllers reported as agents:** A Spring controller is an agent only when it uses AI or is linked to an agent, model, tool or MCP server. Plain web apps no longer get one agent per controller, or the agent findings that came with them.
+
 ## v0.9.17 - 2026-11-16
 
 ### Added

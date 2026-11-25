@@ -376,6 +376,12 @@ class JavaWebAdapter(JavaFrameworkAdapter):
                 injected_agents = _injected_agent_hints(
                     content, file_path, owner, owner_name, result, agent_canonical
                 )
+                # Any method of the controller, not only the first mapped one.
+                controller_ai = any(
+                    _method_contains_ai(item)
+                    for item in result.method_declarations
+                    if item.containing_type == owner_name
+                ) or _method_contains_ai(method)
                 detections.append(
                     ComponentDetection(
                         component_type=ComponentType.AGENT,
@@ -383,11 +389,12 @@ class JavaWebAdapter(JavaFrameworkAdapter):
                         display_name=owner_name,
                         adapter_name=self.name,
                         priority=self.priority + 2,
-                        confidence=0.75 if _method_contains_ai(method) else 0.62,
+                        confidence=0.75 if controller_ai else 0.62,
                         metadata={
                             "framework": framework,
                             "language": "java",
                             "web_controller": True,
+                            "ai_usage": controller_ai,
                         },
                         file_path=file_path,
                         line=owner.line if owner else method.line,
