@@ -6,6 +6,9 @@ Major product and documentation changes for NuGuard users. See the linked guides
 
 ### Removed
 - **Placeholder CLI commands:** `nuguard seed`, `nuguard report`, `nuguard findings` and `nuguard replay` have been removed. They only printed "not yet implemented" and exited with code 3, because the run-history store they depend on was never built. To inject canary values, pass `--canary <file.json>` to `nuguard redteam`, `behavior` or `validate`; for reports, use `--output` and `--format` on each command.
+### Changed
+
+- **Spring Security rules now decide auth for Java endpoints (behavior change):** the SBOM reads `SecurityFilterChain` beans and the legacy `WebSecurityConfigurerAdapter.configure(HttpSecurity)` and applies their ordered `requestMatchers`, `antMatchers` and `mvcMatchers` rules to Spring endpoints. Matched endpoints now report `auth_required`, `no_auth_required` and `auth_scope` (the required roles or authorities) and get a `PROTECTS` edge from a new `http-security` `AUTH` node. Spring apps that configure access in a filter chain will see different values than before, when every such endpoint was reported as `auth_required: false`. Endpoints that no supported rule matches keep their previous values, and the `AUTH` node records how many rules could not be applied (`http_security_unsupported_rules`). See [Spring Security HTTP rules](sbom-schema.md#spring-security-http-rules) for the supported syntax and the known limits.
 
 ## v0.9.17 - 2026-11-16
 

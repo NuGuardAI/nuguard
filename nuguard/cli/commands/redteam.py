@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
     from nuguard.config import RedteamFindingTriggers
     from nuguard.models.token_usage import TokenUsage
+    from nuguard.redteam.scenarios.multimodal_injection import MultimodalMode
 
 import typer
 
@@ -86,6 +87,15 @@ def redteam(
     ),
     scenarios: Optional[str] = typer.Option(
         None, "--scenarios", help="Comma-separated: destructive, non-destructive (default: both)."
+    ),
+    multimodal: Optional[str] = typer.Option(
+        None,
+        "--multimodal",
+        help=(
+            "Multimodal scenarios: auto | on | off. auto generates image/PDF/voice "
+            "scenarios only for apps whose SBOM shows that modality "
+            "(yaml: redteam.multimodal_scenarios)."
+        ),
     ),
     min_impact_score: float = typer.Option(
         0.0,
@@ -211,6 +221,15 @@ def redteam(
     effective_guided_concurrency = guided_concurrency if guided_concurrency is not None else cfg.redteam_guided_concurrency
     effective_guided_mutation_mode = cfg.redteam_guided_mutation_mode
     effective_verbose = verbose if verbose is not None else cfg.redteam_verbose
+    from nuguard.redteam.scenarios.multimodal_injection import parse_multimodal_mode
+
+    try:
+        effective_multimodal = parse_multimodal_mode(
+            (multimodal or cfg.redteam_multimodal_scenarios).strip().lower()
+        )
+    except ValueError:
+        typer.echo("Error: --multimodal must be one of: auto, on, off", err=True)
+        raise typer.Exit(code=1) from None
     effective_resume = str(resume) if resume is not None else cfg.redteam_resume
     # minimal profile: disable guided (bounded to 1 static chain) and strip turn delay.
     effective_turn_delay = 0.0 if effective_profile == "minimal" else cfg.redteam_turn_delay_seconds
@@ -343,6 +362,7 @@ def redteam(
         scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
         similar_miss_threshold=cfg.redteam_similar_miss_threshold,
         universal_safety_probes=cfg.redteam_universal_safety_probes,
+        multimodal_scenarios=effective_multimodal,
         workflows=cfg.redteam_workflows or None,
         workflow_templates=cfg.redteam_workflow_templates or None,
         hard_refusal_abort_turns=cfg.redteam_hard_refusal_abort_turns,
@@ -655,6 +675,7 @@ async def _run_redteam(
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
     universal_safety_probes: bool = True,
+    multimodal_scenarios: MultimodalMode = "auto",
     workflows: "list[dict[str, Any]] | None" = None,
     workflow_templates: "list[str] | None" = None,
     hard_refusal_abort_turns: int = 5,
@@ -833,6 +854,7 @@ async def _run_redteam(
                 scenario_delay_seconds=scenario_delay_seconds,
                 similar_miss_threshold=similar_miss_threshold,
                 universal_safety_probes=universal_safety_probes,
+                multimodal_scenarios=multimodal_scenarios,
                 workflows=workflows,
                 workflow_templates=workflow_templates,
                 hard_refusal_abort_turns=hard_refusal_abort_turns,
@@ -915,6 +937,7 @@ async def _run_redteam(
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
         universal_safety_probes=universal_safety_probes,
+        multimodal_scenarios=multimodal_scenarios,
         workflows=workflows,
         workflow_templates=workflow_templates,
         hard_refusal_abort_turns=hard_refusal_abort_turns,
@@ -987,6 +1010,7 @@ async def _run_orchestrator(  # noqa: C901
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
     universal_safety_probes: bool = True,
+    multimodal_scenarios: MultimodalMode = "auto",
     workflows: "list[dict[str, Any]] | None" = None,
     workflow_templates: "list[str] | None" = None,
     hard_refusal_abort_turns: int = 5,
@@ -1098,6 +1122,7 @@ async def _run_orchestrator(  # noqa: C901
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
         universal_safety_probes=universal_safety_probes,
+        multimodal_scenarios=multimodal_scenarios,
         workflows=[WorkflowSpec.model_validate(w) for w in workflows or []],
         workflow_templates=workflow_templates or [],
         hard_refusal_abort_turns=hard_refusal_abort_turns,

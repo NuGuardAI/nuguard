@@ -395,6 +395,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
     if "universal_safety_probes" in redteam:
         flat["redteam_universal_safety_probes"] = bool(redteam["universal_safety_probes"])
+    if "multimodal_scenarios" in redteam:
+        _mm = redteam["multimodal_scenarios"]
+        # Unquoted YAML on/off parse as booleans (YAML 1.1); map them back.
+        if isinstance(_mm, bool):
+            _mm = "on" if _mm else "off"
+        flat["redteam_multimodal_scenarios"] = str(_mm).strip().lower()
     if isinstance(redteam.get("workflows"), list):
         flat["redteam_workflows"] = list(redteam["workflows"])
     if "workflow_templates" in redteam:
@@ -1605,6 +1611,15 @@ class NuGuardConfig(BaseSettings):
             "Probe sexual-content / violence / self-harm refusal even when the cognitive "
             "policy does not list them (yaml: redteam.universal_safety_probes). Set to "
             "false for domain apps (e.g. finance) where these probes are low-signal."
+        ),
+    )
+    redteam_multimodal_scenarios: Literal["auto", "on", "off"] = Field(
+        default="auto",
+        description=(
+            "Multimodal injection scenarios (image, PDF, voice): 'auto' generates "
+            "them only when the SBOM shows that modality, 'on' always generates "
+            "them, 'off' never does (yaml: redteam.multimodal_scenarios, "
+            "cli: --multimodal)."
         ),
     )
     redteam_hard_refusal_abort_turns: int = Field(

@@ -57,6 +57,7 @@ from nuguard.redteam.executor.orchestrator import (
     _dedup_findings,
     finding_matches_scenario_filter,
 )
+from nuguard.redteam.scenarios.multimodal_injection import MultimodalMode
 from nuguard.redteam.target.canary import CanaryConfig
 from nuguard.redteam.workflows import WorkflowSpec
 from nuguard.remediation.backfill import backfill_finding_remediation
@@ -203,6 +204,7 @@ class RedteamRunRequest(BaseModel):
     scenario_delay_seconds: float = 0.0
     similar_miss_threshold: int = 4
     universal_safety_probes: bool = True
+    multimodal_scenarios: MultimodalMode = "auto"
     workflows: list[WorkflowSpec] = Field(default_factory=list)
     workflow_templates: list[str] = Field(default_factory=list)
     hard_refusal_abort_turns: int = 5
@@ -551,6 +553,7 @@ async def run_redteam(
         scenario_delay_seconds=request.scenario_delay_seconds,
         similar_miss_threshold=request.similar_miss_threshold,
         universal_safety_probes=request.universal_safety_probes,
+        multimodal_scenarios=request.multimodal_scenarios,
         workflows=[w.model_dump() for w in request.workflows] or None,
         workflow_templates=request.workflow_templates or None,
         hard_refusal_abort_turns=request.hard_refusal_abort_turns,

@@ -11873,6 +11873,16 @@
         "title": "Universal Safety Probes",
         "type": "boolean"
       },
+      "multimodal_scenarios": {
+        "default": "auto",
+        "enum": [
+          "auto",
+          "on",
+          "off"
+        ],
+        "title": "Multimodal Scenarios",
+        "type": "string"
+      },
       "workflows": {
         "items": {
           "$ref": "#/$defs/WorkflowSpec"
@@ -16720,7 +16730,7 @@
               }
             ],
             "default": null,
-            "description": "OAuth2 scope or role required to call this endpoint: 'user' | 'admin' | 'none'",
+            "description": "OAuth2 scope or role required to call this endpoint, e.g. 'user', 'admin' or 'none'. Several roles or authorities are comma-separated and any one of them grants access (Spring Security hasAnyRole / hasAnyAuthority)",
             "title": "Auth Scope"
           },
           "accepts_user_input": {
@@ -21185,7 +21195,7 @@
               }
             ],
             "default": null,
-            "description": "OAuth2 scope or role required to call this endpoint: 'user' | 'admin' | 'none'",
+            "description": "OAuth2 scope or role required to call this endpoint, e.g. 'user', 'admin' or 'none'. Several roles or authorities are comma-separated and any one of them grants access (Spring Security hasAnyRole / hasAnyAuthority)",
             "title": "Auth Scope"
           },
           "accepts_user_input": {
@@ -25891,7 +25901,7 @@
               }
             ],
             "default": null,
-            "description": "OAuth2 scope or role required to call this endpoint: 'user' | 'admin' | 'none'",
+            "description": "OAuth2 scope or role required to call this endpoint, e.g. 'user', 'admin' or 'none'. Several roles or authorities are comma-separated and any one of them grants access (Spring Security hasAnyRole / hasAnyAuthority)",
             "title": "Auth Scope"
           },
           "accepts_user_input": {
@@ -30264,7 +30274,7 @@
               }
             ],
             "default": null,
-            "description": "OAuth2 scope or role required to call this endpoint: 'user' | 'admin' | 'none'",
+            "description": "OAuth2 scope or role required to call this endpoint, e.g. 'user', 'admin' or 'none'. Several roles or authorities are comma-separated and any one of them grants access (Spring Security hasAnyRole / hasAnyAuthority)",
             "title": "Auth Scope"
           },
           "accepts_user_input": {

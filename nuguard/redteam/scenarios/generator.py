@@ -92,7 +92,7 @@ from .guided_conversations import (
 )
 from .jailbreak import build_context_flood, build_structural_injection
 from .mcp_attacks import build_mcp_output_poisoning, build_mcp_tool_injection, build_mcp_toxic_flow
-from .multimodal_injection import build_multimodal_scenarios
+from .multimodal_injection import MultimodalMode, build_multimodal_scenarios, parse_multimodal_mode
 from .oracle_attacks import build_boundary_self_probe, build_premise_injection, build_refusal_oracle
 from .policy_violations import (
     _clause_fragment,
@@ -413,8 +413,10 @@ class ScenarioGenerator:
         canary_config: "CanaryConfig | None" = None,
         endpoint_plan: "EndpointPlan | None" = None,
         universal_safety_probes: bool = True,
+        multimodal_scenarios: str = "auto",
     ) -> None:
         self._universal_safety_probes = universal_safety_probes
+        self._multimodal_mode: MultimodalMode = parse_multimodal_mode(multimodal_scenarios)
         # Optional relevance plan narrowing which API endpoints each direct-HTTP
         # probe family is generated for (see endpoint_selector.build_endpoint_plan).
         self._endpoint_plan = endpoint_plan
@@ -2766,6 +2768,11 @@ class ScenarioGenerator:
         """
         out: list[AttackScenario] = []
         agent_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]
+        # The slice below keeps at most _MAX_AGENTS_PER_GOAL agents, so list entry agents
+        # (reachable from an API endpoint) first: they handle real requests and must not be
+        # dropped in favour of sub-agents that merely come earlier in the SBOM.
+        entry_ids = self._compute_entry_agents()
+        agent_nodes.sort(key=lambda n: str(n.id) not in entry_ids)
 
         blocked_actions = list(self._policy.restricted_actions or [])
         blocked_action = (
@@ -2781,6 +2788,7 @@ class ScenarioGenerator:
                     agent_id=str(node.id),
                     agent_name=node.name,
                     blocked_action=blocked_action,
+                    mode=self._multimodal_mode,
                 )
             )
         return out
