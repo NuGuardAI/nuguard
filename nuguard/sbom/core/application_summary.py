@@ -51,8 +51,10 @@ _AWS_ACCOUNT_PATTERN = re.compile(r"\b\d{12}\b")
 _AZURE_SUB_PATTERN = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
 )
+# Cloud region names are hyphenated and end in a digit (us-east-1, us-central1, europe-west4);
+# requiring that keeps out look-alikes such as the charset name US_ASCII.
 _REGION_PATTERN = re.compile(
-    r"\b(?:us|eu|ap|sa|ca|af|me|northamerica|southamerica|europe|asia|australia)[-_][a-z0-9-]+\b",
+    r"\b(?:us|eu|ap|sa|ca|af|me|northamerica|southamerica|europe|asia|australia)(?:-[a-z]+)+-?\d\b",
     re.IGNORECASE,
 )
 _ENV_PATTERN = re.compile(
@@ -291,6 +293,8 @@ _DEPLOYMENT_FILE_HINTS = (
     "netlify",
     "cloudrun",
 )
+# Local addresses and GitHub (repository and Action links) are never where an app is deployed.
+_NON_DEPLOYMENT_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "[::1]", "github.com"}
 _DOC_HOST_BLOCKLIST = {
     "aka.ms",
     "docs.github.com",
@@ -317,7 +321,8 @@ def _uniq(values: Iterable[str]) -> list[str]:
 
 
 def _canonicalize_url(raw: str) -> str | None:
-    v = (raw or "").strip()
+    # Trailing punctuation from templates and prose ("http://localhost}") is not part of the URL.
+    v = (raw or "").strip().rstrip("}),.;]")
     if not v or not v.startswith(("http://", "https://")):
         return None
     if any(tok in v for tok in ("${", "{{", "$", "<", ">")):
@@ -331,6 +336,8 @@ def _canonicalize_url(raw: str) -> str | None:
     host = parsed.netloc.lower()
     path = (parsed.path or "").lower()
     if host in _DOC_HOST_BLOCKLIST or any(h in path for h in _DOC_PATH_HINTS):
+        return None
+    if (parsed.hostname or "") in _NON_DEPLOYMENT_HOSTS:
         return None
     normalized = parsed._replace(scheme=parsed.scheme.lower(), netloc=host, fragment="")
     return urlunparse(normalized).rstrip("/") or None
@@ -442,8 +449,10 @@ def extract_deployment_context(files: Sequence[tuple[str, str]]) -> dict[str, li
             for m in re.findall(
                 rf"{key}\s*[:=]\s*[\"']?([a-zA-Z0-9._-]+)", text, flags=re.IGNORECASE
             ):
-                projects.append(m)
-        regions.extend(_REGION_PATTERN.findall(text))
+                # A project, resource group or subscription name has letters; "1." is a version or list item.
+                if re.search(r"[a-zA-Z]", m):
+                    projects.append(m.rstrip("."))
+        regions.extend(r.lower() for r in _REGION_PATTERN.findall(text))
         environments.extend(_ENV_PATTERN.findall(text))
         if any(hint in lower_path for hint in _DEPLOYMENT_FILE_HINTS):
             deployment_urls.extend(_URL_PATTERN.findall(text))
