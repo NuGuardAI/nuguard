@@ -1,0 +1,204 @@
+language: zh-CN
+
+server:
+  port: 8083
+  # Custom platform / instance branding (optional)
+  companyName: ""
+  companyLogoUrl: ""
+  # Reverse proxies in front of the application, as CIDR blocks. Gin's own default
+  # trusts every peer, which makes X-Forwarded-For authoritative and lets any
+  # caller choose the client address the server records in the login credential
+  # log and in user.last_login_ip. Left empty this falls back to the loopback,
+  # RFC1918, IPv6 unique-local and link-local ranges, which covers a sidecar
+  # tunnel, a compose network and a local nginx. Set it explicitly when the proxy
+  # sits on a public address, and never set it to 0.0.0.0/0.
+  trustedProxies: []
+  # Set to "cloudflare" (also accepted: "fly.io", "google-app-engine", or a literal
+  # header name) when an edge overwrites rather than appends the real client
+  # address. When set it takes precedence over X-Forwarded-For entirely.
+  trustedPlatform: ""
+  rateLimit:
+    # Bounds how often one client address may call the public, unauthenticated
+    # endpoints: login, support registration, the widget session exchange, message
+    # uploads and documentation feedback. Enabled by default.
+    #
+    # Channel webhooks under /api/third, the websocket routes, /api/webhooks and
+    # the whole authenticated dashboard are deliberately NOT covered. A platform
+    # that receives a 429 from its webhook stops retrying and eventually disables
+    # the delivery, which takes an entire channel offline.
+    #
+    # The counters live in this process. Running several replicas gives each one
+    # its own budget, which weakens the bound by the replica count; these limits
+    # exist to make flooding expensive, not to meter a quota.
+    enabled: true
+    windowSeconds: 60
+  cors:
+    # Browser CORS allowlist. In production, replace this with the actual frontend or embedded-site domains, such as https://support.example.com.
+    # Leave it empty to reject cross-origin browser requests. Same-origin and non-browser calls are still supported.
+    allowedOrigins:
+      - http://127.0.0.1:8083
+      - http://localhost:8083
+
+db:
+  # Database driver. Supported values: sqlite, mysql, postgres (or postgresql).
+  type: sqlite
+  # Database connection string.
+  # SQLite example: file:./data/app.db?_busy_timeout=5000
+  # MySQL example: user:password@tcp(127.0.0.1:3306)/cs_ai_agent_db?charset=utf8mb4&parseTime=True&multiStatements=true&loc=Local
+  # PostgreSQL (Supabase Session Pooler) example:
+  #   dsn: "host=aws-1-ap-southeast-1.pooler.supabase.com user=postgres.gulptwduchsjcsbndmua password=<PASSWORD> dbname=postgres port=5432 sslmode=require search_path=desk"
+  # PostgreSQL URI example:
+  #   dsn: "postgresql://postgres.gulptwduchsjcsbndmua:<PASSWORD>@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres?sslmode=require&search_path=desk"
+  # For MySQL, keep parseTime=True so datetime fields are scanned into Go time values correctly.
+  dsn: file:./data/app.db?_busy_timeout=5000
+  # Maximum number of idle connections kept in the pool. Values <= 0 use the database/sql default.
+  maxIdleConns: 5
+  # Maximum number of open connections. Values <= 0 mean no explicit limit.
+  maxOpenConns: 20
+  # Maximum time an idle connection may stay in the pool, in seconds. Values <= 0 leave it unset.
+  connMaxIdleTimeSeconds: 300
+  # Maximum lifetime of a connection, in seconds. Values <= 0 leave it unset.
+  connMaxLifetimeSeconds: 1800
+
+logger:
+  level: info
+  format: text
+  addSource: false
+
+auth:
+  # Enable username and password login. When set to false, users must sign in with SSO (e.g. OIDC or WeCom).
+  # Default is true.
+  passwordLoginEnabled: true
+  # Login access token lifetime, in hours. Values <= 0 fall back to 12 hours.
+  # Applies to password login, OIDC login, and WeCom login sessions.
+  tokenTTLHours: 12
+  # Maximum failed password attempts allowed within the lock window.
+  # Values <= 0 disable credential lockout.
+  maxFailedAttempts: 5
+  # Failed-login lock window, in minutes. When maxFailedAttempts is reached within this window, login is temporarily blocked.
+  # Values <= 0 fall back to 15 minutes when lockout is enabled.
+  credentialLockMinute: 15
+
+customerSession:
+  # Signing secret for customer service session tokens. Use a separate, high-entropy random string; do not reuse the channel userTokenSecret.
+  secret: ""
+  # Default lifetime for customer service session tokens, in minutes.
+  ttlMinutes: 120
+  # Automatically refresh the token when its remaining lifetime falls below this value, in minutes.
+  refreshThresholdMinutes: 30
+
+storage:
+  # Default file storage provider used for uploads. Supported values: local, oss.
+  # Empty value is treated as local by the backend.
+  default: local
+  # Maximum size of a single uploaded file, in MB. Values <= 0 fall back to the backend default.
+  maxUploadSizeMB: 20
+  local:
+    # Files are written under this directory, relative to the process working directory unless an absolute path is used.
+    root: data/storage
+    # Public URL prefix used when returning local file URLs. The server must expose this path as static files.
+    # Example: storage key "images/a.png" becomes "/storage/images/a.png".
+    baseUrl: /storage
+  oss:
+    # Aliyun OSS endpoint. Both "oss-cn-hangzhou.aliyuncs.com" and "https://oss-cn-hangzhou.aliyuncs.com" are accepted.
+    endpoint: ""
+    # OSS bucket name.
+    bucket: ""
+    # OSS access credentials. Keep the secret out of committed environment-specific config.
+    accessKeyId: ""
+    accessKeySecret: ""
+    # Optional public CDN/custom domain prefix for object URLs, for example https://files.example.com.
+    # If empty, public buckets use the default bucket endpoint URL; private buckets use signed URLs.
+    baseUrl: ""
+    # Set to true for private buckets. Private buckets return temporary signed URLs for reads.
+    private: false
+    # Expiration for generated OSS signed GET URLs, in seconds. Values <= 0 fall back to 600.
+    signedUrlExpireSeconds: 600
+
+vectorDB:
+  type: qdrant # qdrant, lancedb
+  qdrant:
+    host: 127.0.0.1
+    grpcPort: 6334
+    apiKey: ""
+    useTls: false
+  # LanceDB requires building the backend with -tags lancedb and LanceDB native libraries.
+  lancedb:
+    path: data/lancedb
+
+mcp:
+  # Global switch for MCP tool integration.
+  # When false, MCP tool catalog, debug endpoints, and runtime tool calls are disabled.
+  enabled: true
+  # MCP server registry. Each map key is the serverCode used by toolCode values like "system/tool_name".
+  servers:
+    system:
+      # Whether this MCP server is available for catalog listing, debug calls, and agent runtime calls.
+      enabled: true
+      # Streamable HTTP MCP endpoint. The built-in system server is exposed by this backend at /api/mcp.
+      endpoint: "http://127.0.0.1:8083/api/mcp"
+      # Connection and request timeout in milliseconds. Values <= 0 fall back to 15000.
+      timeoutMs: 15000
+      # Extra HTTP headers sent to this MCP server on every request, for example Authorization or tenant headers.
+      headers: {}
+
+oidc:
+  # Whether to enable OIDC login. This system acts as the OIDC client.
+  enabled: false
+  # OIDC provider issuer, for example https://idp.example.com/realms/demo.
+  issuer: ""
+  clientId: ""
+  clientSecret: ""
+  # Must exactly match the redirect_uri registered with the OIDC provider.
+  redirectUrl: "http://127.0.0.1:8083/api/auth/oidc_callback"
+  # Signing secret for the OIDC login state. If left empty, clientSecret is used as the fallback.
+  stateSecret: ""
+  scopes:
+    - openid
+    - profile
+    - email
+
+wxWork:
+  # Whether to enable WeCom features.
+  # When set to false, the WeCom SDK is not initialized, and login, customer service callbacks, and app notifications are unavailable.
+  enabled: false
+  # WeCom corporate ID.
+  # Example: wwxxxxxxxxxxxxxxxx, from the WeCom admin console.
+  corpId: 
+  # WeCom app secret.
+  # Used by the backend to obtain access tokens and user identities. Keep it confidential.
+  corpSecret: ""
+  # AgentID of the WeCom custom app.
+  # Used for web authorization when scope=snsapi_privateinfo.
+  agentId: 
+  # WeCom web authorization callback URL.
+  # Must be a full URL pointing to the backend endpoint:
+  # Example: http://127.0.0.1:8083/api/auth/wxwork_callback
+  # In production, use an official domain that WeCom can access, and make sure the domain is configured in the WeCom admin console.
+  oauthRedirect: ""
+  # Signing secret for the WeCom login state.
+  # Used for tamper protection and replay protection. A separate random string is recommended.
+  # If left empty, the code falls back to corpSecret, but this is not recommended.
+  stateSecret: ""
+  # Private key for decrypting WeCom callbacks.
+  # Not used by the current login flow. Reserved for message callbacks and similar scenarios.
+  rsaPrivateKey: ""
+  # WeCom callback token.
+  # Not used by the current login flow. Reserved for message callbacks and similar scenarios.
+  token: ""
+  # WeCom message encryption/decryption EncodingAESKey.
+  # Not used by the current login flow. Reserved for message callbacks and similar scenarios.
+  encodingAESKey: ""
+
+  notify:
+    # Whether to enable WeCom app message notifications.
+    enabled: false
+    # Default list of system user IDs to receive notifications. If the target business user has a bound WeCom identity, that user is preferred.
+    # System user IDs are mapped to WeCom member IDs through identity bindings before messages are sent.
+    toUsers: []
+    # Whether to send confidential messages.
+    safe: false
+    # Whether to enable duplicate message checks.
+    enableDuplicateCheck: true
+    # Duplicate message check window, in seconds.
+    duplicateCheckInterval: 1800

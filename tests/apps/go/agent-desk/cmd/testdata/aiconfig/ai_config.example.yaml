@@ -1,0 +1,76 @@
+# To use this file, copy it to cmd/testdata/aiconfig/ and rename it to ai_config.yaml.
+#
+# Configuration guide:
+# 1. name: Unique identifier for the configuration. The system uses this field for deduplication and updates.
+# 2. provider: Model provider. Always set this to openai because the current AI API calls use the OpenAI-compatible protocol.
+# 3. baseUrl: API service endpoint.
+# 4. apiKey: API key.
+# 5. modelType: Model type. Must be one of the following:
+#    - llm: Large language model for chat and reasoning.
+#    - embedding: Text embedding model for generating vector representations of text.
+#    - rerank: Ranking model for reordering search results.
+# 6. modelName: Specific model name, as defined by the provider.
+# 7. dimension: Vector dimension.
+#    - llm and rerank: Usually set to 0.
+#    - embedding: Number of vector dimensions. For example, OpenAI text-embedding-3-small uses 1536.
+# 8. maxContextTokens: Maximum context tokens. Use 0 for no limit.
+#    - llm and embedding: The maximum number of input tokens supported by the model.
+#    - rerank: Usually set to 0.
+# 9. maxOutputTokens: Maximum output tokens.
+#    - llm: The maximum number of output tokens supported by the model.
+#    - embedding and rerank: Usually set to 0.
+# 10. timeoutMs: Request timeout in milliseconds.
+# 11. maxRetryCount: Number of retry attempts after a failed request.
+# 12. rpmLimit: Requests per minute limit. Use 0 for no limit.
+# 13. tpmLimit: Tokens per minute limit. Use 0 for no limit.
+# 15. sortNo: Sort order for prioritizing models of the same type. Lower numbers have higher priority.
+# 16. remark: Notes describing the purpose of this configuration or any special considerations.
+#
+items:
+  - name: LLM
+    provider: openai
+    baseUrl: https://dashscope.aliyuncs.com/compatible-mode/v1
+    apiKey: <REPLACE_WITH_REAL_KEY>
+    modelType: llm
+    modelName: qwen3.5-plus
+    dimension: 0
+    maxContextTokens: 128000
+    maxOutputTokens: 4096
+    timeoutMs: 30000
+    maxRetryCount: 1
+    rpmLimit: 0
+    tpmLimit: 0
+    sortNo: 10
+    remark: LLM
+
+  - name: embedding
+    provider: openai
+    baseUrl: https://dashscope.aliyuncs.com/compatible-mode/v1
+    apiKey: <REPLACE_WITH_REAL_KEY>
+    modelType: embedding
+    modelName: text-embedding-v4
+    dimension: 1536
+    maxContextTokens: 0
+    maxOutputTokens: 0
+    timeoutMs: 30000
+    maxRetryCount: 1
+    rpmLimit: 0
+    tpmLimit: 0
+    sortNo: 20
+    remark: embedding
+
+  - name: rerank
+    provider: openai
+    baseUrl: https://dashscope.aliyuncs.com/compatible-mode/v1
+    apiKey: <REPLACE_WITH_REAL_KEY>
+    modelType: rerank
+    modelName: qwen3-vl-rerank
+    dimension: 0
+    maxContextTokens: 0
+    maxOutputTokens: 0
+    timeoutMs: 30000
+    maxRetryCount: 1
+    rpmLimit: 0
+    tpmLimit: 0
+    sortNo: 30
+    remark: rerank
