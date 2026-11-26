@@ -346,16 +346,24 @@ class TestDedupScenariosByOpener:
 
 @pytest.mark.asyncio
 async def test_build_scenarios_parallelises_llm_calls():
-    """Both LLM-backed scenario generation layers should be awaited concurrently."""
-    import asyncio
-    import time
+    """Both LLM-backed scenario generation layers should be awaited concurrently.
 
-    call_times: list[float] = []
+    Measured by how many calls are in flight at once, not by wall time: the elapsed time also
+    covers scenario setup, which on a loaded CI runner alone exceeded a fixed 150 ms budget.
+    """
+    import asyncio
+
+    in_flight = 0
+    peak = 0
 
     async def slow_response(*_args: Any, **_kwargs: Any) -> str:
-        start = asyncio.get_event_loop().time()
-        await asyncio.sleep(0.05)
-        call_times.append(asyncio.get_event_loop().time() - start)
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        try:
+            await asyncio.sleep(0.05)
+        finally:
+            in_flight -= 1
         return json.dumps({
             "scenarios": [{"name": "gen_scenario", "goal": "test", "messages": ["hi"],
                            "target_component": "TestAgent", "target_component_type": "AGENT"}]
@@ -370,8 +378,11 @@ async def test_build_scenarios_parallelises_llm_calls():
     config = MagicMock()
     config.workflows = ["topic_coverage", "agent_tool_coverage"]
     config.boundary_assertions = []
+    # Explicit values: a MagicMock attribute is truthy and would send tool coverage down the guided path.
+    config.guided_coverage = False
+    config.tool_chain_size = 4
 
-    # SBOM needs at least one AGENT node for agent_coverage to issue an LLM call
+    # An AGENT and a TOOL node, so both concurrently gathered layers (agent and tool coverage) call the LLM
     from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata, NodeType
     nodes = [
         Node(
@@ -379,11 +390,16 @@ async def test_build_scenarios_parallelises_llm_calls():
             component_type=NodeType.AGENT,
             confidence=1.0,
             metadata=NodeMetadata(description="books flights"),
-        )
+        ),
+        Node(
+            name="search_flights",
+            component_type=NodeType.TOOL,
+            confidence=1.0,
+            metadata=NodeMetadata(description="looks up available flights"),
+        ),
     ]
     sbom = AiSbomDocument(target="test", nodes=nodes, edges=[])
 
-    start = time.monotonic()
     from nuguard.behavior.scenarios import build_scenarios
     await build_scenarios(
         config=config,
@@ -391,13 +407,10 @@ async def test_build_scenarios_parallelises_llm_calls():
         sbom=sbom,
         llm_client=mock_llm,
     )
-    elapsed = time.monotonic() - start
-
-    # Two 50ms LLM calls run in parallel → total should be well under 100ms×2=200ms
-    # (with some margin for overhead). In serial it would be ≥100ms.
-    assert elapsed < 0.15, f"Expected parallel execution (<150ms), got {elapsed:.3f}s"
-    # Both layer calls were made
-    assert mock_llm.complete.call_count == 2
+    # Happy path first, then agent and tool coverage gathered together.
+    assert mock_llm.complete.await_count == 3
+    # Serial awaits never overlap (peak 1); concurrent ones do.
+    assert peak >= 2, f"Expected the LLM calls to overlap, but at most {peak} was in flight"
 
 
 @pytest.mark.asyncio
