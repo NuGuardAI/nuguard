@@ -90,8 +90,6 @@ NuGuard is a security tool — hold all code to a high security bar:
 
 Implemented: `nuguard sbom`, `nuguard analyze`, `nuguard scan`, `nuguard policy`, `nuguard redteam`, `nuguard behavior`
 
-Stubbed / not yet implemented: `nuguard seed`, `nuguard report`, `nuguard findings`, `nuguard replay`
-
 ## Redteam Package Internals
 
 The redteam package is the most complex and actively developed. Understanding its data flow is critical.
