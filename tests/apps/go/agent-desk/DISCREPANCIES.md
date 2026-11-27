@@ -25,3 +25,5 @@ configuration examples.
 The NGA static pass produced 137 candidate findings. These are scanner hypotheses,
 not 137 confirmed vulnerabilities. No live server or model was involved.
 The committed SBOM is the first-run snapshot, not an expected-node-count test.
+
+Follow-up issue: https://github.com/NuGuardAI/nuguard/issues/780 .

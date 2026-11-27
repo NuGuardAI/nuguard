@@ -40,18 +40,17 @@ The third exercises the initial graph call, not confirmation resume behavior.
   sends a notice without confirmation and is covered by an upstream test. That
   documented path alone is not evidence of excessive privilege.
 
-## Acceptance blockers and next bounded decision
+## Approved negative-control scope
 
-1. The requested two-class **live** evidence is not available. Deterministic controls
-   support the tested boundaries; they cannot establish exploitability or model robustness.
-2. The static adapter detects no registered TOOL nodes; see DISCREPANCIES.
-3. This machine has no available Docker runtime or local inference server, so the
-   MySQL/Qdrant lifecycle and live-agent runs have not been validated. No paid
-   endpoint was used as a substitute.
-4. e2e matrix and prepublish integration have deliberately not been added yet:
-   a transport stub that never calls tools would not resolve these blockers.
+On 2026-11-27, virinchisai approved landing this as a negative-control fixture:
+https://github.com/NuGuardAI/nuguard/issues/747#issuecomment-7208822069
 
-Next maintainer decision: accept this as a protected negative-control fixture and
-approve a narrowly scoped Go registry-adapter follow-up, or identify an intended
-upstream agent path for the requested live two-class exercise. Do not remove existing
-checks just to obtain a finding. This first fixture does not close #747.
+The dedicated `Agent Desk Negative Controls` workflow runs the real Go controls
+and builds the backend without a model or database service. It is separate from the
+existing stub/live e2e matrix, which is unchanged. No transport stub is used here.
+
+The static adapter's missing ticket/handoff TOOL detections are tracked in
+https://github.com/NuGuardAI/nuguard/issues/780 .
+MySQL/Qdrant deployment, live-model campaigns, HTTP authentication coverage and
+confirmation-resume behavior are outside this PR. The three passing controls do
+not establish general model robustness or the original two-live-exploit criterion.

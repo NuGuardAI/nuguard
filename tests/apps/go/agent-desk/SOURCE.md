@@ -23,3 +23,5 @@
 
 No authentication or confirmation checks are intentionally weakened. No seeded
 vulnerability is presented as an upstream flaw. No paid model endpoint is used.
+
+5. Added a dedicated no-model Go-control/build workflow outside the existing e2e matrix.
