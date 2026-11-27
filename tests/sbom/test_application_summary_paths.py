@@ -168,3 +168,28 @@ def test_posix_paths_still_work() -> None:
     ]
     result = extract_deployment_context(files)
     assert "https://my-backend.azurewebsites.net" in result["deployment_urls"]
+
+
+def test_deployment_context_keeps_real_values_and_drops_lookalikes() -> None:
+    """A charset taken for a region, a template brace, a GitHub Action URL, localhost and a
+    bare number as a project (seen on SasanLabs/VulnerableApp) stay out of the context."""
+    from nuguard.sbom.core.application_summary import extract_deployment_context
+
+    files = [
+        ("docker-compose.yml", (
+            "environment:\n  JAVA_OPTS: -Dfile.encoding=US_ASCII\n"
+            "  url: http://localhost}\n  api: https://api.example.com/v1\n"
+            "  facade: http://localhost:9090/VulnerableApp\n"
+        )),
+        (".github/workflows/stale.yml", "uses: https://github.com/actions/stale\nproject: 1.\n"),
+        ("infra/main.tf", (
+            'region = "us-east-1"\nlocation = "europe-west4"\nzone = "us-central1"\n'
+            'project_id = "acme-prod"\n'
+        )),
+    ]
+    ctx = extract_deployment_context(files)
+
+    assert sorted(ctx["regions"]) == ["europe-west4", "us-central1", "us-east-1"]
+    assert ctx["deployment_urls"] == ["https://api.example.com/v1"]
+    assert "acme-prod" in ctx["subscription_account_project"]
+    assert not {"1.", "1"} & set(ctx["subscription_account_project"])
