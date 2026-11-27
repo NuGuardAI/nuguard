@@ -42,7 +42,7 @@ Omit `--target` if no target URL is available.
 After `nuguard init` writes the skeleton `nuguard.yaml`, open it with the Read tool and patch
 these fields using the Edit tool (only update values that exist in the config):
 
-- **`llm.model`** → set to `llm_model` from config (default `gemini/gemini-2.0-flash`)
+- **`llm.model`** → set to `llm_model` from config (default `gemini/gemini-3.6-flash`)
 - **`target.url`** → set to `target_url` from config (if not already set by `--target`)
 - **`target.endpoint`** → set to `chat_endpoint` if provided
 - **`target.auth`** → write the auth block for the chosen `auth_type`:

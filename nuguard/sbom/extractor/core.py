@@ -159,6 +159,7 @@ from .postprocess import (
     _dedup_exact_config_models,
     _dedup_generic_endpoints,
     _dedup_model_variants,
+    _drop_web_controller_agents_without_ai,
     _improve_generic_node_names,
     _make_scan_summary,
     _suppress_generic_tech_regex_datastore,
@@ -2834,6 +2835,7 @@ class AiSbomExtractor:
             imported_assets=_imported_assets,
             scanned_files=_java_scanned,
         )
+        _drop_web_controller_agents_without_ai(doc)
 
         # Deduplicate DEPLOYMENT nodes: merge github-actions workflow nodes into
         # the cloud-provider service nodes they deploy to.
