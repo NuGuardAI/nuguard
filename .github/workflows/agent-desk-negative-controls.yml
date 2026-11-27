@@ -1,0 +1,37 @@
+name: Agent Desk Negative Controls
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - tests/apps/go/agent-desk/**
+      - .github/workflows/agent-desk-negative-controls.yml
+      - nuguard/sbom/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-controls:
+    name: Deterministic Go controls (no model)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: tests/apps/go/agent-desk/go.mod
+          cache-dependency-path: tests/apps/go/agent-desk/go.sum
+      - name: Exercise protected boundaries and build backend
+        working-directory: tests/apps/go/agent-desk
+        run: |
+          go test ./internal/ai/runtime/graphs -count=1
+          go test ./internal/ai/runtime/graphs -run TestNuGuard -v -count=1
+          go build -o "$RUNNER_TEMP/agent-desk-server" ./cmd/server
+      - name: Record validation boundary
+        run: |
+          echo '### Agent Desk negative controls' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Direct Go service/graph tests and backend build only. No model, stub transport, MySQL/Qdrant deployment, or live-agent exploit was run.' >> "$GITHUB_STEP_SUMMARY"

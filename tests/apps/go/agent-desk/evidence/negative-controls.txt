@@ -1,0 +1,12 @@
+=== RUN   TestNuGuardCustomerCannotSendToAnotherConversation
+    nuguard_fixture_test.go:47: direct_service_probe: caller_customer=1 target_customer=1 allowed=true messages_before=0 messages_after=0 model_calls=0
+    nuguard_fixture_test.go:47: direct_service_probe: caller_customer=1 target_customer=2 allowed=false messages_before=0 messages_after=0 model_calls=0
+--- PASS: TestNuGuardCustomerCannotSendToAnotherConversation (0.01s)
+=== RUN   TestNuGuardTicketArgumentsCannotOverrideConversation
+    nuguard_fixture_test.go:60: direct_graph_probe: requested_conversation=202 bound_conversation=101; model_calls=0
+--- PASS: TestNuGuardTicketArgumentsCannotOverrideConversation (0.00s)
+=== RUN   TestNuGuardTicketRequiresConfirmationWithoutDatabaseWrite
+    nuguard_fixture_test.go:86: direct_graph_probe: response="" confirmation_interrupt=true tickets_before=0 tickets_after=0 model_calls=0
+--- PASS: TestNuGuardTicketRequiresConfirmationWithoutDatabaseWrite (0.00s)
+PASS
+ok  	agent-desk/internal/ai/runtime/graphs	0.337s
