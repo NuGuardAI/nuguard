@@ -184,6 +184,18 @@
         ],
         "default": null,
         "title": "Supply Chain Threat Intel Feeds"
+      },
+      "offline": {
+        "default": false,
+        "description": "Skip network-backed tools (OSV, Grype, Trivy) and report them as skipped.",
+        "title": "Offline",
+        "type": "boolean"
+      },
+      "dedupe_posture": {
+        "default": true,
+        "description": "Merge per-model-name posture findings (e.g. NGA-002) into one per SBOM node.",
+        "title": "Dedupe Posture",
+        "type": "boolean"
       }
     },
     "title": "AnalysisRunRequest",
@@ -238,6 +250,69 @@
             },
             "title": "References",
             "type": "array"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "source_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Tool"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "posture",
+                  "dependency",
+                  "iac",
+                  "container",
+                  "supply_chain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/$defs/FindingLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "component_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Component Ref"
           },
           "container_image": {
             "anyOf": [
@@ -651,6 +726,60 @@
         "title": "Finding",
         "type": "object"
       },
+      "FindingLocation": {
+        "description": "Where a finding lives in the scanned source tree.",
+        "properties": {
+          "path": {
+            "description": "Repo-relative path with POSIX separators; never absolute",
+            "title": "Path",
+            "type": "string"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start Line"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Line"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Enclosing function/class for code, or the resource address for IaC, if known",
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "FindingLocation",
+        "type": "object"
+      },
       "RemediationArtefact": {
         "description": "A concrete, SBOM-node-specific remediation action.\n\nProduced by RemediationSynthesizer as the final pass after all findings\nare collected. Each artefact targets a specific SBOM node and provides\nactionable instructions (patch text, guardrail spec, or architectural change).",
         "properties": {
@@ -1054,6 +1183,83 @@
         },
         "title": "TokenUsage",
         "type": "object"
+      },
+      "ToolRun": {
+        "description": "What one analysis tool actually did during a run.",
+        "properties": {
+          "tool": {
+            "description": "nga-rules, osv, grype, checkov, trivy, semgrep, atlas, supply-chain",
+            "title": "Tool",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Binary or rule-pack version used",
+            "title": "Version"
+          },
+          "status": {
+            "$ref": "#/$defs/ToolRunStatus"
+          },
+          "findings": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Findings",
+            "type": "integer"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Duration Ms"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Short sanitized cause; set unless status is ok or disabled",
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "tool",
+          "status"
+        ],
+        "title": "ToolRun",
+        "type": "object"
+      },
+      "ToolRunStatus": {
+        "description": "Closed set of outcomes for one analysis tool.\n\n``ok``: the tool ran and finished. ``failed``: it was attempted and errored\nor could not reach its data source. ``skipped``: a precondition was missing\n(binary not installed, offline mode). ``disabled``: the request turned it\noff. ``not_applicable``: nothing for the tool to look at. ``timeout``: it\nhit its deadline.",
+        "enum": [
+          "ok",
+          "failed",
+          "skipped",
+          "disabled",
+          "not_applicable",
+          "timeout"
+        ],
+        "title": "ToolRunStatus",
+        "type": "string"
       }
     },
     "description": "JSON-safe result of :func:`run_analysis`.\n\nBundles ``StaticAnalyzer.analyze()``'s return value together with the\nside-effect instance attributes the CLI reads separately today\n(``tool_status``, ``nga_audit``, ``sc_audit``, ``token_usage``), so\nexternal callers get one self-contained object instead of having to know\nwhich attributes to read off the analyzer instance.",
@@ -1074,6 +1280,13 @@
         },
         "title": "Tool Status",
         "type": "object"
+      },
+      "tool_runs": {
+        "items": {
+          "$ref": "#/$defs/ToolRun"
+        },
+        "title": "Tool Runs",
+        "type": "array"
       },
       "nga_audit": {
         "items": {
@@ -9641,6 +9854,69 @@
             "title": "References",
             "type": "array"
           },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "source_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Tool"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "posture",
+                  "dependency",
+                  "iac",
+                  "container",
+                  "supply_chain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/$defs/FindingLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "component_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Component Ref"
+          },
           "container_image": {
             "anyOf": [
               {
@@ -10051,6 +10327,60 @@
           "description"
         ],
         "title": "Finding",
+        "type": "object"
+      },
+      "FindingLocation": {
+        "description": "Where a finding lives in the scanned source tree.",
+        "properties": {
+          "path": {
+            "description": "Repo-relative path with POSIX separators; never absolute",
+            "title": "Path",
+            "type": "string"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start Line"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Line"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Enclosing function/class for code, or the resource address for IaC, if known",
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "FindingLocation",
         "type": "object"
       },
       "ObjectiveExecutionRecord": {
@@ -12664,6 +12994,69 @@
             "title": "References",
             "type": "array"
           },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Rule Id"
+          },
+          "source_tool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Tool"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "posture",
+                  "dependency",
+                  "iac",
+                  "container",
+                  "supply_chain"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
+          },
+          "locations": {
+            "items": {
+              "$ref": "#/$defs/FindingLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "component_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Component Ref"
+          },
           "container_image": {
             "anyOf": [
               {
@@ -13074,6 +13467,60 @@
           "description"
         ],
         "title": "Finding",
+        "type": "object"
+      },
+      "FindingLocation": {
+        "description": "Where a finding lives in the scanned source tree.",
+        "properties": {
+          "path": {
+            "description": "Repo-relative path with POSIX separators; never absolute",
+            "title": "Path",
+            "type": "string"
+          },
+          "start_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Start Line"
+          },
+          "end_line": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "End Line"
+          },
+          "symbol": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Enclosing function/class for code, or the resource address for IaC, if known",
+            "title": "Symbol"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "FindingLocation",
         "type": "object"
       },
       "ObjectiveExecutionRecord": {
@@ -14641,6 +15088,19 @@
             "default": null,
             "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
             "title": "Local Cloned Path"
+          },
+          "resolved_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Commit SHA that was actually checked out when the document was produced from a repository clone (extract_from_repo / extract_from_repo_subfolder); None for local paths or when it could not be determined. Excluded from serialization.",
+            "title": "Resolved Commit"
           },
           "nodes": {
             "description": "Detected AI components",
@@ -19106,6 +19566,19 @@
             "default": null,
             "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
             "title": "Local Cloned Path"
+          },
+          "resolved_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Commit SHA that was actually checked out when the document was produced from a repository clone (extract_from_repo / extract_from_repo_subfolder); None for local paths or when it could not be determined. Excluded from serialization.",
+            "title": "Resolved Commit"
           },
           "nodes": {
             "description": "Detected AI components",
@@ -23716,13 +24189,43 @@
             "minimum": 0,
             "title": "Bulk Catalog Keep",
             "type": "integer"
+          },
+          "allowed_git_hosts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "When set, clones are restricted to https:// URLs on exactly these hosts (no userinfo, IP literals or localhost) and git runs with an isolated environment (GIT_ALLOW_PROTOCOL=https, no system/global config, no LFS smudge, symlinks checked out as plain files). None keeps the unrestricted library behaviour.",
+            "title": "Allowed Git Hosts"
+          },
+          "clone_timeout_s": {
+            "default": 120.0,
+            "description": "Wall-clock limit for one git clone, in seconds.",
+            "exclusiveMinimum": 0,
+            "title": "Clone Timeout S",
+            "type": "number"
+          },
+          "max_repo_bytes": {
+            "default": 524288000,
+            "description": "Abort when the checked-out working tree exceeds this many bytes.",
+            "minimum": 1,
+            "title": "Max Repo Bytes",
+            "type": "integer"
           }
         },
         "title": "AiSbomConfig",
         "type": "object"
       }
     },
-    "description": "JSON-safe request for SBOM extraction.",
+    "description": "JSON-safe request for SBOM extraction.\n\n``repo_token`` authenticates a ``repo_url`` clone. It is handed to git via\nan ephemeral credential helper (never embedded in the URL, argv, logs or\nerrors), used for GitHub API calls on subfolder URLs, and never appears in\nthe result.",
     "properties": {
       "source_path": {
         "anyOf": [
@@ -23752,6 +24255,20 @@
         "default": "main",
         "title": "Repo Ref",
         "type": "string"
+      },
+      "repo_token": {
+        "anyOf": [
+          {
+            "format": "password",
+            "type": "string",
+            "writeOnly": true
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Repo Token"
       },
       "config": {
         "$ref": "#/$defs/AiSbomConfig"
@@ -23812,6 +24329,19 @@
             "default": null,
             "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
             "title": "Local Cloned Path"
+          },
+          "resolved_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Commit SHA that was actually checked out when the document was produced from a repository clone (extract_from_repo / extract_from_repo_subfolder); None for local paths or when it could not be determined. Excluded from serialization.",
+            "title": "Resolved Commit"
           },
           "nodes": {
             "description": "Detected AI components",
@@ -28108,6 +28638,19 @@
       "edge_count": {
         "title": "Edge Count",
         "type": "integer"
+      },
+      "resolved_commit": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Commit SHA checked out for repo_url sources",
+        "title": "Resolved Commit"
       }
     },
     "required": [
@@ -28185,6 +28728,19 @@
             "default": null,
             "description": "Absolute filesystem path where the scanned source actually lives on disk \u2014 the root that every SourceLocation.path (and other relative-path fields) in this document resolves against. Populated by extract_from_repo/extract_from_repo_subfolder only when the caller supplied cache_dir (otherwise the clone was a temp directory already deleted by the time this document is returned, so there is nothing durable to point at). None for extract_from_path callers who already know their own source path. Excluded from serialization: read it from the returned object before serializing.",
             "title": "Local Cloned Path"
+          },
+          "resolved_commit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Commit SHA that was actually checked out when the document was produced from a repository clone (extract_from_repo / extract_from_repo_subfolder); None for local paths or when it could not be determined. Excluded from serialization.",
+            "title": "Resolved Commit"
           },
           "nodes": {
             "description": "Detected AI components",

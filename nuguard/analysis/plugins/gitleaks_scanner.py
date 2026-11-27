@@ -82,6 +82,7 @@ class GitleaksScannerPlugin(AnalysisPlugin):
                 status="skipped",
                 plugin=self.name,
                 message="no source paths found in SBOM — gitleaks scan skipped",
+                details={"not_applicable": True},
             )
 
         result = run_scanner(

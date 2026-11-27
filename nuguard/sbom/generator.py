@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from nuguard.common.url_sanitization import sanitize_repository_url
 
@@ -27,7 +28,12 @@ class SbomGenerator:
         return doc
 
     def from_repo(
-        self, url: str, ref: str | None = None, output: Path | None = None
+        self,
+        url: str,
+        ref: str | None = None,
+        output: Path | None = None,
+        *,
+        token: str | None = None,
     ) -> AiSbomDocument:
         """Clone *url* at *ref* and return an AiSbomDocument.
 
@@ -37,10 +43,14 @@ class SbomGenerator:
         shorthand ``.../org/repo/<subpath>``), the subfolder is resolved
         automatically — see ``AiSbomExtractor.extract_from_repo``, which
         performs this detection itself.
+
+        *token* authenticates the clone without being embedded in the URL (see
+        :mod:`nuguard.sbom.extractor.git_clone`).
         """
         source_ref = sanitize_repository_url(url)
+        auth: dict[str, Any] = {"token": token} if token else {}
         doc = self._extractor.extract_from_repo(
-            url, ref, self.config, source_ref=source_ref
+            url, ref, self.config, source_ref=source_ref, **auth
         )
         if output is not None:
             from .serializer import AiSbomSerializer

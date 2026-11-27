@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -14,6 +15,21 @@ class Severity(str, Enum):
     INFO = "info"
 
 
+FindingKind = Literal["code", "posture", "dependency", "iac", "container", "supply_chain"]
+
+
+class FindingLocation(BaseModel):
+    """Where a finding lives in the scanned source tree."""
+
+    path: str = Field(description="Repo-relative path with POSIX separators; never absolute")
+    start_line: int | None = Field(default=None, ge=1)
+    end_line: int | None = Field(default=None, ge=1)
+    symbol: str | None = Field(
+        default=None,
+        description="Enclosing function/class for code, or the resource address for IaC, if known",
+    )
+
+
 class Finding(BaseModel):
     finding_id: str
     title: str
@@ -22,6 +38,18 @@ class Finding(BaseModel):
     affected_component: str | None = None
     remediation: str | None = None
     references: list[str] = Field(default_factory=list)
+    # ── Stable identity / location projection (static analysis; all optional) ──
+    # Producer's rule identifier, e.g. "NGA-012", "nuguard-eval-on-llm-output",
+    # "GHSA-…"/"CVE-…" (dependency advisories), "CKV_AWS_20". Unlike finding_id
+    # (random per run) this is stable across runs.
+    rule_id: str | None = None
+    # Tool that produced the finding; matches ToolRun.tool ("semgrep", "nga-rules", …).
+    source_tool: str | None = None
+    kind: FindingKind | None = None
+    locations: list[FindingLocation] = Field(default_factory=list)
+    # "NODE_TYPE:canonical name" of the SBOM node a posture finding is anchored
+    # to. SBOM node UUIDs change every run; type + canonical name does not.
+    component_ref: str | None = None
     # Set only for OS-package findings from a container-image scan (grype/trivy
     # scanning a CONTAINER_IMAGE node) — the image ref and, when the SBOM has
     # Dockerfile evidence for it, where that image is declared in the repo.

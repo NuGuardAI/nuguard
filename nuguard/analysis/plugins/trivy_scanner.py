@@ -90,17 +90,21 @@ class TrivyScannerPlugin(AnalysisPlugin):
 
         timeout = float(config.get("trivy_timeout", 120.0))
         all_findings: list[dict[str, Any]] = []
+        # One short reason per failed trivy invocation ("timeout", "exit status 2", …);
+        # a failed invocation must not read as "no vulnerabilities".
+        errors: list[str] = []
         scan_mode = "fs"
 
         if not image_refs and not fs_paths:
             # No filesystem targets — fall back to SBOM-based vulnerability scan
             _log.info("trivy: no fs/image targets found; falling back to SBOM-based scan")
-            sbom_findings = _run_trivy_sbom(binary, sbom, timeout)
+            sbom_findings = _run_trivy_sbom(binary, sbom, timeout, errors)
             if sbom_findings is None:
                 return AnalysisResult(
                     status="skipped",
                     plugin=self.name,
                     message="no scannable targets found in SBOM — trivy scan skipped",
+                    details={"not_applicable": True},
                 )
             all_findings = sbom_findings
             scan_mode = "sbom"
@@ -108,14 +112,16 @@ class TrivyScannerPlugin(AnalysisPlugin):
             for ref in sorted(image_refs):
                 _log.info("trivy: scanning image %s", ref)
                 all_findings.extend(
-                    _run_trivy(binary, ref, "image", timeout, locations_by_ref[ref])
+                    _run_trivy(binary, ref, "image", timeout, locations_by_ref[ref], errors)
                 )
 
             for path in sorted(fs_paths):
                 _log.info("trivy: scanning path %s", path)
-                all_findings.extend(_run_trivy(binary, path, "fs", timeout))
+                all_findings.extend(_run_trivy(binary, path, "fs", timeout, errors=errors))
 
         status = "warning" if all_findings else "ok"
+        if errors:
+            status = "error"
         if scan_mode == "sbom":
             message = (
                 f"{len(all_findings)} finding(s) from SBOM dependency scan"
@@ -129,6 +135,11 @@ class TrivyScannerPlugin(AnalysisPlugin):
                 if all_findings
                 else "No vulnerabilities found"
             )
+        if errors:
+            message = (
+                f"trivy: {len(errors)} scan(s) failed ({errors[0]}); "
+                f"{len(all_findings)} finding(s) retained"
+            )
         _log.info("trivy: %s", message)
         return AnalysisResult(
             status=status,
@@ -140,6 +151,8 @@ class TrivyScannerPlugin(AnalysisPlugin):
                 "scan_mode": scan_mode,
                 "images_scanned": sorted(image_refs),
                 "paths_scanned": sorted(fs_paths),
+                "errors": errors,
+                "timeouts": sum(e == "timeout" for e in errors),
             },
         )
 
@@ -183,6 +196,7 @@ def _run_trivy_sbom(
     binary: str,
     sbom: dict[str, Any],
     timeout: float,
+    errors: list[str] | None = None,
 ) -> list[dict[str, Any]] | None:
     """Convert *sbom* to CycloneDX and run ``trivy sbom <file>``.
 
@@ -219,9 +233,11 @@ def _run_trivy_sbom(
             result = subprocess.run(cmd, capture_output=True, timeout=timeout)
         except subprocess.TimeoutExpired:
             _log.warning("trivy sbom scan timed out")
+            _note_error(errors, "timeout")
             return []
         except OSError as exc:
             _log.warning("trivy sbom process error: %s", exc)
+            _note_error(errors, "process error")
             return []
 
         if result.returncode not in (0, 1):
@@ -231,12 +247,14 @@ def _run_trivy_sbom(
                 result.returncode,
                 f": {stderr[:200]}" if stderr else "",
             )
+            _note_error(errors, f"exit status {result.returncode}")
             return []
 
         try:
             data = json.loads(result.stdout)
         except (json.JSONDecodeError, ValueError) as exc:
             _log.warning("trivy sbom output parse error: %s", exc)
+            _note_error(errors, "invalid output")
             return []
 
         findings = _parse_trivy_output(data, "sbom")
@@ -246,12 +264,18 @@ def _run_trivy_sbom(
         Path(tmp_path).unlink(missing_ok=True)
 
 
+def _note_error(errors: list[str] | None, reason: str) -> None:
+    if errors is not None:
+        errors.append(reason)
+
+
 def _run_trivy(
     binary: str,
     target: str,
     scan_type: str,
     timeout: float,
     image_locations: list[str] | None = None,
+    errors: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Run ``trivy <scan_type> --format json <target>`` and parse output."""
     cmd = [
@@ -271,9 +295,11 @@ def _run_trivy(
         )
     except subprocess.TimeoutExpired:
         _log.warning("trivy timed out scanning %s", target)
+        _note_error(errors, "timeout")
         return []
     except OSError as exc:
         _log.warning("trivy process error for %s: %s", target, exc)
+        _note_error(errors, "process error")
         return []
 
     if result.returncode not in (0, 1):
@@ -283,12 +309,14 @@ def _run_trivy(
             result.returncode, target,
             f": {stderr[:200]}" if stderr else "",
         )
+        _note_error(errors, f"exit status {result.returncode}")
         return []
 
     try:
         data = json.loads(result.stdout)
     except (json.JSONDecodeError, ValueError) as exc:
         _log.warning("trivy output parse error for %s: %s", target, exc)
+        _note_error(errors, "invalid output")
         return []
 
     return _parse_trivy_output(data, target, image_locations=image_locations)
@@ -336,6 +364,7 @@ def _parse_trivy_output(
                 "url":              vuln.get("PrimaryURL") or "",
                 "source":           "trivy",
                 "scan_target":      scan_target,
+                "target":           target,
                 "fixed_version":    fixed or None,
                 "remediation": (
                     f"Upgrade {pkg_name} to a version outside the affected range"
@@ -364,6 +393,10 @@ def _parse_trivy_output(
                 "url":         misco.get("PrimaryURL") or "",
                 "source":      "trivy-misconfig",
                 "scan_target": scan_target,
+                "target":      target,
+                "resource":    (misco.get("CauseMetadata") or {}).get("Resource") or "",
+                "start_line":  (misco.get("CauseMetadata") or {}).get("StartLine"),
+                "end_line":    (misco.get("CauseMetadata") or {}).get("EndLine"),
             })
 
     return findings
