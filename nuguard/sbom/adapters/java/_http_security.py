@@ -33,6 +33,11 @@ STYLE_LEGACY = "WebSecurityConfigurerAdapter"
 _LOWEST_PRECEDENCE = 2**31 - 1
 _HIGHEST_PRECEDENCE = -(2**31)
 
+# Patterns come from the scanned repository. Past these limits a pattern is treated as unsupported,
+# so a hostile pattern cannot make the compiled regex backtrack badly (NuGuardAI/nuguard#774).
+_MAX_DEEP_WILDCARDS = 3  # "**" / "{*var}" segments, after collapsing consecutive ones
+_MAX_SEGMENT_STARS = 2  # "*" runs inside one segment
+
 # Calls whose arguments hold the authorization rules; the scanner descends into them.
 _DESCEND_CALLS = frozenset({"authorizeHttpRequests", "authorizeRequests"})
 # Calls that limit which requests a chain handles.
@@ -208,7 +213,8 @@ def _segment_regex(segment: str) -> str:
     while i < len(segment):
         ch = segment[i]
         if ch == "*":
-            out.append("[^/]*")
+            if not out or out[-1] != "[^/]*":  # "a**b" is the same as "a*b"
+                out.append("[^/]*")
         elif ch == "?":
             out.append("[^/]")
         elif ch == "{" and segment.find("}", i) > i:
@@ -224,13 +230,25 @@ def ant_regex(pattern: str) -> re.Pattern[str] | None:
     """Compile an Ant pattern (``**``, ``*``, ``?``, ``{var}``); None when it is not supported."""
     if _REGEX_VARIABLE_RE.search(pattern):
         return None
-    segments = [segment for segment in pattern.split("/") if segment]
+    segments: list[str] = []
+    for segment in pattern.split("/"):
+        if not segment:
+            continue
+        if segment == "**" or segment.startswith("{*"):
+            if segments and segments[-1] == "**":
+                continue  # "/**/**" matches the same paths as "/**"
+            segment = "**"
+        elif len(re.findall(r"\*+", segment)) > _MAX_SEGMENT_STARS:
+            return None
+        segments.append(segment)
     if not segments:
         return re.compile("/")
+    if segments.count("**") > _MAX_DEEP_WILDCARDS:
+        return None
     parts: list[str] = []
     last = len(segments) - 1
     for index, segment in enumerate(segments):
-        if segment == "**" or segment.startswith("{*"):
+        if segment == "**":
             parts.append("(?:/.*)?" if index == last else "(?:/[^/]+)*")
         else:
             parts.append("/" + _segment_regex(segment))
@@ -464,7 +482,8 @@ def _chain_style(method: JavaMethodDeclaration, owner: JavaTypeDeclaration | Non
     return None
 
 
-def _order_value(annotations: Sequence[str]) -> int | None:
+def _order_value(annotations: Sequence[str]) -> tuple[int | None, bool]:
+    """Return the ``@Order`` value and whether an ``@Order`` is present but cannot be read."""
     for annotation in annotations:
         match = _ORDER_RE.match(annotation.strip())
         if not match:
@@ -474,12 +493,13 @@ def _order_value(annotations: Sequence[str]) -> int | None:
         if named:
             raw = named.group(1).strip()
         if re.fullmatch(r"-?\d+", raw):
-            return int(raw)
+            return int(raw), False
         if raw.endswith("HIGHEST_PRECEDENCE"):
-            return _HIGHEST_PRECEDENCE
+            return _HIGHEST_PRECEDENCE, False
         if raw.endswith("LOWEST_PRECEDENCE"):
-            return _LOWEST_PRECEDENCE
-    return None
+            return _LOWEST_PRECEDENCE, False
+        return None, True
+    return None, False
 
 
 def http_security_detections(
@@ -502,9 +522,9 @@ def http_security_detections(
         if parsed is None:
             continue
         if style == STYLE_BEAN:
-            order = _order_value(method.annotations)
+            order, order_unreadable = _order_value(method.annotations)
         else:
-            order = _order_value(owner.annotations if owner is not None else ())
+            order, order_unreadable = _order_value(owner.annotations if owner is not None else ())
         owner_name = method.containing_type or PurePosixPath(file_path).stem
         canonical = canonicalize_text(f"java-http-security:{file_path}:{owner_name}:{method.name}")
         detections.append(
@@ -526,6 +546,7 @@ def http_security_detections(
                     "http_security_scope_supported": parsed.scope_supported,
                     "http_security_reserved_paths": parsed.reserved,
                     "http_security_order": order,
+                    "http_security_order_unreadable": order_unreadable,
                     "http_security_file": file_path,
                     "http_security_line": method.line,
                 },
@@ -553,6 +574,7 @@ class HttpSecurityChain:
     scope_supported: bool
     rules: tuple[Mapping[str, Any], ...]
     reserved: tuple[str, ...] = ()
+    order_unreadable: bool = False
 
 
 @dataclass(frozen=True)
@@ -584,7 +606,20 @@ def chain_from_extras(key: Any, extras: Mapping[str, Any]) -> HttpSecurityChain 
         scope_supported=bool(extras.get("http_security_scope_supported", True)),
         rules=tuple(rule for rule in rules if isinstance(rule, dict)),
         reserved=tuple(str(item) for item in reserved) if isinstance(reserved, list) else (),
+        order_unreadable=extras.get("http_security_order_unreadable") is True,
     )
+
+
+def source_module(file_path: str) -> str | None:
+    """The Maven/Gradle module of a source file: the directory above ``src/main/``.
+
+    Returns ``""`` for the repository root module and None when the file is not in that layout.
+    """
+    path = file_path.replace("\\", "/")
+    if path.startswith("src/main/"):
+        return ""
+    index = path.find("/src/main/")
+    return path[:index] if index >= 0 else None
 
 
 def _evaluate_rules(
@@ -625,23 +660,38 @@ def evaluate_http_security(
     Chains are tried in ``@Order`` order (explicit values first), then file path and line. The
     first chain whose ``securityMatcher`` covers the path is the only one consulted, and inside it
     the first matching rule wins, as in Spring Security.
+
+    No decision is made when the winning chain is not certain: an unreadable ``@Order`` on a
+    chain that covers the path, or two covering chains with the same order in different files
+    (Spring then orders them by bean registration, which a static scan cannot see).
     """
     if not path:
         return None
     normalized = _normalize_path(path)
-    ordered = sorted(
-        chains,
-        key=lambda chain: (
-            chain.order if chain.order is not None else _LOWEST_PRECEDENCE,
-            chain.file,
-            chain.line,
-        ),
-    )
-    for chain in ordered:
+
+    def effective_order(chain: HttpSecurityChain) -> int:
+        return chain.order if chain.order is not None else _LOWEST_PRECEDENCE
+
+    ordered = sorted(chains, key=lambda chain: (effective_order(chain), chain.file, chain.line))
+    covering = [
+        chain
+        for chain in ordered
+        if not chain.scope_supported
+        or not chain.scope
+        or any(_path_matches(pattern, normalized) for pattern in chain.scope)
+    ]
+    if len(covering) > 1:
+        if any(chain.order_unreadable for chain in covering):
+            return None
+        first = covering[0]
+        if any(
+            effective_order(chain) == effective_order(first) and chain.file != first.file
+            for chain in covering[1:]
+        ):
+            return None
+    for chain in covering:
         if not chain.scope_supported:
             return None
-        if chain.scope and not any(_path_matches(pattern, normalized) for pattern in chain.scope):
-            continue
         if any(_path_matches(pattern, normalized) for pattern in chain.reserved):
             return None  # served by the formLogin()/logout() filters; may be public via permitAll()
         return _evaluate_rules(chain, method, normalized)
