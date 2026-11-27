@@ -79,7 +79,7 @@ The bundled JSON Schema is at `nuguard/sbom/schemas/aibom.schema.json` and must 
 
 ### LLM enrichment
 
-LLM calls are optional everywhere. Pass `--llm` to `nuguard sbom generate` or set `llm: true` in config. The client wraps LiteLLM; default model is `gemini/gemini-2.0-flash`. API key via `LITELLM_API_KEY`.
+LLM calls are optional everywhere. Pass `--llm` to `nuguard sbom generate` or set `llm: true` in config. The client wraps LiteLLM; default model is `gemini/gemini-3.6-flash`. API key via `LITELLM_API_KEY`.
 
 ### Configuration
 
