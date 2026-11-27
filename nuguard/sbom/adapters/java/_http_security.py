@@ -36,7 +36,8 @@ _HIGHEST_PRECEDENCE = -(2**31)
 # Patterns come from the scanned repository. Past these limits a pattern is treated as unsupported,
 # so a hostile pattern cannot make the compiled regex backtrack badly (NuGuardAI/nuguard#774).
 _MAX_DEEP_WILDCARDS = 3  # "**" / "{*var}" segments, after collapsing consecutive ones
-_MAX_SEGMENT_STARS = 2  # "*" runs inside one segment
+_MAX_SEGMENT_STARS = 2  # variable-width tokens ("*" runs, "{var}") inside one segment
+_VARIABLE_WIDTH_RE = re.compile(r"\*+|\{[^}]*\}")
 
 # Calls whose arguments hold the authorization rules; the scanner descends into them.
 _DESCEND_CALLS = frozenset({"authorizeHttpRequests", "authorizeRequests"})
@@ -238,7 +239,7 @@ def ant_regex(pattern: str) -> re.Pattern[str] | None:
             if segments and segments[-1] == "**":
                 continue  # "/**/**" matches the same paths as "/**"
             segment = "**"
-        elif len(re.findall(r"\*+", segment)) > _MAX_SEGMENT_STARS:
+        elif len(_VARIABLE_WIDTH_RE.findall(segment)) > _MAX_SEGMENT_STARS:
             return None
         segments.append(segment)
     if not segments:

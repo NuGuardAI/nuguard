@@ -531,6 +531,8 @@ def test_consecutive_wildcards_collapse(pattern: str, path: str, expected: bool)
     "pattern",
     [
         "/a*b*c*d",  # three "*" runs in one segment
+        "/{a}{b}{c}",  # three placeholders in one segment
+        "/{a}*{b}",  # placeholders and "*" count together
         "/**/a/**/b/**/c/**/d",  # four "**" segments
     ],
 )
