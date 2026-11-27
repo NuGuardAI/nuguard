@@ -79,6 +79,7 @@ from ..adapters.java._http_security import (
     HTTP_SECURITY_AUTH_TYPE,
     chain_from_extras,
     evaluate_http_security,
+    source_module,
 )
 from ..adapters.java._java_base import JavaFrameworkAdapter
 from ..adapters.java.java_config import (
@@ -3585,16 +3586,29 @@ class AiSbomExtractor:
                 chains.append(chain)
         if not chains:
             return
+        chain_modules = {source_module(chain.file) for chain in chains}
         for ep in doc.nodes:
             if ep.component_type != ComponentType.API_ENDPOINT:
                 continue
             extras = ep.metadata.extras
             if extras.get("language") != "java" or extras.get("framework") != "spring-boot":
                 continue
+            candidates = chains
+            if len(chain_modules) > 1:
+                # Several Spring modules: a chain secures only its own application.
+                ep_modules = {
+                    source_module(ev.location.path)
+                    for ev in ep.evidence
+                    if ev.location and ev.location.path
+                }
+                if None in chain_modules or len(ep_modules) != 1 or None in ep_modules:
+                    continue  # cannot tell which application serves this endpoint
+                ep_module = next(iter(ep_modules))
+                candidates = [c for c in chains if source_module(c.file) == ep_module]
             path = extras.get("api_endpoint") or ep.metadata.endpoint
             method = extras.get("method") or ep.metadata.method
             decision = evaluate_http_security(
-                chains,
+                candidates,
                 str(method) if method else None,
                 str(path) if path else None,
             )

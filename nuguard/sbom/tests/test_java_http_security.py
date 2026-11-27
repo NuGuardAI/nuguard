@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,9 @@ from nuguard.sbom.adapters.java import JavaWebAdapter
 from nuguard.sbom.adapters.java._http_security import (
     HTTP_SECURITY_AUTH_TYPE,
     ant_match,
+    ant_regex,
     parse_chain,
+    source_module,
 )
 from nuguard.sbom.core.java_parser import parse_java
 from nuguard.sbom.models import AiSbomDocument, Node
@@ -503,3 +506,166 @@ def test_adapter_detection_metadata() -> None:
 )
 def test_ant_match(pattern: str, path: str, expected: bool) -> None:
     assert ant_match(pattern, path) is expected
+
+
+# --------------------------------------------------------------------------------------------
+# NuGuardAI/nuguard#774: hostile patterns, unreadable @Order, several Spring modules
+# --------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("pattern", "path", "expected"),
+    [
+        ("/a/**/**/**/c", "/a/b/d/c", True),
+        ("/a/**/**/**/c", "/a/c", True),
+        ("/a/{*rest}/**", "/a/b/c", True),
+        ("/x**y", "/xay", True),
+    ],
+)
+def test_consecutive_wildcards_collapse(pattern: str, path: str, expected: bool) -> None:
+    assert ant_regex(pattern) is not None
+    assert ant_match(pattern, path) is expected
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        "/a*b*c*d",  # three "*" runs in one segment
+        "/{a}{b}{c}",  # three placeholders in one segment
+        "/{a}*{b}",  # placeholders and "*" count together
+        "/**/a/**/b/**/c/**/d",  # four "**" segments
+    ],
+)
+def test_patterns_past_the_wildcard_limits_are_unsupported(pattern: str) -> None:
+    assert ant_regex(pattern) is None
+    assert ant_match(pattern, "/a/b/c/d") is False
+
+
+def test_worst_supported_pattern_matches_quickly() -> None:
+    pattern = "/**/a*a/**/a*a/**/b"
+    path = "/" + "/".join(["a" * 30] * 40) + "/c"
+    started = time.perf_counter()
+    assert ant_match(pattern, path) is False
+    assert time.perf_counter() - started < 1.0
+
+
+def test_hostile_pattern_rule_is_unsupported_and_not_guessed(tmp_path: Path) -> None:
+    rules = """            .requestMatchers("/a*b*c*d").permitAll()
+            .anyRequest().authenticated()"""
+    document = _scan(tmp_path, {"SecurityConfig.java": _config(rules), "A.java": _CONTROLLER})
+    (chain,) = _chains(document)
+    assert chain.metadata.extras["http_security_unsupported_rules"] == 1
+    for endpoint in _endpoints(document).values():
+        _assert_unchanged(endpoint)
+
+
+def test_unreadable_order_leaves_overlapping_endpoints_undecided(tmp_path: Path) -> None:
+    source = _TWO_CHAINS.replace("ORDER_REST", "@Order(2)").replace(
+        "ORDER_API", "@Order(SecurityOrders.API)"
+    )
+    document = _scan(tmp_path, {"SecurityConfig.java": source, "A.java": _CONTROLLER})
+    unreadable = {
+        c.metadata.extras["http_security_order"]: c.metadata.extras[
+            "http_security_order_unreadable"
+        ]
+        for c in _chains(document)
+    }
+    assert unreadable == {2: False, None: True}
+    endpoints = _endpoints(document)
+    # Both chains cover /api/**, and the order between them cannot be read.
+    _assert_unchanged(endpoints["GET /api/orders/{id}"])
+    # Only restChain covers /public/**, so the unreadable order does not matter there.
+    assert endpoints["GET /public/health"].metadata.no_auth_required is True
+
+
+_REST_ONLY = _TWO_CHAINS.split("    @Bean\n    ORDER_API")[0].replace("ORDER_REST", "") + "}\n"
+_API_ONLY = (
+    _TWO_CHAINS.replace("SecurityConfig", "ApiSecurityConfig").split("    @Bean\n    ORDER_REST")[0]
+    + "    @Bean"
+    + _TWO_CHAINS.split("    @Bean")[2].replace("ORDER_API", "")
+)
+
+
+def test_unordered_chains_in_different_files_are_not_guessed(tmp_path: Path) -> None:
+    document = _scan(
+        tmp_path,
+        {
+            "SecurityConfig.java": _REST_ONLY,
+            "ApiSecurityConfig.java": _API_ONLY,
+            "A.java": _CONTROLLER,
+        },
+    )
+    assert len(_chains(document)) == 2
+    endpoints = _endpoints(document)
+    # Spring orders the two beans by registration, which a static scan cannot see.
+    _assert_unchanged(endpoints["GET /api/orders/{id}"])
+    assert endpoints["GET /public/health"].metadata.no_auth_required is True
+
+
+_B_CONTROLLER = """package demo;
+
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+public class BController {
+    @GetMapping("/b/items")
+    public String items() { return "items"; }
+}
+"""
+
+
+def _write(root: Path, files: dict[str, str]) -> AiSbomDocument:
+    for name, source in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+    return AiSbomExtractor().extract_from_path(root, AiSbomConfig(enable_llm=False))
+
+
+def test_chains_apply_only_to_their_own_module(tmp_path: Path) -> None:
+    java = "src/main/java/demo"
+    document = _write(
+        tmp_path,
+        {
+            f"app-a/{java}/SecurityConfig.java": _config("            .anyRequest().permitAll()"),
+            f"app-a/{java}/A.java": _CONTROLLER,
+            f"app-b/{java}/SecurityConfig.java": _config(
+                '            .anyRequest().hasRole("ADMIN")'
+            ),
+            f"app-b/{java}/BController.java": _B_CONTROLLER,
+        },
+    )
+    assert len(_chains(document)) == 2
+    endpoints = _endpoints(document)
+    assert endpoints["POST /admin/users"].metadata.no_auth_required is True
+    items = endpoints["GET /b/items"]
+    assert items.metadata.auth_required is True
+    assert items.metadata.auth_scope == "ADMIN"
+    assert _protected(document) == {"GET /b/items"}
+
+
+def test_module_without_a_chain_is_left_unchanged(tmp_path: Path) -> None:
+    java = "src/main/java/demo"
+    document = _write(
+        tmp_path,
+        {
+            f"app-a/{java}/SecurityConfig.java": _config("            .anyRequest().permitAll()"),
+            f"app-b/{java}/SecurityConfig.java": _config(
+                '            .anyRequest().hasRole("ADMIN")'
+            ),
+            f"app-c/{java}/BController.java": _B_CONTROLLER,
+        },
+    )
+    _assert_unchanged(_endpoints(document)["GET /b/items"])
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("src/main/java/demo/A.java", ""),
+        ("services/app-a/src/main/java/demo/A.java", "services/app-a"),
+        ("lib/Helper.java", None),
+    ],
+)
+def test_source_module(path: str, expected: str | None) -> None:
+    assert source_module(path) == expected
