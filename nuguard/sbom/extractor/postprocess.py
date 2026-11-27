@@ -952,6 +952,37 @@ def _suppress_non_code_model_datastore(
         del node_map[key]
 
 
+_AI_LINK_TYPES = frozenset(
+    {ComponentType.AGENT, ComponentType.MODEL, ComponentType.TOOL, ComponentType.MCP_SERVER}
+)
+
+
+def _drop_web_controller_agents_without_ai(doc: "AiSbomDocument") -> None:
+    """Remove web controllers that were agent candidates but turned out to have no AI.
+
+    The Java web adapter emits every controller as an agent so it can be linked to the agents it
+    is injected with (NuGuardAI/nuguard#643). A controller that no other adapter vouched for, that
+    uses no AI itself and that links to no agent, model, tool or MCP server is not an agent
+    (#641). Repeated until stable, since a controller may only link to another dropped one.
+    """
+    while True:
+        ai_ids = {node.id for node in doc.nodes if node.component_type in _AI_LINK_TYPES}
+        linked = {edge.source for edge in doc.edges if edge.target in ai_ids and edge.target != edge.source}
+        drop = {
+            node.id
+            for node in doc.nodes
+            if node.component_type == ComponentType.AGENT
+            and node.metadata.extras.get("web_controller") is True
+            and not node.metadata.extras.get("ai_usage")
+            and all((evidence.detail or "").startswith("java_web:") for evidence in node.evidence)
+            and node.id not in linked
+        }
+        if not drop:
+            return
+        doc.nodes = [node for node in doc.nodes if node.id not in drop]
+        doc.edges = [edge for edge in doc.edges if edge.source not in drop and edge.target not in drop]
+
+
 def _dedup_deployment_nodes(doc: "AiSbomDocument") -> None:
     """Merge GitHub Actions workflow DEPLOYMENT nodes into the cloud-provider
     service nodes they deploy to, avoiding duplicate Azure/GHA entries.
