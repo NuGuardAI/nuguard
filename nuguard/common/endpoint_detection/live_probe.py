@@ -21,6 +21,7 @@ from nuguard.common.endpoint_detection.constants import (
     CHAT_TEXT_SENTINEL,
     CONTENT_FIELD_NAMES,
     EXCLUDE_PATTERNS,
+    GRAPHQL_ENDPOINT_PATHS,
     HTTP_ENDPOINT_FALLBACK_PATHS,
     MESSAGE_HISTORY_KEYS,
     OPENAPI_CHAT_TOKENS,
@@ -1034,6 +1035,21 @@ async def _probe_websocket_upgrade(client: httpx.AsyncClient, path: str) -> bool
     return False
 
 
+async def _probe_graphql(client: httpx.AsyncClient, path: str) -> bool:
+    """Return True if *path* answers the ``{ __typename }`` ping like a GraphQL server."""
+    try:
+        resp = await client.post(path, json={"query": "{ __typename }"})
+        data = resp.json()
+    except Exception:  # noqa: BLE001 — any failure means "not GraphQL"
+        return False
+    return (
+        resp.status_code == 200
+        and isinstance(data, dict)
+        and isinstance(data.get("data"), dict)
+        and "__typename" in data["data"]
+    )
+
+
 async def _detect_chat_endpoint(
     base: str,
     paths: list[str],
@@ -1046,6 +1062,7 @@ async def _detect_chat_endpoint(
     ws_paths: list[str] | None = None,
     llm: "LLMClient | None" = None,
     signals: "SessionSignals | None" = None,
+    graphql_paths: list[str] | None = None,
 ) -> "ProbeResult | None":
     """Ordered detection pipeline — smarter options first, blind probe as final fallback.
 
@@ -1071,6 +1088,13 @@ async def _detect_chat_endpoint(
                 if await _probe_websocket_upgrade(client, ws_path):
                     _log.info("endpoint_detection: detected WebSocket endpoint at %s", ws_path)
                     return ProbeResult(ws_path, "__websocket__", False)
+
+            # Option 3: GraphQL ping. A GraphQL server 400s every flat REST body,
+            # so the blind probe below can never confirm it.
+            for gql_path in graphql_paths or ():
+                if await _probe_graphql(client, gql_path):
+                    _log.info("endpoint_detection: detected GraphQL endpoint at %s", gql_path)
+                    return ProbeResult(gql_path, "__graphql__", False)
 
         # Final: blind multi-shape probe (or single-shape when key is known)
         payload_shapes = (
@@ -1218,6 +1242,12 @@ async def probe_chat_endpoints(
         _log.debug("endpoint_detection: no probe-eligible paths")
         return None
 
+    # SBOM-declared GraphQL-looking paths first, then the well-known ones.
+    graphql_paths = [p for p in paths if "graphql" in p.lower()]
+    graphql_paths += [p for p in GRAPHQL_ENDPOINT_PATHS if p not in graphql_paths]
+    if hint_path:  # a user-pinned non-GraphQL route must not receive the ping
+        graphql_paths = [hint_path] if "graphql" in hint_path.lower() else []
+
     base = target_url.rstrip("/")
     headers: dict[str, str] = {
         "Content-Type": "application/json",
@@ -1239,6 +1269,7 @@ async def probe_chat_endpoints(
             ws_paths=ws_paths,
             llm=llm,
             signals=signals,
+            graphql_paths=graphql_paths,
         )
 
     result = await _detect(headers, paths)
