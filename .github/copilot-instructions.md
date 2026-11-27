@@ -81,7 +81,7 @@ NuGuard is a security tool — hold all code to a high security bar:
 
 - **SBOM schema**: `nuguard/sbom/schemas/aibom.schema.json` must stay in sync with `AiSbomDocument.model_json_schema()`. The test `test_committed_schema_matches_models` enforces this.
 - **CLI wiring**: `nuguard/cli/main.py` registers sub-commands via `app.add_typer(...)`. Command modules import from their package lazily (inside the function body) to keep startup fast.
-- **LLM enrichment**: optional everywhere. Pass `--llm` or set `llm: true` in config. Default model: `gemini/gemini-2.0-flash`. API key: `LITELLM_API_KEY`.
+- **LLM enrichment**: optional everywhere. Pass `--llm` or set `llm: true` in config. Default model: `gemini/gemini-3.6-flash`. API key: `LITELLM_API_KEY`.
 - **Configuration precedence**: CLI flags > `nuguard.yaml` > environment variables > built-in defaults.
 - **Shared SBOM enrichment**: both `nuguard behavior` and `nuguard redteam` call `enrich_sbom_for_run()` from `nuguard/cli/common.py` before scenario generation. Prefer this shared helper over duplicating enrichment logic.
 - **Public Pydantic interfaces**: for functionality changes or bug fixes that affect public Python or platform consumers, load and follow `.github/skills/pydantic-interface/SKILL.md`. Keep models, exports, schema snapshots, tests, docs, compatibility, and secret redaction synchronized.

@@ -47,7 +47,7 @@ _call_token_slots: contextvars.ContextVar[list[int] | None] = contextvars.Contex
 _CALL_COUNTER_READY: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "nuguard_call_counter_ready", default=False
 )
-_DEFAULT_MODEL = "gemini/gemini-3.1-flash-lite"
+_DEFAULT_MODEL = "gemini/gemini-3.6-flash"
 
 _GEMINI_PREFIXES = ("gemini/", "google/", "vertex_ai/")
 _VERTEX_PREFIXES = ("vertex_ai/",)
@@ -190,7 +190,7 @@ class LLMClient:
 
     Args:
         model: LiteLLM model string.  Defaults to ``LITELLM_MODEL`` env var,
-               then ``gemini/gemini-2.0-flash``.
+               then ``gemini/gemini-3.6-flash``.
         api_key: API key for the model provider.  Defaults to
                  ``LITELLM_API_KEY`` env var.  When ``None`` the client
                  returns canned responses.
