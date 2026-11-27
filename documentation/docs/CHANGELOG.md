@@ -8,6 +8,9 @@ Major product and documentation changes for NuGuard users. See the linked guides
 
 - **Spring Security rules now decide auth for Java endpoints (behavior change):** the SBOM reads `SecurityFilterChain` beans and the legacy `WebSecurityConfigurerAdapter.configure(HttpSecurity)` and applies their ordered `requestMatchers`, `antMatchers` and `mvcMatchers` rules to Spring endpoints. Matched endpoints now report `auth_required`, `no_auth_required` and `auth_scope` (the required roles or authorities) and get a `PROTECTS` edge from a new `http-security` `AUTH` node. Spring apps that configure access in a filter chain will see different values than before, when every such endpoint was reported as `auth_required: false`. Endpoints that no supported rule matches keep their previous values, and the `AUTH` node records how many rules could not be applied (`http_security_unsupported_rules`). See [Spring Security HTTP rules](sbom-schema.md#spring-security-http-rules) for the supported syntax and the known limits.
 
+### Fixed
+- **Java controllers reported as agents:** A Spring controller is an agent only when it uses AI or is linked to an agent, model, tool or MCP server. Plain web apps no longer get one agent per controller, or the agent findings that came with them.
+
 ## v0.9.17 - 2026-11-16
 
 ### Added

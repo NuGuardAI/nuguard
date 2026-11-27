@@ -253,7 +253,7 @@ It collects:
 | Setting | Required | Description |
 |---|---|---|
 | LLM API key | Yes | Used for SBOM enrichment, analysis, and red-team payload generation |
-| Model name | No | Default: `gemini/gemini-2.0-flash`. Any LiteLLM model string |
+| Model name | No | Default: `gemini/gemini-3.6-flash`. Any LiteLLM model string |
 | API base URL | No | Required for Azure OpenAI or self-hosted models |
 | API version | No | Required for Azure OpenAI (e.g. `2024-05-01-preview`) |
 | Target URL | Yes | Base URL of the running AI application |
@@ -531,7 +531,7 @@ Result (~4 min):
 |---|---|
 | `LITELLM_API_KEY` | API key for LLM-enriched analysis — accepts Gemini, OpenAI, Anthropic, and any LiteLLM-compatible provider |
 | `NUGUARD_DEFAULT_CONFIG` | Absolute path to `nuguard.yaml` — used as the default `config_path` for all tool calls |
-| `NUGUARD_REDTEAM_LLM_MODEL` | LiteLLM model string for red-team payload generation (e.g. `openai/gpt-4o`, `gemini/gemini-2.0-flash`) |
+| `NUGUARD_REDTEAM_LLM_MODEL` | LiteLLM model string for red-team payload generation (e.g. `openai/gpt-4o`, `gemini/gemini-3.6-flash`) |
 | `NUGUARD_REDTEAM_LLM_API_KEY` | API key specifically for the red-team LLM (if different from `LITELLM_API_KEY`) |
 
 Set `NUGUARD_DEFAULT_CONFIG` to avoid repeating `config_path` in every tool call:

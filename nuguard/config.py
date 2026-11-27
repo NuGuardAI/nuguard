@@ -1197,7 +1197,7 @@ class NuGuardConfig(BaseSettings):
 
     # ------------------------------------------------------------------ LLM
     litellm_model: str = Field(
-        default="gemini/gemini-2.0-flash",
+        default="gemini/gemini-3.6-flash",
         description="LiteLLM model string (yaml: llm.model).",
     )
     litellm_api_key: str | None = Field(
