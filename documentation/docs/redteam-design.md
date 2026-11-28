@@ -741,6 +741,25 @@ Finding creation is controlled by `redteam.finding_triggers`:
 - `tool_trace_hits` creates findings from tool-call trace analysis.
 - `any_inject_success` can promote raw successful injected steps when enabled.
 
+Rate-limit probes (`Rate-Limit Probe - <endpoint>`, `RESOURCE_EXHAUSTION`, destructive)
+only observe: no step carries a success signal or an LLM judge, so a burst of 2xx
+responses is never a finding on its own. `executor/rate_limit_eval.py` judges the
+recorded responses against `redteam.rate_limit_policy` (`max_requests` per
+`window_seconds`) and returns one of three outcomes:
+
+- `finding`: more than `max_requests` requests were accepted inside the window with
+  no HTTP 429 (or the first 429 came after the limit).
+- `defended`: HTTP 429 (including one the client retried internally) appeared at or
+  before the policy limit.
+- `inconclusive:<reason>`: no policy, burst within the policy, burst slower than the
+  window, auth/transport/server errors, or a policy at or above the scanner's
+  10-request probe cap. These never count as defended in coverage.
+
+The policy describes the application and is separate from scanner safety budgets
+(`concurrency`, `turn_delay_seconds`, `scenario_delay_seconds`). Recorded evidence
+includes per-request status, send offset, retried 429 count and rate-limit headers
+(`Retry-After`, `RateLimit-*`, `X-RateLimit-*`).
+
 Catalog evidence types (`CANARY`, `TOOL_TRACE`, `EGRESS_TRAP`,
 `RESPONSE_ARTIFACT`, `POLICY_EVAL`, etc.) determine which corroboration paths
 a scenario expects, but the trigger config controls which evidence becomes a

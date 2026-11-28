@@ -199,6 +199,16 @@ def _mutation_variants(payload: str) -> list[str]:
     ]
 
 
+def _accepts_observation(fn: Any) -> bool:
+    """True when a client's invoke_endpoint accepts the ``observation`` out-dict."""
+    import inspect
+
+    try:
+        return "observation" in inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
+
+
 class StepResult:
     """Holds the outcome of executing a single ExploitStep."""
 
@@ -213,6 +223,8 @@ class StepResult:
         self.response = response
         self.tool_calls = tool_calls
         self.http_status_code = http_status_code
+        # Direct-HTTP only: send time, 429s retried by the client, rate-limit headers.
+        self.http_observation: dict[str, Any] | None = None
         # Payload actually sent to the target (tokens resolved, e.g. {golden_id} → real ID).
         # Set by _execute_step_with_payload after token substitution.
         self.resolved_payload: str = step.payload
@@ -936,7 +948,15 @@ class AttackExecutor:
 
         if step.target_path:
             # Direct HTTP attack — bypass the chat endpoint entirely
+            _http_obs: dict[str, Any] = {}
+            _obs_kw: dict[str, Any] = (
+                {"observation": _http_obs}
+                if _accepts_observation(self._client.invoke_endpoint)
+                else {}
+            )
+            _http_sent_at = time.monotonic()
             status_code, response, _ = await self._client.invoke_endpoint(
+                **_obs_kw,
                 path=step.target_path,
                 method=step.http_method,
                 body=step.http_body,
@@ -956,7 +976,10 @@ class AttackExecutor:
                     step.http_method,
                     step.target_path,
                 )
+                _http_obs.clear()
+                _http_sent_at = time.monotonic()
                 status_code, response, _ = await self._client.invoke_endpoint(
+                    **_obs_kw,
                     path=step.target_path,
                     method=step.http_method,
                     body=step.http_body,
@@ -977,6 +1000,11 @@ class AttackExecutor:
                 tool_calls=tool_calls,
                 http_status_code=status_code,
             )
+            result.http_observation = {
+                "sent_at": _http_sent_at,
+                "retries_429": int(_http_obs.get("retries_429", 0)),
+                "headers": dict(_http_obs.get("headers") or {}),
+            }
             # Suppress HTTP-2xx auth-bypass false positives caused by SPA
             # catch-all routes that return the page HTML for every path.
             if (

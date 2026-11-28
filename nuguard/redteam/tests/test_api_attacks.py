@@ -898,7 +898,7 @@ def test_generator_routes_rate_limit_probe_through_canary_credential():
     scenarios = gen.generate()
     rate = [
         s for s in scenarios
-        if s.scenario_type == ScenarioType.AUTH_BYPASS and "Rate-Limit" in s.title
+        if "Rate-Limit Probe" in s.title
     ]
     assert len(rate) == 1
     for step in rate[0].chain.steps:
@@ -1413,3 +1413,18 @@ def test_step_result_db_error_signature_no_match_on_clean_response():
         step=step, response='{"results": []}', tool_calls=[], http_status_code=200
     )
     assert result.success_signal_found is False
+
+
+def test_generator_sizes_rate_limit_burst_from_policy_within_scanner_budget():
+    node = _api_node("ep20", "Login", path="/login", rate_limited=None)
+    sbom = _make_sbom([node])
+
+    def burst(limit):
+        gen = ScenarioGenerator(sbom, rate_limit_max_requests=limit)
+        probes = [s for s in gen.generate() if "Rate-Limit Probe" in s.title]
+        assert len(probes) == 1
+        return len(probes[0].chain.steps)
+
+    assert burst(None) == 5  # no policy: unchanged default intensity
+    assert burst(3) == 4  # just over the policy limit
+    assert burst(500) == 10  # scanner safety budget caps the burst

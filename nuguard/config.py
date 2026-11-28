@@ -393,6 +393,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_ci_api_spot_checks"] = int(redteam["ci_api_spot_checks"])
     if "similar_miss_threshold" in redteam:
         flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
+    rate_limit_policy = redteam.get("rate_limit_policy", {}) or {}
+    if isinstance(rate_limit_policy, dict):
+        if rate_limit_policy.get("max_requests") is not None:
+            flat["redteam_rate_limit_max_requests"] = int(rate_limit_policy["max_requests"])
+        if rate_limit_policy.get("window_seconds") is not None:
+            flat["redteam_rate_limit_window_seconds"] = float(rate_limit_policy["window_seconds"])
     if "universal_safety_probes" in redteam:
         flat["redteam_universal_safety_probes"] = bool(redteam["universal_safety_probes"])
     if "multimodal_scenarios" in redteam:
@@ -1188,6 +1194,26 @@ class RedteamFindingTriggers(BaseModel):
         )
 
 
+class RedteamRateLimitPolicy(BaseModel):
+    """Expected application rate-limit policy for direct-HTTP rate-limit probes.
+
+    Describes what the *application* is supposed to enforce: at most
+    ``max_requests`` per ``window_seconds``. It is separate from scanner safety
+    budgets (``concurrency``, ``turn_delay_seconds``, ``scenario_delay_seconds``),
+    which only bound how hard NuGuard itself hits the target. Without a policy a
+    rate-limit probe can only end inconclusive or defended, never a finding.
+    """
+
+    max_requests: int = Field(
+        ge=1,
+        description="Requests the application allows per window (yaml: redteam.rate_limit_policy.max_requests).",
+    )
+    window_seconds: float = Field(
+        gt=0,
+        description="Length of the enforcement window in seconds (yaml: redteam.rate_limit_policy.window_seconds).",
+    )
+
+
 class NuGuardConfig(BaseSettings):
     """Resolved nuguard configuration.
 
@@ -1906,6 +1932,24 @@ class NuGuardConfig(BaseSettings):
             "(yaml: redteam.credentials)."
         ),
     )
+    redteam_rate_limit_max_requests: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Requests the application is expected to allow per window; with "
+            "window_seconds it forms the expected rate-limit policy used to judge "
+            "rate-limit probes. Unset = policy unknown, so probes never report a "
+            "violation (yaml: redteam.rate_limit_policy.max_requests)."
+        ),
+    )
+    redteam_rate_limit_window_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Length in seconds of the expected rate-limit window "
+            "(yaml: redteam.rate_limit_policy.window_seconds)."
+        ),
+    )
     redteam_trigger_canary_hits: bool = Field(
         default=True,
         description=(
@@ -2255,6 +2299,30 @@ class NuGuardConfig(BaseSettings):
                 "campaign.campaign_warmup: false."
             )
         return self
+
+    @model_validator(mode="after")
+    def _validate_rate_limit_policy(self) -> "NuGuardConfig":
+        """Both policy keys or neither: a half-set policy is a configuration error."""
+        has_max = self.redteam_rate_limit_max_requests is not None
+        has_window = self.redteam_rate_limit_window_seconds is not None
+        if has_max != has_window:
+            raise ValueError(
+                "redteam.rate_limit_policy needs both max_requests and window_seconds "
+                "(or neither)."
+            )
+        return self
+
+    def resolved_redteam_rate_limit_policy(self) -> RedteamRateLimitPolicy | None:
+        """Expected application rate-limit policy, or None when not configured."""
+        if (
+            self.redteam_rate_limit_max_requests is None
+            or self.redteam_rate_limit_window_seconds is None
+        ):
+            return None
+        return RedteamRateLimitPolicy(
+            max_requests=self.redteam_rate_limit_max_requests,
+            window_seconds=self.redteam_rate_limit_window_seconds,
+        )
 
     def resolved_redteam_finding_triggers(self) -> RedteamFindingTriggers:
         """Build trigger controls from resolved redteam configuration."""

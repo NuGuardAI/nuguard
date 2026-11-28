@@ -411,7 +411,12 @@ def build_rate_limit_probe(
     request_body_schema: dict[str, str] | None = None,
     burst_count: int = 5,
 ) -> AttackScenario:
-    """Safe rate-limit probe — send a bounded burst and check for 429 enforcement."""
+    """Safe rate-limit probe — send a bounded burst and record the responses.
+
+    The steps only observe. Whether the burst violates an application policy is
+    decided by ``rate_limit_eval.evaluate_rate_limit`` (issue #766), never by a
+    bare HTTP 2xx.
+    """
     body: dict = _build_realistic_body(request_body_schema or {})
     chain_id = str(uuid.uuid4())
     steps = [
@@ -429,14 +434,15 @@ def build_rate_limit_probe(
         )
         for i in range(burst_count)
     ]
-    # Last step probes for 429 enforcement — missing 429 = rate-limit bypass
-    steps[-1].success_signal = HTTP_2XX_SENTINEL
-    steps[-1].on_failure = "abort"
-    steps[-1].use_llm_eval = True
+    # Observation-only: a 2xx never proves a rate-limit violation by itself, so
+    # no step carries a success signal, LLM judge or abort. The verdict comes
+    # from rate_limit_eval.evaluate_rate_limit() against an explicit policy.
+    for step in steps:
+        step.contributes_to_finding = False
     chain = ExploitChain(
         chain_id=chain_id,
         goal_type=GoalType.API_ATTACK,
-        scenario_type=ScenarioType.AUTH_BYPASS,
+        scenario_type=ScenarioType.RESOURCE_EXHAUSTION,
         sbom_path=[endpoint_id],
         owasp_asi_ref="ASI08",
         steps=steps,
@@ -445,11 +451,11 @@ def build_rate_limit_probe(
     return AttackScenario(
         scenario_id=str(uuid.uuid4()),
         goal_type=GoalType.API_ATTACK,
-        scenario_type=ScenarioType.AUTH_BYPASS,
+        scenario_type=ScenarioType.RESOURCE_EXHAUSTION,
         title=f"Rate-Limit Probe — {endpoint_name} ({burst_count} requests)",
         description=(
             f"Send {burst_count} rapid {method} {path} requests. "
-            "A 2xx on the final request without a 429 earlier indicates missing rate-limit enforcement."
+            "The responses are judged against the expected rate-limit policy; without one the outcome is inconclusive."
         ),
         target_node_ids=[endpoint_id],
         impact_score=chain.pre_score,

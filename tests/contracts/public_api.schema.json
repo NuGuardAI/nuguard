@@ -11360,6 +11360,29 @@
         "title": "RedteamLoginFlowConfig",
         "type": "object"
       },
+      "RedteamRateLimitPolicy": {
+        "description": "Expected application rate-limit policy for direct-HTTP rate-limit probes.\n\nDescribes what the *application* is supposed to enforce: at most\n``max_requests`` per ``window_seconds``. It is separate from scanner safety\nbudgets (``concurrency``, ``turn_delay_seconds``, ``scenario_delay_seconds``),\nwhich only bound how hard NuGuard itself hits the target. Without a policy a\nrate-limit probe can only end inconclusive or defended, never a finding.",
+        "properties": {
+          "max_requests": {
+            "description": "Requests the application allows per window (yaml: redteam.rate_limit_policy.max_requests).",
+            "minimum": 1,
+            "title": "Max Requests",
+            "type": "integer"
+          },
+          "window_seconds": {
+            "description": "Length of the enforcement window in seconds (yaml: redteam.rate_limit_policy.window_seconds).",
+            "exclusiveMinimum": 0,
+            "title": "Window Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "max_requests",
+          "window_seconds"
+        ],
+        "title": "RedteamRateLimitPolicy",
+        "type": "object"
+      },
       "WorkflowOracle": {
         "description": "Reads back state after the workflow and decides whether the attack worked.\n\nThe predicate describes the *bad* outcome: when it matches, the attack\nsucceeded and a finding is raised.",
         "properties": {
@@ -11852,6 +11875,17 @@
         "default": 3,
         "title": "Ci Api Spot Checks",
         "type": "integer"
+      },
+      "rate_limit_policy": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/RedteamRateLimitPolicy"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       },
       "turn_delay_seconds": {
         "default": 5.0,

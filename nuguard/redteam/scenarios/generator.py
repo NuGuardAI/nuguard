@@ -414,8 +414,12 @@ class ScenarioGenerator:
         endpoint_plan: "EndpointPlan | None" = None,
         universal_safety_probes: bool = True,
         multimodal_scenarios: str = "auto",
+        rate_limit_max_requests: int | None = None,
     ) -> None:
         self._universal_safety_probes = universal_safety_probes
+        # Expected application limit (requests per window) used only to size the
+        # rate-limit probe burst; the scanner cap still bounds it.
+        self._rate_limit_max_requests = rate_limit_max_requests
         self._multimodal_mode: MultimodalMode = parse_multimodal_mode(multimodal_scenarios)
         # Optional relevance plan narrowing which API endpoints each direct-HTTP
         # probe family is generated for (see endpoint_selector.build_endpoint_plan).
@@ -2231,6 +2235,10 @@ class ScenarioGenerator:
             # Probing the unconfirmed population lets a real 429 upgrade the
             # static finding to a false positive, and a clean burst confirm it.
             if not getattr(meta, "rate_limited", False) and ok["rate_limit"]:
+                from nuguard.redteam.executor.rate_limit_eval import (  # noqa: PLC0415
+                    probe_burst_count,
+                )
+
                 rate_scenario = self._secure_write_scenario(
                     build_rate_limit_probe(
                         endpoint_id=endpoint_id,
@@ -2238,6 +2246,7 @@ class ScenarioGenerator:
                         path=path,
                         method=method,
                         request_body_schema=request_body_schema,
+                        burst_count=probe_burst_count(self._rate_limit_max_requests),
                     )
                 )
                 if rate_scenario is not None:
