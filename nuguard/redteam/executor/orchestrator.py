@@ -14,11 +14,12 @@ if TYPE_CHECKING:
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
     from nuguard.common.target_client_builder import TargetClient
-    from nuguard.config import RedteamFindingTriggers
+    from nuguard.config import RedteamFindingTriggers, RedteamRateLimitPolicy
     from nuguard.models.token_usage import TokenUsage
     from nuguard.redteam.coverage.tracker import CoverageTracker
     from nuguard.redteam.defence_regressions.models import DefenceRegressionRunSummary
     from nuguard.redteam.enrichment.asm_models import AgenticSurfaceModel
+    from nuguard.redteam.executor.rate_limit_eval import RateLimitEvaluation
     from nuguard.redteam.llm_engine.judge_cache import JudgeCache
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.redteam.target.session import AttackSession
@@ -396,6 +397,24 @@ def _idor_chain_status_with_auth_caveat(
     ):
         return "inconclusive:no_auth_configured"
     return chain_status
+
+
+def _rate_limit_chain_status(
+    evaluation: "RateLimitEvaluation | None",
+    had_finding: bool,
+    chain_status: str,
+) -> str:
+    """Chain status for a rate-limit probe, so a clean miss is not read as 'defended'.
+
+    Only a cleanly completed chain is rewritten; aborts/timeouts keep their own
+    status. A policy violation whose finding trigger is disabled is reported as
+    inconclusive rather than as a defended control.
+    """
+    if evaluation is None or had_finding or chain_status != "completed":
+        return chain_status
+    if evaluation.verdict == "finding":
+        return "inconclusive:finding_trigger_disabled"
+    return evaluation.chain_status
 
 
 def _is_404(response: str, http_status_code: int | None) -> bool:
@@ -952,6 +971,7 @@ class RedteamOrchestrator:
         resume_checkpoint_path: Path | None = None,
         browser_discovery: BrowserDiscoveryConfig | None = None,
         chat_payload_key_explicit: bool = False,
+        rate_limit_policy: "RedteamRateLimitPolicy | None" = None,
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
@@ -1029,6 +1049,9 @@ class RedteamOrchestrator:
         self._scenario_timeout = max(0.0, scenario_timeout)
         self._api_endpoint_threshold = max(1, api_endpoint_threshold)
         self._ci_api_spot_checks = max(1, ci_api_spot_checks)
+        # Expected application rate-limit policy (None = unknown, so rate-limit
+        # probes can never confirm a violation). Not a scanner safety budget.
+        self._rate_limit_policy = rate_limit_policy
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
         self._scenario_delay_seconds = max(0.0, scenario_delay_seconds)
         self._similar_miss_threshold = max(1, similar_miss_threshold)
@@ -2038,6 +2061,9 @@ class RedteamOrchestrator:
             endpoint_plan=_endpoint_plan,
             universal_safety_probes=self._universal_safety_probes,
             multimodal_scenarios=self._multimodal_mode,
+            rate_limit_max_requests=(
+                self._rate_limit_policy.max_requests if self._rate_limit_policy else None
+            ),
         )
         all_scenarios = generator.generate(with_guided=_with_guided, progressive=_progressive)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
@@ -2838,9 +2864,11 @@ class RedteamOrchestrator:
                                 "Trust-context matrix failed for scenario %r (non-fatal): %s",
                                 scenario.title, exc,
                             )
+                    _rl_eval = self._rate_limit_evaluation(scenario, step_results)
                     new_findings = self._build_findings(
                         scenario, chain, step_results, step_details, session=session,
                         trust_context_results=_tc_results,
+                        rate_limit_eval=_rl_eval,
                     )
                     if self._verify_findings and new_findings:
                         await self._verify_findings_probe(new_findings, step_details, executor, session)
@@ -2853,6 +2881,7 @@ class RedteamOrchestrator:
                     _chain_status = _idor_chain_status_with_auth_caveat(
                         scenario, had_finding, self._no_target_auth, _chain_status
                     )
+                    _chain_status = _rate_limit_chain_status(_rl_eval, had_finding, _chain_status)
                     record = ScenarioRecord(
                         title=scenario.title,
                         goal_type=scenario.goal_type.value,
@@ -3822,6 +3851,27 @@ class RedteamOrchestrator:
                 parts.append(f"Step {i} ({stype} {ok}): {prefix}{status_str}" if prefix else f"Step {i} ({stype} {ok}){status_str}")
         return "; ".join(parts) if parts else "no steps executed"
 
+    def _rate_limit_evaluation(
+        self, scenario: AttackScenario, step_results: list[StepResult]
+    ) -> "RateLimitEvaluation | None":
+        """Deterministic verdict for a rate-limit probe; None for other scenarios."""
+        from nuguard.redteam.executor.rate_limit_eval import (  # noqa: PLC0415
+            RateLimitPolicy,
+            evaluate_rate_limit,
+            is_rate_limit_probe,
+            observations_from_step_results,
+        )
+
+        if not is_rate_limit_probe(scenario):
+            return None
+        configured = self._rate_limit_policy
+        policy = (
+            RateLimitPolicy(configured.max_requests, float(configured.window_seconds))
+            if configured is not None
+            else None
+        )
+        return evaluate_rate_limit(observations_from_step_results(step_results), policy)
+
     def _build_findings(
         self,
         scenario: AttackScenario,
@@ -3830,6 +3880,7 @@ class RedteamOrchestrator:
         step_details: list[dict],
         session: AttackSession | None = None,
         trust_context_results: "list[TrustContextResult] | None" = None,
+        rate_limit_eval: "RateLimitEvaluation | None" = None,
     ) -> list[Finding]:
         """Convert scenario execution results into Finding objects."""
         findings: list[Finding] = []
@@ -4138,6 +4189,34 @@ class RedteamOrchestrator:
                         ),
                     )
                 )
+
+        # Rate-limit probe (issue #766): the only finding source is the
+        # deterministic policy verdict, never a bare HTTP 2xx or an LLM judgment.
+        if (
+            rate_limit_eval is not None
+            and rate_limit_eval.verdict == "finding"
+            and not findings
+            and self._trigger_enabled("critical_success_hits")
+        ):
+            rate_limit_ngrs = ngrs.score_finding(
+                scenario.goal_type, deterministic_evidence=True, turns_used=_turns_used,
+            )
+            findings.append(
+                Finding(
+                    **_base,
+                    finding_id=_finding_id(scenario.title),
+                    title=scenario.title,
+                    severity=rate_limit_ngrs.severity,
+                    ngrs_score=rate_limit_ngrs.score,
+                    ngrs_vector=rate_limit_ngrs.vector,
+                    success_indicator="rate_limit_policy_exceeded",
+                    description=(
+                        "Rate limiting was not enforced at the configured policy: "
+                        f"{rate_limit_eval.detail}"
+                    ),
+                    evidence=f"{rate_limit_eval.detail} | Attack steps: {step_summary}",
+                )
+            )
 
         # If no violations or canary but the scan ran, check for goal-specific signals
         if not findings:

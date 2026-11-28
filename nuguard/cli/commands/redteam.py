@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.common.llm_client import LLMClient
-    from nuguard.config import RedteamFindingTriggers
+    from nuguard.config import RedteamFindingTriggers, RedteamRateLimitPolicy
     from nuguard.models.token_usage import TokenUsage
     from nuguard.redteam.scenarios.multimodal_injection import MultimodalMode
 
@@ -353,6 +353,7 @@ def redteam(
         prompt_cache_dir=cfg.redteam_prompt_cache_dir,
         # ^ eval_llm falls back to top-level llm.model/api_key when redteam.eval_llm is not set
         finding_triggers=finding_triggers,
+        rate_limit_policy=cfg.resolved_redteam_rate_limit_policy(),
         verbose=effective_verbose,
         scenario_timeout=cfg.redteam_scenario_timeout,
         api_endpoint_threshold=cfg.redteam_api_endpoint_threshold,
@@ -665,6 +666,7 @@ async def _run_redteam(
     remediation_llm_client: "LLMClient | None" = None,
     prompt_cache_dir: str | None = None,
     finding_triggers: "RedteamFindingTriggers | None" = None,
+    rate_limit_policy: "RedteamRateLimitPolicy | None" = None,
     verbose: bool = False,
     credentials: dict[str, str] | None = None,
     scenario_timeout: float = 300.0,
@@ -837,6 +839,7 @@ async def _run_redteam(
                 remediation_llm_client=remediation_llm_client,
                 prompt_cache_dir=prompt_cache_dir,
                 finding_triggers=finding_triggers,
+                rate_limit_policy=rate_limit_policy,
                 defence_regressions=defence_regressions,
                 defence_regression_paraphrases=defence_regression_paraphrases,
                 defence_regression_timeout=defence_regression_timeout,
@@ -920,6 +923,7 @@ async def _run_redteam(
         remediation_llm_client=remediation_llm_client,
         prompt_cache_dir=prompt_cache_dir,
         finding_triggers=finding_triggers,
+        rate_limit_policy=rate_limit_policy,
         defence_regressions=defence_regressions,
         defence_regression_paraphrases=defence_regression_paraphrases,
         defence_regression_timeout=defence_regression_timeout,
@@ -1000,6 +1004,7 @@ async def _run_orchestrator(  # noqa: C901
     remediation_llm_client: "LLMClient | None" = None,
     prompt_cache_dir: str | None = None,
     finding_triggers: "RedteamFindingTriggers | None" = None,
+    rate_limit_policy: "RedteamRateLimitPolicy | None" = None,
     verbose: bool = False,
     credentials: dict[str, str] | None = None,
     scenario_timeout: float = 300.0,
@@ -1102,6 +1107,7 @@ async def _run_orchestrator(  # noqa: C901
             else None
         ),
         finding_triggers=finding_triggers,
+        rate_limit_policy=rate_limit_policy,
         defence_regressions=defence_regressions,
         defence_regression_paraphrases=defence_regression_paraphrases,
         defence_regression_timeout=defence_regression_timeout,

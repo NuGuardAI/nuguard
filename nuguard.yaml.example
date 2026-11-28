@@ -588,6 +588,15 @@ redteam:
     tool_trace_hits: true           # emit findings when tool-call traces reveal destructive actions
                                     # or toxic source→sink flows (catalog Phase 3 evidence layer)
   
+  # Expected application rate-limit policy for direct-HTTP rate-limit probes
+  # (destructive scenarios only). This is what the *application* should enforce,
+  # not a scanner safety budget. When unset, a probe ends inconclusive instead of
+  # reporting a vulnerability. Set both keys or neither. The scanner never sends
+  # more than 10 requests per probe, so limits of 10 or more stay inconclusive.
+  # rate_limit_policy:
+  #   max_requests: 5       # requests the application allows per window
+  #   window_seconds: 60    # window length in seconds
+
   # LLM for attack-payload generation (NOTE: must tolerate adversarial content)
   llm:
     model: ${NUGUARD_REDTEAM_LLM_MODEL}

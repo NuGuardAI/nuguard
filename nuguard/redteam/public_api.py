@@ -37,7 +37,7 @@ from nuguard.common.streaming_models import (
     StreamProgressPayload,
     StreamTerminalPayload,
 )
-from nuguard.config import AppAuthConfig, RedteamFindingTriggers
+from nuguard.config import AppAuthConfig, RedteamFindingTriggers, RedteamRateLimitPolicy
 from nuguard.models.finding import Finding
 from nuguard.models.health_report import TargetHealthReport
 from nuguard.models.token_usage import TokenUsage
@@ -200,6 +200,9 @@ class RedteamRunRequest(BaseModel):
     scenario_timeout: float = 180.0
     api_endpoint_threshold: int = 25
     ci_api_spot_checks: int = 3
+    # Expected application rate-limit policy for direct-HTTP rate-limit probes.
+    # None = unknown: probes can end inconclusive or defended, never a finding.
+    rate_limit_policy: RedteamRateLimitPolicy | None = None
     turn_delay_seconds: float = 5.0
     scenario_delay_seconds: float = 0.0
     similar_miss_threshold: int = 4
@@ -549,6 +552,7 @@ async def run_redteam(
         scenario_timeout=request.scenario_timeout,
         api_endpoint_threshold=request.api_endpoint_threshold,
         ci_api_spot_checks=request.ci_api_spot_checks,
+        rate_limit_policy=request.rate_limit_policy,
         turn_delay_seconds=request.turn_delay_seconds,
         scenario_delay_seconds=request.scenario_delay_seconds,
         similar_miss_threshold=request.similar_miss_threshold,

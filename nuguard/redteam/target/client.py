@@ -245,6 +245,23 @@ DEFAULT_429_BACKOFF_BASE_SECONDS = 0.5
 DEFAULT_429_BACKOFF_CAP_SECONDS = 5.0
 
 
+_RATE_LIMIT_HEADER_PREFIXES = ("x-ratelimit-", "x-rate-limit-", "ratelimit-")
+
+
+def _rate_limit_headers(headers: Any) -> dict[str, str]:
+    """Only rate-limit related response headers (lowercased, truncated)."""
+    out: dict[str, str] = {}
+    try:
+        items = list(headers.items())
+    except Exception:
+        return out
+    for key, value in items:
+        name = str(key).lower()
+        if name in ("retry-after", "ratelimit") or name.startswith(_RATE_LIMIT_HEADER_PREFIXES):
+            out[name] = str(value)[:200]
+    return out
+
+
 class TargetAppClient:
     """Thin httpx wrapper for sending chat/completion requests to the target."""
 
@@ -1349,12 +1366,17 @@ class TargetAppClient:
         extra_headers: dict[str, str] | None = None,
         strip_auth: bool = False,
         transport: "BranchTransport | None" = None,
+        observation: dict | None = None,
     ) -> tuple[int, str, dict]:
         """Send a direct HTTP request to a specific path.
 
         With a campaign ``transport`` the branch's own headers/cookies are sent
         (unless *strip_auth*), response cookies are stored on the branch, and a
         429 raises ``RetryDeferred`` instead of sleeping.
+
+        When *observation* is given it is filled with ``retries_429`` (429 responses
+        retried before the returned one) and ``headers`` (rate-limit related response
+        headers), so callers can see enforcement the built-in retry would hide.
 
         Returns (status_code, response_text, response_json).  Does NOT raise on
         4xx/5xx — callers inspect the status code to determine attack success.
@@ -1371,6 +1393,8 @@ class TargetAppClient:
             if transport is not None and not strip_auth
             else extra_headers
         )
+        _retries_429 = 0
+        _last_429_headers: dict[str, str] = {}
         for attempt in range(self._max_429_retries + 1):
             try:
                 if strip_auth and self._auth_header_names:
@@ -1433,6 +1457,8 @@ class TargetAppClient:
                         attempt + 1,
                         self._max_429_retries,
                     )
+                    _retries_429 += 1
+                    _last_429_headers = _rate_limit_headers(resp.headers)
                     await asyncio.sleep(delay)
                     continue
 
@@ -1443,6 +1469,9 @@ class TargetAppClient:
                 # Any completed response — even a 4xx/5xx — means the direct-HTTP
                 # path is reachable; reset the endpoint-probe circuit breaker.
                 self._record_endpoint_success()
+                if observation is not None:
+                    observation["retries_429"] = _retries_429
+                    observation["headers"] = _rate_limit_headers(resp.headers) or _last_429_headers
                 return resp.status_code, strip_known_boilerplate(resp.text), json_body
             except RetryDeferred:
                 raise
